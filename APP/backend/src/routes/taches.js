@@ -39,11 +39,11 @@ router.post("/", async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO taches
          (dossier_id, titre, type, priorite, statut, echeance, responsable_id, validation_requise, cree_par)
-       VALUES ($1,$2,COALESCE($3,'autre'),COALESCE($4,'normale'),'a_faire',$5,
-               COALESCE($6,$9),COALESCE($7,false),$9)
+       VALUES ($1,$2,COALESCE($3::type_tache,'autre'),COALESCE($4::priorite_tache,'normale'),'a_faire',$5,
+               COALESCE($6::uuid,$8::uuid),COALESCE($7,false),$8)
        RETURNING id, titre, statut, priorite, echeance`,
       [b.dossier_id || null, b.titre, b.type, b.priorite, b.echeance || null,
-       b.responsable_id, b.validation_requise, null, req.user.sub]
+       b.responsable_id || null, b.validation_requise, req.user.sub]
     );
     res.status(201).json(rows[0]);
   } catch (e) {

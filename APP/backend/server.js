@@ -32,6 +32,7 @@ app.use("/api/roles-audience", authenticate, require("./src/routes/audiences"));
 app.use("/api/courriers", authenticate, require("./src/routes/courriers"));
 app.use("/api/actes", authenticate, require("./src/routes/actes"));
 app.use("/api/biblio", authenticate, require("./src/routes/biblio"));
+app.use("/api/utilisateurs", authenticate, require("./src/routes/utilisateurs"));
 
 // 404 par défaut
 app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));

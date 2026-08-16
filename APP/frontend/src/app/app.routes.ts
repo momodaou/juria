@@ -59,6 +59,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/biblio/biblio.component').then((m) => m.BiblioComponent),
       },
       {
+        path: 'plan-action',
+        loadComponent: () =>
+          import('./pages/plan-action/plan-action.component').then((m) => m.PlanActionComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

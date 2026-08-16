@@ -103,6 +103,9 @@ export class AppComponent {
     biblio: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10v18H5.5A1.5 1.5 0 0 1 4 19.5Z"/><path d="M20 4.5A1.5 1.5 0 0 0 18.5 3H14v18h4.5a1.5 1.5 0 0 0 1.5-1.5Z"/><line x1="10" y1="3" x2="10" y2="21"/><line x1="14" y1="3" x2="14" y2="21"/></svg>',
     ),
+    planAction: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="9.5" y="4" width="5" height="10" rx="1"/><rect x="16" y="4" width="5" height="13" rx="1"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -118,6 +121,7 @@ export class AppComponent {
     { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier },
     { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes },
     { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio },
+    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 

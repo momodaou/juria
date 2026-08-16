@@ -183,6 +183,14 @@ export class ApiService {
   majTache(id: string, statut: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/taches/${id}`, { statut });
   }
+  validerTache(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/taches/${id}/valider`, {});
+  }
+
+  // Annuaire interne
+  utilisateurs(actifsSeuls = true): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/utilisateurs?actif=${actifsSeuls}`);
+  }
 
   // Fil du dossier (communications)
   dossierCommunications(dossierId: string): Observable<any[]> {
