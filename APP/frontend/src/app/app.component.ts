@@ -112,6 +112,9 @@ export class AppComponent {
     retrocessions: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10M7 8a3 3 0 1 1 0-6h7v6M7 8a3 3 0 1 0 0 6h10v-6"/><path d="M7 14a3 3 0 1 0 0 6h10v-6"/></svg>',
     ),
+    acces: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -130,6 +133,7 @@ export class AppComponent {
     { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction },
     { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses },
     { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions },
+    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 

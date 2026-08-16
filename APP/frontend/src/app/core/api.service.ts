@@ -187,9 +187,10 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/taches/${id}/valider`, {});
   }
 
-  // Annuaire interne
-  utilisateurs(actifsSeuls = true): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/api/utilisateurs?actif=${actifsSeuls}`);
+  // Annuaire interne — par défaut, comptes actifs seulement ; passer explicitement `undefined` pour tous les comptes.
+  utilisateurs(actifsSeuls: boolean | undefined = true): Observable<any[]> {
+    const q = actifsSeuls === undefined ? '' : `?actif=${actifsSeuls}`;
+    return this.http.get<any[]>(`${this.base}/api/utilisateurs${q}`);
   }
 
   // Fil du dossier (communications)
@@ -318,6 +319,30 @@ export class ApiService {
   proBono(mois?: string): Observable<any[]> {
     const q = mois ? `?mois=${mois}` : '';
     return this.http.get<any[]>(`${this.base}/api/retrocessions/pro-bono${q}`);
+  }
+
+  // Accès & permissions (réservé associé/admin)
+  majRoleUtilisateur(id: string, role: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}/role`, { role });
+  }
+  majActifUtilisateur(id: string, actif: boolean): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}/actif`, { actif });
+  }
+  delegations(filtres: { utilisateur_id?: string; actif?: boolean } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (filtres.utilisateur_id) params.set('utilisateur_id', filtres.utilisateur_id);
+    if (filtres.actif !== undefined) params.set('actif', String(filtres.actif));
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/acces/delegations${q}`);
+  }
+  creerDelegation(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/acces/delegations`, payload);
+  }
+  revoquerDelegation(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/acces/delegations/${id}/revoquer`, {});
+  }
+  journalAudit(limit = 100): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/acces/audit?limit=${limit}`);
   }
 
   // Assistant IA (résultat toujours « projet à valider »)

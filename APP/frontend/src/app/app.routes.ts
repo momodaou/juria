@@ -73,6 +73,10 @@ export const routes: Routes = [
           import('./pages/retrocessions/retrocessions.component').then((m) => m.RetrocessionsComponent),
       },
       {
+        path: 'acces',
+        loadComponent: () => import('./pages/acces/acces.component').then((m) => m.AccesComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

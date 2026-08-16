@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
 const { SECRET } = require("../auth");
+const { logAudit } = require("../audit");
 
 const router = express.Router();
 
@@ -29,6 +30,8 @@ router.post("/login", async (req, res) => {
       SECRET,
       { expiresIn: "8h" }
     );
+    pool.query("UPDATE utilisateurs SET derniere_connexion = now() WHERE id = $1", [u.id]).catch(() => {});
+    logAudit({ utilisateurId: u.id, action: "login", entite: "utilisateurs", entiteId: u.id, ip: req.ip });
     res.json({ token, utilisateur: { id: u.id, nom: `${u.prenom} ${u.nom}`, role: u.role } });
   } catch (e) {
     console.error(e);
