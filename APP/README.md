@@ -104,8 +104,13 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET | `/api/dashboard` | Indicateurs du Cockpit |
 | GET/POST | `/api/dossiers` | Lister / créer un dossier |
 | GET | `/api/dossiers/:id` | Détail d'un dossier |
-| GET/POST | `/api/clients` | Lister / créer un client |
-| POST | `/api/clients/conflict-check` | Contrôle des conflits d'intérêts |
+| GET/POST | `/api/clients` | Lister (recherche + filtre KYC) / créer un client |
+| GET/PUT | `/api/clients/:id` | Fiche 360° (pièces KYC, dossiers, originaux, liens) / mise à jour |
+| GET/POST/DELETE | `/api/clients/:id/kyc-pieces` | Pièces KYC (upload, liste, suppression) |
+| GET | `/api/clients/kyc/alertes?jours=` | Pièces KYC expirées ou expirant sous N jours |
+| POST | `/api/conflict-checks` | Contrôle des conflits d'intérêts (+ `/:id/decision`) |
+| GET/POST | `/api/originaux` | Registre des originaux confiés (+ `/:id/restituer`) |
+| GET | `/api/listes-valeurs?domaine=` | Nomenclatures paramétrables |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
 | — | `/api/documents`, `/api/evenements`, `/api/taches`, `/api/temps`, `/api/factures`, `/api/ia` | Présentes dans le code (`backend/src/routes/`), à valider/compléter |
 
@@ -121,9 +126,9 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 
 ## 5. Écrans Angular déjà inclus vs. modules restants
 
-**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation.
+**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés).
 
-**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Clients & KYC (écran dédié), Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action (kanban dédié), Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA (écran dédié), Portail client.
+**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action (kanban dédié), Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA (écran dédié), Portail client.
 
 ## 6. Prochaines étapes
 

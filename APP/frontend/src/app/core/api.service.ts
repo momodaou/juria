@@ -69,9 +69,68 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/dossiers`, payload);
   }
 
-  clients(recherche = ''): Observable<any[]> {
-    const q = recherche ? `?q=${encodeURIComponent(recherche)}` : '';
+  clients(recherche = '', kyc = ''): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (recherche) params.set('q', recherche);
+    if (kyc) params.set('kyc', kyc);
+    const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any[]>(`${this.base}/api/clients${q}`);
+  }
+
+  client(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/clients/${id}`);
+  }
+
+  creerClient(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/clients`, payload);
+  }
+
+  majClient(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/clients/${id}`, payload);
+  }
+
+  kycAlertes(jours = 30): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/clients/kyc/alertes?jours=${jours}`);
+  }
+
+  // KYC — pièces d'identité / documents rattachés au client
+  ajouterPieceKyc(clientId: string, libelle: string, dateExpiration: string | null, fichier: File | null): Observable<any> {
+    const fd = new FormData();
+    fd.append('libelle', libelle);
+    if (dateExpiration) fd.append('date_expiration', dateExpiration);
+    if (fichier) fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/clients/${clientId}/kyc-pieces`, fd);
+  }
+
+  telechargerPieceKyc(clientId: string, pieceId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/clients/${clientId}/kyc-pieces/${pieceId}/download`, { responseType: 'blob' });
+  }
+
+  supprimerPieceKyc(clientId: string, pieceId: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/clients/${clientId}/kyc-pieces/${pieceId}`);
+  }
+
+  // Registre des originaux confiés
+  originaux(filtres: { client_id?: string; dossier_id?: string; restitue?: boolean } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (filtres.client_id) params.set('client_id', filtres.client_id);
+    if (filtres.dossier_id) params.set('dossier_id', filtres.dossier_id);
+    if (filtres.restitue !== undefined) params.set('restitue', String(filtres.restitue));
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/originaux${q}`);
+  }
+
+  creerOriginal(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/originaux`, payload);
+  }
+
+  restituerOriginal(id: string, restitueA: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/originaux/${id}/restituer`, { restitue_a: restitueA });
+  }
+
+  // Listes de valeurs paramétrables (nomenclatures)
+  listesValeurs(domaine: string): Observable<{ code: string; libelle: string }[]> {
+    return this.http.get<{ code: string; libelle: string }[]>(`${this.base}/api/listes-valeurs?domaine=${domaine}`);
   }
 
   // Contrôle des conflits : renvoie { id, resultat, details, message }

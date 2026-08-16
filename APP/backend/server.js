@@ -26,6 +26,8 @@ app.use("/api/taches", authenticate, require("./src/routes/taches"));
 app.use("/api/ia", authenticate, require("./src/routes/ia"));
 app.use("/api/dashboard", authenticate, require("./src/routes/dashboard"));
 app.use("/api/communications", authenticate, require("./src/routes/communications"));
+app.use("/api/originaux", authenticate, require("./src/routes/originaux"));
+app.use("/api/listes-valeurs", authenticate, require("./src/routes/listes"));
 
 // 404 par défaut
 app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));

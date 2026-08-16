@@ -85,7 +85,8 @@ Associé, Of Counsel, Collaborateur avocat, Avocat stagiaire, Collaborateur non-
   - Compte de test : `associe@jfcavocats-mali.com` / `DemoPass123!`
   - Ressources : Cloud SQL PostgreSQL (`juria-pg`), bucket GCS (`jfc-juria-ged`), Secret Manager (`juria-db-password`, `juria-jwt-secret`), Artifact Registry (`juria`)
   - `scripts/gcloud-docker.sh` : wrapper pour piloter `gcloud` via Docker (aucun outil GCP installé sur l'hôte)
-- Modules restant à développer (backend + écrans) : Clients & KYC, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA, Portail client. Voir `APP/README.md` § 5-6.
+- Modules développés (backend + écrans) : Clients & KYC (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés).
+- Modules restant à développer (backend + écrans) : Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA, Portail client. Voir `APP/README.md` § 5-6.
 - `DOC/` : `JURIA - Dossier de Specifications Fonctionnelles - MAJ 16.08.2026.docx` (17 modules détaillés, généré à partir de la démo HTML fournie par l'utilisateur).
 
 ## Notes pour les futures sessions Claude

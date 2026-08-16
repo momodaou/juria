@@ -6,18 +6,41 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6F9;color:#22303f}
 
-/* Layout applicatif */
-.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
-.side{background:var(--navy);color:#cfd6e3;display:flex;flex-direction:column;padding:18px 14px}
-.brand{font-size:24px;font-weight:700;letter-spacing:4px;color:#fff;margin-bottom:2px}
-.brand span{display:block;font-size:10px;letter-spacing:1px;color:var(--gold);text-transform:uppercase}
+/* Layout applicatif — sidebar dockable (repliable en bandeau d'icônes) */
+.app{display:grid;grid-template-columns:220px 1fr;min-height:100vh;transition:grid-template-columns .18s ease}
+.app.collapsed{grid-template-columns:68px 1fr}
+.side{background:var(--navy);color:#cfd6e3;display:flex;flex-direction:column;padding:18px 14px;overflow:hidden}
+.app.collapsed .side{padding:18px 10px}
+
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px}
+.app.collapsed .side-head{justify-content:center}
+.brand{font-size:24px;font-weight:700;letter-spacing:4px;color:#fff;line-height:1}
+.brand-full{display:flex;flex-direction:column}
+.brand-full small{font-size:10px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;font-weight:600}
+.brand-mark{display:none;font-size:20px;letter-spacing:0}
+.app.collapsed .brand-full{display:none}
+.app.collapsed .brand-mark{display:block}
+
+.dock-toggle{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:26px;height:26px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:6px;color:#cfd6e3;cursor:pointer}
+.dock-toggle:hover{background:rgba(255,255,255,.14);color:#fff}
+
 .side nav{margin-top:22px;flex:1;display:flex;flex-direction:column;gap:4px}
-.side nav a{color:#cfd6e3;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14px}
+.side nav a{display:flex;align-items:center;gap:10px;color:#cfd6e3;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
 .side nav a:hover{background:rgba(255,255,255,.08);color:#fff}
 .side nav a.active{background:var(--gold);color:#1b2436;font-weight:600}
-.logout{background:transparent;border:1px solid rgba(255,255,255,.2);color:#cfd6e3;border-radius:8px;padding:9px;cursor:pointer;font-size:13px}
+.side .ico{flex:0 0 auto;display:flex}
+.side .lbl{overflow:hidden;text-overflow:ellipsis}
+.app.collapsed .side nav a{justify-content:center;padding:10px}
+.app.collapsed .side .lbl{display:none}
+
+.logout{display:flex;align-items:center;gap:10px;background:transparent;border:1px solid rgba(255,255,255,.2);
+  color:#cfd6e3;border-radius:8px;padding:9px 12px;cursor:pointer;font-size:13px;white-space:nowrap}
 .logout:hover{background:rgba(255,255,255,.08)}
-.main{padding:24px 28px}
+.app.collapsed .logout{justify-content:center;padding:9px}
+.app.collapsed .logout .lbl{display:none}
+
+.main{padding:24px 28px;min-width:0}
 
 /* En-tête de page */
 .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}

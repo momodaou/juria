@@ -1,22 +1,112 @@
-// JURIA — routes Clients & contrôle des conflits d'intérêts
+// JURIA — Clients & KYC
+// Registre clients, fiche 360° (KYC, dossiers, originaux confiés, liens),
+// suivi des pièces KYC/LBC-FT avec alertes d'expiration.
 const express = require("express");
+const multer = require("multer");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { saveObject, readObject } = require("../storage");
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 Mo
+});
 const router = express.Router();
 
-// GET /api/clients?q=
+// GET /api/clients?q=&kyc=
 router.get("/", async (req, res) => {
-  const { q } = req.query;
+  const { q, kyc } = req.query;
   const params = [];
-  let where = "";
-  if (q) { params.push(`%${q}%`); where = `WHERE COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $1`; }
+  const clauses = [];
+  if (q) {
+    params.push(`%${q}%`);
+    clauses.push(
+      `COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $${params.length}`
+    );
+  }
+  if (kyc) {
+    params.push(kyc);
+    clauses.push(`kyc_statut = $${params.length}`);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT id, type, denomination, prenom, nom, rccm, nif, kyc_statut
-       FROM clients ${where} ORDER BY maj_le DESC LIMIT 200`,
+      `SELECT c.id, c.type, c.denomination, c.prenom, c.nom, c.rccm, c.nif, c.pays,
+              c.kyc_statut, c.kyc_maj_le,
+              (SELECT COUNT(*) FROM dossiers d WHERE d.client_id = c.id) AS nb_dossiers,
+              (SELECT COUNT(*) FROM client_pieces_kyc p
+                 WHERE p.client_id = c.id AND p.date_expiration IS NOT NULL
+                   AND p.date_expiration < current_date) AS pieces_expirees
+       FROM clients c ${where} ORDER BY c.maj_le DESC LIMIT 200`,
       params
     );
     res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/clients/kyc/alertes?jours=30 — pièces expirées ou expirant bientôt (toutes fiches)
+router.get("/kyc/alertes", async (req, res) => {
+  const jours = Number(req.query.jours) || 30;
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.libelle, p.date_expiration, c.id AS client_id,
+              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom,
+              (p.date_expiration - current_date) AS jours_restants
+       FROM client_pieces_kyc p
+       JOIN clients c ON c.id = p.client_id
+       WHERE p.date_expiration IS NOT NULL
+         AND p.date_expiration <= current_date + ($1 || ' days')::interval
+       ORDER BY p.date_expiration ASC`,
+      [jours]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/clients/:id — fiche 360° (KYC, dossiers, originaux confiés, liens)
+router.get("/:id", async (req, res) => {
+  try {
+    const cli = await pool.query("SELECT * FROM clients WHERE id = $1", [req.params.id]);
+    if (!cli.rows[0]) return res.status(404).json({ error: "Client introuvable" });
+
+    const [pieces, dossiers, originaux, liens] = await Promise.all([
+      pool.query(
+        `SELECT id, libelle, date_expiration, cree_le,
+                (date_expiration IS NOT NULL AND date_expiration < current_date) AS expiree
+         FROM client_pieces_kyc WHERE client_id = $1 ORDER BY cree_le DESC`,
+        [req.params.id]
+      ),
+      pool.query(
+        `SELECT id, numero, intitule, statut, phase, urgence
+         FROM dossiers WHERE client_id = $1 ORDER BY date_ouverture DESC`,
+        [req.params.id]
+      ),
+      pool.query(
+        `SELECT id, type_piece, description, recu_le, emplacement, restitue, restitue_le
+         FROM originaux_confies WHERE client_id = $1 ORDER BY recu_le DESC`,
+        [req.params.id]
+      ),
+      pool.query(
+        `SELECT l.id, l.nature, l.lie_a_id,
+                COALESCE(c2.denomination, c2.prenom || ' ' || c2.nom) AS lie_a_nom
+         FROM client_liens l JOIN clients c2 ON c2.id = l.lie_a_id
+         WHERE l.client_id = $1`,
+        [req.params.id]
+      ),
+    ]);
+
+    res.json({
+      ...cli.rows[0],
+      pieces_kyc: pieces.rows,
+      dossiers: dossiers.rows,
+      originaux_confies: originaux.rows,
+      liens: liens.rows,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -43,39 +133,102 @@ router.post("/", async (req, res) => {
   }
 });
 
-// POST /api/clients/conflict-check   { noms: "SODIMA, Bâtir-SA, ..." }
-// Recherche client + partie adverse dans toute la base (radar conflits).
-router.post("/conflict-check", async (req, res) => {
-  const noms = (req.body && req.body.noms) || "";
-  const termes = String(noms).split(",").map((s) => s.trim()).filter(Boolean);
-  if (termes.length === 0) return res.status(400).json({ error: "Aucun nom fourni" });
+// PUT /api/clients/:id — mise à jour des coordonnées + statut KYC
+router.put("/:id", async (req, res) => {
+  const b = req.body || {};
   try {
-    const found = [];
-    for (const t of termes) {
-      const like = `%${t}%`;
-      const cli = await pool.query(
-        `SELECT id, 'client' AS source, COALESCE(denomination, prenom || ' ' || nom) AS nom
-         FROM clients
-         WHERE COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $1`,
-        [like]
-      );
-      const par = await pool.query(
-        `SELECT dp.id, 'partie_adverse' AS source, dp.denomination AS nom, d.numero AS dossier
-         FROM dossier_parties dp JOIN dossiers d ON d.id = dp.dossier_id
-         WHERE dp.denomination ILIKE $1`,
-        [like]
-      );
-      if (cli.rows.length || par.rows.length) {
-        found.push({ terme: t, correspondances: [...cli.rows, ...par.rows] });
-      }
+    const { rows } = await pool.query(
+      `UPDATE clients SET
+         denomination = COALESCE($1, denomination), rccm = COALESCE($2, rccm),
+         nif = COALESCE($3, nif), forme_juridique = COALESCE($4, forme_juridique),
+         prenom = COALESCE($5, prenom), nom = COALESCE($6, nom),
+         nationalite = COALESCE($7, nationalite), email = COALESCE($8, email),
+         telephone = COALESCE($9, telephone), adresse = COALESCE($10, adresse),
+         ville = COALESCE($11, ville), pays = COALESCE($12, pays),
+         beneficiaires_effectifs = COALESCE($13, beneficiaires_effectifs),
+         notes = COALESCE($14, notes),
+         kyc_statut = COALESCE($15, kyc_statut),
+         kyc_maj_le = CASE WHEN $15 IS NOT NULL THEN current_date ELSE kyc_maj_le END,
+         maj_le = now()
+       WHERE id = $16
+       RETURNING id, kyc_statut, kyc_maj_le`,
+      [b.denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
+       b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays,
+       b.beneficiaires_effectifs, b.notes, b.kyc_statut, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/clients/:id/kyc-pieces
+router.get("/:id/kyc-pieces", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, libelle, date_expiration, cree_le,
+              (date_expiration IS NOT NULL AND date_expiration < current_date) AS expiree
+       FROM client_pieces_kyc WHERE client_id = $1 ORDER BY cree_le DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/clients/:id/kyc-pieces  (multipart/form-data : fichier, libelle, date_expiration?)
+router.post("/:id/kyc-pieces", upload.single("fichier"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.libelle) return res.status(400).json({ error: "libelle requis (ex. « Passeport »)" });
+  try {
+    let chemin = null;
+    if (req.file) {
+      const dest = `kyc/${req.params.id}/${Date.now()}_${req.file.originalname}`.replace(/\s+/g, "_");
+      chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
     }
-    res.json({
-      resultat: found.length ? "potentiel" : "absence",
-      details: found,
-      message: found.length
-        ? "Rapprochement(s) trouvé(s) : décision d'un associé requise avant ouverture."
-        : "Aucun conflit détecté.",
-    });
+    const { rows } = await pool.query(
+      `INSERT INTO client_pieces_kyc (client_id, libelle, chemin_storage, date_expiration)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, libelle, date_expiration, cree_le`,
+      [req.params.id, b.libelle, chemin, b.date_expiration || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/clients/:id/kyc-pieces/:pieceId/download
+router.get("/:id/kyc-pieces/:pieceId/download", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT libelle, chemin_storage FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",
+      [req.params.pieceId, req.params.id]
+    );
+    if (!rows[0] || !rows[0].chemin_storage) return res.status(404).json({ error: "Pièce introuvable" });
+    const buf = await readObject(rows[0].chemin_storage);
+    res.setHeader("Content-Disposition", `attachment; filename="${rows[0].libelle}"`);
+    res.send(buf);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// DELETE /api/clients/:id/kyc-pieces/:pieceId
+router.delete("/:id/kyc-pieces/:pieceId", async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",
+      [req.params.pieceId, req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Pièce introuvable" });
+    res.status(204).end();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

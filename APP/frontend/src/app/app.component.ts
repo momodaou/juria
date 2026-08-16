@@ -1,6 +1,16 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { AuthService } from './core/auth.service';
+
+const SIDEBAR_KEY = 'juria.sidebar.dock';
+
+interface NavItem {
+  path: string;
+  label: string;
+  /** Icône trait (24x24, style Feather-like), un seul path/groupe par entrée. */
+  icon: SafeHtml;
+}
 
 @Component({
   selector: 'app-root',
@@ -8,17 +18,43 @@ import { AuthService } from './core/auth.service';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     @if (auth.estConnecte) {
-      <div class="app">
+      <div class="app" [class.collapsed]="collapsed()">
         <aside class="side">
-          <div class="brand">JURIA<span>by JFC Avocats</span></div>
+          <div class="side-head">
+            <div class="brand">
+              <span class="brand-full">JURIA<small>by JFC Avocats</small></span>
+              <span class="brand-mark">J</span>
+            </div>
+            <button
+              type="button"
+              class="dock-toggle"
+              [title]="collapsed() ? 'Déplier le menu' : 'Réduire le menu'"
+              [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Réduire le menu'"
+              (click)="toggleDock()"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                @if (collapsed()) {
+                  <polyline points="9 6 15 12 9 18"></polyline>
+                } @else {
+                  <polyline points="15 6 9 12 15 18"></polyline>
+                }
+              </svg>
+            </button>
+          </div>
+
           <nav>
-            <a routerLink="/cockpit" routerLinkActive="active">Cockpit</a>
-            <a routerLink="/dossiers" routerLinkActive="active">Dossiers</a>
-            <a routerLink="/ouverture" routerLinkActive="active">Nouveau dossier</a>
-            <a routerLink="/echeancier" routerLinkActive="active">Échéancier</a>
-            <a routerLink="/facturation" routerLinkActive="active">Facturation</a>
+            @for (item of navItems; track item.path) {
+              <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
+                <span class="ico" [innerHTML]="item.icon"></span>
+                <span class="lbl">{{ item.label }}</span>
+              </a>
+            }
           </nav>
-          <button class="logout" (click)="deconnexion()">Se déconnecter</button>
+
+          <button class="logout" type="button" title="Se déconnecter" (click)="deconnexion()">
+            <span class="ico" [innerHTML]="icons.logout"></span>
+            <span class="lbl">Se déconnecter</span>
+          </button>
         </aside>
         <main class="main"><router-outlet /></main>
       </div>
@@ -30,6 +66,52 @@ import { AuthService } from './core/auth.service';
 export class AppComponent {
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly sanitizer = inject(DomSanitizer);
+
+  private icon(svg: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(svg);
+  }
+
+  readonly icons = {
+    cockpit: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+    ),
+    dossiers: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
+    ),
+    ouverture: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
+    ),
+    clients: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10.5" r="2.25"/><path d="M5.5 17c.6-2.1 2.2-3.2 3.5-3.2s2.9 1.1 3.5 3.2"/><line x1="14.5" y1="9" x2="18.5" y2="9"/><line x1="14.5" y1="12.5" x2="18.5" y2="12.5"/></svg>',
+    ),
+    echeancier: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="7.5" y1="2.5" x2="7.5" y2="6.5"/><line x1="16.5" y1="2.5" x2="16.5" y2="6.5"/></svg>',
+    ),
+    facturation: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h9l3 3V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="16" x2="12.5" y2="16"/></svg>',
+    ),
+    logout: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    ),
+  };
+
+  readonly navItems: NavItem[] = [
+    { path: '/cockpit', label: 'Cockpit', icon: this.icons.cockpit },
+    { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers },
+    { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture },
+    { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients },
+    { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier },
+    { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
+  ];
+
+  readonly collapsed = signal(localStorage.getItem(SIDEBAR_KEY) === '1');
+
+  toggleDock(): void {
+    const next = !this.collapsed();
+    this.collapsed.set(next);
+    localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0');
+  }
 
   deconnexion(): void {
     this.auth.logout();
