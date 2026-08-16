@@ -64,6 +64,10 @@ export const routes: Routes = [
           import('./pages/plan-action/plan-action.component').then((m) => m.PlanActionComponent),
       },
       {
+        path: 'depenses',
+        loadComponent: () => import('./pages/depenses/depenses.component').then((m) => m.DepensesComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

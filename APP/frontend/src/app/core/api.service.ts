@@ -266,6 +266,39 @@ export class ApiService {
     return this.http.get(`${this.base}/api/biblio/${id}/fichier`, { responseType: 'blob' });
   }
 
+  // Dépenses & caisse
+  depenses(filtres: { type?: string; statut?: string; dossier_id?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/depenses${q}`);
+  }
+  creerDepense(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses`, payload);
+  }
+  decisionDepense(id: string, payload: { statut: 'validee' | 'rejetee'; motif_rejet?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/decision`, payload);
+  }
+  decaisserDepense(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, {});
+  }
+  comptesBancaires(): Observable<{ id: string; intitule: string; type: string }[]> {
+    return this.http.get<{ id: string; intitule: string; type: string }[]>(`${this.base}/api/depenses/comptes`);
+  }
+  petiteCaisse(mois?: string): Observable<any> {
+    const q = mois ? `?mois=${mois}` : '';
+    return this.http.get<any>(`${this.base}/api/depenses/petite-caisse${q}`);
+  }
+  definirDotationCaisse(mois: string, montant_alloue: number): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/petite-caisse`, { mois, montant_alloue });
+  }
+  stockVignettes(): Observable<{ stock: number }> {
+    return this.http.get<{ stock: number }>(`${this.base}/api/depenses/vignettes/stock`);
+  }
+  mouvementVignettes(payload: { mouvement: 'achat' | 'utilisation'; quantite: number; dossier_id?: string; refacturee?: boolean }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/vignettes`, payload);
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);

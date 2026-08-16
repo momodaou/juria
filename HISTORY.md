@@ -163,3 +163,16 @@ Chaque entrée : date, résumé, fichiers/éléments concernés.
 - `api.service.ts` étendu : `validerTache`, `utilisateurs`.
 - Vérifications : build Angular sans erreur ; backend testé en local via Docker (création de tâche avec et sans champs optionnels, changement de statut, annuaire des utilisateurs).
 - Non fait : redéploiement GCP (à suivre), pas de drag-and-drop (déplacement par boutons uniquement), les autres routes du kit non encore auditées (`temps.js`, `factures.js`, `evenements.js`, `communications.js`, `documents.js`, `dashboard.js`) peuvent contenir le même type de bug — à vérifier au moment de les utiliser.
+
+## 2026-08-16 — Module Dépenses & caisse
+
+- Aucune route fournie par le kit pour ce module (contrairement à Plan d'action) — entièrement écrit à partir du schéma existant (`depenses`, `comptes_bancaires`, `dotations_petite_caisse`, `vignettes_plaidoirie`, vue `v_stock_vignettes`), déjà complet côté SQL (circuit de validation `soumise → validee/rejetee → decaissee` prévu par le schéma).
+- **Backend** (`APP/backend/src/routes/depenses.js`, monté sur `/api/depenses`) :
+  - `GET /` (filtres type/statut/dossier/petite_caisse), `POST /` (soumission)
+  - `POST /:id/decision` (validée/rejetée, réservé associé/admin — le « gérant »), `POST /:id/decaisser` (réservé comptable/associé/admin)
+  - `GET /comptes` (comptes du cabinet), `GET/POST /petite-caisse` (dotation mensuelle + calcul du solde), `GET /vignettes/stock` + `POST /vignettes` (achat/utilisation)
+  - Leçon appliquée dès l'écriture (cf. note CLAUDE.md sur les enums) : tous les paramètres enum castés explicitement (`::type_depense`, `::categorie_depense`, `::statut_depense`) — testé sans aucun aller-retour de correction, contrairement aux modules précédents.
+- **Frontend** : nouvelle page `pages/depenses/depenses.component.ts` — 4 indicateurs (dotation/dépensé/solde du mois, stock de vignettes), formulaire de soumission complet, liste filtrable avec actions contextuelles selon le statut (valider/rejeter/décaisser), petit formulaire de dotation de caisse et de mouvement de vignettes.
+- `api.service.ts` étendu : `depenses`, `creerDepense`, `decisionDepense`, `decaisserDepense`, `comptesBancaires`, `petiteCaisse`, `definirDotationCaisse`, `stockVignettes`, `mouvementVignettes`.
+- Vérifications : build Angular sans erreur ; backend testé en local via Docker de bout en bout (dépense fixe et ponctuelle, cycle complet soumise→validée→décaissée, dotation de caisse et calcul du solde, achat de vignettes et stock).
+- Non fait : redéploiement GCP (à suivre), pas de lien entre les débours refacturables (`refacturable_client`) et la facturation (vue SQL `v_debours_a_refacturer` déjà prête côté schéma mais pas encore exploitée côté UI — à faire quand le module Facturation sera repris en profondeur).
