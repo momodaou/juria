@@ -238,6 +238,26 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/actes/generer`, payload);
   }
 
+  // Bibliothèque
+  biblio(filtres: { type?: string; matiere?: string; q?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/biblio${q}`);
+  }
+  creerRessourceBiblio(payload: any, fichier: File | null): Observable<any> {
+    const fd = new FormData();
+    Object.entries(payload).forEach(([k, v]) => { if (v) fd.append(k, v as string); });
+    if (fichier) fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/biblio`, fd);
+  }
+  supprimerRessourceBiblio(id: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/biblio/${id}`);
+  }
+  telechargerFichierBiblio(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/biblio/${id}/fichier`, { responseType: 'blob' });
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);

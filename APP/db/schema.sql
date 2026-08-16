@@ -1296,6 +1296,32 @@ INSERT INTO declencheurs (source_domaine, source_code, type_evenement, libelle_s
 ALTER TABLE evenements ADD COLUMN IF NOT EXISTS courrier_id UUID REFERENCES courriers(id);
 ALTER TABLE diligences ADD COLUMN IF NOT EXISTS courrier_id UUID REFERENCES courriers(id);
 
+-- =====================================================================
+--  BIBLIOTHÈQUE — jurisprudence, textes OHADA/nationaux, veille
+--  législative, modèles documentaires, consultations anonymisées,
+--  checklists. Fichier associé optionnel (GED).
+-- =====================================================================
+CREATE TYPE type_ressource_biblio AS ENUM
+  ('jurisprudence','texte_loi','veille','modele','consultation','checklist');
+
+CREATE TABLE ressources_biblio (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type             type_ressource_biblio NOT NULL,
+    titre            VARCHAR(300) NOT NULL,
+    reference        VARCHAR(120),                       -- ex. « CCJA 045/2020 », « AUS »
+    source           VARCHAR(80) DEFAULT 'National',      -- OHADA / National / Interne
+    matiere          VARCHAR(120),
+    date_publication DATE,
+    resume           TEXT,
+    chemin_storage   VARCHAR(500),                        -- fichier associé (Cloud Storage), optionnel
+    type_mime        VARCHAR(120),
+    cree_par         UUID REFERENCES utilisateurs(id),
+    cree_le          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_biblio_type ON ressources_biblio(type);
+CREATE INDEX idx_biblio_recherche ON ressources_biblio
+  USING gin ((titre || ' ' || COALESCE(reference,'') || ' ' || COALESCE(matiere,'')) gin_trgm_ops);
+
 COMMIT;
 
 -- =====================================================================

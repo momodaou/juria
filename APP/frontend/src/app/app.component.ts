@@ -100,6 +100,9 @@ export class AppComponent {
     actes: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="15.5" x2="15.5" y2="15.5"/><line x1="8.5" y1="19" x2="12.5" y2="19"/></svg>',
     ),
+    biblio: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H10v18H5.5A1.5 1.5 0 0 1 4 19.5Z"/><path d="M20 4.5A1.5 1.5 0 0 0 18.5 3H14v18h4.5a1.5 1.5 0 0 0 1.5-1.5Z"/><line x1="10" y1="3" x2="10" y2="21"/><line x1="14" y1="3" x2="14" y2="21"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -114,6 +117,7 @@ export class AppComponent {
     { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience },
     { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier },
     { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes },
+    { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 
