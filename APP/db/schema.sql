@@ -451,6 +451,19 @@ CREATE TABLE motifs_renvoi (
     libelle  VARCHAR(160) UNIQUE NOT NULL,
     actif    BOOLEAN NOT NULL DEFAULT TRUE
 );
+INSERT INTO motifs_renvoi (libelle) VALUES
+ ('Dépôt de conclusions'),
+ ('Répliques de la partie adverse'),
+ ('Production / communication de pièces'),
+ ('Constitution d''un nouveau conseil'),
+ ('Comparution des parties'),
+ ('Absence / défaut d''une partie'),
+ ('Renvoi d''un commun accord'),
+ ('Régularisation de la procédure'),
+ ('Assignation / réassignation'),
+ ('Indisponibilité de la juridiction'),
+ ('Autre (préciser)')
+ON CONFLICT (libelle) DO NOTHING;
 
 -- Une audience tenue (ou à tenir) pour un dossier, avec son issue.
 CREATE TABLE audiences (

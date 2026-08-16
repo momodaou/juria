@@ -192,6 +192,44 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/communications`, payload);
   }
 
+  // Rôle d'audience
+  roleAudience(semaine?: string): Observable<any> {
+    const q = semaine ? `?semaine=${semaine}` : '';
+    return this.http.get<any>(`${this.base}/api/roles-audience${q}`);
+  }
+  ajouterLigneRole(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/roles-audience/lignes`, payload);
+  }
+  validerRole(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/roles-audience/${id}/valider`, {});
+  }
+  diffuserRole(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/roles-audience/${id}/diffuser`, {});
+  }
+  motifsRenvoi(): Observable<{ id: string; libelle: string }[]> {
+    return this.http.get<{ id: string; libelle: string }[]>(`${this.base}/api/roles-audience/motifs-renvoi`);
+  }
+  retourAudience(audienceId: string, payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/retour`, payload);
+  }
+
+  // Registre du courrier
+  courriers(filtres: { sens?: string; dossier_id?: string; statut?: string; q?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/courriers${q}`);
+  }
+  courrier(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/courriers/${id}`);
+  }
+  creerCourrier(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers`, payload);
+  }
+  majStatutCourrier(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courriers/${id}/statut`, payload);
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);

@@ -91,6 +91,12 @@ export class AppComponent {
     facturation: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h9l3 3V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="16" x2="12.5" y2="16"/></svg>',
     ),
+    roleAudience: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c4-2.4 7-5.2 7-9.5V5.5L12 3 5 5.5v6c0 4.3 3 7.1 7 9.5Z"/><path d="M9 12l2 2 4-4"/></svg>',
+    ),
+    courrier: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5 12 13l8.5-6.5"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -102,6 +108,8 @@ export class AppComponent {
     { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture },
     { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients },
     { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier },
+    { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience },
+    { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 

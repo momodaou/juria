@@ -42,6 +42,15 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/echeancier/echeancier.component').then((m) => m.EcheancierComponent),
       },
       {
+        path: 'role-audience',
+        loadComponent: () =>
+          import('./pages/role-audience/role-audience.component').then((m) => m.RoleAudienceComponent),
+      },
+      {
+        path: 'courrier',
+        loadComponent: () => import('./pages/courrier/courrier.component').then((m) => m.CourrierComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

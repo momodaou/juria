@@ -104,7 +104,7 @@ router.post("/", async (req, res) => {
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, mode_honoraires, urgence, responsable_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,'moyenne'),$10)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10)
        RETURNING id, numero, intitule`,
       [b.numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id]

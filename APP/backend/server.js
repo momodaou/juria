@@ -28,6 +28,8 @@ app.use("/api/dashboard", authenticate, require("./src/routes/dashboard"));
 app.use("/api/communications", authenticate, require("./src/routes/communications"));
 app.use("/api/originaux", authenticate, require("./src/routes/originaux"));
 app.use("/api/listes-valeurs", authenticate, require("./src/routes/listes"));
+app.use("/api/roles-audience", authenticate, require("./src/routes/audiences"));
+app.use("/api/courriers", authenticate, require("./src/routes/courriers"));
 
 // 404 par défaut
 app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));
