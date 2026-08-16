@@ -176,3 +176,16 @@ Chaque entrée : date, résumé, fichiers/éléments concernés.
 - `api.service.ts` étendu : `depenses`, `creerDepense`, `decisionDepense`, `decaisserDepense`, `comptesBancaires`, `petiteCaisse`, `definirDotationCaisse`, `stockVignettes`, `mouvementVignettes`.
 - Vérifications : build Angular sans erreur ; backend testé en local via Docker de bout en bout (dépense fixe et ponctuelle, cycle complet soumise→validée→décaissée, dotation de caisse et calcul du solde, achat de vignettes et stock).
 - Non fait : redéploiement GCP (à suivre), pas de lien entre les débours refacturables (`refacturable_client`) et la facturation (vue SQL `v_debours_a_refacturer` déjà prête côté schéma mais pas encore exploitée côté UI — à faire quand le module Facturation sera repris en profondeur).
+
+## 2026-08-16 — Module Rétrocessions
+
+- **Nouvelle table** `retrocessions` (+ enums `qualite_retro`, `statut_retro`) ajoutée à `schema.sql` avant `COMMIT;` : comme pour Bibliothèque, le schéma n'avait aucune table pour ce module.
+- **Backend** (`APP/backend/src/routes/retrocessions.js`, monté sur `/api/retrocessions`) :
+  - `GET /qualites` — taux par défaut codés en dur (associé 30 %, collaborateur avocat/stagiaire/Of Counsel 25 %, collaborateur non-avocat 10 %), conformes à la spec
+  - `GET /` (liste avec calcul en direct de `honoraires_encaisses` par jointure sur `paiements`), `POST /` (calcul automatique du montant = base_ht × taux/100, taux surchageable)
+  - `POST /:id/decaisser` (associé/admin/comptable) — **règle « tout ou rien » appliquée strictement** : rejette le décaissement si une facture est liée et que la somme des paiements enregistrés est inférieure au montant TTC de la facture ; accepte si aucune facture n'est liée (rétrocession manuelle) ou si l'encaissement est intégral
+  - `GET /pro-bono?mois=` — quota Pro Bono (2 dossiers/mois/associé, non reportable), calculé sur `dossiers.pro_bono` + `date_ouverture`
+- **Frontend** : nouvelle page `pages/retrocessions/retrocessions.component.ts` — tableau de suivi du quota Pro Bono par associé, formulaire de création avec qualité auto-suggérée selon le rôle du bénéficiaire choisi, liste avec bouton "Décaisser" désactivé tant que la facture liée n'est pas intégralement encaissée (retour visuel immédiat, en plus du contrôle serveur).
+- `api.service.ts` étendu : `qualitesRetro`, `retrocessions`, `creerRetrocession`, `decaisserRetrocession`, `proBono`.
+- Vérifications : build Angular sans erreur (après nettoyage d'un import `DatePipe` inutilisé signalé par le compilateur) ; backend testé en local via Docker de bout en bout, **y compris le scénario complet de la règle tout ou rien** : décaissement refusé sans paiement, refusé avec paiement partiel (500 000 / 1 180 000 FCFA), accepté après paiement intégral du solde.
+- Non fait : redéploiement GCP + migration de la nouvelle table sur Cloud SQL (à suivre), pas d'automatisation de création des rétrocessions à l'émission d'une facture (création manuelle uniquement pour l'instant).

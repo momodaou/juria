@@ -299,6 +299,27 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/depenses/vignettes`, payload);
   }
 
+  // Rétrocessions d'honoraires
+  qualitesRetro(): Observable<{ code: string; libelle: string; taux: number }[]> {
+    return this.http.get<{ code: string; libelle: string; taux: number }[]>(`${this.base}/api/retrocessions/qualites`);
+  }
+  retrocessions(filtres: { beneficiaire_id?: string; statut?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/retrocessions${q}`);
+  }
+  creerRetrocession(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/retrocessions`, payload);
+  }
+  decaisserRetrocession(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/retrocessions/${id}/decaisser`, {});
+  }
+  proBono(mois?: string): Observable<any[]> {
+    const q = mois ? `?mois=${mois}` : '';
+    return this.http.get<any[]>(`${this.base}/api/retrocessions/pro-bono${q}`);
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);

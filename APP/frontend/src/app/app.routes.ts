@@ -68,6 +68,11 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/depenses/depenses.component').then((m) => m.DepensesComponent),
       },
       {
+        path: 'retrocessions',
+        loadComponent: () =>
+          import('./pages/retrocessions/retrocessions.component').then((m) => m.RetrocessionsComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

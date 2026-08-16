@@ -1322,6 +1322,35 @@ CREATE INDEX idx_biblio_type ON ressources_biblio(type);
 CREATE INDEX idx_biblio_recherche ON ressources_biblio
   USING gin ((titre || ' ' || COALESCE(reference,'') || ' ' || COALESCE(matiere,'')) gin_trgm_ops);
 
+-- =====================================================================
+--  RÉTROCESSIONS D'HONORAIRES — calcul et suivi par qualité du
+--  bénéficiaire. Règle « tout ou rien » : décaissable seulement une fois
+--  la facture liée intégralement encaissée (vérifié côté application).
+-- =====================================================================
+CREATE TYPE qualite_retro AS ENUM ('associe', 'collaborateur', 'non_avocat');
+-- Taux par défaut (modifiable au cas par cas) : associé 30 %,
+-- collaborateur avocat/stagiaire/Of Counsel 25 %, collaborateur non-avocat 10 %.
+
+CREATE TYPE statut_retro AS ENUM ('attente', 'a_decaisser', 'decaissee');
+
+CREATE TABLE retrocessions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    beneficiaire_id UUID NOT NULL REFERENCES utilisateurs(id),
+    qualite         qualite_retro NOT NULL,
+    taux            NUMERIC(5,2) NOT NULL,               -- % appliqué (peut différer du taux par défaut)
+    dossier_id      UUID REFERENCES dossiers(id) ON DELETE SET NULL,
+    facture_id      UUID REFERENCES factures(id) ON DELETE SET NULL,
+    base_ht         NUMERIC(14,0) NOT NULL DEFAULT 0,     -- honoraires HT servant de base au calcul
+    montant         NUMERIC(14,0) NOT NULL DEFAULT 0,     -- base_ht * taux / 100
+    statut          statut_retro NOT NULL DEFAULT 'attente',
+    decaisse_par    UUID REFERENCES utilisateurs(id),
+    decaisse_le     TIMESTAMPTZ,
+    cree_par        UUID REFERENCES utilisateurs(id),
+    cree_le         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_retro_beneficiaire ON retrocessions(beneficiaire_id);
+CREATE INDEX idx_retro_statut ON retrocessions(statut);
+
 COMMIT;
 
 -- =====================================================================
