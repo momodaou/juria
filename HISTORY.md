@@ -25,3 +25,10 @@ Chaque entrée : date, résumé, fichiers/éléments concernés.
 - `git init` exécuté à la racine du projet.
 - Remote `origin` ajouté : https://github.com/momodaou/juria.git
 - Aucun commit ni push effectué à ce stade (aucun fichier ajouté à l'index).
+
+## 2026-08-16 — Premier commit
+
+- Ajout de `.gitkeep` dans `APP/` et `DOC/` (dossiers vides, non suivis par git sans contenu).
+- Commit initial `b478e20` sur la branche `main` : `CLAUDE.md`, `HISTORY.md`, `APP/.gitkeep`, `DOC/.gitkeep`.
+- Identité git corrigée (config locale au dépôt) : `Mohamed <mohameddaou22@gmail.com>` — commit amendé, nouveau hash `a981035`.
+- Aucun push effectué (remote `origin` lié mais pas encore synchronisé).
