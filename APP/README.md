@@ -113,6 +113,8 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET | `/api/listes-valeurs?domaine=` | Nomenclatures paramétrables |
 | GET/POST | `/api/roles-audience` | Rôle d'audience de la semaine (+ `/lignes`, `/:id/valider`, `/:id/diffuser`, `/motifs-renvoi`, `/audiences/:id/retour`) |
 | GET/POST/PUT | `/api/courriers` | Registre du courrier (+ `/:id/statut`) — déclenchement auto d'événements/diligences/tâches |
+| GET | `/api/actes/modeles` | Modèles d'actes disponibles |
+| POST | `/api/actes/generer` | Génère un acte (modèle ou IA), enregistré dans la GED |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
 | — | `/api/documents`, `/api/evenements`, `/api/taches`, `/api/temps`, `/api/factures`, `/api/ia` | Présentes dans le code (`backend/src/routes/`), à valider/compléter |
 
@@ -128,9 +130,9 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 
 ## 5. Écrans Angular déjà inclus vs. modules restants
 
-**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés), **Rôle d'audience** (agenda hebdomadaire, validation/diffusion, retours d'audience avec renvoi automatique), **Registre du courrier** (arrivée/départ, référencement auto, déclenchement automatique d'événements/diligences/tâches).
+**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés), **Rôle d'audience** (agenda hebdomadaire, validation/diffusion, retours d'audience avec renvoi automatique), **Registre du courrier** (arrivée/départ, référencement auto, déclenchement automatique d'événements/diligences/tâches), **Atelier d'actes** (génération via modèles internes ou brouillon Assistant IA, enregistré dans la GED).
 
-**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Atelier d'actes, Bibliothèque, Plan d'action (kanban dédié), Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA (écran dédié), Portail client.
+**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Bibliothèque, Plan d'action (kanban dédié), Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA (écran dédié, au-delà des générateurs déjà branchés), Portail client.
 
 ## 6. Prochaines étapes
 

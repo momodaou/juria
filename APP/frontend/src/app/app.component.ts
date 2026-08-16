@@ -97,6 +97,9 @@ export class AppComponent {
     courrier: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5 12 13l8.5-6.5"/></svg>',
     ),
+    actes: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="15.5" x2="15.5" y2="15.5"/><line x1="8.5" y1="19" x2="12.5" y2="19"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -110,6 +113,7 @@ export class AppComponent {
     { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier },
     { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience },
     { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier },
+    { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 

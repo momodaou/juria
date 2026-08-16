@@ -230,6 +230,14 @@ export class ApiService {
     return this.http.put<any>(`${this.base}/api/courriers/${id}/statut`, payload);
   }
 
+  // Atelier d'actes
+  modelesActes(): Observable<{ code: string; nom: string; categorie: string }[]> {
+    return this.http.get<{ code: string; nom: string; categorie: string }[]>(`${this.base}/api/actes/modeles`);
+  }
+  genererActe(payload: { dossier_id: string; mode: 'modele' | 'ia'; modele_code?: string; instructions_ia?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/actes/generer`, payload);
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);
