@@ -20,6 +20,9 @@ npm-debug.log*
 # Fichiers temporaires Office (verrous Word/Excel/PowerPoint)
 ~$*
 
+# Claude Code (fichiers internes locaux)
+.claude/
+
 # Système
 .DS_Store
 Thumbs.db

@@ -79,6 +79,12 @@ Associé, Of Counsel, Collaborateur avocat, Avocat stagiaire, Collaborateur non-
 ## État actuel
 - Dépôt git initialisé, lié à `origin` (https://github.com/momodaou/juria.git), poussé (branche `main`).
 - `APP/` : kit de démarrage intégré et vérifié fonctionnel (16/08/2026) — backend Node/Express + PostgreSQL 15 démarrent via Docker, schéma chargé (36 tables), authentification JWT testée avec succès (login + endpoints protégés `/api/dashboard`, `/api/dossiers`). Frontend Angular 22 scaffoldé et overlayé avec le socle du kit (login, cockpit, dossiers, fiche dossier, ouverture, échéancier, facturation) — build vérifié sans erreur.
+- **Déployé sur GCP (projet `jfc-juria`, région `europe-west1`)** :
+  - Frontend : https://juria-web-552099340909.europe-west1.run.app
+  - API : https://juria-552099340909.europe-west1.run.app
+  - Compte de test : `associe@jfcavocats-mali.com` / `DemoPass123!`
+  - Ressources : Cloud SQL PostgreSQL (`juria-pg`), bucket GCS (`jfc-juria-ged`), Secret Manager (`juria-db-password`, `juria-jwt-secret`), Artifact Registry (`juria`)
+  - `scripts/gcloud-docker.sh` : wrapper pour piloter `gcloud` via Docker (aucun outil GCP installé sur l'hôte)
 - Modules restant à développer (backend + écrans) : Clients & KYC, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA, Portail client. Voir `APP/README.md` § 5-6.
 - `DOC/` : `JURIA - Dossier de Specifications Fonctionnelles - MAJ 16.08.2026.docx` (17 modules détaillés, généré à partir de la démo HTML fournie par l'utilisateur).
 

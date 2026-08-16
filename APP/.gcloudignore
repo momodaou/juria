@@ -1,0 +1,11 @@
+.gcloudignore
+.git
+.gitignore
+frontend/
+scripts/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.angular/
+*.log
