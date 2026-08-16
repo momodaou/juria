@@ -1351,6 +1351,28 @@ CREATE TABLE retrocessions (
 CREATE INDEX idx_retro_beneficiaire ON retrocessions(beneficiaire_id);
 CREATE INDEX idx_retro_statut ON retrocessions(statut);
 
+-- =====================================================================
+--  CONGÉS — demandes et validation, par membre du cabinet.
+-- =====================================================================
+CREATE TYPE type_conge AS ENUM ('annuel', 'maladie', 'maternite', 'paternite', 'sans_solde', 'autre');
+CREATE TYPE statut_conge AS ENUM ('demande', 'approuve', 'refuse');
+
+CREATE TABLE conges (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id UUID NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    type           type_conge NOT NULL DEFAULT 'annuel',
+    date_debut     DATE NOT NULL,
+    date_fin       DATE NOT NULL,
+    statut         statut_conge NOT NULL DEFAULT 'demande',
+    approuve_par   UUID REFERENCES utilisateurs(id),
+    approuve_le    TIMESTAMPTZ,
+    motif          TEXT,
+    cree_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_conge_dates CHECK (date_fin >= date_debut)
+);
+CREATE INDEX idx_conges_user ON conges(utilisateur_id);
+CREATE INDEX idx_conges_statut ON conges(statut);
+
 COMMIT;
 
 -- =====================================================================

@@ -77,6 +77,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/acces/acces.component').then((m) => m.AccesComponent),
       },
       {
+        path: 'cabinet',
+        loadComponent: () => import('./pages/cabinet/cabinet.component').then((m) => m.CabinetComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

@@ -345,6 +345,40 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/acces/audit?limit=${limit}`);
   }
 
+  // Cabinet (RH)
+  equipeCabinet(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/cabinet/equipe`);
+  }
+  echeancesRh(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/cabinet/echeances`);
+  }
+  conges(filtres: { utilisateur_id?: string; statut?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/cabinet/conges${q}`);
+  }
+  demanderConge(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/conges`, payload);
+  }
+  decisionConge(id: string, statut: 'approuve' | 'refuse'): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut });
+  }
+  presencesMois(mois?: string): Observable<any> {
+    const q = mois ? `?mois=${mois}` : '';
+    return this.http.get<any>(`${this.base}/api/cabinet/presences${q}`);
+  }
+  pointer(payload: { heure_arrivee?: string; heure_depart?: string; heures?: number }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/presences`, payload);
+  }
+  bulletinsPaie(utilisateurId?: string): Observable<any[]> {
+    const q = utilisateurId ? `?utilisateur_id=${utilisateurId}` : '';
+    return this.http.get<any[]>(`${this.base}/api/cabinet/bulletins${q}`);
+  }
+  creerBulletinPaie(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/bulletins`, payload);
+  }
+
   // Assistant IA (résultat toujours « projet à valider »)
   iaResume(payload: { texte?: string; document_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/resume`, payload);

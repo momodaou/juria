@@ -201,4 +201,22 @@ Chaque entrée : date, résumé, fichiers/éléments concernés.
   - `GET /audit?utilisateur_id=&entite=&limit=` (consultation du journal)
 - **Frontend** : nouvelle page `pages/acces/acces.component.ts` — liste des membres avec changement de rôle et bascule actif/inactif en ligne, gestion des délégations, table du journal d'audit. Correction au passage : `api.service.ts` `utilisateurs()` ne pouvait renvoyer que les comptes actifs ou inactifs séparément (jamais les deux) — paramètre rendu optionnel (`undefined` = tous les comptes) sans casser les appels existants (Plan d'action, Rétrocessions gardent le comportement par défaut « actifs seulement »).
 - Vérifications : build Angular sans erreur ; backend testé en local via Docker de bout en bout — changement de rôle, création/révocation de délégation, journal d'audit peuplé automatiquement par ces actions, **et contrôle d'accès vérifié** : un utilisateur non associé/admin reçoit bien 403 sur `/api/acces/*`.
-- Non fait : redéploiement GCP + migration (aucune nouvelle table cette fois, `journal_audit` et `delegations_acces` existaient déjà — seul le code applicatif change, pas de migration SQL nécessaire), pas d'écran dédié pour créer un nouvel utilisateur (compte créé uniquement en base pour l'instant — à intégrer au module Cabinet RH).
+- Non fait : pas d'écran dédié pour créer un nouvel utilisateur (compte créé uniquement en base pour l'instant — à intégrer au module Cabinet RH).
+- Redéployé (aucune migration nécessaire, `journal_audit`/`delegations_acces` existaient déjà) juste après cette entrée.
+
+## 2026-08-16 — Module Cabinet (RH)
+
+- **Nouvelle table** `conges` (+ enums `type_conge`, `statut_conge`) : le schéma avait déjà `presences` (pointage), `bulletins_paie` (paie légère) et la vue `v_echeances_rh` (fin d'essai/contrat/visite médicale), mais aucune table de gestion des congés.
+- Même bug de typage déjà documenté rencontré une fois de plus (`COALESCE($1,$5)` sur `utilisateur_id` UUID dans la création de congé) — corrigé immédiatement par cast explicite, conforme au réflexe désormais pris.
+- **Backend** (`APP/backend/src/routes/cabinet.js`, monté sur `/api/cabinet`) :
+  - `GET /equipe` — membres actifs, heures du mois (vue `v_heures_mensuelles` déjà prête), dossiers actifs par membre
+  - `GET /echeances` — échéances RH à venir (vue `v_echeances_rh`)
+  - `GET/POST /conges`, `POST /conges/:id/decision` (associé/admin)
+  - `GET/POST /presences` (pointage, upsert sur `(utilisateur_id, date_jour)`)
+  - `GET/POST /bulletins` (archivage indicatif, associé/admin/comptable, upsert sur `(utilisateur_id, mois)`)
+- **Frontend** : nouvelle page `pages/cabinet/cabinet.component.ts` — bandeau d'alertes échéances RH, tableau de l'équipe (charge/heures), pointage personnel avec récapitulatif mensuel, gestion des congés (demande + décision), archivage de bulletins de paie.
+- `api.service.ts` étendu : `equipeCabinet`, `echeancesRh`, `conges`, `demanderConge`, `decisionConge`, `presencesMois`, `pointer`, `bulletinsPaie`, `creerBulletinPaie`.
+- Vérifications : build Angular sans erreur ; backend testé en local via Docker de bout en bout (équipe, pointage avec calcul des heures mensuelles, cycle complet de demande/approbation de congé, bulletin de paie archivé).
+- Non fait : redéploiement GCP + migration (à suivre), pas de calcul officiel de paie (déclarations INPS/AMO/ITS explicitement hors périmètre par le schéma lui-même — JURIA archive, le comptable calcule et déclare), pas d'export des bulletins.
+
+**Bilan de session (10 modules livrés)** : Clients & KYC, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH). Restent : Assistant IA (écran dédié), Portail client.

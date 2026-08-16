@@ -121,6 +121,7 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET/POST | `/api/depenses` | Dépenses (circuit soumise/validée/décaissée) — `/:id/decision`, `/:id/decaisser`, `/comptes`, `/petite-caisse`, `/vignettes` |
 | GET/POST | `/api/retrocessions` | Rétrocessions d'honoraires — `/qualites`, `/:id/decaisser` (règle tout ou rien), `/pro-bono` |
 | PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin uniquement) — rôles, `/delegations`, `/audit` |
+| GET/POST | `/api/cabinet` | Cabinet RH — `/equipe`, `/echeances`, `/conges`, `/presences`, `/bulletins` |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
 | — | `/api/documents`, `/api/evenements`, `/api/taches`, `/api/temps`, `/api/factures`, `/api/ia` | Présentes dans le code (`backend/src/routes/`), à valider/compléter |
 
@@ -136,9 +137,9 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 
 ## 5. Écrans Angular déjà inclus vs. modules restants
 
-**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés), **Rôle d'audience** (agenda hebdomadaire, validation/diffusion, retours d'audience avec renvoi automatique), **Registre du courrier** (arrivée/départ, référencement auto, déclenchement automatique d'événements/diligences/tâches), **Atelier d'actes** (génération via modèles internes ou brouillon Assistant IA, enregistré dans la GED), **Bibliothèque** (jurisprudence, textes, veille, modèles, consultations, checklists), **Plan d'action** (kanban), **Dépenses & caisse** (circuit de validation, petite caisse, vignettes), **Rétrocessions** (calcul par qualité, règle tout ou rien, Pro Bono), **Accès & permissions** (rôles, délégations, journal d'audit).
+**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés), **Rôle d'audience** (agenda hebdomadaire, validation/diffusion, retours d'audience avec renvoi automatique), **Registre du courrier** (arrivée/départ, référencement auto, déclenchement automatique d'événements/diligences/tâches), **Atelier d'actes** (génération via modèles internes ou brouillon Assistant IA, enregistré dans la GED), **Bibliothèque** (jurisprudence, textes, veille, modèles, consultations, checklists), **Plan d'action** (kanban), **Dépenses & caisse** (circuit de validation, petite caisse, vignettes), **Rétrocessions** (calcul par qualité, règle tout ou rien, Pro Bono), **Accès & permissions** (rôles, délégations, journal d'audit), **Cabinet/RH** (équipe, congés, pointage, échéances RH, bulletins de paie).
 
-**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Cabinet (RH), Assistant IA (écran dédié, au-delà des générateurs déjà branchés), Portail client.
+**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Assistant IA (écran dédié, au-delà des générateurs déjà branchés), Portail client.
 
 ## 6. Prochaines étapes
 
