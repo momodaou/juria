@@ -151,8 +151,12 @@ export class ApiService {
   }
 
   // Factures & paiements
-  factures(statut = ''): Observable<any[]> {
-    const q = statut ? `?statut=${statut}` : '';
+  factures(statut = '', filtres: { dossier_id?: string; client_id?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (statut) params.set('statut', statut);
+    if (filtres.dossier_id) params.set('dossier_id', filtres.dossier_id);
+    if (filtres.client_id) params.set('client_id', filtres.client_id);
+    const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any[]>(`${this.base}/api/factures${q}`);
   }
   facturesImpayees(): Observable<any[]> {
@@ -385,5 +389,17 @@ export class ApiService {
   }
   iaChronologie(payload: { texte?: string; dossier_id?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/ia/chronologie`, payload);
+  }
+  iaExtractionFaits(payload: { texte?: string; document_id?: string; dossier_id?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/ia/extraction-faits`, payload);
+  }
+  iaAnalyseContrat(payload: { texte?: string; document_id?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/ia/analyse-contrat`, payload);
+  }
+  iaTraduction(payload: { texte?: string; document_id?: string; langue_cible?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/ia/traduction`, payload);
+  }
+  iaComparaison(payload: { texte_a: string; texte_b: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/ia/comparaison`, payload);
   }
 }

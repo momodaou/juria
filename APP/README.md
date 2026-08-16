@@ -122,8 +122,9 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET/POST | `/api/retrocessions` | Rétrocessions d'honoraires — `/qualites`, `/:id/decaisser` (règle tout ou rien), `/pro-bono` |
 | PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin uniquement) — rôles, `/delegations`, `/audit` |
 | GET/POST | `/api/cabinet` | Cabinet RH — `/equipe`, `/echeances`, `/conges`, `/presences`, `/bulletins` |
+| POST | `/api/ia/resume`, `/chronologie`, `/extraction-faits`, `/analyse-contrat`, `/traduction`, `/comparaison` | Assistant IA (6 capacités, toujours « projet à valider ») |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
-| — | `/api/documents`, `/api/evenements`, `/api/taches`, `/api/temps`, `/api/factures`, `/api/ia` | Présentes dans le code (`backend/src/routes/`), à valider/compléter |
+| GET/POST | `/api/documents`, `/api/evenements`, `/api/temps`, `/api/factures` | Présentes dans le code, **non auditées de bout en bout** cette session — vérifier le pattern de typage enum/UUID (cf. `CLAUDE.md`) avant usage en production |
 
 Toutes les routes `/api/*` exigent un jeton valide.
 
@@ -135,18 +136,23 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 
 ---
 
-## 5. Écrans Angular déjà inclus vs. modules restants
+## 5. Les 17 modules de la spécification fonctionnelle — statut
 
-**Inclus** (socle fonctionnel) : connexion, Cockpit, liste des dossiers, fiche dossier (parties, délais, pièces GED, temps, fil du dossier), ouverture avec contrôle des conflits, échéancier & délais + tâches, facturation, **Clients & KYC** (registre, fiche 360°, pièces KYC avec alertes d'expiration, originaux confiés), **Rôle d'audience** (agenda hebdomadaire, validation/diffusion, retours d'audience avec renvoi automatique), **Registre du courrier** (arrivée/départ, référencement auto, déclenchement automatique d'événements/diligences/tâches), **Atelier d'actes** (génération via modèles internes ou brouillon Assistant IA, enregistré dans la GED), **Bibliothèque** (jurisprudence, textes, veille, modèles, consultations, checklists), **Plan d'action** (kanban), **Dépenses & caisse** (circuit de validation, petite caisse, vignettes), **Rétrocessions** (calcul par qualité, règle tout ou rien, Pro Bono), **Accès & permissions** (rôles, délégations, journal d'audit), **Cabinet/RH** (équipe, congés, pointage, échéances RH, bulletins de paie).
+**Tous développés** (backend + écran Angular) : Cockpit, Dossiers 360, Nouveau dossier (conflits), Clients & KYC, Échéancier, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Chrono & Facturation, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA, Portail client.
 
-**Modules du dossier de spécifications fonctionnelles (`DOC/`) restant à développer** : Assistant IA (écran dédié, au-delà des générateurs déjà branchés), Portail client.
+**Deux limitations assumées, pas des oublis** :
+- **Portail client** est un écran d'**aperçu côté cabinet** (recherche un dossier, affiche ce qu'un client verrait), pas un vrai extranet avec compte client séparé — le schéma SQL lui-même classe ce module en extension post-MVP (voir commentaire de fin de `db/schema.sql`). Un vrai portail demande un système d'authentification distinct, à traiter comme projet à part.
+- **Journal d'audit** (`journal_audit`) n'est alimenté que par la connexion et les actions du module Accès & permissions — pas par le reste de l'application (retrofit complet non fait).
+
+**Non auditées de bout en bout** : `temps.js`, `evenements.js`, `communications.js`, `documents.js`, `dashboard.js` (fournies par le kit, jamais testées dans cette session). Voir la note sur le bug de typage enum/UUID récurrent dans `CLAUDE.md` avant de les utiliser en production.
 
 ## 6. Prochaines étapes
 
-1. Compléter/valider les routes backend restantes (documents/GED, événements, tâches, temps, factures) — le code existe, à tester et sécuriser.
-2. Développer les écrans Angular manquants listés ci-dessus (même modèle : service + composant standalone).
-3. Ajouter les tests (backend et frontend), la journalisation d'audit systématique et la validation des entrées.
-4. Ajouter un service `frontend` à `docker-compose.yml` pour le dev local (actuellement lancé à la main, voir § 2).
-5. Mettre en place les environnements **recette** et **production** sur GCP.
+1. Auditer et tester les routes listées ci-dessus comme « non auditées » (même pattern de bug à vérifier systématiquement).
+2. Étendre le journal d'audit au reste de l'application si la traçabilité complète est requise.
+3. Décider si un vrai portail client (auth séparée, messagerie) est prioritaire, et le traiter comme un projet dédié.
+4. Ajouter les tests automatisés (backend et frontend) et la validation des entrées.
+5. Ajouter un service `frontend` à `docker-compose.yml` pour le dev local (actuellement lancé à la main, voir § 2).
+6. Mettre en place les environnements **recette** et **production** sur GCP, un domaine personnalisé, et restreindre CORS (actuellement ouvert à tous les domaines).
 
 > Sécurité : ne jamais committer de fichier `.env` ni de secret. Utiliser Secret Manager en production.

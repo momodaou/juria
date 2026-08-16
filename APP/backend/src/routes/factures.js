@@ -37,10 +37,13 @@ router.get("/impayees", async (req, res) => {
 });
 
 router.get("/", async (req, res) => {
-  const { statut } = req.query;
+  const { statut, dossier_id, client_id } = req.query;
   const params = [];
-  let where = "";
-  if (statut) { params.push(statut); where = "WHERE f.statut = $1"; }
+  const clauses = [];
+  if (statut) { params.push(statut); clauses.push(`f.statut = $${params.length}::statut_facture`); }
+  if (dossier_id) { params.push(dossier_id); clauses.push(`f.dossier_id = $${params.length}`); }
+  if (client_id) { params.push(client_id); clauses.push(`f.client_id = $${params.length}`); }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.mode, f.montant_ht, f.montant_ttc, f.statut,

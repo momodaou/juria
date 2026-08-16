@@ -81,6 +81,16 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/cabinet/cabinet.component').then((m) => m.CabinetComponent),
       },
       {
+        path: 'assistant-ia',
+        loadComponent: () =>
+          import('./pages/assistant-ia/assistant-ia.component').then((m) => m.AssistantIaComponent),
+      },
+      {
+        path: 'portail-client',
+        loadComponent: () =>
+          import('./pages/portail-client/portail-client.component').then((m) => m.PortailClientComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },
