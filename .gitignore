@@ -1,0 +1,30 @@
+# Dépendances
+node_modules/
+**/node_modules/
+
+# Builds
+dist/
+**/dist/
+.angular/
+
+# Secrets locaux (ne jamais committer)
+.env
+**/.env
+*.pem
+*.key
+
+# Logs
+npm-debug.log*
+*.log
+
+# Fichiers temporaires Office (verrous Word/Excel/PowerPoint)
+~$*
+
+# Système
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+.idea/

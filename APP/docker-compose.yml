@@ -1,0 +1,40 @@
+# JURIA — environnement de développement local
+# Lance PostgreSQL (avec le schéma chargé) + l'API.
+#   docker compose up --build
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: juria
+      POSTGRES_USER: juria_app
+      POSTGRES_PASSWORD: dev-password
+    ports:
+      - "5432:5432"
+    volumes:
+      - juria_pgdata:/var/lib/postgresql/data
+      # Le schéma est chargé automatiquement au premier démarrage :
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U juria_app -d juria"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: juria
+      DB_USER: juria_app
+      DB_PASSWORD: dev-password
+      JWT_SECRET: dev-secret-local
+    ports:
+      - "8080:8080"
+
+volumes:
+  juria_pgdata:
