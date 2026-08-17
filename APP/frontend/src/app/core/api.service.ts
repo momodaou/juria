@@ -326,6 +326,12 @@ export class ApiService {
   }
 
   // Accès & permissions (réservé associé/admin)
+  creerCompte(payload: { code: string; prenom: string; nom: string; email: string; role: string; pole?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/acces/utilisateurs`, payload);
+  }
+  validerCompte(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/acces/utilisateurs/${id}/valider`, {});
+  }
   majRoleUtilisateur(id: string, role: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}/role`, { role });
   }

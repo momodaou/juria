@@ -1373,6 +1373,19 @@ CREATE TABLE conges (
 CREATE INDEX idx_conges_user ON conges(utilisateur_id);
 CREATE INDEX idx_conges_statut ON conges(statut);
 
+-- =====================================================================
+--  VALIDATION DES COMPTES À LA CRÉATION
+--  Un compte créé par un associé/admin démarre inactif (actif = FALSE,
+--  valide_le NULL). Il ne devient utilisable qu'après une validation
+--  explicite (distincte d'une simple réactivation après suspension,
+--  reconnaissable à valide_le déjà renseigné) :
+--    actif = TRUE                         -> compte actif
+--    actif = FALSE ET valide_le IS NULL   -> en attente de validation
+--    actif = FALSE ET valide_le IS NOT NULL -> suspendu (déjà validé un jour)
+-- =====================================================================
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS valide_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS valide_le  TIMESTAMPTZ;
+
 COMMIT;
 
 -- =====================================================================

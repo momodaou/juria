@@ -1,7 +1,10 @@
-// JURIA — Accès & permissions : évolution des rôles, délégations d'accès
-// temporaires/permanentes, consultation du journal d'audit.
+// JURIA — Accès & permissions : création de compte + validation à l'entrée,
+// évolution des rôles, délégations d'accès temporaires/permanentes,
+// consultation du journal d'audit.
 // Toutes les routes de ce module sont réservées associé/admin (direction).
 const express = require("express");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { requireRole } = require("../auth");
 const { logAudit } = require("../audit");
@@ -10,6 +13,64 @@ const router = express.Router();
 router.use(requireRole("associe", "admin"));
 
 const ROLES_VALIDES = ["associe", "collaborateur", "stagiaire", "assistante", "comptable", "admin"];
+
+// Mot de passe temporaire lisible (12 caractères, sans caractères ambigus).
+function genererMotDePasseTemporaire() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from(crypto.randomBytes(12))
+    .map((b) => alphabet[b % alphabet.length])
+    .join("");
+}
+
+// POST /api/acces/utilisateurs  { code, prenom, nom, email, role, pole? }
+// Crée le compte INACTIF (en attente de validation) et renvoie un mot de
+// passe temporaire — affiché une seule fois dans cette réponse, jamais
+// journalisé ni récupérable ensuite. Le compte ne pourra se connecter
+// qu'après validation explicite (POST .../valider).
+router.post("/utilisateurs", async (req, res) => {
+  const b = req.body || {};
+  if (!b.code || !b.prenom || !b.nom || !b.email || !ROLES_VALIDES.includes(b.role)) {
+    return res.status(400).json({ error: "code, prenom, nom, email et role (valide) requis" });
+  }
+  const motDePasseTemporaire = genererMotDePasseTemporaire();
+  try {
+    const hash = await bcrypt.hash(motDePasseTemporaire, 10);
+    const { rows } = await pool.query(
+      `INSERT INTO utilisateurs (code, prenom, nom, email, mot_de_passe, role, pole, actif)
+       VALUES ($1,$2,$3,$4,$5,$6::role_utilisateur,$7,FALSE)
+       RETURNING id, code, prenom, nom, email, role`,
+      [b.code, b.prenom, b.nom, b.email, hash, b.role, b.pole || null]
+    );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "creer_compte", entite: "utilisateurs",
+      entiteId: rows[0].id, details: { role: b.role }, ip: req.ip,
+    });
+    res.status(201).json({ ...rows[0], mot_de_passe_temporaire: motDePasseTemporaire });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/acces/utilisateurs/:id/valider
+// Première activation d'un compte en attente (distincte de la réactivation
+// après suspension : renseigne valide_par/valide_le, une seule fois).
+router.post("/utilisateurs/:id/valider", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs SET actif = TRUE, valide_par = $1, valide_le = now()
+       WHERE id = $2 AND valide_le IS NULL
+       RETURNING id, prenom, nom, actif, valide_le`,
+      [req.user.sub, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Compte introuvable ou déjà validé" });
+    await logAudit({ utilisateurId: req.user.sub, action: "valider_compte", entite: "utilisateurs", entiteId: req.params.id, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
 // PUT /api/acces/utilisateurs/:id/role  { role }
 router.put("/utilisateurs/:id/role", async (req, res) => {

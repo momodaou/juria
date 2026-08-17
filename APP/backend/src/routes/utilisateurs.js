@@ -12,7 +12,7 @@ router.get("/", async (req, res) => {
   if (actif !== undefined) { params.push(actif === "true"); where = `WHERE actif = $1`; }
   try {
     const { rows } = await pool.query(
-      `SELECT id, code, prenom, nom, role, pole, actif
+      `SELECT id, code, prenom, nom, email, role, pole, actif, valide_le
        FROM utilisateurs ${where} ORDER BY prenom, nom`,
       params
     );

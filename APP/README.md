@@ -120,7 +120,7 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET | `/api/utilisateurs?actif=` | Annuaire interne (sélecteurs de responsable) |
 | GET/POST | `/api/depenses` | Dépenses (circuit soumise/validée/décaissée) — `/:id/decision`, `/:id/decaisser`, `/comptes`, `/petite-caisse`, `/vignettes` |
 | GET/POST | `/api/retrocessions` | Rétrocessions d'honoraires — `/qualites`, `/:id/decaisser` (règle tout ou rien), `/pro-bono` |
-| PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin uniquement) — rôles, `/delegations`, `/audit` |
+| PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin uniquement) — `/utilisateurs` (création de compte), `/utilisateurs/:id/valider` (validation à l'entrée), `/utilisateurs/:id/role`, `/utilisateurs/:id/actif`, `/delegations`, `/audit` |
 | GET/POST | `/api/cabinet` | Cabinet RH — `/equipe`, `/echeances`, `/conges`, `/presences`, `/bulletins` |
 | POST | `/api/ia/resume`, `/chronologie`, `/extraction-faits`, `/analyse-contrat`, `/traduction`, `/comparaison` | Assistant IA (6 capacités, toujours « projet à valider ») |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |

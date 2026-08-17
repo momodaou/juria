@@ -11,13 +11,52 @@ import { ApiService } from '../../core/api.service';
     <header class="page-head">
       <div>
         <h1>Accès &amp; permissions</h1>
-        <p>Évolution des rôles, délégations d'accès, journal d'audit. Réservé associé/admin.</p>
+        <p>Création de compte, validation à l'entrée, évolution des rôles, délégations d'accès, journal d'audit. Réservé associé/admin.</p>
       </div>
+      <button class="btn" (click)="afficherFormCompte.set(!afficherFormCompte())">
+        {{ afficherFormCompte() ? 'Annuler' : '+ Nouveau compte' }}
+      </button>
     </header>
 
     @if (erreurGlobale()) {
       <section class="panel"><p class="err">{{ erreurGlobale() }}</p></section>
     } @else {
+      @if (afficherFormCompte()) {
+        <section class="panel">
+          <h3>Nouveau compte</h3>
+          <div class="grid2">
+            <div><label>Code</label><input class="in" [(ngModel)]="nouveauCompte.code" name="code" placeholder="Ex. HNA" /></div>
+            <div>
+              <label>Rôle initial</label>
+              <select class="in" [(ngModel)]="nouveauCompte.role" name="roleInit">
+                <option value="collaborateur">Collaborateur</option>
+                <option value="associe">Associé</option>
+                <option value="stagiaire">Stagiaire</option>
+                <option value="assistante">Assistante</option>
+                <option value="comptable">Comptable</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div><label>Prénom</label><input class="in" [(ngModel)]="nouveauCompte.prenom" name="prenom" /></div>
+            <div><label>Nom</label><input class="in" [(ngModel)]="nouveauCompte.nom" name="nom" /></div>
+            <div class="col2"><label>Email</label><input class="in" type="email" [(ngModel)]="nouveauCompte.email" name="email" /></div>
+          </div>
+          <button class="btn" (click)="creerCompte()" [disabled]="!nouveauCompte.code || !nouveauCompte.prenom || !nouveauCompte.nom || !nouveauCompte.email">
+            Créer (compte inactif, à valider ensuite)
+          </button>
+          @if (erreurCompte()) { <p class="err">{{ erreurCompte() }}</p> }
+        </section>
+      }
+
+      @if (dernierMotDePasse()) {
+        <section class="panel alerte">
+          <h3>Compte créé — mot de passe temporaire (affiché une seule fois)</h3>
+          <p><b>{{ dernierMotDePasse()!.nom }}</b> — <code class="mdp">{{ dernierMotDePasse()!.mdp }}</code></p>
+          <p class="muted">Communiquez-le en toute sécurité à la personne concernée. Le compte reste inactif tant qu'il n'est pas validé ci-dessous.</p>
+          <button class="lien" (click)="dernierMotDePasse.set(null)">Fermer</button>
+        </section>
+      }
+
       <section class="panel">
         <h3>Membres du cabinet</h3>
         <table>
@@ -35,8 +74,15 @@ import { ApiService } from '../../core/api.service';
                   <option value="admin">Admin</option>
                 </select>
               </td>
-              <td><span class="tag" [class.ok]="u.actif" [class.haute]="!u.actif">{{ u.actif ? 'Actif' : 'Désactivé' }}</span></td>
-              <td><button class="lien" (click)="basculerActif(u)">{{ u.actif ? 'Désactiver' : 'Réactiver' }}</button></td>
+              <td>
+                <span class="tag" [class.ok]="u.actif" [class.attente]="statut(u) === 'attente'" [class.haute]="statut(u) === 'suspendu'">
+                  {{ libelleStatut(u) }}
+                </span>
+              </td>
+              <td>
+                @if (statut(u) === 'attente') { <button class="lien" (click)="valider(u)">Valider</button> }
+                @else { <button class="lien" (click)="basculerActif(u)">{{ u.actif ? 'Désactiver' : 'Réactiver' }}</button> }
+              </td>
             </tr>
           }
         </table>
@@ -98,12 +144,20 @@ import { ApiService } from '../../core/api.service';
   `,
   styles: [`
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
+    label{font-size:12px;color:var(--slate);font-weight:600}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:600px}
+    .col2{grid-column:1 / -1}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-    .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:13px}
-    .btn.sm:disabled{opacity:.6}
+    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+    .btn:disabled{opacity:.6}
+    .btn.sm{padding:9px 14px;font-size:13px}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
+    .tag.attente{background:#fbf1dc;color:#9a6c12}
+    .panel.alerte{border-left:4px solid var(--amber)}
+    .mdp{background:#f7f9fc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:14px;font-weight:700;letter-spacing:.5px}
   `],
 })
 export class AccesComponent implements OnInit {
@@ -112,8 +166,22 @@ export class AccesComponent implements OnInit {
   readonly delegations = signal<any[]>([]);
   readonly audit = signal<any[]>([]);
   readonly erreurGlobale = signal('');
+  readonly afficherFormCompte = signal(false);
+  readonly erreurCompte = signal('');
+  readonly dernierMotDePasse = signal<{ nom: string; mdp: string } | null>(null);
 
   nouvelleDeleg: any = { portee: 'temporaire' };
+  nouveauCompte: any = { role: 'collaborateur' };
+
+  statut(u: any): 'actif' | 'attente' | 'suspendu' {
+    if (u.actif) return 'actif';
+    return u.valide_le ? 'suspendu' : 'attente';
+  }
+
+  libelleStatut(u: any): string {
+    const s = this.statut(u);
+    return s === 'actif' ? 'Actif' : s === 'attente' ? 'En attente de validation' : 'Suspendu';
+  }
 
   ngOnInit(): void {
     this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
@@ -126,6 +194,26 @@ export class AccesComponent implements OnInit {
 
   chargerDelegations(): void {
     this.api.delegations().subscribe({ next: (d) => this.delegations.set(d) });
+  }
+
+  creerCompte(): void {
+    this.erreurCompte.set('');
+    this.api.creerCompte(this.nouveauCompte).subscribe({
+      next: (r) => {
+        this.dernierMotDePasse.set({ nom: `${r.prenom} ${r.nom}`, mdp: r.mot_de_passe_temporaire });
+        this.afficherFormCompte.set(false);
+        this.nouveauCompte = { role: 'collaborateur' };
+        this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
+      },
+      error: (e) => this.erreurCompte.set(e?.error?.error ?? 'Création impossible.'),
+    });
+  }
+
+  valider(u: any): void {
+    this.api.validerCompte(u.id).subscribe({
+      next: () => { u.actif = true; u.valide_le = new Date().toISOString(); },
+      error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Validation impossible.'),
+    });
   }
 
   changerRole(u: any, role: string): void {
