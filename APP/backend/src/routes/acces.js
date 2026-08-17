@@ -8,11 +8,22 @@ const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { requireRole } = require("../auth");
 const { logAudit } = require("../audit");
+const { CATALOGUE, CODES_VALIDES } = require("../permissions");
 
 const router = express.Router();
-router.use(requireRole("associe", "admin"));
+// Gestion des comptes/rôles/délégations : associé, administrateur général ou
+// administrateur IT. La matrice de permissions ci-dessous (routes /permissions)
+// applique une restriction plus étroite, volontairement écartée de cette
+// garde commune — voir plus bas.
+router.use(requireRole("associe", "admin_general", "admin_it"));
 
-const ROLES_VALIDES = ["associe", "collaborateur", "stagiaire", "assistante", "comptable", "admin"];
+// 11 statuts réels du cabinet (17/08/2026) — voir CLAUDE.md pour le détail
+// de chacun et le mapping avec l'ancien enum à 6 valeurs.
+const ROLES_VALIDES = [
+  "associe", "of_counsel", "collaborateur", "stagiaire", "juriste",
+  "admin_general", "assistante", "comptable", "assistant_comptable",
+  "admin_it", "archiviste",
+];
 
 // Mot de passe temporaire lisible (12 caractères, sans caractères ambigus).
 function genererMotDePasseTemporaire() {
@@ -224,6 +235,57 @@ router.get("/audit", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// Matrice de permissions : restreinte à Associé + Administrateur IT
+// uniquement (précision explicite de l'utilisateur, 17/08/2026) — plus
+// étroit que le reste du module Accès & permissions, qui autorise aussi
+// Administrateur général. Les deux middlewares s'appliquent en ET : même si
+// le garde commun ci-dessus laisse passer admin_general, celui-ci le
+// rejette spécifiquement sur ces deux routes.
+const requireAssocieOuAdminIt = requireRole("associe", "admin_it");
+
+// GET /api/acces/permissions — catalogue complet croisé avec les valeurs
+// actuelles (une case sans ligne en base est retournée à false : aucun accès
+// implicite, cohérent avec requirePermission()).
+router.get("/permissions", requireAssocieOuAdminIt, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT role, action_code, autorise FROM permissions_role");
+    const valeurs = {};
+    for (const r of rows) valeurs[`${r.role}::${r.action_code}`] = r.autorise;
+    res.json({
+      catalogue: CATALOGUE,
+      roles: ROLES_VALIDES,
+      valeurs, // clé "role::action_code" -> booléen ; absente = false
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/acces/permissions  { role, action_code, autorise }
+router.put("/permissions", requireAssocieOuAdminIt, async (req, res) => {
+  const { role, action_code, autorise } = req.body || {};
+  if (!ROLES_VALIDES.includes(role)) return res.status(400).json({ error: "Rôle invalide" });
+  if (!CODES_VALIDES.has(action_code)) return res.status(400).json({ error: "Action inconnue" });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO permissions_role (role, action_code, autorise, maj_par, maj_le)
+       VALUES ($1::role_utilisateur,$2,$3,$4,now())
+       ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise, maj_par = EXCLUDED.maj_par, maj_le = now()
+       RETURNING role, action_code, autorise`,
+      [role, action_code, !!autorise, req.user.sub]
+    );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "maj_permission", entite: "permissions_role",
+      entiteId: null, details: { role, action_code, autorise: !!autorise }, ip: req.ip,
+    });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 

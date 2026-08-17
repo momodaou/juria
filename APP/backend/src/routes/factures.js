@@ -1,6 +1,7 @@
 // JURIA — Facturation & paiements
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // Recalcule et met à jour le statut d'une facture selon les paiements reçus.
@@ -108,7 +109,7 @@ router.get("/", async (req, res) => {
 // POST /api/factures
 // { dossier_id?, client_id?, mode, montant_ht, devise?, taux_applique?,
 //   taux_tva?, provision?, date_echeance? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   try {
     let clientId = b.client_id;
@@ -170,7 +171,7 @@ router.post("/", async (req, res) => {
 // Un paiement est toujours dans la devise de sa facture (pas de règlement
 // multi-devises sur une même facture) ; l'équivalence FCFA reprend le taux
 // figé de la facture (déjà verrouillé à l'émission).
-router.post("/:id/paiements", async (req, res) => {
+router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), async (req, res) => {
   const b = req.body || {};
   if (!b.montant || !b.mode) return res.status(400).json({ error: "montant et mode requis" });
   try {

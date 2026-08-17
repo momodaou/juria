@@ -13,6 +13,7 @@
 //   La table `communications` du schéma est déjà prévue pour accueillir ces flux.
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/communications?dossier_id=...
@@ -40,7 +41,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/communications  { dossier_id, client_id, type, sujet, resume, interlocuteur }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("communications.creer"), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(

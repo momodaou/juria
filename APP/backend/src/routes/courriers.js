@@ -2,6 +2,7 @@
 // et déclenchement d'événements/diligences/tâches à partir de la nature du courrier.
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // Génère la référence ARR-2026-000123 / DEP-2026-000045 (par sens + année).
@@ -109,7 +110,7 @@ router.get("/:id", async (req, res) => {
 
 // POST /api/courriers
 // body : { sens, type, date_courrier?, acteur_type?, correspondant, objet?, dossier_id?, support?, imputation_id? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("courriers.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.sens || !b.type) return res.status(400).json({ error: "sens et type requis" });
   const client = await pool.connect();
@@ -143,7 +144,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/courriers/:id/statut  { statut, imputation_id? }
-router.put("/:id/statut", async (req, res) => {
+router.put("/:id/statut", requirePermission("courriers.statut.modifier"), async (req, res) => {
   const { statut, imputation_id } = req.body || {};
   const permis = ["recu", "impute", "en_traitement", "traite", "expedie"];
   if (!permis.includes(statut)) return res.status(400).json({ error: "Statut invalide" });

@@ -1,14 +1,14 @@
 // JURIA — Contrôle des conflits d'intérêts (phase obligatoire avant ouverture)
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // POST /api/conflict-checks
 // body : { intitule_projet, noms: "SODIMA, Bâtir-SA, ..." }
 // Recherche client + partie adverse dans toute la base, enregistre le contrôle,
 // et renvoie le résultat (absence / potentiel).
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
   const b = req.body || {};
   const termes = String(b.noms || "").split(",").map((s) => s.trim()).filter(Boolean);
   if (termes.length === 0) return res.status(400).json({ error: "Aucun nom fourni" });
@@ -58,7 +58,7 @@ router.post("/", async (req, res) => {
 
 // POST /api/conflict-checks/:id/decision  (réservé aux associés)
 // body : { decision: 'accepte'|'refuse'|'oriente', motif }
-router.post("/:id/decision", requireRole("associe", "admin"), async (req, res) => {
+router.post("/:id/decision", requirePermission("conflits.decision"), async (req, res) => {
   const { decision, motif } = req.body || {};
   const permis = ["accepte", "refuse", "oriente"];
   if (!permis.includes(decision)) return res.status(400).json({ error: "Décision invalide" });

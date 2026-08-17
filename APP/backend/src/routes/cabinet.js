@@ -2,7 +2,7 @@
 // pointage, compteur d'heures, bulletins de paie (option légère).
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/cabinet/equipe — membres, heures du mois, dossiers actifs, échéance de congé/contrat
@@ -72,7 +72,7 @@ router.get("/conges", async (req, res) => {
 
 // POST /api/cabinet/conges  { utilisateur_id?, type, date_debut, date_fin, motif? }
 // Sans utilisateur_id : demande pour soi-même.
-router.post("/conges", async (req, res) => {
+router.post("/conges", requirePermission("cabinet.conge.demander"), async (req, res) => {
   const b = req.body || {};
   if (!b.date_debut || !b.date_fin) return res.status(400).json({ error: "date_debut et date_fin requises" });
   try {
@@ -90,7 +90,7 @@ router.post("/conges", async (req, res) => {
 });
 
 // POST /api/cabinet/conges/:id/decision  { statut: 'approuve'|'refuse' }  (associé/admin)
-router.post("/conges/:id/decision", requireRole("associe", "admin"), async (req, res) => {
+router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"), async (req, res) => {
   const { statut } = req.body || {};
   if (!["approuve", "refuse"].includes(statut)) return res.status(400).json({ error: "Statut invalide" });
   try {
@@ -132,7 +132,7 @@ router.get("/presences", async (req, res) => {
 
 // POST /api/cabinet/presences  { date_jour?, heure_arrivee?, heure_depart?, heures? }
 // Pointage pour soi-même ; upsert sur (utilisateur_id, date_jour).
-router.post("/presences", async (req, res) => {
+router.post("/presences", requirePermission("cabinet.presence.pointer"), async (req, res) => {
   const b = req.body || {};
   const date = b.date_jour || new Date().toISOString().slice(0, 10);
   try {
@@ -171,7 +171,7 @@ router.get("/bulletins", async (req, res) => {
 
 // POST /api/cabinet/bulletins  (associé/admin/comptable)
 // { utilisateur_id, mois, salaire_brut?, salaire_net?, cotisations_salariales?, cotisations_patronales?, primes?, verse_le? }
-router.post("/bulletins", requireRole("associe", "admin", "comptable"), async (req, res) => {
+router.post("/bulletins", requirePermission("cabinet.bulletin.generer"), async (req, res) => {
   const b = req.body || {};
   if (!b.utilisateur_id || !b.mois) return res.status(400).json({ error: "utilisateur_id et mois requis" });
   try {

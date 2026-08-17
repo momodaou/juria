@@ -2,6 +2,7 @@
 // (titres de propriété, contrats originaux, pièces d'identité…) — à restituer en fin de dossier.
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/originaux?client_id=&dossier_id=&restitue=false
@@ -35,7 +36,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/originaux
 // body : { client_id, dossier_id?, type_piece, description, emplacement?, recu_le? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("originaux.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.description) return res.status(400).json({ error: "description requise" });
   try {
@@ -55,7 +56,7 @@ router.post("/", async (req, res) => {
 });
 
 // POST /api/originaux/:id/restituer   { restitue_a }
-router.post("/:id/restituer", async (req, res) => {
+router.post("/:id/restituer", requirePermission("originaux.restituer"), async (req, res) => {
   const { restitue_a } = req.body || {};
   if (!restitue_a) return res.status(400).json({ error: "restitue_a requis (à qui l'original est remis)" });
   try {

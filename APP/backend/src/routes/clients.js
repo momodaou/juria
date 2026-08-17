@@ -6,6 +6,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
+const { requirePermission } = require("../permissions");
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -116,7 +117,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /api/clients
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("clients.creer"), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
@@ -136,7 +137,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/clients/:id — mise à jour des coordonnées + statut KYC
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
@@ -183,7 +184,7 @@ router.get("/:id/kyc-pieces", async (req, res) => {
 });
 
 // POST /api/clients/:id/kyc-pieces  (multipart/form-data : fichier, libelle, date_expiration?)
-router.post("/:id/kyc-pieces", upload.single("fichier"), async (req, res) => {
+router.post("/:id/kyc-pieces", requirePermission("clients.kyc_piece.ajouter"), upload.single("fichier"), async (req, res) => {
   const b = req.body || {};
   if (!b.libelle) return res.status(400).json({ error: "libelle requis (ex. « Passeport »)" });
   try {
@@ -223,7 +224,7 @@ router.get("/:id/kyc-pieces/:pieceId/download", async (req, res) => {
 });
 
 // DELETE /api/clients/:id/kyc-pieces/:pieceId
-router.delete("/:id/kyc-pieces/:pieceId", async (req, res) => {
+router.delete("/:id/kyc-pieces/:pieceId", requirePermission("clients.kyc_piece.supprimer"), async (req, res) => {
   try {
     const { rowCount } = await pool.query(
       "DELETE FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",

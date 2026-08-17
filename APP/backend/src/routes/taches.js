@@ -1,7 +1,7 @@
 // JURIA — Tâches internes (plan d'action)
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/taches?dossier_id=...  |  ?mine=1  (mes tâches)
@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/taches  { dossier_id?, titre, type?, priorite?, echeance?, responsable_id?, validation_requise? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("taches.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.titre) return res.status(400).json({ error: "titre requis" });
   try {
@@ -53,7 +53,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/taches/:id  { statut }
-router.put("/:id", async (req, res) => {
+router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res) => {
   const { statut } = req.body || {};
   const permis = ["a_faire", "en_cours", "a_valider", "termine", "annule"];
   if (!permis.includes(statut)) return res.status(400).json({ error: "statut invalide" });
@@ -71,7 +71,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // POST /api/taches/:id/valider  (réservé aux associés)
-router.post("/:id/valider", requireRole("associe", "admin"), async (req, res) => {
+router.post("/:id/valider", requirePermission("taches.valider"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE taches SET statut = 'termine', valide_par = $1, valide_le = now()

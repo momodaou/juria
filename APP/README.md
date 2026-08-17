@@ -120,7 +120,7 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET | `/api/utilisateurs?actif=` | Annuaire interne (sélecteurs de responsable) |
 | GET/POST | `/api/depenses` | Dépenses (circuit soumise/validée/décaissée) — `/:id/decision`, `/:id/decaisser`, `/comptes`, `/petite-caisse`, `/vignettes` |
 | GET/POST | `/api/retrocessions` | Rétrocessions d'honoraires — `/qualites`, `/:id/decaisser` (règle tout ou rien), `/pro-bono` |
-| PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin uniquement) — `/utilisateurs` (création de compte), `/utilisateurs/:id/valider` (validation à l'entrée), `/utilisateurs/:id/reinitialiser-mot-de-passe`, `/utilisateurs/:id/role`, `/utilisateurs/:id/actif`, `/delegations`, `/audit` |
+| PUT/GET/POST | `/api/acces` | Accès & permissions (associé/admin_general/admin_it) — `/utilisateurs` (création de compte), `/utilisateurs/:id/valider` (validation à l'entrée), `/utilisateurs/:id/reinitialiser-mot-de-passe`, `/utilisateurs/:id/role`, `/utilisateurs/:id/actif`, `/delegations`, `/audit` ; `/permissions` (GET/PUT, matrice de permissions — **réservé associé/admin_it uniquement**, plus restreint que le reste du module) |
 | GET/PUT | `/api/profil` | Profil personnel (tout utilisateur authentifié) — `/mot-de-passe` pour changer son propre mot de passe |
 | GET/POST | `/api/cabinet` | Cabinet RH — `/equipe`, `/echeances`, `/conges`, `/presences`, `/bulletins` |
 | POST | `/api/ia/resume`, `/chronologie`, `/extraction-faits`, `/analyse-contrat`, `/traduction`, `/comparaison` | Assistant IA (6 capacités, toujours « projet à valider ») |
@@ -175,6 +175,8 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 - **Journal d'audit** (`journal_audit`) n'est alimenté que par la connexion et les actions du module Accès & permissions — pas par le reste de l'application (retrofit complet non fait).
 
 **Audit backend terminé à 100 %** (17/08/2026) : toutes les routes ont été relues et/ou testées en conditions réelles. Le pattern de bug récurrent (COALESCE/CASE non casté sur ENUM/UUID) est désormais couvert par une suite de tests automatisés (§ 3bis) plutôt que par une simple mention dans ce README.
+
+**Statuts du personnel et permissions** (17/08/2026) : `role_utilisateur` compte désormais 11 valeurs — `associe`, `of_counsel`, `collaborateur`, `stagiaire`, `juriste`, `admin_general`, `assistante`, `comptable`, `assistant_comptable`, `admin_it`, `archiviste` — reflétant les statuts réels du cabinet (voir `CLAUDE.md` pour le détail de chacun). Les autorisations sur les 44 actions métier (hors module Accès & permissions lui-même, resté codé en dur) sont pilotées par la table `permissions_role`, éditable depuis l'écran Accès & permissions → Matrice des permissions (réservé Associé + Administrateur IT). Catalogue des actions : `backend/src/permissions.js`.
 
 ## 6. Prochaines étapes
 

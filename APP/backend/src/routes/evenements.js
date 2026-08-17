@@ -1,6 +1,7 @@
 // JURIA — Échéancier : audiences, délais, prescriptions + alertes J-30 → jour J
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // Détermine le niveau d'alerte à partir du nombre de jours restants.
@@ -36,7 +37,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/evenements  { dossier_id, type, titre, date_echeance, responsable_id? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("evenements.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.type || !b.date_echeance) {
     return res.status(400).json({ error: "dossier_id, type et date_echeance requis" });

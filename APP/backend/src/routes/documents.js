@@ -4,6 +4,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
+const { requirePermission } = require("../permissions");
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -14,7 +15,7 @@ const router = express.Router();
 
 // POST /api/documents  (multipart/form-data)
 // champs : fichier (binaire), dossier_id, categorie?, confidentialite?, nom?
-router.post("/", upload.single("fichier"), async (req, res) => {
+router.post("/", requirePermission("documents.creer"), upload.single("fichier"), async (req, res) => {
   const b = req.body || {};
   if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });

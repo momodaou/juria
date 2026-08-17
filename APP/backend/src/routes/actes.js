@@ -5,6 +5,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { saveObject } = require("../storage");
 const { generer } = require("../ia");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 function fmtDate(d) {
@@ -161,7 +162,7 @@ async function construireContexte(dossierId, avocatNom) {
 
 // POST /api/actes/generer
 // { dossier_id, mode: 'modele'|'ia', modele_code?, instructions_ia? }
-router.post("/generer", async (req, res) => {
+router.post("/generer", requirePermission("actes.generer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });
   try {

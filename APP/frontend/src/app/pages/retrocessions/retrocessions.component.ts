@@ -139,12 +139,17 @@ export class RetrocessionsComponent implements OnInit {
     this.api.retrocessions().subscribe({ next: (r) => this.retros.set(r) });
   }
 
+  // Suggestion automatique de la qualité de rétrocession à partir du rôle
+  // d'accès du bénéficiaire (toujours modifiable ensuite à la main) :
+  // associé -> 30% ; avocat collaborateur/stagiaire/Of Counsel -> 25%
+  // (règle du cahier des charges) ; tout profil non-avocat -> 10%.
   onQualiteAuto(): void {
     const u = this.utilisateurs().find((x) => x.id === this.form.beneficiaire_id);
     if (!u) return;
+    const ROLES_AVOCATS_COLLABORATEURS = ['of_counsel', 'collaborateur', 'stagiaire'];
     if (u.role === 'associe') this.form.qualite = 'associe';
-    else if (u.role === 'comptable' || u.role === 'assistante') this.form.qualite = 'non_avocat';
-    else this.form.qualite = 'collaborateur';
+    else if (ROLES_AVOCATS_COLLABORATEURS.includes(u.role)) this.form.qualite = 'collaborateur';
+    else this.form.qualite = 'non_avocat';
   }
 
   rechercherDossiers(): void {

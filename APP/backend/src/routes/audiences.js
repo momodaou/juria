@@ -2,7 +2,7 @@
 // planning des diligences, retours d'audience (renvoi -> rôle de la semaine suivante).
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // Lundi de la semaine contenant la date donnée (chaîne YYYY-MM-DD).
@@ -58,7 +58,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/roles-audience/lignes
 // { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente? }
-router.post("/lignes", async (req, res) => {
+router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.date_prevue) return res.status(400).json({ error: "dossier_id et date_prevue requis" });
   const client = await pool.connect();
@@ -89,7 +89,7 @@ router.post("/lignes", async (req, res) => {
 });
 
 // POST /api/roles-audience/:id/valider (associé/admin)
-router.post("/:id/valider", requireRole("associe", "admin"), async (req, res) => {
+router.post("/:id/valider", requirePermission("audiences.role.valider"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE roles_audience SET statut = 'valide', valide_par = $1, valide_le = now()
@@ -105,7 +105,7 @@ router.post("/:id/valider", requireRole("associe", "admin"), async (req, res) =>
 });
 
 // POST /api/roles-audience/:id/diffuser
-router.post("/:id/diffuser", requireRole("associe", "admin"), async (req, res) => {
+router.post("/:id/diffuser", requirePermission("audiences.role.diffuser"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE roles_audience SET statut = 'diffuse', diffuse_le = now()
@@ -135,7 +135,7 @@ router.get("/motifs-renvoi", async (req, res) => {
 // body : { resultat, motif_renvoi_id?, prochaine_date?, observations? }
 // Si prochaine_date est fourni, inscrit automatiquement l'audience suivante au rôle
 // de la semaine correspondante (renvoi -> compilation du rôle N+1).
-router.post("/audiences/:id/retour", async (req, res) => {
+router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
   const b = req.body || {};
   if (!b.resultat) return res.status(400).json({ error: "resultat requis" });
   const client = await pool.connect();

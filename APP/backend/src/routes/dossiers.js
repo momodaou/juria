@@ -1,6 +1,7 @@
 // JURIA — routes Dossiers
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/dossiers?statut=&responsable=&q=
@@ -97,7 +98,7 @@ router.get("/:id/documents", async (req, res) => {
 });
 
 // POST /api/dossiers
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(

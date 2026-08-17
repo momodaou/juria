@@ -3,7 +3,7 @@
 // comptes du cabinet, vignettes de plaidoirie (stock).
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=
@@ -40,7 +40,7 @@ router.get("/", async (req, res) => {
 // POST /api/depenses
 // { type, categorie, libelle, montant, date_depense?, mode_paiement?, compte_id?,
 //   petite_caisse?, justificatif?, refacturable_client?, dossier_id?, recurrente? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
   try {
@@ -64,7 +64,7 @@ router.post("/", async (req, res) => {
 });
 
 // POST /api/depenses/:id/decision  { statut: 'validee'|'rejetee', motif_rejet? }  (gérant : associé/admin)
-router.post("/:id/decision", requireRole("associe", "admin"), async (req, res) => {
+router.post("/:id/decision", requirePermission("depenses.decision"), async (req, res) => {
   const { statut, motif_rejet } = req.body || {};
   if (!["validee", "rejetee"].includes(statut)) return res.status(400).json({ error: "Statut invalide" });
   try {
@@ -82,7 +82,7 @@ router.post("/:id/decision", requireRole("associe", "admin"), async (req, res) =
 });
 
 // POST /api/depenses/:id/decaisser  (comptabilité : comptable/associe/admin)
-router.post("/:id/decaisser", requireRole("comptable", "associe", "admin"), async (req, res) => {
+router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE depenses SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now()
@@ -131,7 +131,7 @@ router.get("/petite-caisse", async (req, res) => {
 });
 
 // POST /api/depenses/petite-caisse  { mois, montant_alloue }  (administrateur)
-router.post("/petite-caisse", requireRole("admin", "associe"), async (req, res) => {
+router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
   const { mois, montant_alloue } = req.body || {};
   if (!mois || montant_alloue == null) return res.status(400).json({ error: "mois et montant_alloue requis" });
   try {
@@ -161,7 +161,7 @@ router.get("/vignettes/stock", async (req, res) => {
 });
 
 // POST /api/depenses/vignettes  { mouvement: 'achat'|'utilisation', quantite, dossier_id?, refacturee? }
-router.post("/vignettes", async (req, res) => {
+router.post("/vignettes", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
   const b = req.body || {};
   if (!["achat", "utilisation"].includes(b.mouvement) || !b.quantite) {
     return res.status(400).json({ error: "mouvement (achat|utilisation) et quantite requis" });

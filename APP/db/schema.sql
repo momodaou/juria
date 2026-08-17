@@ -1470,3 +1470,86 @@ SELECT f.id, f.numero, f.devise, f.libelle_principal, f.taux_applique, f.date_ta
        COALESCE(f.montant_ttc_xof, ROUND(f.montant_ttc * f.taux_applique)) AS contre_valeur_xof
 FROM factures f;
 -- ===================== FIN MODULE MULTI-DEVISES =====================
+
+-- =====================================================================
+--  STATUTS RÉELS DU PERSONNEL + MATRICE DE PERMISSIONS CONFIGURABLE
+--  (ajout 17/08/2026)
+--
+--  6 rôles techniques -> 11 statuts réels du cabinet. Renommage + ajouts
+--  sur l'enum existant, HORS de toute transaction explicite (tout ce qui
+--  précède ce point est déjà validé par le COMMIT ligne 1389) : une valeur
+--  ajoutée par ALTER TYPE ... ADD VALUE ne peut pas être utilisée dans la
+--  même transaction qui l'a ajoutée (restriction PostgreSQL, y compris en
+--  version 15) — d'où l'exécution en instructions autonomes ci-dessous,
+--  chacune validée (autocommit) avant la suivante.
+-- =====================================================================
+ALTER TYPE role_utilisateur RENAME VALUE 'admin' TO 'admin_general';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'of_counsel';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'juriste';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'assistant_comptable';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'admin_it';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'archiviste';
+
+-- Table de permissions par rôle, éditable depuis l'écran Accès & permissions
+-- (réservé Associé + Administrateur IT — voir backend/src/routes/acces.js).
+-- Absence de ligne = accès refusé par défaut (jamais d'accès implicite) ;
+-- voir backend/src/permissions.js pour le catalogue des action_code et le
+-- middleware requirePermission() qui interroge cette table.
+-- Le module Accès & permissions lui-même (comptes, rôles, cette matrice)
+-- N'EST PAS piloté par cette table : contrôle d'accès codé en dur, pour
+-- qu'une erreur de manipulation dans la matrice ne puisse jamais retirer à
+-- tout le monde le moyen de la corriger.
+CREATE TABLE permissions_role (
+    role        role_utilisateur NOT NULL,
+    action_code VARCHAR(80) NOT NULL,
+    autorise    BOOLEAN NOT NULL DEFAULT FALSE,
+    maj_par     UUID REFERENCES utilisateurs(id),
+    maj_le      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (role, action_code)
+);
+
+BEGIN;
+
+-- 34 actions déjà ouvertes à tout le monde aujourd'hui : on préserve ce
+-- comportement (TRUE pour les 11 rôles) au moment de la bascule. Un
+-- administrateur pourra resserrer chaque case individuellement ensuite.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY[
+  'documents.creer','communications.creer','conflits.soumettre','dossiers.creer',
+  'clients.creer','clients.modifier','clients.kyc_piece.ajouter','clients.kyc_piece.supprimer',
+  'originaux.creer','originaux.restituer','evenements.creer',
+  'audiences.ligne.creer','audiences.retour.saisir',
+  'courriers.creer','courriers.statut.modifier','actes.generer',
+  'biblio.creer','biblio.supprimer',
+  'taches.creer','taches.statut.modifier',
+  'temps.creer','factures.creer','factures.paiement.ajouter',
+  'depenses.creer','depenses.vignettes.mouvement',
+  'retrocessions.creer',
+  'cabinet.conge.demander','cabinet.presence.pointer',
+  'ia.resume','ia.chronologie','ia.extraction_faits','ia.analyse_contrat','ia.traduction','ia.comparaison'
+]) AS a
+ON CONFLICT (role, action_code) DO NOTHING;
+
+-- 10 actions déjà réservées aujourd'hui (requireRole en dur) : on reproduit
+-- exactement les rôles actuellement autorisés, admin_general et admin_it
+-- se substituant à l'ancien rôle unique 'admin'. Tout le reste (of_counsel,
+-- juriste, assistante, assistant_comptable, stagiaire, collaborateur,
+-- archiviste) démarre donc à FALSE sur ces 10 actions, cohérent avec le
+-- comportement actuel où seuls associé/admin/comptable y avaient accès.
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','conflits.decision',TRUE),('admin_general','conflits.decision',TRUE),('admin_it','conflits.decision',TRUE),
+ ('associe','audiences.role.valider',TRUE),('admin_general','audiences.role.valider',TRUE),('admin_it','audiences.role.valider',TRUE),
+ ('associe','audiences.role.diffuser',TRUE),('admin_general','audiences.role.diffuser',TRUE),('admin_it','audiences.role.diffuser',TRUE),
+ ('associe','taches.valider',TRUE),('admin_general','taches.valider',TRUE),('admin_it','taches.valider',TRUE),
+ ('associe','depenses.decision',TRUE),('admin_general','depenses.decision',TRUE),('admin_it','depenses.decision',TRUE),
+ ('associe','depenses.decaisser',TRUE),('admin_general','depenses.decaisser',TRUE),('admin_it','depenses.decaisser',TRUE),('comptable','depenses.decaisser',TRUE),
+ ('associe','depenses.petite_caisse.doter',TRUE),('admin_general','depenses.petite_caisse.doter',TRUE),('admin_it','depenses.petite_caisse.doter',TRUE),
+ ('associe','retrocessions.decaisser',TRUE),('admin_general','retrocessions.decaisser',TRUE),('admin_it','retrocessions.decaisser',TRUE),('comptable','retrocessions.decaisser',TRUE),
+ ('associe','cabinet.conge.decision',TRUE),('admin_general','cabinet.conge.decision',TRUE),('admin_it','cabinet.conge.decision',TRUE),
+ ('associe','cabinet.bulletin.generer',TRUE),('admin_general','cabinet.bulletin.generer',TRUE),('admin_it','cabinet.bulletin.generer',TRUE),('comptable','cabinet.bulletin.generer',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+COMMIT;
+-- =============== FIN STATUTS PERSONNEL + PERMISSIONS ===============

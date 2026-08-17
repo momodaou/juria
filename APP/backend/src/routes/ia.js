@@ -5,6 +5,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { generer } = require("../ia");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // Résout le texte source à partir du corps de la requête : texte fourni
@@ -28,7 +29,7 @@ async function texteSource(b) {
 const GARDE_FOU = "Termine impérativement par la mention : « Projet à valider par l'avocat. »";
 
 // POST /api/ia/resume  { texte? , document_id? }
-router.post("/resume", async (req, res) => {
+router.post("/resume", requirePermission("ia.resume"), async (req, res) => {
   try {
     const texte = await texteSource(req.body || {});
     if (!texte) return res.status(400).json({ error: "Aucun texte à résumer (fournir « texte », un document ou un dossier avec OCR)." });
@@ -44,7 +45,7 @@ router.post("/resume", async (req, res) => {
 });
 
 // POST /api/ia/chronologie  { texte? , dossier_id? }
-router.post("/chronologie", async (req, res) => {
+router.post("/chronologie", requirePermission("ia.chronologie"), async (req, res) => {
   try {
     const texte = await texteSource(req.body || {});
     if (!texte) return res.status(400).json({ error: "Aucun texte disponible pour la chronologie." });
@@ -59,7 +60,7 @@ router.post("/chronologie", async (req, res) => {
 });
 
 // POST /api/ia/extraction-faits  { texte?, document_id?, dossier_id? }
-router.post("/extraction-faits", async (req, res) => {
+router.post("/extraction-faits", requirePermission("ia.extraction_faits"), async (req, res) => {
   try {
     const texte = await texteSource(req.body || {});
     if (!texte) return res.status(400).json({ error: "Aucun texte disponible pour l'extraction." });
@@ -75,7 +76,7 @@ router.post("/extraction-faits", async (req, res) => {
 });
 
 // POST /api/ia/analyse-contrat  { texte?, document_id? }
-router.post("/analyse-contrat", async (req, res) => {
+router.post("/analyse-contrat", requirePermission("ia.analyse_contrat"), async (req, res) => {
   try {
     const texte = await texteSource(req.body || {});
     if (!texte) return res.status(400).json({ error: "Aucun texte de contrat fourni." });
@@ -92,7 +93,7 @@ router.post("/analyse-contrat", async (req, res) => {
 });
 
 // POST /api/ia/traduction  { texte?, document_id?, langue_cible }
-router.post("/traduction", async (req, res) => {
+router.post("/traduction", requirePermission("ia.traduction"), async (req, res) => {
   const b = req.body || {};
   const langue = b.langue_cible || "anglais";
   try {
@@ -109,7 +110,7 @@ router.post("/traduction", async (req, res) => {
 });
 
 // POST /api/ia/comparaison  { texte_a, texte_b }  (ou document_id_a/document_id_b)
-router.post("/comparaison", async (req, res) => {
+router.post("/comparaison", requirePermission("ia.comparaison"), async (req, res) => {
   const b = req.body || {};
   try {
     const texteA = await texteSource({ texte: b.texte_a, document_id: b.document_id_a });

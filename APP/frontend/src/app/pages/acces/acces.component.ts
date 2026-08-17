@@ -29,12 +29,7 @@ import { ApiService } from '../../core/api.service';
             <div>
               <label>Rôle initial</label>
               <select class="in" [(ngModel)]="nouveauCompte.role" name="roleInit">
-                <option value="collaborateur">Collaborateur</option>
-                <option value="associe">Associé</option>
-                <option value="stagiaire">Stagiaire</option>
-                <option value="assistante">Assistante</option>
-                <option value="comptable">Comptable</option>
-                <option value="admin">Admin</option>
+                @for (r of roles; track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
               </select>
             </div>
             <div><label>Prénom</label><input class="in" [(ngModel)]="nouveauCompte.prenom" name="prenom" /></div>
@@ -72,12 +67,7 @@ import { ApiService } from '../../core/api.service';
               <td>{{ u.prenom }} {{ u.nom }} <span class="muted">({{ u.code }})</span></td>
               <td>
                 <select class="sel" [ngModel]="u.role" (ngModelChange)="changerRole(u, $event)">
-                  <option value="associe">Associé</option>
-                  <option value="collaborateur">Collaborateur</option>
-                  <option value="stagiaire">Stagiaire</option>
-                  <option value="assistante">Assistante</option>
-                  <option value="comptable">Comptable</option>
-                  <option value="admin">Admin</option>
+                  @for (r of roles; track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
                 </select>
               </td>
               <td>
@@ -131,6 +121,38 @@ import { ApiService } from '../../core/api.service';
         } @else { <p class="muted">Aucune délégation.</p> }
       </section>
 
+      @if (matrice()) {
+        <section class="panel">
+          <h3>Matrice des permissions</h3>
+          <p class="muted">Réservé Associé + Administrateur IT. Chaque case autorise (ou non) le rôle en colonne à effectuer l'action en ligne. Les cases sans coche par défaut correspondent au comportement d'origine de l'application — à ajuster librement.</p>
+          <div class="matrice-scroll">
+            <table class="matrice">
+              <thead>
+                <tr>
+                  <th class="col-action">Action</th>
+                  @for (r of roles; track r.code) { <th class="col-role">{{ r.court }}</th> }
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of modulesMatrice(); track m) {
+                  <tr class="ligne-module"><td [attr.colspan]="roles.length + 1">{{ m }}</td></tr>
+                  @for (a of actionsDuModule(m); track a.code) {
+                    <tr>
+                      <td class="col-action">{{ a.label }} @if (a.restreinte) { <span class="pastille" title="Réservée à la direction avant l'introduction de cette matrice">★</span> }</td>
+                      @for (r of roles; track r.code) {
+                        <td class="col-role">
+                          <input type="checkbox" [checked]="valeurPermission(r.code, a.code)" (change)="basculerPermission(r.code, a.code, $event)" />
+                        </td>
+                      }
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+
       <section class="panel">
         <h3>Journal d'audit (100 dernières actions)</h3>
         @if (audit().length) {
@@ -165,6 +187,14 @@ import { ApiService } from '../../core/api.service';
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .panel.alerte{border-left:4px solid var(--amber)}
     .mdp{background:#f7f9fc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:14px;font-weight:700;letter-spacing:.5px}
+    .matrice-scroll{overflow-x:auto}
+    table.matrice{border-collapse:collapse;font-size:12px;min-width:900px}
+    table.matrice th, table.matrice td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
+    table.matrice .col-action{text-align:left;min-width:220px;white-space:normal}
+    table.matrice .col-role{min-width:56px}
+    table.matrice thead th{background:var(--light);font-weight:700;font-size:11px}
+    tr.ligne-module td{background:var(--navy);color:#fff;font-weight:700;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    .pastille{color:var(--gold);margin-left:3px}
   `],
 })
 export class AccesComponent implements OnInit {
@@ -179,6 +209,24 @@ export class AccesComponent implements OnInit {
 
   nouvelleDeleg: any = { portee: 'temporaire' };
   nouveauCompte: any = { role: 'collaborateur' };
+
+  // 11 statuts réels du cabinet (17/08/2026). `court` = en-tête de colonne
+  // dans la matrice de permissions ; `libelle` = intitulé complet ailleurs.
+  readonly roles: { code: string; libelle: string; court: string }[] = [
+    { code: 'associe', libelle: 'Avocat associé', court: 'Associé' },
+    { code: 'of_counsel', libelle: 'Avocat Of Counsel', court: 'Of Counsel' },
+    { code: 'collaborateur', libelle: 'Avocat collaborateur', court: 'Collab. avocat' },
+    { code: 'stagiaire', libelle: 'Avocat stagiaire', court: 'Stagiaire' },
+    { code: 'juriste', libelle: 'Collaborateur non-avocat/juriste', court: 'Juriste' },
+    { code: 'admin_general', libelle: 'Administrateur général', court: 'Admin. général' },
+    { code: 'assistante', libelle: 'Assistante juridique et administrative', court: 'Assistante' },
+    { code: 'comptable', libelle: 'Comptable', court: 'Comptable' },
+    { code: 'assistant_comptable', libelle: 'Assistant comptable', court: 'Assist. comptable' },
+    { code: 'admin_it', libelle: 'Administrateur IT', court: 'Admin. IT' },
+    { code: 'archiviste', libelle: 'Archiviste', court: 'Archiviste' },
+  ];
+
+  readonly matrice = signal<{ catalogue: any[]; roles: string[]; valeurs: Record<string, boolean> } | null>(null);
 
   statut(u: any): 'actif' | 'attente' | 'suspendu' {
     if (u.actif) return 'actif';
@@ -196,6 +244,40 @@ export class AccesComponent implements OnInit {
     this.api.journalAudit().subscribe({
       next: (a) => this.audit.set(a),
       error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Accès réservé aux associés/admin.'),
+    });
+    // 403 attendu pour un Administrateur général (matrice réservée
+    // Associé + Administrateur IT) : on masque simplement la section,
+    // sans faire remonter d'erreur.
+    this.api.permissionsMatrice().subscribe({
+      next: (m) => this.matrice.set(m),
+      error: () => this.matrice.set(null),
+    });
+  }
+
+  modulesMatrice(): string[] {
+    const m = this.matrice();
+    if (!m) return [];
+    return [...new Set(m.catalogue.map((a: any) => a.module))];
+  }
+
+  actionsDuModule(module: string): any[] {
+    return (this.matrice()?.catalogue ?? []).filter((a: any) => a.module === module);
+  }
+
+  valeurPermission(role: string, actionCode: string): boolean {
+    return !!this.matrice()?.valeurs[`${role}::${actionCode}`];
+  }
+
+  basculerPermission(role: string, actionCode: string, ev: Event): void {
+    const autorise = (ev.target as HTMLInputElement).checked;
+    this.api.majPermission(role, actionCode, autorise).subscribe({
+      next: () => {
+        const m = this.matrice();
+        if (m) m.valeurs[`${role}::${actionCode}`] = autorise;
+      },
+      error: () => {
+        (ev.target as HTMLInputElement).checked = !autorise; // revert visuel si l'appel échoue
+      },
     });
   }
 

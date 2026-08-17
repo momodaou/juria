@@ -1,6 +1,7 @@
 // JURIA — Temps passé (timesheet)
 const express = require("express");
 const { pool } = require("../db");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/temps?dossier_id=...   (sinon : mes saisies)
@@ -29,7 +30,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/temps  { dossier_id, duree_minutes, taux_horaire?, facturable?, description?, date_saisie? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("temps.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.duree_minutes) {
     return res.status(400).json({ error: "dossier_id et duree_minutes requis" });

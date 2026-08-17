@@ -365,6 +365,12 @@ export class ApiService {
   journalAudit(limit = 100): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/acces/audit?limit=${limit}`);
   }
+  permissionsMatrice(): Observable<{ catalogue: any[]; roles: string[]; valeurs: Record<string, boolean> }> {
+    return this.http.get<any>(`${this.base}/api/acces/permissions`);
+  }
+  majPermission(role: string, action_code: string, autorise: boolean): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/acces/permissions`, { role, action_code, autorise });
+  }
 
   // Cabinet (RH)
   equipeCabinet(): Observable<any[]> {

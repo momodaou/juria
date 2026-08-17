@@ -5,7 +5,7 @@
 // du quota Pro Bono (2 dossiers/mois/associé, non reportables).
 const express = require("express");
 const { pool } = require("../db");
-const { requireRole } = require("../auth");
+const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 const TAUX_DEFAUT = { associe: 30, collaborateur: 25, non_avocat: 10 };
@@ -54,7 +54,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/retrocessions
 // { beneficiaire_id, qualite, base_ht, taux?, dossier_id?, facture_id? }
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.beneficiaire_id || !b.qualite || b.base_ht == null) {
     return res.status(400).json({ error: "beneficiaire_id, qualite et base_ht requis" });
@@ -78,7 +78,7 @@ router.post("/", async (req, res) => {
 
 // POST /api/retrocessions/:id/decaisser  (associé/admin/comptable)
 // Règle « tout ou rien » : refusé si une facture est liée et n'est pas intégralement encaissée.
-router.post("/:id/decaisser", requireRole("associe", "admin", "comptable"), async (req, res) => {
+router.post("/:id/decaisser", requirePermission("retrocessions.decaisser"), async (req, res) => {
   try {
     const chk = await pool.query(
       `SELECT r.id, r.statut, f.id AS facture_id, f.montant_ttc,

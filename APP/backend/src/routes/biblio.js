@@ -5,6 +5,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
+const { requirePermission } = require("../permissions");
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
@@ -47,7 +48,7 @@ router.get("/:id", async (req, res) => {
 
 // POST /api/biblio  (multipart/form-data ou JSON)
 // champs : type, titre, reference?, source?, matiere?, date_publication?, resume?, fichier?
-router.post("/", upload.single("fichier"), async (req, res) => {
+router.post("/", requirePermission("biblio.creer"), upload.single("fichier"), async (req, res) => {
   const b = req.body || {};
   if (!b.type || !b.titre) return res.status(400).json({ error: "type et titre requis" });
   try {
@@ -91,7 +92,7 @@ router.get("/:id/fichier", async (req, res) => {
 });
 
 // DELETE /api/biblio/:id
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("biblio.supprimer"), async (req, res) => {
   try {
     const { rowCount } = await pool.query("DELETE FROM ressources_biblio WHERE id = $1", [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: "Ressource introuvable" });
