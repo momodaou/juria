@@ -385,3 +385,23 @@ Rien n'a été corrigé pendant cet audit à l'exception du bug `documents.js` (
 - ⚠️ Piège rencontré en cours de route : un premier passage de `finance.test.js` a échoué sur le test « USD sans taux connu → refusé » à cause d'un taux USD (610) laissé dans le volume Postgres par mes propres tests manuels précédents (`docker compose down` sans `-v` préserve le volume). Pas un bug — reproduit et confirmé en relançant sur un volume neuf (21/21). Documenté dans `APP/README.md` comme précaution à prendre avant de relancer les tests.
 
 **Déploiement** : voir entrée suivante.
+
+## 2026-08-17 — Déploiement du câblage multi-devises + supervision production (Cloud Monitoring)
+
+**Déploiement**
+- Image API reconstruite (`gcloud builds submit --tag .../juria/app:latest APP`) et redéployée sur Cloud Run (`juria`, révision `juria-00020-4wp`).
+- Image frontend reconstruite (contexte `APP/frontend`) et redéployée (`juria-web`, révision `juria-web-00017-7v9`).
+- Vérification directe en production (pas seulement en Docker local) : le schéma Cloud SQL avait déjà les colonnes multi-devises (héritées du premier import, aucune migration nécessaire) — facture XOF (TVA 18% client Mali) et facture EUR (taux 655,957 correctement figé, TVA 0% client étranger) créées avec succès via l'API de production. Les deux services répondent (`/health` OK, page d'accueil frontend HTTP 200).
+
+**Supervision production (`APP/monitoring/`)**
+- Constat : aucune alerte n'existait en production (`gcloud alpha monitoring policies list` → vide), identifié comme deuxième priorité lors de l'échange « qu'en pensez-vous ? » (après les tests financiers).
+- Canal de notification e-mail créé (`mohameddaou22@gmail.com`, `notificationChannels/16089389092260988572`).
+- 2 vérifications de disponibilité (`gcloud monitoring uptime create`, période 5 min) : `juria-api-health` sur `GET /health` de l'API, `juria-web-accueil` sur la racine du frontend.
+- 3 politiques d'alerte (`gcloud alpha monitoring policies create --policy-from-file=...`) :
+  - `policy-api-health.yaml` : déclenchée si la vérification API échoue.
+  - `policy-web-accueil.yaml` : déclenchée si la vérification frontend échoue.
+  - `policy-api-5xx.yaml` : déclenchée si l'API renvoie plus de 5 erreurs 5xx sur une fenêtre de 5 minutes — capture les pannes applicatives qu'un `/health` (qui ne touche ni la base ni les autres routes) ne verrait pas.
+- Piège rencontré : la première tentative de création des politiques a échoué (`crossSeriesReducer REDUCE_COUNT_FALSE` incompatible avec les métriques DOUBLE produites par `ALIGN_FRACTION_TRUE`) — corrigé en `REDUCE_MEAN`.
+- Les 3 politiques et les 2 vérifications sont actives (`enabled: true`), confirmé par `gcloud alpha monitoring policies list`.
+- ⚠️ **Point non vérifié avec certitude** : GCP peut exiger une confirmation du canal e-mail (clic sur un lien reçu par e-mail) avant livraison réelle des alertes — aucune commande `gcloud` ne permet de vérifier ou forcer cette confirmation depuis le CLI. À l'utilisateur de vérifier sa boîte mail et, si besoin, la console GCP (Monitoring → Alerting → Notification channels) pour confirmer que le canal est bien opérationnel.
+- Volontairement non fait : alertes de latence, dashboard personnalisé, alertes Cloud SQL (CPU/connexions/disque), intégration Slack/PagerDuty — détails et justification dans `APP/monitoring/README.md`.

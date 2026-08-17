@@ -1,0 +1,24 @@
+displayName: "JURIA API — indisponible (/health)"
+combiner: OR
+conditions:
+  - displayName: "Échec de la vérification de disponibilité"
+    conditionThreshold:
+      filter: >-
+        resource.type="uptime_url" AND
+        metric.type="monitoring.googleapis.com/uptime_check/check_passed" AND
+        metric.label."check_id"="juria-api-health-Z2xZTb9llSQ"
+      comparison: COMPARISON_LT
+      thresholdValue: 1
+      duration: 300s
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_FRACTION_TRUE
+          crossSeriesReducer: REDUCE_MEAN
+          groupByFields:
+            - "resource.label.host"
+      trigger:
+        count: 1
+notificationChannels:
+  - "projects/jfc-juria/notificationChannels/16089389092260988572"
+alertStrategy:
+  autoClose: 604800s
