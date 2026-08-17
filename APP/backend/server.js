@@ -4,8 +4,21 @@ const express = require("express");
 const cors = require("cors");
 const { authenticate } = require("./src/auth");
 
+// Origines autorisées : liste séparée par des virgules dans ALLOWED_ORIGINS
+// (ex. le domaine personnalisé une fois mappé), avec un repli sur les
+// origines connues (frontend Cloud Run + dev local Angular/Docker).
+const ORIGINES_AUTORISEES = (
+  process.env.ALLOWED_ORIGINS ||
+  "https://juria-web-552099340909.europe-west1.run.app,http://localhost:4200"
+).split(",").map((o) => o.trim());
+
 const app = express();
-app.use(cors());
+// Cloud Run place l'app derrière le proxy front-end de Google : sans ce
+// réglage, req.ip renvoie l'IP du proxy pour toutes les requêtes, ce qui
+// ferait retomber la limitation de débit ci-dessous sur un seul « client »
+// partagé par tout le monde au lieu d'une limite par IP réelle.
+app.set("trust proxy", 1);
+app.use(cors({ origin: ORIGINES_AUTORISEES }));
 app.use(express.json({ limit: "2mb" }));
 
 // Santé (utilisé par Cloud Run pour vérifier que le service répond)

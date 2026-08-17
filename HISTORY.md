@@ -300,3 +300,27 @@ Demandé par l'utilisateur suite aux échanges sur la gestion des accès. Rappor
 **Priorités recommandées communiquées à l'utilisateur** (dans le rapport) : 1) compte de service dédié à privilèges minimaux, 2) sauvegardes Cloud SQL, 3) rate-limiting + CORS restreint, 4) déployer le correctif `documents.js`, 5) le reste (helmet, filtrage de fichiers, IP publique Cloud SQL, CI/CD, tests) au rythme du projet.
 
 Rien n'a été corrigé pendant cet audit à l'exception du bug `documents.js` (même classe de correctif que 6 fois déjà appliquées sans risque cette session) — tout le reste attend un arbitrage explicite de l'utilisateur avant action, notamment le compte de service (changement en production, pas anodin) et les coûts (sauvegardes Cloud SQL, rate-limiting).
+
+## 2026-08-17 — Application des priorités 1 à 3 de l'audit (validées par l'utilisateur : « procéder tel que recommandé »)
+
+**1) Comptes de service dédiés à privilèges minimaux (le finding le plus important)**
+- Créés : `juria-api-sa@jfc-juria.iam.gserviceaccount.com` et `juria-web-sa@jfc-juria.iam.gserviceaccount.com`.
+- Droits accordés à `juria-api-sa` — strictement le nécessaire : `roles/cloudsql.client` (niveau projet — ce rôle n'a pas de portée plus fine), `roles/storage.objectAdmin` **limité au bucket `jfc-juria-ged`** (liaison IAM posée directement sur le bucket, pas au niveau projet), `roles/secretmanager.secretAccessor` **limité aux deux secrets utilisés** (`juria-db-password`, `juria-jwt-secret`, liaisons posées directement sur chaque secret). Vérifié après coup : `gcloud projects get-iam-policy` filtré sur ce compte ne renvoie que `roles/cloudsql.client` au niveau projet — confirmation qu'aucun droit large ne traîne.
+- `juria-web-sa` : aucun rôle GCP accordé (le frontend statique n'appelle aucune API Google).
+- Les deux services Cloud Run basculés via `gcloud run services update --service-account=...` (nouvelle révision à chaque fois, sans changement d'image).
+- **Décision volontaire** : le compte Compute par défaut (`…-compute@developer.gserviceaccount.com`) garde son rôle `roles/editor` au niveau projet — retirer ce rôle est un changement plus large (impact potentiel sur d'autres usages du compte par défaut, pas auditrés) et a été jugé hors scope de cette itération. Ce qui compte est fait : **plus aucun service en production ne s'exécute avec ce compte**.
+- Vérifications post-bascule : `/health` OK, connexion OK (donc accès au secret JWT), `GET /api/dossiers` OK (donc `cloudsql.client` fonctionnel), upload GED OK (donc `storage.objectAdmin` scopé au bucket fonctionnel). Aucune régression.
+
+**2) Sauvegardes Cloud SQL**
+- `gcloud sql instances patch juria-pg --backup-start-time=03:00 --enable-point-in-time-recovery --retained-backups-count=7` — a pris plus de 3 minutes (opération basculée en arrière-plan par l'outillage), terminée avec succès.
+- Vérifié : `backupConfiguration.enabled: true`, `pointInTimeRecoveryEnabled: true`, 7 sauvegardes conservées, fenêtre 03h00.
+
+**3) CORS restreint + limitation de débit sur la connexion**
+- `server.js` : `cors()` sans restriction remplacé par `cors({ origin: ORIGINES_AUTORISEES })`, la liste venant de la variable d'environnement `ALLOWED_ORIGINS` (virgules) avec un repli par défaut sur l'URL du frontend Cloud Run + `http://localhost:4200` — conçu pour pouvoir ajouter le futur domaine personnalisé sans redéploiement de code (juste la variable d'env).
+- `auth.js` : `express-rate-limit` ajouté sur `POST /login` uniquement — 10 tentatives / 15 min / IP, réponse 429 passé ce seuil. Dépendance `express-rate-limit` ajoutée à `package.json`.
+- **Point technique important repéré et corrigé en marge** : Cloud Run place l'application derrière le proxy front-end de Google. Sans `app.set("trust proxy", 1)`, `req.ip` aurait renvoyé l'IP du proxy pour toutes les requêtes — la limite de débit se serait donc appliquée globalement à tous les utilisateurs confondus au lieu d'être par IP réelle. Ce réglage profite aussi au journal d'audit, qui capture déjà `req.ip` dans `logAudit` (jusqu'ici sans grande conséquence puisqu'aucune limite n'en dépendait).
+- Vérifications en local via Docker : requête OPTIONS depuis `localhost:4200` → en-tête `Access-Control-Allow-Origin` correctement reflété ; même requête depuis une origine arbitraire → en-tête absent (bloqué côté navigateur) ; 12 tentatives de connexion rapprochées → les 10 premières passent (401, mauvais mot de passe), la 11e et la 12e renvoient 429 ; connexion légitime toujours fonctionnelle après redémarrage du conteneur (compteur réinitialisé) ; IP capturée dans `journal_audit` cohérente avec le contexte local (passerelle Docker, comportement attendu — en production le proxy Cloud Run fournira la vraie IP cliente).
+
+**Déploiement** : image API reconstruite et redéployée (`juria-00018-...`), pas de changement frontend nécessaire pour ces trois points.
+
+**Non fait (priorités 4-5, laissées au rythme du projet, cf. rapport d'audit)** : helmet, filtrage de type sur les téléversements, désactivation de l'IP publique Cloud SQL, CI/CD, tests automatisés, retrait du rôle `roles/editor` du compte Compute par défaut.

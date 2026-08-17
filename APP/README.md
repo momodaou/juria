@@ -154,6 +154,8 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 3. Décider si un vrai portail client (auth séparée, messagerie) est prioritaire, et le traiter comme un projet dédié.
 4. Ajouter les tests automatisés (backend et frontend) et la validation des entrées.
 5. Ajouter un service `frontend` à `docker-compose.yml` pour le dev local (actuellement lancé à la main, voir § 2).
-6. Mettre en place les environnements **recette** et **production** sur GCP, un domaine personnalisé, et restreindre CORS (actuellement ouvert à tous les domaines).
+6. Mettre en place les environnements **recette** et **production** sur GCP, un domaine personnalisé.
+
+**Audit du 17/08/2026 (résumé)** : correctifs appliqués — comptes de service Cloud Run dédiés à privilèges minimaux (`juria-api-sa`/`juria-web-sa`, plus jamais le compte Compute par défaut avec `roles/editor`), sauvegardes Cloud SQL activées, CORS restreint via `ALLOWED_ORIGINS`, limitation de débit sur `/auth/login`. Restent à faire : helmet, filtrage de type sur les téléversements, IP publique Cloud SQL, CI/CD, tests automatisés. Détails complets dans `CLAUDE.md`/`HISTORY.md`.
 
 > Sécurité : ne jamais committer de fichier `.env` ni de secret. Utiliser Secret Manager en production.

@@ -1,5 +1,6 @@
 // JURIA — routes d'authentification
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
@@ -8,8 +9,17 @@ const { logAudit } = require("../audit");
 
 const router = express.Router();
 
+// Anti-bourrage d'identifiants : 10 tentatives / 15 min / IP sur la connexion.
+const limiteurLogin = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Trop de tentatives de connexion. Réessayez dans quelques minutes." },
+});
+
 // POST /auth/login  { email, mot_de_passe }
-router.post("/login", async (req, res) => {
+router.post("/login", limiteurLogin, async (req, res) => {
   const { email, mot_de_passe } = req.body || {};
   if (!email || !mot_de_passe) {
     return res.status(400).json({ error: "Email et mot de passe requis" });
