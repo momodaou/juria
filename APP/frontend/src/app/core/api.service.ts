@@ -340,6 +340,9 @@ export class ApiService {
   validerCompte(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/acces/utilisateurs/${id}/valider`, {});
   }
+  reinitialiserMotDePasse(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/acces/utilisateurs/${id}/reinitialiser-mot-de-passe`, {});
+  }
   majRoleUtilisateur(id: string, role: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}/role`, { role });
   }

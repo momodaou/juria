@@ -50,9 +50,15 @@ import { ApiService } from '../../core/api.service';
 
       @if (dernierMotDePasse()) {
         <section class="panel alerte">
-          <h3>Compte créé — mot de passe temporaire (affiché une seule fois)</h3>
+          <h3>Mot de passe temporaire (affiché une seule fois)</h3>
           <p><b>{{ dernierMotDePasse()!.nom }}</b> — <code class="mdp">{{ dernierMotDePasse()!.mdp }}</code></p>
-          <p class="muted">Communiquez-le en toute sécurité à la personne concernée. Le compte reste inactif tant qu'il n'est pas validé ci-dessous.</p>
+          <p class="muted">
+            @if (dernierMotDePasse()!.creation) {
+              Communiquez-le en toute sécurité à la personne concernée. Le compte reste inactif tant qu'il n'est pas validé ci-dessous.
+            } @else {
+              Communiquez-le en toute sécurité à la personne concernée. L'ancien mot de passe ne fonctionne plus, le statut du compte n'a pas changé.
+            }
+          </p>
           <button class="lien" (click)="dernierMotDePasse.set(null)">Fermer</button>
         </section>
       }
@@ -82,6 +88,7 @@ import { ApiService } from '../../core/api.service';
               <td>
                 @if (statut(u) === 'attente') { <button class="lien" (click)="valider(u)">Valider</button> }
                 @else { <button class="lien" (click)="basculerActif(u)">{{ u.actif ? 'Désactiver' : 'Réactiver' }}</button> }
+                <button class="lien" (click)="reinitialiserMotDePasse(u)">Réinit. mot de passe</button>
               </td>
             </tr>
           }
@@ -168,7 +175,7 @@ export class AccesComponent implements OnInit {
   readonly erreurGlobale = signal('');
   readonly afficherFormCompte = signal(false);
   readonly erreurCompte = signal('');
-  readonly dernierMotDePasse = signal<{ nom: string; mdp: string } | null>(null);
+  readonly dernierMotDePasse = signal<{ nom: string; mdp: string; creation: boolean } | null>(null);
 
   nouvelleDeleg: any = { portee: 'temporaire' };
   nouveauCompte: any = { role: 'collaborateur' };
@@ -200,7 +207,7 @@ export class AccesComponent implements OnInit {
     this.erreurCompte.set('');
     this.api.creerCompte(this.nouveauCompte).subscribe({
       next: (r) => {
-        this.dernierMotDePasse.set({ nom: `${r.prenom} ${r.nom}`, mdp: r.mot_de_passe_temporaire });
+        this.dernierMotDePasse.set({ nom: `${r.prenom} ${r.nom}`, mdp: r.mot_de_passe_temporaire, creation: true });
         this.afficherFormCompte.set(false);
         this.nouveauCompte = { role: 'collaborateur' };
         this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
@@ -213,6 +220,13 @@ export class AccesComponent implements OnInit {
     this.api.validerCompte(u.id).subscribe({
       next: () => { u.actif = true; u.valide_le = new Date().toISOString(); },
       error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Validation impossible.'),
+    });
+  }
+
+  reinitialiserMotDePasse(u: any): void {
+    this.api.reinitialiserMotDePasse(u.id).subscribe({
+      next: (r) => this.dernierMotDePasse.set({ nom: `${r.prenom} ${r.nom}`, mdp: r.mot_de_passe_temporaire, creation: false }),
+      error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Réinitialisation impossible.'),
     });
   }
 
