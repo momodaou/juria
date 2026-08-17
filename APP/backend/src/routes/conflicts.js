@@ -63,14 +63,20 @@ router.post("/:id/decision", requirePermission("conflits.decision"), async (req,
   const permis = ["accepte", "refuse", "oriente"];
   if (!permis.includes(decision)) return res.status(400).json({ error: "Décision invalide" });
   try {
+    // Garde contre une double décision concurrente sur le même contrôle.
     const { rows } = await pool.query(
       `UPDATE conflict_checks
        SET decision = $1, motif = $2, decide_par = $3, decide_le = now()
-       WHERE id = $4
+       WHERE id = $4 AND decision = 'en_attente'
        RETURNING id, decision, motif`,
       [decision, motif || null, req.user.sub, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Contrôle introuvable" });
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM conflict_checks WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Ce contrôle a déjà reçu une décision (par quelqu'un d'autre entre-temps ?)" : "Contrôle introuvable",
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

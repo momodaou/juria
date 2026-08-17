@@ -177,9 +177,19 @@ export class ClientDetailComponent implements OnInit {
 
   majStatutKyc(): void {
     this.messageKyc.set('');
-    this.api.majClient(this.clientId, { kyc_statut: this.nouveauStatutKyc }).subscribe({
+    this.api.majClient(this.clientId, {
+      kyc_statut: this.nouveauStatutKyc,
+      maj_le_attendu: this.client()?.maj_le,
+    }).subscribe({
       next: () => { this.messageKyc.set('Statut KYC mis à jour.'); this.charger(); },
-      error: () => this.erreur.set('Mise à jour impossible.'),
+      error: (e) => {
+        if (e?.status === 409) {
+          this.erreur.set(e?.error?.error ?? 'Cette fiche a été modifiée entre-temps — rechargement...');
+          this.charger(); // recharge la version à jour pour repartir sur des bases fraîches
+        } else {
+          this.erreur.set('Mise à jour impossible.');
+        }
+      },
     });
   }
 

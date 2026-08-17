@@ -92,11 +92,16 @@ router.post("/:id/decaisser", requirePermission("retrocessions.decaisser"), asyn
     if (r.facture_id && Number(r.encaisse) < Number(r.montant_ttc)) {
       return res.status(400).json({ error: "Facture liée non intégralement encaissée (règle tout ou rien)." });
     }
+    // Garde contre le double décaissement (double clic, ou deux personnes en
+    // même temps) : la deuxième tentative concurrente ne trouve plus de ligne
+    // à statut != 'decaissee' et reçoit un message explicite plutôt que
+    // d'écraser silencieusement decaisse_par/decaisse_le.
     const { rows } = await pool.query(
       `UPDATE retrocessions SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now()
-       WHERE id = $2 RETURNING id, statut, decaisse_le`,
+       WHERE id = $2 AND statut <> 'decaissee' RETURNING id, statut, decaisse_le`,
       [req.user.sub, req.params.id]
     );
+    if (!rows[0]) return res.status(409).json({ error: "Rétrocession déjà décaissée (par quelqu'un d'autre entre-temps ?)" });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

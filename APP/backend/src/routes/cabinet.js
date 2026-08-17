@@ -94,12 +94,18 @@ router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"),
   const { statut } = req.body || {};
   if (!["approuve", "refuse"].includes(statut)) return res.status(400).json({ error: "Statut invalide" });
   try {
+    // Garde contre une double décision concurrente sur la même demande.
     const { rows } = await pool.query(
       `UPDATE conges SET statut = $1::statut_conge, approuve_par = $2, approuve_le = now()
-       WHERE id = $3 RETURNING id, statut`,
+       WHERE id = $3 AND statut = 'demande' RETURNING id, statut`,
       [statut, req.user.sub, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Demande introuvable" });
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM conges WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Demande déjà traitée (par quelqu'un d'autre entre-temps ?)" : "Demande introuvable",
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

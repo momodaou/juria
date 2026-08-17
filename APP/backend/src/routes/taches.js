@@ -73,12 +73,19 @@ router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res)
 // POST /api/taches/:id/valider  (réservé aux associés)
 router.post("/:id/valider", requirePermission("taches.valider"), async (req, res) => {
   try {
+    // Garde contre la double validation concurrente : voir retrocessions.js
+    // pour le même motif.
     const { rows } = await pool.query(
       `UPDATE taches SET statut = 'termine', valide_par = $1, valide_le = now()
-       WHERE id = $2 RETURNING id, statut`,
+       WHERE id = $2 AND statut <> 'termine' RETURNING id, statut`,
       [req.user.sub, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Tâche introuvable" });
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM taches WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Tâche déjà validée (par quelqu'un d'autre entre-temps ?)" : "Tâche introuvable",
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

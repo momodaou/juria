@@ -137,9 +137,29 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
 });
 
 // PUT /api/clients/:id — mise à jour des coordonnées + statut KYC
+// b.maj_le_attendu (optionnel, valeur de clients.maj_le vue par le client au
+// chargement de la fiche) active une détection de conflit optimiste : si la
+// fiche a été modifiée par quelqu'un d'autre entre-temps, l'écriture est
+// refusée (409) plutôt que d'écraser silencieusement ces changements — le
+// motif COALESCE ci-dessous protège déjà les champs non envoyés contre une
+// édition concurrente sur des champs DIFFÉRENTS, mais pas contre deux
+// personnes modifiant le MÊME champ en même temps.
 router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
+    // date_trunc('milliseconds', ...) des deux côtés : Postgres stocke
+    // TIMESTAMPTZ à la microseconde, mais un aller-retour JSON/JS Date perd
+    // cette précision (arrondi à la milliseconde) — sans ce troncage, une
+    // comparaison d'égalité stricte échouerait presque toujours, y compris
+    // pour une écriture parfaitement légitime juste après le chargement.
+    const clauseConcurrence = b.maj_le_attendu != null
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz)"
+      : "";
+    const params = [b.denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
+      b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays,
+      b.beneficiaires_effectifs, b.notes, b.kyc_statut, req.params.id];
+    if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
+
     const { rows } = await pool.query(
       `UPDATE clients SET
          denomination = COALESCE($1, denomination), rccm = COALESCE($2, rccm),
@@ -153,13 +173,15 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
          kyc_statut = COALESCE($15, kyc_statut),
          kyc_maj_le = CASE WHEN $15 IS NOT NULL THEN current_date ELSE kyc_maj_le END,
          maj_le = now()
-       WHERE id = $16
-       RETURNING id, kyc_statut, kyc_maj_le`,
-      [b.denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
-       b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays,
-       b.beneficiaires_effectifs, b.notes, b.kyc_statut, req.params.id]
+       WHERE id = $16 ${clauseConcurrence}
+       RETURNING id, kyc_statut, kyc_maj_le, maj_le`,
+      params
     );
-    if (!rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM clients WHERE id = $1", [req.params.id]);
+      if (!existe.rows[0]) return res.status(404).json({ error: "Client introuvable" });
+      return res.status(409).json({ error: "Cette fiche a été modifiée entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
