@@ -133,12 +133,13 @@ Toutes les routes `/api/*` exigent un jeton valide.
 
 ## 3bis. Tests automatisés (backend)
 
-Suite Jest + Supertest ciblée sur le bug récurrent COALESCE/CASE non casté sur ENUM/UUID (voir `CLAUDE.md`) — pas une couverture exhaustive de l'API, un filet de non-régression précis sur les routes qui l'ont déjà eu.
+Deux filets de non-régression ciblés (pas une couverture exhaustive de l'API) : le bug récurrent COALESCE/CASE non casté sur ENUM/UUID (voir `CLAUDE.md`), et la logique financière (rétrocessions, TVA par localisation, multi-devises).
 
 Node n'étant pas installé sur l'hôte et l'image de production n'embarquant pas les `devDependencies`, les tests tournent via un conteneur `node:22` éphémère relié au réseau `docker compose` :
 
 ```bash
 cd APP
+docker compose down -v   # base propre — voir l'avertissement ci-dessous
 docker compose up -d db   # seule la base est nécessaire, l'API tourne dans le conteneur de test
 
 docker run --rm \
@@ -151,7 +152,11 @@ docker run --rm \
 docker compose down
 ```
 
-Résultat attendu : `Tests: 8 passed, 8 total`. À relancer manuellement avant tout déploiement qui touche aux routes `dossiers`, `taches`, `roles-audience`, `courriers`, `documents` ou `cabinet`.
+Deux fichiers de tests : `regression.test.js` (motif enum/UUID, 8 tests) et `finance.test.js` (rétrocessions + facturation multi-devises/TVA, 13 tests) — `Tests: 21 passed, 21 total` attendu.
+
+⚠️ `finance.test.js` contient un test qui exige l'**absence** de tout taux de change USD déjà connu (« devise flottante sans taux → refusée ») : si vous avez testé une facture en USD à la main auparavant, ce test échouera à cause des données laissées dans le volume Postgres — pas d'un bug. Utiliser `docker compose down -v` (avec `-v`, qui supprime le volume) avant de relancer les tests pour repartir d'une base propre.
+
+À relancer manuellement avant tout déploiement qui touche aux routes `dossiers`, `taches`, `roles-audience`, `courriers`, `documents`, `cabinet`, `retrocessions` ou `factures`.
 
 ---
 

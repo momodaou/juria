@@ -30,11 +30,25 @@ import { ApiService, Dossier } from '../../core/api.service';
             <option value="consultation">Consultation</option>
           </select>
         </label>
-        <label>Montant HT (FCFA)
+        <label>Montant HT
           <input type="number" [(ngModel)]="montantHt" name="ht" />
         </label>
+        <label>Devise
+          <select [(ngModel)]="devise" name="devise">
+            <option value="XOF">FCFA (XOF)</option>
+            <option value="EUR">Euro (EUR) — parité fixe 655,957</option>
+            <option value="USD">Dollar (USD) — taux à saisir</option>
+            <option value="GBP">Livre (GBP) — taux à saisir</option>
+          </select>
+        </label>
+        @if (devise === 'USD' || devise === 'GBP') {
+          <label>Taux vers XOF
+            <input type="number" step="0.0001" [(ngModel)]="tauxApplique" name="taux" placeholder="ex. 610" />
+          </label>
+        }
         <label>TVA %
           <input type="number" [(ngModel)]="tva" name="tva" />
+          <span class="hint">Par défaut : 18 % (client Mali) / 0 % (client hors Mali) — laisser vide pour appliquer ce défaut.</span>
         </label>
         <button class="btn" (click)="creer()" [disabled]="!dossierId || !montantHt">Émettre</button>
       </div>
@@ -46,11 +60,11 @@ import { ApiService, Dossier } from '../../core/api.service';
       <h3>Factures impayées</h3>
       @if (impayees().length) {
         <table>
-          <tr><th>N°</th><th>Client</th><th>Reste dû (FCFA)</th><th>Échéance</th><th>Encaisser</th></tr>
+          <tr><th>N°</th><th>Client</th><th>Reste dû</th><th>Échéance</th><th>Encaisser</th></tr>
           @for (f of impayees(); track f.id) {
             <tr>
               <td>{{ f.numero }}</td><td>{{ f.client }}</td>
-              <td>{{ f.reste | number }}</td>
+              <td>{{ f.reste | number }} {{ f.devise }}</td>
               <td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td><button class="lien" (click)="encaisser(f)">Marquer payé</button></td>
             </tr>
@@ -63,11 +77,13 @@ import { ApiService, Dossier } from '../../core/api.service';
       <h3>Toutes les factures</h3>
       @if (factures().length) {
         <table>
-          <tr><th>N°</th><th>Client</th><th>Mode</th><th>HT</th><th>TTC</th><th>Statut</th></tr>
+          <tr><th>N°</th><th>Client</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th></tr>
           @for (f of factures(); track f.id) {
             <tr>
               <td>{{ f.numero }}</td><td>{{ f.client }}</td><td>{{ f.mode }}</td>
-              <td>{{ f.montant_ht | number }}</td><td>{{ f.montant_ttc | number }}</td>
+              <td>{{ f.montant_ht | number }} {{ f.devise }}</td>
+              <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
+              <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
               <td><span class="tag" [class.haute]="f.statut !== 'payee'">{{ f.statut }}</span></td>
             </tr>
           }
@@ -83,6 +99,7 @@ import { ApiService, Dossier } from '../../core/api.service';
     .btn:disabled{opacity:.6}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ok-msg{color:var(--green);font-size:13px;margin-top:10px}
+    .hint{font-weight:400;color:var(--slate);font-size:11px;white-space:normal;max-width:220px}
   `],
 })
 export class FacturationComponent implements OnInit {
@@ -97,7 +114,11 @@ export class FacturationComponent implements OnInit {
   dossierId = '';
   mode = 'temps_passe';
   montantHt: number | null = null;
-  tva = 18;
+  devise = 'XOF';
+  tauxApplique: number | null = null;
+  // Laissé vide par défaut : le backend applique alors 18% (client Mali) ou
+  // 0% (client hors Mali) selon la localisation — voir factures.js.
+  tva: number | null = null;
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
@@ -111,13 +132,16 @@ export class FacturationComponent implements OnInit {
 
   creer(): void {
     this.message.set(''); this.erreur.set('');
-    this.api.creerFacture({
+    const payload: any = {
       dossier_id: this.dossierId,
       mode: this.mode,
       montant_ht: this.montantHt,
-      taux_tva: this.tva,
-    }).subscribe({
-      next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} FCFA).`); this.montantHt = null; this.rafraichir(); },
+      devise: this.devise,
+    };
+    if (this.tva !== null) payload.taux_tva = this.tva;
+    if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
+    this.api.creerFacture(payload).subscribe({
+      next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.montantHt = null; this.tauxApplique = null; this.rafraichir(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
     });
   }
