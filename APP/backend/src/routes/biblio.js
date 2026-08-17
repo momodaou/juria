@@ -4,8 +4,9 @@ const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject } = require("../storage");
+const { filtreTypeFichier } = require("../uploadFilter");
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
 // GET /api/biblio?type=&matiere=&q=

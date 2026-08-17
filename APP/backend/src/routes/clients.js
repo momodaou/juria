@@ -5,10 +5,12 @@ const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject } = require("../storage");
+const { filtreTypeFichier } = require("../uploadFilter");
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 Mo
+  fileFilter: filtreTypeFichier,
 });
 const router = express.Router();
 

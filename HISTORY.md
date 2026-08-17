@@ -324,3 +324,23 @@ Rien n'a été corrigé pendant cet audit à l'exception du bug `documents.js` (
 **Déploiement** : image API reconstruite et redéployée (`juria-00018-...`), pas de changement frontend nécessaire pour ces trois points.
 
 **Non fait (priorités 4-5, laissées au rythme du projet, cf. rapport d'audit)** : helmet, filtrage de type sur les téléversements, désactivation de l'IP publique Cloud SQL, CI/CD, tests automatisés, retrait du rôle `roles/editor` du compte Compute par défaut.
+
+## 2026-08-17 — Suite de l'audit : helmet, filtrage de fichiers, SSL Cloud SQL (priorité 4)
+
+**Helmet**
+- `server.js` : `app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: "cross-origin" } }))`. CSP désactivée car l'API ne sert que du JSON (aucune page HTML, la CSP n'a pas d'objet). CORP assoupli en `cross-origin` : par défaut helmet le met à `same-origin`, ce qui aurait pu bloquer les téléchargements de fichiers (GED, KYC, bibliothèque) depuis le frontend — une origine Cloud Run différente de l'API.
+- Vérifié en local : en-têtes `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security` présents sur `/health` ; téléchargement d'un document depuis une origine différente (`localhost:4200`) toujours HTTP 200 avec `Cross-Origin-Resource-Policy: cross-origin` dans la réponse — pas de régression.
+
+**Filtrage de type sur les téléversements**
+- Nouveau module `backend/src/uploadFilter.js` : liste blanche de types MIME (PDF, images JPEG/PNG/GIF/WebP, Word/Excel/PowerPoint, texte brut), exportée comme fonction `fileFilter` compatible multer.
+- Branché sur les 3 points de téléversement existants : `documents.js` (GED), `clients.js` (pièces KYC), `biblio.js` (fichiers associés).
+- Multer transmet le rejet du filtre comme une erreur au middleware suivant — sans gestionnaire dédié, Express serait retombé sur sa page d'erreur HTML par défaut. Ajout d'un gestionnaire d'erreurs global dans `server.js` (après le 404, signature à 4 arguments reconnue par Express) qui renvoie systématiquement du JSON propre pour toute erreur non interceptée par une route.
+- Vérifié en local : upload d'un PDF accepté ; upload d'un `.exe` (mimetype `application/x-msdownload`) et d'un `.html` (`text/html`) tous deux rejetés avec un message clair (`"Type de fichier non autorisé (...)"`), pas d'erreur brute.
+
+**Cloud SQL — SSL forcé, IP publique conservée (décision documentée)**
+- `gcloud sql instances patch juria-pg --require-ssl` appliqué sans risque — le connecteur Cloud SQL Auth Proxy utilisé par Cloud Run chiffre déjà le trafic indépendamment de ce réglage (qui vise les connexions directes par IP). Vérifié : connexion en production toujours opérationnelle après coup.
+- **IP publique volontairement conservée**, après vérification (`gcloud sql instances describe`) qu'**aucune IP privée n'est configurée** sur l'instance. La désactiver proprement demanderait de mettre en place au préalable l'accès de service privé (VPC peering) et un connecteur Serverless VPC Access pour Cloud Run — un changement de topologie réseau avec coût récurrent, hors de proportion avec le gain réel (l'IP publique n'a aucun réseau autorisé configuré, donc déjà inaccessible en pratique aux connexions directes). Décision : ne pas y toucher pour l'instant, documentée ici et dans `CLAUDE.md` pour une réévaluation future.
+
+**Déploiement** : image API reconstruite et redéployée. Pas de changement frontend nécessaire.
+
+**Reste (CI/CD, tests automatisés)** : à traiter séparément — CI/CD nécessite une étape de connexion manuelle du dépôt GitHub à Cloud Build (autorisation OAuth via la Console, ne peut pas être automatisée en CLI seule) ; les tests automatisés seront abordés comme un chantier à part (mise en place d'un framework + tests de fumée, pas une couverture exhaustive en une session).

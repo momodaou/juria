@@ -2,6 +2,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const { authenticate } = require("./src/auth");
 
 // Origines autorisées : liste séparée par des virgules dans ALLOWED_ORIGINS
@@ -18,6 +19,15 @@ const app = express();
 // ferait retomber la limitation de débit ci-dessous sur un seul « client »
 // partagé par tout le monde au lieu d'une limite par IP réelle.
 app.set("trust proxy", 1);
+// CSP désactivée (API JSON pure, ne sert aucune page HTML — sans objet ici) ;
+// Cross-Origin-Resource-Policy assoupli en "cross-origin" car le frontend
+// (juria-web-*.run.app) et l'API (juria-*.run.app) sont deux origines
+// distinctes et le frontend télécharge des fichiers (GED, KYC, bibliothèque)
+// directement depuis l'API.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.use(cors({ origin: ORIGINES_AUTORISEES }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -54,6 +64,14 @@ app.use("/api/cabinet", authenticate, require("./src/routes/cabinet"));
 
 // 404 par défaut
 app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));
+
+// Gestion centralisée des erreurs non interceptées par une route (ex. rejet
+// d'un fichier par uploadFilter) : réponse JSON propre plutôt que la page
+// HTML d'erreur par défaut d'Express.
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(400).json({ error: err.message || "Requête invalide" });
+});
 
 const port = process.env.PORT ? Number(process.env.PORT) : 8080;
 app.listen(port, () => console.log(`JURIA API démarrée sur le port ${port}`));
