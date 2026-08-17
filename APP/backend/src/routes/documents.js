@@ -31,7 +31,7 @@ router.post("/", upload.single("fichier"), async (req, res) => {
       `INSERT INTO documents
          (dossier_id, nom, categorie, version, statut, confidentialite,
           chemin_storage, type_mime, taille_octets, auteur_id)
-       VALUES ($1,$2,COALESCE($3,'autre'),$4,'brouillon',COALESCE($5,'dossier'),$6,$7,$8,$9)
+       VALUES ($1,$2,COALESCE($3::categorie_document,'autre'),$4,'brouillon',COALESCE($5::confidentialite,'dossier'),$6,$7,$8,$9)
        RETURNING id, nom, categorie, version, statut, confidentialite, cree_le`,
       [b.dossier_id, nom, b.categorie, version, b.confidentialite,
        chemin, req.file.mimetype, req.file.size, req.user.sub]

@@ -266,3 +266,37 @@ Limitations connues et documentées (voir `CLAUDE.md`, section État actuel) : j
 - **Frontend** (`acces.component.ts`) : bouton « Réinit. mot de passe » ajouté sur chaque ligne du tableau des membres (en plus de Valider/Désactiver-Réactiver selon le statut). Réutilisation du bandeau d'affichage unique du mot de passe déjà construit pour la création de compte, généralisé avec un indicateur `creation: boolean` pour adapter le texte d'accompagnement (mention de la validation à faire uniquement dans le cas création, pas dans le cas réinitialisation).
 - Vérifications : build Angular sans erreur ; backend testé en local via Docker de bout en bout — réinitialisation d'un compte déjà actif, ancien mot de passe immédiatement invalidé, nouveau mot de passe temporaire fonctionnel, statut du compte (`actif`, `valide_le`) inchangé, action bien journalisée.
 - Gap restant, assumé : pas de self-service « mot de passe oublié » pour l'utilisateur final depuis l'écran de connexion — il doit passer par un associé/admin. Jugé suffisant pour la taille du cabinet ; à revoir si une vraie infra email est ajoutée un jour.
+
+## 2026-08-17 — Audit : routes, sécurité, infrastructure GCP, CI/CD
+
+Demandé par l'utilisateur suite aux échanges sur la gestion des accès. Rapport complet publié en artefact (lecture de code + vérifications `gcloud` en direct sur `jfc-juria`) ; résumé consigné ici pour la mémoire du projet.
+
+**Routes backend jamais testées, maintenant auditées :**
+- `temps.js`, `evenements.js`, `dashboard.js` — testés de bout en bout (saisie de temps avec taux par défaut, création d'événement, agrégats Cockpit y compris la vue `v_delais_a_venir`) : corrects, aucune anomalie.
+- `documents.js` — **bug confirmé et corrigé** : même défaut que 6 fois déjà cette session (`COALESCE($3,'autre')`/`COALESCE($5,'dossier')` sur les colonnes enum `categorie`/`confidentialite`, sans cast). Tout téléversement sans catégorie explicite échouait. Corrigé (`::categorie_document`, `::confidentialite`), testé en local avec et sans catégorie fournie, téléchargement vérifié. **Reste à déployer** (fait juste après cette entrée).
+- `communications.js` — pas de bug bloquant, mais `type` (NOT NULL en base) n'est pas validé côté route avant insertion : erreur PostgreSQL brute renvoyée au client si absent. Non corrigé (mineur), à faire à l'occasion.
+- Il ne reste plus que `factures.js` comme route jamais auditée cette session.
+
+**Sécurité applicative (lecture de `server.js`, `auth.js`, les 3 points de téléversement) :**
+- CORS entièrement ouvert (`app.use(cors())` sans restriction) — moyen, à restreindre à l'origine du frontend.
+- Aucune limitation de débit sur `/auth/login` — moyen, risque de bourrage d'identifiants.
+- Téléversements (`documents.js`, `clients.js` pièces KYC, `biblio.js`) sans liste blanche de type de fichier — moyen, atténué par `Content-Disposition: attachment` systématique sur les téléchargements.
+- Pas d'en-têtes de sécurité (`helmet`) — faible.
+- `jwt.verify()` sans `algorithms: ['HS256']` explicite — faible, défensif.
+- Un compte désactivé garde ses jetons valides jusqu'à expiration naturelle (8h) — compromis JWT classique, à trancher (raccourcir la durée de vie ou vérifier `actif` à chaque requête) plutôt qu'un bug.
+
+**Infrastructure GCP (vérifié en direct via `gcloud` sur le projet `jfc-juria`) :**
+- **Finding le plus important de l'audit** : les deux services Cloud Run (`juria`, `juria-web`) tournent avec le compte de service Compute par défaut, qui porte `roles/editor` sur tout le projet — bien au-delà du besoin réel (Cloud SQL client + un bucket + deux secrets). Une compromission applicative hériterait d'un pouvoir de modification quasi total sur le projet GCP. Recommandation : compte de service dédié à privilèges minimaux. **Non corrigé — décision et arbitrage du timing laissés à l'utilisateur** (changer le compte de service d'un service en production n'est pas anodin, à faire consciemment).
+- Sauvegardes automatiques désactivées sur l'instance Cloud SQL (`juria-pg`) — moyen, risque de perte de données pure.
+- IP publique activée sur Cloud SQL alors que Cloud Run n'en a pas besoin (connecteur natif), et `requireSsl: false` — faible.
+- Vérifié conforme : bucket GCS `jfc-juria-ged` correctement privé (accès uniforme, aucune liaison IAM publique). Invocation `allUsers` sur les deux services Cloud Run confirmée intentionnelle (sécurité déléguée à la couche JWT applicative, pas à l'IAM Cloud Run).
+
+**CI/CD et exploitation :**
+- Aucun pipeline CI/CD — tous les déploiements de cette session ont été déclenchés manuellement (`gcloud builds submit` + `gcloud run deploy`), aucun déclencheur lié à `git push`.
+- Aucun test automatisé (backend ou frontend).
+- Un seul environnement (pas de séparation recette/production).
+- Rappels déjà connus : domaine encore provisoire (`*.run.app`), journal d'audit partiellement alimenté.
+
+**Priorités recommandées communiquées à l'utilisateur** (dans le rapport) : 1) compte de service dédié à privilèges minimaux, 2) sauvegardes Cloud SQL, 3) rate-limiting + CORS restreint, 4) déployer le correctif `documents.js`, 5) le reste (helmet, filtrage de fichiers, IP publique Cloud SQL, CI/CD, tests) au rythme du projet.
+
+Rien n'a été corrigé pendant cet audit à l'exception du bug `documents.js` (même classe de correctif que 6 fois déjà appliquées sans risque cette session) — tout le reste attend un arbitrage explicite de l'utilisateur avant action, notamment le compte de service (changement en production, pas anodin) et les coûts (sauvegardes Cloud SQL, rate-limiting).
