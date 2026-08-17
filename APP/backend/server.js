@@ -74,6 +74,11 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT ? Number(process.env.PORT) : 8080;
-app.listen(port, () => console.log(`JURIA API démarrée sur le port ${port}`));
+// Ne démarre l'écoute que si le fichier est exécuté directement (node server.js),
+// pas quand il est importé (ex. par les tests, via supertest, qui gèrent leur
+// propre serveur éphémère autour de l'app Express).
+if (require.main === module) {
+  app.listen(port, () => console.log(`JURIA API démarrée sur le port ${port}`));
+}
 
 module.exports = app;

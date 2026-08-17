@@ -344,3 +344,23 @@ Rien n'a été corrigé pendant cet audit à l'exception du bug `documents.js` (
 **Déploiement** : image API reconstruite et redéployée. Pas de changement frontend nécessaire.
 
 **Reste (CI/CD, tests automatisés)** : à traiter séparément — CI/CD nécessite une étape de connexion manuelle du dépôt GitHub à Cloud Build (autorisation OAuth via la Console, ne peut pas être automatisée en CLI seule) ; les tests automatisés seront abordés comme un chantier à part (mise en place d'un framework + tests de fumée, pas une couverture exhaustive en une session).
+
+## 2026-08-17 — Audit du dernier fichier non testé (`factures.js`) et suite de tests de non-régression ciblée
+
+**Clôture de l'audit à 100 %**
+- Relecture complète de `backend/src/routes/factures.js`, dernier fichier de routes jamais audité. L'unique usage de `COALESCE` (`COALESCE($9, 0)`) porte sur une valeur numérique, pas une chaîne face à une colonne ENUM — pas d'occurrence du bug récurrent.
+- Vérifié en Docker de bout en bout : création d'une facture avec champs minimaux, ajout d'un paiement partiel, recalcul correct du statut par `majStatut()` (`"partielle"`), `GET /api/factures` et `GET /api/factures/impayees` cohérents. Aucune anomalie.
+- **100 % des fichiers de routes du backend ont maintenant été audités** (manuellement ou testés en conditions réelles) au moins une fois durant cette session.
+
+**« Est-ce important ? » — arbitrage CI/CD vs tests ciblés**
+- L'utilisateur a demandé un avis honnête sur l'urgence de CI/CD et des tests automatisés restants. Réponse donnée : CI/CD apporte peu tant que les déploiements restent occasionnels et manuels (le vrai gain — empêcher un merge cassé — ne s'applique pas à un flux à un seul développeur qui teste déjà en Docker avant de pousser) ; en revanche, un test ciblé et automatisé sur le motif de bug récurrent (COALESCE/CASE non casté sur ENUM/UUID, rencontré 6 fois) a un rapport effort/valeur nettement meilleur qu'une suite exhaustive ou qu'un pipeline complet — recommandation : construire ce filet ciblé plutôt que l'un ou l'autre chantier plus lourd. L'utilisateur a validé (« ok »).
+
+**Mise en place de la suite de tests**
+- `server.js` : `app.listen()` déplacé derrière `if (require.main === module)` pour que `require("../server")` (utilisé par supertest) n'ouvre plus de port réseau comme effet de bord de l'import — `module.exports = app` reste toujours exposé.
+- `backend/package.json` : ajout de `jest` et `supertest` en `devDependencies`, script `"test": "jest --runInBand"` (exécution séquentielle — la suite partage une même base Postgres, pas de parallélisme).
+- `backend/tests/setup.js` (nouveau) : `assurerUtilisateurTest()` — upsert idempotent (`ON CONFLICT (email) DO UPDATE`) d'un utilisateur de test actif et validé (`test.regression@jfcavocats-mali.com`), pour que la suite soit rejouable sans réinitialiser la base entre deux exécutions.
+- `backend/tests/regression.test.js` (nouveau) : 2 tests de connexion (mauvais mot de passe → 401, bons identifiants → 200) + 6 tests ciblés — un POST minimaliste (champs optionnels enum/UUID délibérément omis) sur chacune des 6 routes historiquement buguées (`dossiers`, `taches`, `roles-audience/lignes`, `courriers`, `documents` — upload réel via `supertest`/`.attach()`, `cabinet/conges`), chacun attendu en 201.
+- Exécution : Node n'étant pas installé sur l'hôte et l'image Docker de production étant construite avec `--omit=dev` (sans `devDependencies`), la suite tourne via un conteneur `node:22` éphémère rattaché au réseau `docker compose` (`--network app_default`, `DB_HOST=db`) — voir la commande exacte dans `APP/README.md`.
+- **Premier passage : 8/8 tests verts.**
+- **Validation du filet de sécurité** : le correctif de `taches.js` a été délibérément annulé (retour à `COALESCE($3,'autre')` sans cast) pour confirmer que le test dédié détecte réellement la régression — résultat : échec confirmé (`Expected: 201, Received: 400`), les 7 autres tests restant verts (isolation correcte). Correctif restauré, suite revérifiée : 8/8 verts à nouveau. La suite est donc un vrai filet de non-régression, pas un test qui passe par construction.
+- CI/CD reste non fait, volontairement, en l'état — à reconsidérer si le rythme de déploiement s'accélère ou si l'équipe grandit.

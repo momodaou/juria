@@ -125,9 +125,33 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | GET/POST | `/api/cabinet` | Cabinet RH — `/equipe`, `/echeances`, `/conges`, `/presences`, `/bulletins` |
 | POST | `/api/ia/resume`, `/chronologie`, `/extraction-faits`, `/analyse-contrat`, `/traduction`, `/comparaison` | Assistant IA (6 capacités, toujours « projet à valider ») |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
-| GET/POST | `/api/documents`, `/api/evenements`, `/api/temps`, `/api/factures` | Présentes dans le code, **non auditées de bout en bout** cette session — vérifier le pattern de typage enum/UUID (cf. `CLAUDE.md`) avant usage en production |
+| GET/POST | `/api/documents`, `/api/evenements`, `/api/temps`, `/api/factures` | GED, agenda, temps, facturation — toutes auditées (17/08/2026) |
 
 Toutes les routes `/api/*` exigent un jeton valide.
+
+---
+
+## 3bis. Tests automatisés (backend)
+
+Suite Jest + Supertest ciblée sur le bug récurrent COALESCE/CASE non casté sur ENUM/UUID (voir `CLAUDE.md`) — pas une couverture exhaustive de l'API, un filet de non-régression précis sur les routes qui l'ont déjà eu.
+
+Node n'étant pas installé sur l'hôte et l'image de production n'embarquant pas les `devDependencies`, les tests tournent via un conteneur `node:22` éphémère relié au réseau `docker compose` :
+
+```bash
+cd APP
+docker compose up -d db   # seule la base est nécessaire, l'API tourne dans le conteneur de test
+
+docker run --rm \
+  -v "$(pwd)/backend":/app -w /app \
+  --network app_default \
+  -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=juria -e DB_USER=juria_app -e DB_PASSWORD=dev-password \
+  -e JWT_SECRET=dev-secret-local \
+  node:22 sh -c "npm install && npm test"
+
+docker compose down
+```
+
+Résultat attendu : `Tests: 8 passed, 8 total`. À relancer manuellement avant tout déploiement qui touche aux routes `dossiers`, `taches`, `roles-audience`, `courriers`, `documents` ou `cabinet`.
 
 ---
 
@@ -145,17 +169,16 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 - **Portail client** est un écran d'**aperçu côté cabinet** (recherche un dossier, affiche ce qu'un client verrait), pas un vrai extranet avec compte client séparé — le schéma SQL lui-même classe ce module en extension post-MVP (voir commentaire de fin de `db/schema.sql`). Un vrai portail demande un système d'authentification distinct, à traiter comme projet à part.
 - **Journal d'audit** (`journal_audit`) n'est alimenté que par la connexion et les actions du module Accès & permissions — pas par le reste de l'application (retrofit complet non fait).
 
-**Non auditées de bout en bout** : `temps.js`, `evenements.js`, `communications.js`, `documents.js`, `dashboard.js` (fournies par le kit, jamais testées dans cette session). Voir la note sur le bug de typage enum/UUID récurrent dans `CLAUDE.md` avant de les utiliser en production.
+**Audit backend terminé à 100 %** (17/08/2026) : toutes les routes ont été relues et/ou testées en conditions réelles. Le pattern de bug récurrent (COALESCE/CASE non casté sur ENUM/UUID) est désormais couvert par une suite de tests automatisés (§ 3bis) plutôt que par une simple mention dans ce README.
 
 ## 6. Prochaines étapes
 
-1. Auditer et tester les routes listées ci-dessus comme « non auditées » (même pattern de bug à vérifier systématiquement).
-2. Étendre le journal d'audit au reste de l'application si la traçabilité complète est requise.
-3. Décider si un vrai portail client (auth séparée, messagerie) est prioritaire, et le traiter comme un projet dédié.
-4. Ajouter les tests automatisés (backend et frontend) et la validation des entrées.
-5. Ajouter un service `frontend` à `docker-compose.yml` pour le dev local (actuellement lancé à la main, voir § 2).
-6. Mettre en place les environnements **recette** et **production** sur GCP, un domaine personnalisé.
+1. Étendre le journal d'audit au reste de l'application si la traçabilité complète est requise.
+2. Décider si un vrai portail client (auth séparée, messagerie) est prioritaire, et le traiter comme un projet dédié.
+3. Élargir la couverture de tests au-delà du filet ciblé actuel si le projet grandit (actuellement jugé suffisant face à la mise en place d'une CI/CD, voir `HISTORY.md` du 17/08/2026).
+4. Ajouter un service `frontend` à `docker-compose.yml` pour le dev local (actuellement lancé à la main, voir § 2).
+5. Mettre en place les environnements **recette** et **production** sur GCP, un domaine personnalisé, et une CI/CD (nécessite une connexion manuelle GitHub↔Cloud Build via la Console).
 
-**Audit du 17/08/2026 (résumé)** : correctifs appliqués — comptes de service Cloud Run dédiés à privilèges minimaux (`juria-api-sa`/`juria-web-sa`, plus jamais le compte Compute par défaut avec `roles/editor`), sauvegardes Cloud SQL activées, CORS restreint via `ALLOWED_ORIGINS`, limitation de débit sur `/auth/login`. Restent à faire : helmet, filtrage de type sur les téléversements, IP publique Cloud SQL, CI/CD, tests automatisés. Détails complets dans `CLAUDE.md`/`HISTORY.md`.
+**Audit du 17/08/2026 (résumé)** : correctifs appliqués — comptes de service Cloud Run dédiés à privilèges minimaux (`juria-api-sa`/`juria-web-sa`, plus jamais le compte Compute par défaut avec `roles/editor`), sauvegardes Cloud SQL activées, CORS restreint via `ALLOWED_ORIGINS`, limitation de débit sur `/auth/login`, en-têtes de sécurité (helmet), filtrage de type sur les téléversements, SSL forcé sur Cloud SQL, et une suite de tests de non-régression ciblée (§ 3bis). Volontairement non fait : CI/CD, retrait de l'IP publique Cloud SQL. Détails complets et justifications dans `CLAUDE.md`/`HISTORY.md`.
 
 > Sécurité : ne jamais committer de fichier `.env` ni de secret. Utiliser Secret Manager en production.

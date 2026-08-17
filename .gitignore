@@ -20,6 +20,10 @@ npm-debug.log*
 # Fichiers temporaires Office (verrous Word/Excel/PowerPoint)
 ~$*
 
+# Fichiers déposés en local (GED) — jamais committés, y compris ceux générés
+# par la suite de tests (backend/tests/regression.test.js)
+**/backend/uploads/
+
 # Claude Code (fichiers internes locaux)
 .claude/
 
