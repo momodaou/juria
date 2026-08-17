@@ -210,13 +210,19 @@ export class AccesComponent implements OnInit {
   nouvelleDeleg: any = { portee: 'temporaire' };
   nouveauCompte: any = { role: 'collaborateur' };
 
-  // 11 statuts réels du cabinet (17/08/2026). `court` = en-tête de colonne
-  // dans la matrice de permissions ; `libelle` = intitulé complet ailleurs.
+  // 13 statuts réels du cabinet (17/08/2026, complété après coup avec
+  // associe_fondateur et la distinction avocat_stagiaire/stagiaire).
+  // `court` = en-tête de colonne dans la matrice de permissions ; `libelle`
+  // = intitulé complet ailleurs. L'associé-fondateur a les mêmes droits
+  // qu'un associé classique partout SAUF la matrice de permissions
+  // elle-même (réservée associé + admin IT, voir acces.js backend).
   readonly roles: { code: string; libelle: string; court: string }[] = [
     { code: 'associe', libelle: 'Avocat associé', court: 'Associé' },
+    { code: 'associe_fondateur', libelle: 'Avocat associé-fondateur', court: 'Assoc. fondateur' },
     { code: 'of_counsel', libelle: 'Avocat Of Counsel', court: 'Of Counsel' },
     { code: 'collaborateur', libelle: 'Avocat collaborateur', court: 'Collab. avocat' },
-    { code: 'stagiaire', libelle: 'Avocat stagiaire', court: 'Stagiaire' },
+    { code: 'avocat_stagiaire', libelle: 'Avocat stagiaire', court: 'Avocat stag.' },
+    { code: 'stagiaire', libelle: 'Stagiaire (non-avocat)', court: 'Stagiaire' },
     { code: 'juriste', libelle: 'Collaborateur non-avocat/juriste', court: 'Juriste' },
     { code: 'admin_general', libelle: 'Administrateur général', court: 'Admin. général' },
     { code: 'assistante', libelle: 'Assistante juridique et administrative', court: 'Assistante' },

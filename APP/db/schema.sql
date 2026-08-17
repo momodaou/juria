@@ -1599,3 +1599,43 @@ ON CONFLICT (role, action_code) DO NOTHING;
 
 COMMIT;
 -- =============== FIN MESSAGERIE ===============
+
+-- =====================================================================
+--  STATUTS COMPLÉMENTAIRES DU PERSONNEL (ajout 17/08/2026, précision de
+--  l'utilisateur après coup) : « Avocat associé-fondateur » (chairman,
+--  droits identiques à l'Associé, y compris la matrice de permissions —
+--  voir acces.js) omis initialement ; « Avocat stagiaire » (parcours
+--  avocat) distingué de « Stagiaire » simple (non-avocat), jusqu'ici
+--  fondus dans une seule valeur d'enum.
+--
+--  Même prudence que pour le premier lot de rôles : ALTER TYPE hors de
+--  toute transaction explicite (une valeur ajoutée/renommée par ALTER TYPE
+--  ne peut pas être utilisée dans la même transaction qui l'a modifiée).
+-- =====================================================================
+ALTER TYPE role_utilisateur RENAME VALUE 'stagiaire' TO 'avocat_stagiaire';
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'stagiaire';           -- nouveau sens : stagiaire non-avocat
+ALTER TYPE role_utilisateur ADD VALUE IF NOT EXISTS 'associe_fondateur';
+
+BEGIN;
+
+-- associe_fondateur reprend EXACTEMENT les permissions actuelles d'associe
+-- sur les actions métier cataloguées (plutôt que ré-énumérer les 46 actions
+-- à la main, source d'erreur). L'accès à la matrice elle-même n'est PAS ici
+-- : ce n'est pas une action cataloguée, c'est un requireRole() en dur dans
+-- acces.js (associé + admin IT uniquement, associé-fondateur volontairement
+-- exclu — précision explicite de l'utilisateur).
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT 'associe_fondateur', action_code, TRUE
+FROM permissions_role WHERE role = 'associe'
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+-- Le nouveau stagiaire (non-avocat) démarre avec le même profil que les
+-- autres statuts non privilégiés (ex. archiviste) : actions déjà ouvertes
+-- autorisées, rien sur les 10 actions réservées à la direction.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT 'stagiaire', action_code, autorise
+FROM permissions_role WHERE role = 'archiviste'
+ON CONFLICT (role, action_code) DO NOTHING;
+
+COMMIT;
+-- =============== FIN STATUTS COMPLÉMENTAIRES ===============

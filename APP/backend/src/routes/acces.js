@@ -11,16 +11,18 @@ const { logAudit } = require("../audit");
 const { CATALOGUE, CODES_VALIDES } = require("../permissions");
 
 const router = express.Router();
-// Gestion des comptes/rôles/délégations : associé, administrateur général ou
-// administrateur IT. La matrice de permissions ci-dessous (routes /permissions)
-// applique une restriction plus étroite, volontairement écartée de cette
-// garde commune — voir plus bas.
-router.use(requireRole("associe", "admin_general", "admin_it"));
+// Gestion des comptes/rôles/délégations : associé (et associé-fondateur,
+// mêmes droits), administrateur général ou administrateur IT. La matrice
+// de permissions ci-dessous (routes /permissions) applique une restriction
+// plus étroite, volontairement écartée de cette garde commune — voir plus bas.
+router.use(requireRole("associe", "associe_fondateur", "admin_general", "admin_it"));
 
-// 11 statuts réels du cabinet (17/08/2026) — voir CLAUDE.md pour le détail
-// de chacun et le mapping avec l'ancien enum à 6 valeurs.
+// 13 statuts réels du cabinet (17/08/2026, complété après coup avec
+// associe_fondateur et la distinction avocat_stagiaire/stagiaire) — voir
+// CLAUDE.md pour le détail de chacun.
 const ROLES_VALIDES = [
-  "associe", "of_counsel", "collaborateur", "stagiaire", "juriste",
+  "associe", "associe_fondateur", "of_counsel", "collaborateur",
+  "avocat_stagiaire", "stagiaire", "juriste",
   "admin_general", "assistante", "comptable", "assistant_comptable",
   "admin_it", "archiviste",
 ];
@@ -239,11 +241,12 @@ router.get("/audit", async (req, res) => {
 });
 
 // Matrice de permissions : restreinte à Associé + Administrateur IT
-// uniquement (précision explicite de l'utilisateur, 17/08/2026) — plus
-// étroit que le reste du module Accès & permissions, qui autorise aussi
-// Administrateur général. Les deux middlewares s'appliquent en ET : même si
-// le garde commun ci-dessus laisse passer admin_general, celui-ci le
-// rejette spécifiquement sur ces deux routes.
+// uniquement — l'associé-fondateur a les mêmes droits qu'un associé
+// classique PARTOUT AILLEURS dans ce module, mais est explicitement exclu
+// de la matrice elle-même (précision de l'utilisateur, 17/08/2026). Les
+// deux middlewares s'appliquent en ET : même si le garde commun ci-dessus
+// laisse passer associe_fondateur/admin_general, celui-ci les rejette
+// spécifiquement sur ces deux routes.
 const requireAssocieOuAdminIt = requireRole("associe", "admin_it");
 
 // GET /api/acces/permissions — catalogue complet croisé avec les valeurs
