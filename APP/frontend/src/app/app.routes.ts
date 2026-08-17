@@ -91,6 +91,10 @@ export const routes: Routes = [
           import('./pages/portail-client/portail-client.component').then((m) => m.PortailClientComponent),
       },
       {
+        path: 'mon-compte',
+        loadComponent: () => import('./pages/mon-compte/mon-compte.component').then((m) => m.MonCompteComponent),
+      },
+      {
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },

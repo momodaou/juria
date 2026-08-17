@@ -325,6 +325,14 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/retrocessions/pro-bono${q}`);
   }
 
+  // Profil personnel (tout utilisateur authentifié)
+  monProfil(): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/profil`);
+  }
+  changerMotDePasse(ancien_mot_de_passe: string, nouveau_mot_de_passe: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/profil/mot-de-passe`, { ancien_mot_de_passe, nouveau_mot_de_passe });
+  }
+
   // Accès & permissions (réservé associé/admin)
   creerCompte(payload: { code: string; prenom: string; nom: string; email: string; role: string; pole?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/acces/utilisateurs`, payload);

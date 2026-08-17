@@ -124,6 +124,9 @@ export class AppComponent {
     portailClient: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/></svg>',
     ),
+    monCompte: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>',
+    ),
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
@@ -146,6 +149,7 @@ export class AppComponent {
     { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet },
     { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient },
+    { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
   ];
 

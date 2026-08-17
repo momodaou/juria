@@ -36,6 +36,7 @@ app.use("/api/utilisateurs", authenticate, require("./src/routes/utilisateurs"))
 app.use("/api/depenses", authenticate, require("./src/routes/depenses"));
 app.use("/api/retrocessions", authenticate, require("./src/routes/retrocessions"));
 app.use("/api/acces", authenticate, require("./src/routes/acces"));
+app.use("/api/profil", authenticate, require("./src/routes/profil"));
 app.use("/api/cabinet", authenticate, require("./src/routes/cabinet"));
 
 // 404 par défaut
