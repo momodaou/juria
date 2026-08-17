@@ -61,6 +61,11 @@ app.use("/api/retrocessions", authenticate, require("./src/routes/retrocessions"
 app.use("/api/acces", authenticate, require("./src/routes/acces"));
 app.use("/api/profil", authenticate, require("./src/routes/profil"));
 app.use("/api/cabinet", authenticate, require("./src/routes/cabinet"));
+// Pas de middleware authenticate ici : la route /stream gère son propre
+// jeton (EventSource ne pose pas d'en-tête Authorization) ; toutes les
+// autres routes du module l'appliquent elles-mêmes en interne — voir
+// src/routes/messagerie.js.
+app.use("/api/messagerie", require("./src/routes/messagerie"));
 
 // 404 par défaut
 app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));

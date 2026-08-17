@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
+import { MessagerieService } from '../../core/messagerie.service';
 
 @Component({
   selector: 'app-login',
@@ -30,6 +31,7 @@ import { AuthService } from '../../core/auth.service';
 })
 export class LoginComponent {
   private readonly auth = inject(AuthService);
+  private readonly messagerie = inject(MessagerieService);
   private readonly router = inject(Router);
 
   email = '';
@@ -44,6 +46,7 @@ export class LoginComponent {
     this.auth.login(this.email, this.motDePasse).subscribe({
       next: () => {
         this.chargement.set(false);
+        this.messagerie.demarrer();
         this.router.navigate(['/cockpit']);
       },
       error: (e) => {

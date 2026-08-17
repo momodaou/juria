@@ -126,8 +126,9 @@ La réponse contient un `token` à envoyer dans l'en-tête `Authorization: Beare
 | POST | `/api/ia/resume`, `/chronologie`, `/extraction-faits`, `/analyse-contrat`, `/traduction`, `/comparaison` | Assistant IA (6 capacités, toujours « projet à valider ») |
 | GET/POST | `/api/communications` | Fil du dossier (journal des échanges) |
 | GET/POST | `/api/documents`, `/api/evenements`, `/api/temps`, `/api/factures` | GED, agenda, temps, facturation — toutes auditées (17/08/2026) |
+| GET/POST | `/api/messagerie` | Messagerie instantanée interne (nouveau, 17/08/2026) — `/conversations`, `/conversations/:id/messages`, `/conversations/:id/lu`, `/non-lus`, `/stream` (SSE, diffusion en direct via Postgres LISTEN/NOTIFY) |
 
-Toutes les routes `/api/*` exigent un jeton valide.
+Toutes les routes `/api/*` exigent un jeton valide, **sauf `/api/messagerie/stream`** qui vérifie le sien en paramètre de requête (`?token=`) plutôt qu'en en-tête `Authorization` — `EventSource` ne permet pas de poser d'en-tête personnalisé.
 
 ---
 
@@ -169,6 +170,8 @@ Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documenta
 ## 5. Les 17 modules de la spécification fonctionnelle — statut
 
 **Tous développés** (backend + écran Angular) : Cockpit, Dossiers 360, Nouveau dossier (conflits), Clients & KYC, Échéancier, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Chrono & Facturation, Dépenses & caisse, Rétrocessions, Accès & permissions, Cabinet (RH), Assistant IA, Portail client.
+
+**+ 1 module ajouté hors spécification initiale** : Messagerie instantanée interne (17/08/2026, demande directe de l'utilisateur) — voir `CLAUDE.md` pour l'architecture (Postgres LISTEN/NOTIFY + SSE).
 
 **Deux limitations assumées, pas des oublis** :
 - **Portail client** est un écran d'**aperçu côté cabinet** (recherche un dossier, affiche ce qu'un client verrait), pas un vrai extranet avec compte client séparé — le schéma SQL lui-même classe ce module en extension post-MVP (voir commentaire de fin de `db/schema.sql`). Un vrai portail demande un système d'authentification distinct, à traiter comme projet à part.

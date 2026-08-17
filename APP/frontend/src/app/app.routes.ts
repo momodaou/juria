@@ -98,6 +98,10 @@ export const routes: Routes = [
         path: 'facturation',
         loadComponent: () => import('./pages/facturation/facturation.component').then((m) => m.FacturationComponent),
       },
+      {
+        path: 'messagerie',
+        loadComponent: () => import('./pages/messagerie/messagerie.component').then((m) => m.MessagerieComponent),
+      },
     ],
   },
   { path: '**', redirectTo: '' },

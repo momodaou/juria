@@ -29,10 +29,19 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 .side nav a{display:flex;align-items:center;gap:10px;color:#cfd6e3;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
 .side nav a:hover{background:rgba(255,255,255,.08);color:#fff}
 .side nav a.active{background:var(--gold);color:#1b2436;font-weight:600}
-.side .ico{flex:0 0 auto;display:flex}
-.side .lbl{overflow:hidden;text-overflow:ellipsis}
+.side .ico{flex:0 0 auto;display:flex;position:relative}
+.side .lbl{overflow:hidden;text-overflow:ellipsis;flex:1}
 .app.collapsed .side nav a{justify-content:center;padding:10px}
 .app.collapsed .side .lbl{display:none}
+
+.badge-nonlus{
+  margin-left:auto;background:var(--gold);color:#1b2436;font-size:11px;font-weight:700;
+  line-height:1;padding:3px 6px;border-radius:999px;flex:0 0 auto;
+}
+.side nav a.active .badge-nonlus{background:#1b2436;color:var(--gold)}
+.app.collapsed .side .badge-nonlus{
+  position:absolute;top:-4px;right:-6px;margin-left:0;padding:2px 5px;font-size:10px;
+}
 
 .logout{display:flex;align-items:center;gap:10px;background:transparent;border:1px solid rgba(255,255,255,.2);
   color:#cfd6e3;border-radius:8px;padding:9px 12px;cursor:pointer;font-size:13px;white-space:nowrap}

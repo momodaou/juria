@@ -72,6 +72,9 @@ const CATALOGUE = [
   { code: "ia.analyse_contrat", module: "Assistant IA", label: "Analyser un contrat" },
   { code: "ia.traduction", module: "Assistant IA", label: "Traduire" },
   { code: "ia.comparaison", module: "Assistant IA", label: "Comparer deux textes" },
+
+  { code: "messagerie.creer_conversation", module: "Messagerie", label: "Créer une conversation" },
+  { code: "messagerie.envoyer_message", module: "Messagerie", label: "Envoyer un message" },
 ];
 
 const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));

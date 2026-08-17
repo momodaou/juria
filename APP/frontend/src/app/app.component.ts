@@ -1,7 +1,8 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { AuthService } from './core/auth.service';
+import { MessagerieService } from './core/messagerie.service';
 
 const SIDEBAR_KEY = 'juria.sidebar.dock';
 
@@ -47,6 +48,9 @@ interface NavItem {
               <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
                 <span class="ico" [innerHTML]="item.icon"></span>
                 <span class="lbl">{{ item.label }}</span>
+                @if (item.path === '/messagerie' && messagerie.nonLus() > 0) {
+                  <span class="badge-nonlus">{{ messagerie.nonLus() }}</span>
+                }
               </a>
             }
           </nav>
@@ -63,9 +67,14 @@ interface NavItem {
     }
   `,
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   readonly auth = inject(AuthService);
+  readonly messagerie = inject(MessagerieService);
   private readonly router = inject(Router);
+
+  ngOnInit(): void {
+    if (this.auth.estConnecte) this.messagerie.demarrer();
+  }
   private readonly sanitizer = inject(DomSanitizer);
 
   private icon(svg: string): SafeHtml {
@@ -130,10 +139,14 @@ export class AppComponent {
     logout: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     ),
+    messagerie: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    ),
   };
 
   readonly navItems: NavItem[] = [
     { path: '/cockpit', label: 'Cockpit', icon: this.icons.cockpit },
+    { path: '/messagerie', label: 'Messagerie', icon: this.icons.messagerie },
     { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers },
     { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture },
     { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients },
@@ -162,6 +175,7 @@ export class AppComponent {
   }
 
   deconnexion(): void {
+    this.messagerie.arreter();
     this.auth.logout();
     this.router.navigate(['/login']);
   }

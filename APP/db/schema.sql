@@ -1553,3 +1553,49 @@ ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 
 COMMIT;
 -- =============== FIN STATUTS PERSONNEL + PERMISSIONS ===============
+
+-- =====================================================================
+--  MESSAGERIE INSTANTANÉE INTERNE (ajout 17/08/2026)
+--  Diffusion en direct via Postgres LISTEN/NOTIFY (backend/src/
+--  messagerie-bus.js) + flux SSE côté client — pas de service GCP
+--  supplémentaire. Distincte de `communications` (fil de traçabilité
+--  d'un dossier) : ceci est un vrai canal de discussion entre personnes.
+-- =====================================================================
+BEGIN;
+
+CREATE TABLE conversations (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre      VARCHAR(160),                    -- optionnel (surtout utile à 3+ participants)
+    dossier_id UUID REFERENCES dossiers(id),     -- rattachement optionnel, pas obligatoire
+    cree_par   UUID REFERENCES utilisateurs(id),
+    cree_le    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE conversation_participants (
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    utilisateur_id  UUID NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    rejoint_le      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    dernier_lu_le   TIMESTAMPTZ,                 -- pour calculer les non-lus
+    PRIMARY KEY (conversation_id, utilisateur_id)
+);
+CREATE INDEX idx_conv_participants_user ON conversation_participants(utilisateur_id);
+
+CREATE TABLE messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    auteur_id       UUID NOT NULL REFERENCES utilisateurs(id),
+    contenu         TEXT NOT NULL,
+    cree_le         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, cree_le);
+
+-- Catalogue de permissions : 2 nouvelles actions, ouvertes à tous les
+-- rôles par défaut (même esprit que les autres outils de communication).
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY['messagerie.creer_conversation','messagerie.envoyer_message']) AS a
+ON CONFLICT (role, action_code) DO NOTHING;
+
+COMMIT;
+-- =============== FIN MESSAGERIE ===============
