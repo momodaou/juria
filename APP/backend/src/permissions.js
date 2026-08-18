@@ -22,6 +22,7 @@ const { pool } = require("./db");
 const CATALOGUE = [
   { code: "documents.creer", module: "Dossiers 360", label: "Déposer un document" },
   { code: "communications.creer", module: "Dossiers 360", label: "Ajouter une communication" },
+  { code: "dossiers.modifier", module: "Dossiers 360", label: "Modifier la fiche du dossier" },
 
   { code: "conflits.soumettre", module: "Nouveau dossier", label: "Soumettre un contrôle de conflit" },
   { code: "conflits.decision", module: "Nouveau dossier", label: "Décider sur un conflit potentiel", restreinte: true },

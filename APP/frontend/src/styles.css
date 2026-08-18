@@ -76,6 +76,8 @@ td{padding:10px 6px;border-bottom:1px solid #f0f3f7;font-size:13px}
 .err{color:var(--red);font-size:13px}
 tr.clik{cursor:pointer}
 tr.clik:hover{background:#f7f9fc}
+td.clik{cursor:pointer}
+tr:has(td.clik):hover{background:#f7f9fc}
 
 /* Fiche dossier */
 .back{display:inline-block;margin-bottom:14px;color:var(--gold);text-decoration:none;font-size:13px}

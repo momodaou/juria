@@ -21,6 +21,7 @@ export interface Dossier {
   phase: string;
   urgence: string;
   client: string;
+  client_id: string;
   responsable: string;
   pro_bono: boolean;
   cumul_xof: number;
@@ -78,6 +79,10 @@ export class ApiService {
 
   creerDossier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers`, payload);
+  }
+
+  majDossier(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/dossiers/${id}`, payload);
   }
 
   clients(recherche = '', kyc = ''): Observable<any[]> {

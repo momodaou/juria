@@ -20,14 +20,14 @@ import { ApiService, Dossier } from '../../core/api.service';
         <table>
           <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Phase</th><th>Urgence</th><th>Honoraires</th></tr>
           @for (d of dossiers(); track d.id) {
-            <tr class="clik" [routerLink]="['/dossiers', d.id]">
-              <td>{{ d.numero }}</td>
-              <td>{{ d.intitule }}{{ d.pro_bono ? ' · Pro bono' : '' }}</td>
-              <td>{{ d.client }}</td>
-              <td>{{ d.responsable }}</td>
-              <td>{{ d.phase }}</td>
-              <td><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
-              <td>
+            <tr>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.numero }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}{{ d.pro_bono ? ' · Pro bono' : '' }}</td>
+              <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">
                 <span class="tag"
                       [class.ok]="d.statut_honoraires === 'atteint'"
                       [class.attente]="d.statut_honoraires === 'sous_seuil'"
@@ -49,6 +49,8 @@ import { ApiService, Dossier } from '../../core/api.service';
   styles: [`
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
+    .lien{color:var(--gold);text-decoration:none;font-size:13px}
+    .lien:hover{text-decoration:underline}
   `],
 })
 export class DossiersComponent implements OnInit {

@@ -21,9 +21,14 @@ import { ApiService } from '../../core/api.service';
               · {{ c.rccm || c.nif || 'Identifiant non renseigné' }} · {{ c.pays }}
             </div>
           </div>
-          <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'" [class.ok]="c.kyc_statut === 'a_jour'">
-            KYC : {{ libelleKyc(c.kyc_statut) }}
-          </span>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'" [class.ok]="c.kyc_statut === 'a_jour'">
+              KYC : {{ libelleKyc(c.kyc_statut) }}
+            </span>
+            <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(c)">
+              {{ modeEdition() ? 'Annuler' : 'Modifier' }}
+            </button>
+          </div>
         </div>
         <div class="meta">
           <div><span>Email</span><b>{{ c.email || '—' }}</b></div>
@@ -32,6 +37,35 @@ import { ApiService } from '../../core/api.service';
           <div><span>Dernière MAJ KYC</span><b>{{ c.kyc_maj_le ? (c.kyc_maj_le | date:'dd/MM/yyyy') : '—' }}</b></div>
         </div>
       </div>
+
+      @if (modeEdition()) {
+        <section class="panel">
+          <h3>Modifier la fiche</h3>
+          <div class="grid2">
+            @if (c.type === 'morale') {
+              <div><label>Dénomination</label><input class="in" [(ngModel)]="edit.denomination" name="editDenomination" /></div>
+              <div><label>RCCM</label><input class="in" [(ngModel)]="edit.rccm" name="editRccm" /></div>
+              <div><label>NIF</label><input class="in" [(ngModel)]="edit.nif" name="editNif" /></div>
+              <div><label>Forme juridique</label><input class="in" [(ngModel)]="edit.forme_juridique" name="editForme" /></div>
+            } @else {
+              <div><label>Prénom</label><input class="in" [(ngModel)]="edit.prenom" name="editPrenom" /></div>
+              <div><label>Nom</label><input class="in" [(ngModel)]="edit.nom" name="editNom" /></div>
+              <div><label>Nationalité</label><input class="in" [(ngModel)]="edit.nationalite" name="editNationalite" /></div>
+            }
+            <div><label>Email</label><input class="in" type="email" [(ngModel)]="edit.email" name="editEmail" /></div>
+            <div><label>Téléphone</label><input class="in" [(ngModel)]="edit.telephone" name="editTelephone" /></div>
+            <div><label>Ville</label><input class="in" [(ngModel)]="edit.ville" name="editVille" /></div>
+            <div><label>Pays</label><input class="in" [(ngModel)]="edit.pays" name="editPays" /></div>
+            <div class="col2"><label>Adresse</label><input class="in" [(ngModel)]="edit.adresse" name="editAdresse" /></div>
+            <div class="col2"><label>Bénéficiaires effectifs</label><input class="in" [(ngModel)]="edit.beneficiaires_effectifs" name="editBenef" /></div>
+            <div class="col2"><label>Notes</label><input class="in" [(ngModel)]="edit.notes" name="editNotes" /></div>
+          </div>
+          <button class="btn" (click)="enregistrerFiche()" [disabled]="enregistrement()">
+            {{ enregistrement() ? 'Enregistrement…' : 'Enregistrer' }}
+          </button>
+          @if (erreurEdition()) { <p class="err">{{ erreurEdition() }}</p> }
+        </section>
+      }
 
       <section class="panel">
         <h3>Statut KYC</h3>
@@ -133,11 +167,16 @@ import { ApiService } from '../../core/api.service';
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn:disabled{opacity:.6}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.expiree td{background:#fff5f4}
     .ok-msg{color:var(--green);font-size:13px;margin-top:8px}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
+    label{font-size:12px;color:var(--slate);font-weight:600}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+    .col2{grid-column:1 / -1}
   `],
 })
 export class ClientDetailComponent implements OnInit {
@@ -150,6 +189,15 @@ export class ClientDetailComponent implements OnInit {
   readonly messageKyc = signal('');
   readonly ajoutEnCours = signal(false);
   readonly typesOriginal = signal<{ code: string; libelle: string }[]>([]);
+
+  // Édition de la fiche identité/coordonnées (ajout 18/08/2026) — le backend
+  // (PUT /api/clients/:id) le permettait déjà, mais aucun écran n'exposait
+  // ces champs : seul le statut KYC était modifiable via l'UI (gap signalé
+  // par l'utilisateur). Même patron que dossier-detail.component.ts.
+  readonly modeEdition = signal(false);
+  readonly enregistrement = signal(false);
+  readonly erreurEdition = signal('');
+  edit: any = {};
 
   clientId = '';
   nouveauStatutKyc = 'a_jour';
@@ -172,6 +220,38 @@ export class ClientDetailComponent implements OnInit {
     this.api.client(this.clientId).subscribe({
       next: (c) => { this.client.set(c); this.nouveauStatutKyc = c.kyc_statut; },
       error: () => this.erreur.set('Impossible de charger ce client.'),
+    });
+  }
+
+  activerEdition(c: any): void {
+    this.edit = {
+      denomination: c.denomination, rccm: c.rccm, nif: c.nif, forme_juridique: c.forme_juridique,
+      prenom: c.prenom, nom: c.nom, nationalite: c.nationalite,
+      email: c.email, telephone: c.telephone, adresse: c.adresse, ville: c.ville, pays: c.pays,
+      beneficiaires_effectifs: c.beneficiaires_effectifs, notes: c.notes,
+    };
+    this.erreurEdition.set('');
+    this.modeEdition.set(true);
+  }
+
+  annulerEdition(): void {
+    this.modeEdition.set(false);
+  }
+
+  enregistrerFiche(): void {
+    this.erreurEdition.set('');
+    this.enregistrement.set(true);
+    this.api.majClient(this.clientId, { ...this.edit, maj_le_attendu: this.client()?.maj_le }).subscribe({
+      next: () => { this.enregistrement.set(false); this.modeEdition.set(false); this.charger(); },
+      error: (e) => {
+        this.enregistrement.set(false);
+        if (e?.status === 409) {
+          this.erreurEdition.set('Cette fiche a été modifiée entre-temps — rechargement...');
+          this.charger();
+        } else {
+          this.erreurEdition.set(e?.error?.error ?? 'Enregistrement impossible.');
+        }
+      },
     });
   }
 

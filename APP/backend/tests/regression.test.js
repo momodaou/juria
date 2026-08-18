@@ -119,3 +119,44 @@ describe("Régression — champs enum/UUID optionnels omis", () => {
     expect(res.status).toBe(201);
   });
 });
+
+// Ajout 18/08/2026 : PUT /api/dossiers/:id n'existait pas du tout jusqu'ici
+// (aucun écran ne permettait de modifier un dossier après sa création,
+// signalé par l'utilisateur). Même patron de verrou optimiste que
+// PUT /api/clients/:id, testé ici pour la première fois côté dossiers.
+describe("PUT /api/dossiers/:id — édition et verrou optimiste", () => {
+  test("modifie un champ simple", async () => {
+    const res = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ matiere: "Recouvrement modifié" });
+    expect(res.status).toBe(200);
+
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.matiere).toBe("Recouvrement modifié");
+  });
+
+  test("verrou optimiste : refuse avec un maj_le_attendu périmé, accepte avec le bon", async () => {
+    const avant = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    const majLeVu = avant.body.maj_le;
+
+    // Modification concurrente entre-temps (par quelqu'un d'autre).
+    await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ urgence: "haute" });
+
+    const perime = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ urgence: "basse", maj_le_attendu: majLeVu });
+    expect(perime.status).toBe(409);
+
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    const ok = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ urgence: "basse", maj_le_attendu: relu.body.maj_le });
+    expect(ok.status).toBe(200);
+  });
+});

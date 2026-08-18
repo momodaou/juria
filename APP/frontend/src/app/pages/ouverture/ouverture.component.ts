@@ -1,13 +1,13 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-ouverture',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
 
@@ -84,7 +84,7 @@ import { AuthService } from '../../core/auth.service';
           }
         </select>
         @if (!dossier.client_id && clientNom) {
-          <p class="hint">Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus, ou créez-le d'abord dans Clients &amp; KYC.</p>
+          <p class="hint">Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus, ou <a routerLink="/clients" class="lien">créez-le dans Clients &amp; KYC</a> puis revenez sélectionner le client dans la liste.</p>
         }
 
         <label>Parties adverses (séparées par des virgules, facultatif)</label>
@@ -175,6 +175,7 @@ import { AuthService } from '../../core/auth.service';
     .verifies{margin-top:10px;font-size:13px}
     .verifies .terme{display:block;margin-top:6px}
     .hint{font-size:12px;color:#9a6c12;margin:-6px 0 12px}
+    .hint .lien{color:#9a6c12;text-decoration:underline}
   `],
 })
 export class OuvertureComponent implements OnInit {

@@ -42,7 +42,7 @@ router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence, d.pro_bono,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
+              d.client_id, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES}
        FROM dossiers d
@@ -188,6 +188,56 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     }
 
     res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/dossiers/:id — jusqu'ici AUCUNE route ne permettait de modifier
+// un dossier après sa création (gap signalé par l'utilisateur : « on
+// n'arrive pas à faire de modification une fois quelque chose validée »).
+// Même patron de verrouillage optimiste que PUT /api/clients/:id
+// (maj_le_attendu, troncage milliseconde des deux côtés) — cohérence
+// demandée entre les deux écrans. `pro_bono` volontairement exclu : sa
+// déclaration passe par sa propre logique (permission + quota) dans
+// POST /, un PUT libre la contournerait.
+router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const clauseConcurrence = b.maj_le_attendu != null
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $14::timestamptz)"
+      : "";
+    const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
+      b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
+      req.params.id];
+    if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
+
+    const { rows } = await pool.query(
+      `UPDATE dossiers SET
+         intitule = COALESCE($1, intitule),
+         pole = COALESCE($2::pole_cabinet, pole),
+         matiere = COALESCE($3, matiere),
+         juridiction = COALESCE($4, juridiction),
+         montant_litige = COALESCE($5, montant_litige),
+         mode_honoraires = COALESCE($6::mode_honoraires, mode_honoraires),
+         urgence = COALESCE($7::urgence_niveau, urgence),
+         responsable_id = COALESCE($8, responsable_id),
+         phase = COALESCE($9::phase_procedurale, phase),
+         statut = COALESCE($10::statut_dossier, statut),
+         objet = COALESCE($11, objet),
+         numero_role = COALESCE($12, numero_role),
+         maj_le = now()
+       WHERE id = $13 ${clauseConcurrence}
+       RETURNING id, numero, intitule, statut, phase, maj_le`,
+      params
+    );
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM dossiers WHERE id = $1", [req.params.id]);
+      if (!existe.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+      return res.status(409).json({ error: "Ce dossier a été modifié entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
+    }
+    res.json(rows[0]);
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

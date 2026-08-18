@@ -1758,3 +1758,16 @@ ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 
 COMMIT;
 -- =============== FIN SEUIL MINIMUM D'HONORAIRES ===============
+
+-- =====================================================================
+--  ÉDITION D'UN DOSSIER APRÈS CRÉATION (ajout 18/08/2026)
+--  Jusqu'ici PUT /api/dossiers/:id n'existait pas du tout — signalé par
+--  l'utilisateur (« on n'arrive pas à faire de modification une fois
+--  quelque chose validée »). dossiers.modifier ouverte à tous les rôles,
+--  même périmètre que clients.modifier (cohérence entre les deux écrans).
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'dossiers.modifier', TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN ÉDITION D'UN DOSSIER ===============

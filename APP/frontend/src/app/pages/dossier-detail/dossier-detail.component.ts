@@ -18,16 +18,78 @@ import { ApiService } from '../../core/api.service';
             <h1>{{ d.intitule }}</h1>
             <div class="sub">{{ d.numero }} · {{ d.matiere || d.pole }} · {{ d.juridiction }}</div>
           </div>
-          <span class="tag" [class.haute]="d.urgence === 'haute'">Urgence {{ d.urgence }}</span>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="tag" [class.haute]="d.urgence === 'haute'">Urgence {{ d.urgence }}</span>
+            <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(d)">
+              {{ modeEdition() ? 'Annuler' : 'Modifier' }}
+            </button>
+          </div>
         </div>
         <div class="meta">
           <div><span>Client</span><b>{{ d.client_nom }}</b></div>
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
           <div><span>Montant</span><b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b></div>
+          <div><span>Statut</span><b>{{ d.statut }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
           <div><span>Mode d'honoraires</span><b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b></div>
         </div>
       </div>
+
+      @if (modeEdition()) {
+        <section class="panel">
+          <h3>Modifier la fiche</h3>
+          <div class="grid2">
+            <div><label>Intitulé</label><input class="in" [(ngModel)]="edit.intitule" name="editIntitule" /></div>
+            <div><label>Matière</label><input class="in" [(ngModel)]="edit.matiere" name="editMatiere" /></div>
+            <div><label>Juridiction</label><input class="in" [(ngModel)]="edit.juridiction" name="editJuridiction" /></div>
+            <div><label>Montant du litige (FCFA)</label><input class="in" type="number" [(ngModel)]="edit.montant_litige" name="editMontant" /></div>
+            <div>
+              <label>Mode d'honoraires</label>
+              <select class="in" [(ngModel)]="edit.mode_honoraires" name="editModeHonoraires">
+                <option value="forfait">Forfait</option>
+                <option value="temps_passe">Temps passé</option>
+                <option value="success_fee">Success fee</option>
+                <option value="abonnement">Abonnement</option>
+                <option value="consultation">Consultation</option>
+              </select>
+            </div>
+            <div>
+              <label>Urgence</label>
+              <select class="in" [(ngModel)]="edit.urgence" name="editUrgence">
+                <option value="basse">Basse</option>
+                <option value="moyenne">Moyenne</option>
+                <option value="haute">Haute</option>
+              </select>
+            </div>
+            <div>
+              <label>Phase</label>
+              <select class="in" [(ngModel)]="edit.phase" name="editPhase">
+                @for (p of phases; track p) { <option [value]="p">{{ p }}</option> }
+              </select>
+            </div>
+            <div>
+              <label>Statut</label>
+              <select class="in" [(ngModel)]="edit.statut" name="editStatut">
+                <option value="ouvert">Ouvert</option>
+                <option value="en_cours">En cours</option>
+                <option value="suspendu">Suspendu</option>
+                <option value="clos">Clos</option>
+                <option value="archive">Archivé</option>
+              </select>
+            </div>
+            <div>
+              <label>Responsable</label>
+              <select class="in" [(ngModel)]="edit.responsable_id" name="editResponsable">
+                @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+              </select>
+            </div>
+          </div>
+          <button class="btn" (click)="enregistrerDossier()" [disabled]="enregistrement()">
+            {{ enregistrement() ? 'Enregistrement…' : 'Enregistrer' }}
+          </button>
+          @if (erreurEdition()) { <p class="err">{{ erreurEdition() }}</p> }
+        </section>
+      }
 
       <section class="panel">
         <h3>Honoraires</h3>
@@ -208,11 +270,15 @@ import { ApiService } from '../../core/api.service';
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn:disabled{opacity:.6}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
+    label{font-size:12px;color:var(--slate);font-weight:600}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -241,6 +307,17 @@ export class DossierDetailComponent implements OnInit {
   readonly iaOut = signal('');
   readonly iaEnCours = signal(false);
 
+  // Édition de la fiche (ajout 18/08/2026) — PUT /api/dossiers/:id
+  // n'existait pas du tout jusqu'ici (gap signalé par l'utilisateur).
+  // Même patron que le verrou optimiste déjà utilisé côté clients
+  // (maj_le_attendu), pour rester cohérent entre les deux écrans.
+  readonly modeEdition = signal(false);
+  readonly enregistrement = signal(false);
+  readonly erreurEdition = signal('');
+  readonly utilisateurs = signal<any[]>([]);
+  edit: any = {};
+  readonly phases = ['consultation', 'ouverture', 'mise_en_etat', 'plaidoirie', 'decision', 'execution', 'recours', 'cloture'];
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
@@ -249,10 +326,46 @@ export class DossierDetailComponent implements OnInit {
       next: (d) => this.dossier.set(d),
       error: () => this.erreur.set('Dossier introuvable.'),
     });
+    this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.rafraichirDelais();
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();
+  }
+
+  activerEdition(d: any): void {
+    this.edit = {
+      intitule: d.intitule, matiere: d.matiere, juridiction: d.juridiction,
+      montant_litige: d.montant_litige, mode_honoraires: d.mode_honoraires,
+      urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
+    };
+    this.erreurEdition.set('');
+    this.modeEdition.set(true);
+  }
+
+  annulerEdition(): void {
+    this.modeEdition.set(false);
+  }
+
+  enregistrerDossier(): void {
+    this.erreurEdition.set('');
+    this.enregistrement.set(true);
+    this.api.majDossier(this.id, { ...this.edit, maj_le_attendu: this.dossier()?.maj_le }).subscribe({
+      next: () => {
+        this.enregistrement.set(false);
+        this.modeEdition.set(false);
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => {
+        this.enregistrement.set(false);
+        if (e?.status === 409) {
+          this.erreurEdition.set('Ce dossier a été modifié entre-temps — rechargement...');
+          this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+        } else {
+          this.erreurEdition.set(e?.error?.error ?? 'Enregistrement impossible.');
+        }
+      },
+    });
   }
 
   alertesDeclenchees(d: any): string {
