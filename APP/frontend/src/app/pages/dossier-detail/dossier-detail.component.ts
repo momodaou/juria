@@ -30,7 +30,7 @@ import { ApiService } from '../../core/api.service';
       </div>
 
       <section class="panel">
-        <h3>Honoraires — anti-dissimulation</h3>
+        <h3>Honoraires</h3>
         @if (d.statut_honoraires === 'abonnement') {
           <p class="muted">Dossier facturé dans le cadre d'un abonnement — hors seuil automatique par dossier.</p>
         } @else {

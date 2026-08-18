@@ -17,10 +17,13 @@ import { AuthService } from '../../core/auth.service';
       <label>Intitulé du projet de dossier</label>
       <input class="in" [(ngModel)]="intitule" name="intitule" placeholder="Ex. Bâtir-SA — recouvrement" />
 
-      <label>Noms à vérifier (client, adverses, parties liées — séparés par des virgules)</label>
-      <input class="in" [(ngModel)]="noms" name="noms" placeholder="Ex. Bâtir-SA, SODIMA Sarl" />
+      <label>Client</label>
+      <input class="in" [(ngModel)]="clientNom" name="clientNom" placeholder="Ex. Bâtir-SA" />
 
-      <button class="btn" (click)="verifier()" [disabled]="chargement() || !noms">
+      <label>Parties adverses / tiers liés (séparés par des virgules, facultatif)</label>
+      <input class="in" [(ngModel)]="partiesAdverses" name="partiesAdverses" placeholder="Ex. SODIMA Sarl, M. Traoré" />
+
+      <button class="btn" (click)="verifier()" [disabled]="chargement() || !clientNom">
         {{ chargement() ? 'Vérification…' : 'Lancer le contrôle' }}
       </button>
 
@@ -28,6 +31,15 @@ import { AuthService } from '../../core/auth.service';
         <div class="result" [class.ok]="r.resultat === 'absence'" [class.warn]="r.resultat === 'potentiel'">
           <b>{{ r.resultat === 'absence' ? '✓ Absence de conflit' : '⚠ Conflit potentiel détecté' }}</b>
           <p>{{ r.message }}</p>
+
+          <div class="verifies">
+            <span class="terme">Client vérifié :</span> <span class="chip">{{ clientNom }}</span>
+            @if (partiesAdversesListe().length) {
+              <span class="terme">Parties adverses vérifiées :</span>
+              @for (p of partiesAdversesListe(); track p) { <span class="chip">{{ p }}</span> }
+            }
+          </div>
+
           @for (d of r.details; track d.terme) {
             <div class="match">
               <span class="terme">{{ d.terme }}</span> :
@@ -71,6 +83,12 @@ import { AuthService } from '../../core/auth.service';
             <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
           }
         </select>
+        @if (!dossier.client_id && clientNom) {
+          <p class="hint">Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus, ou créez-le d'abord dans Clients &amp; KYC.</p>
+        }
+
+        <label>Parties adverses (séparées par des virgules, facultatif)</label>
+        <input class="in" [(ngModel)]="partiesAdversesEdit" name="partiesAdversesEdit" placeholder="Ex. SODIMA Sarl, M. Traoré" />
 
         <div class="grid2">
           <div>
@@ -154,6 +172,9 @@ import { AuthService } from '../../core/auth.service';
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
     .pb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate);margin:6px 0 14px;cursor:pointer}
     .pb input{width:auto}
+    .verifies{margin-top:10px;font-size:13px}
+    .verifies .terme{display:block;margin-top:6px}
+    .hint{font-size:12px;color:#9a6c12;margin:-6px 0 12px}
   `],
 })
 export class OuvertureComponent implements OnInit {
@@ -162,7 +183,8 @@ export class OuvertureComponent implements OnInit {
   readonly auth = inject(AuthService);
 
   intitule = '';
-  noms = '';
+  clientNom = '';
+  partiesAdverses = '';
   motif = '';
   readonly resultat = signal<any | null>(null);
   readonly decisionPrise = signal<string | null>(null);
@@ -172,11 +194,15 @@ export class OuvertureComponent implements OnInit {
   // Étape 2 — création du dossier une fois l'absence de conflit confirmée
   // (ou le conflit potentiel accepté par un associé). numero généré
   // automatiquement côté serveur (référencement automatique, AFF-AA-XXX),
-  // pas demandé ici.
+  // pas demandé ici. Les parties adverses saisies à l'étape 1 sont reprises
+  // ici (éditables) plutôt que de disparaître après le contrôle des
+  // conflits — corrige un gap signalé par l'utilisateur : le client et les
+  // parties adverses vérifiés n'apparaissaient nulle part ensuite.
   readonly clients = signal<any[]>([]);
   readonly utilisateurs = signal<any[]>([]);
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
+  partiesAdversesEdit = '';
   dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false };
 
   ngOnInit(): void {
@@ -184,15 +210,35 @@ export class OuvertureComponent implements OnInit {
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
+  partiesAdversesListe(): string[] {
+    return this.partiesAdverses.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
   peutCreer(): boolean {
     const r = this.resultat();
     return !!r && (r.resultat === 'absence' || this.decisionPrise() === 'accepte');
   }
 
+  // Pré-sélectionne le client si son nom (saisi à l'étape 1) correspond
+  // exactement, à la casse près, à un client existant — sinon laisse le
+  // champ vide avec l'indice affiché dans le template plutôt que de deviner.
+  private preselectionnerClient(): void {
+    if (this.dossier.client_id) return;
+    const cible = this.clientNom.trim().toLowerCase();
+    if (!cible) return;
+    const trouve = this.clients().find((c: any) => {
+      const nom = (c.denomination || `${c.prenom} ${c.nom}`).trim().toLowerCase();
+      return nom === cible;
+    });
+    if (trouve) this.dossier.client_id = trouve.id;
+    this.partiesAdversesEdit = this.partiesAdverses;
+  }
+
   creerDossier(): void {
     this.erreurCreation.set('');
     this.creation.set(true);
-    this.api.creerDossier({ intitule: this.intitule, ...this.dossier }).subscribe({
+    const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
+    this.api.creerDossier({ intitule: this.intitule, ...this.dossier, parties_adverses: partiesAdverses }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });
@@ -203,8 +249,9 @@ export class OuvertureComponent implements OnInit {
     this.erreur.set('');
     this.resultat.set(null);
     this.decisionPrise.set(null);
-    this.api.conflictCheck({ intitule_projet: this.intitule, noms: this.noms }).subscribe({
-      next: (r) => { this.resultat.set(r); this.chargement.set(false); },
+    const noms = [this.clientNom, ...this.partiesAdversesListe()].filter(Boolean).join(', ');
+    this.api.conflictCheck({ intitule_projet: this.intitule, noms }).subscribe({
+      next: (r) => { this.resultat.set(r); this.chargement.set(false); this.preselectionnerClient(); },
       error: (e) => { this.chargement.set(false); this.erreur.set(e?.error?.error ?? 'Erreur lors du contrôle'); },
     });
   }

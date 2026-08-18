@@ -124,7 +124,7 @@ import { AuthService } from '../../core/auth.service';
 
       @if (auth.peut('parametres.honoraires.modifier') && parametres()) {
         <section class="panel">
-          <h3>Seuils honoraires (anti-dissimulation)</h3>
+          <h3>Seuils honoraires</h3>
           <p class="muted">Planchers minimum, pas des forfaits imposés — un dossier peut toujours être facturé au-delà. Réservé Associé + Administrateur IT.</p>
           <div class="grid2">
             <div>

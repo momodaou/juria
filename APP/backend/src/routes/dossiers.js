@@ -174,6 +174,19 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono]
     );
+
+    // Parties adverses saisies au contrôle des conflits (étape 1 du
+    // formulaire d'ouverture) : jusqu'ici aucune route ne les enregistrait
+    // nulle part, elles disparaissaient après le contrôle — gap signalé
+    // par l'utilisateur. b.parties_adverses = tableau de dénominations.
+    const partiesAdverses = Array.isArray(b.parties_adverses) ? b.parties_adverses.filter(Boolean) : [];
+    for (const denomination of partiesAdverses) {
+      await pool.query(
+        "INSERT INTO dossier_parties (dossier_id, role, denomination) VALUES ($1,'adverse',$2)",
+        [rows[0].id, denomination]
+      );
+    }
+
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
