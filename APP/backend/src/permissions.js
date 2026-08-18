@@ -8,10 +8,15 @@
 // la matrice ne puisse jamais retirer à tout le monde le moyen de la
 // corriger.
 //
-// Chaque entrée correspond à une ligne du registre des 53 commandes
-// manuelles ; les 10 marquées "restreinte: true" sont celles déjà
-// réservées à la direction/comptabilité avant l'introduction de cette
-// matrice (voir schema.sql pour les valeurs de départ exactes).
+// Chaque entrée correspond à une ligne du registre des commandes manuelles ;
+// les entrées marquées "restreinte: true" sont réservées par défaut à la
+// direction/comptabilité (voir schema.sql pour les valeurs de départ
+// exactes) — 10 actions de création/décaissement (dès la mise en place de
+// la matrice), + 4 actions de simple CONSULTATION ajoutées le 18/08/2026
+// (factures/dépenses/rétrocessions/bulletins de paie « des autres ») après
+// une demande explicite de « role level security » plus poussée : la
+// matrice ne portait jusque-là que sur les actions de création/modification,
+// jamais sur le simple fait de voir une liste sensible.
 const { pool } = require("./db");
 
 const CATALOGUE = [
@@ -48,16 +53,19 @@ const CATALOGUE = [
   { code: "taches.statut.modifier", module: "Plan d'action", label: "Déplacer une tâche" },
   { code: "taches.valider", module: "Plan d'action", label: "Valider une tâche", restreinte: true },
 
+  { code: "factures.consulter", module: "Chrono & Facturation", label: "Consulter les factures (liste, montants)", restreinte: true },
   { code: "temps.creer", module: "Chrono & Facturation", label: "Saisir du temps passé" },
   { code: "factures.creer", module: "Chrono & Facturation", label: "Émettre une facture" },
   { code: "factures.paiement.ajouter", module: "Chrono & Facturation", label: "Encaisser un paiement" },
 
+  { code: "depenses.consulter", module: "Dépenses & caisse", label: "Consulter les dépenses (liste, montants)", restreinte: true },
   { code: "depenses.creer", module: "Dépenses & caisse", label: "Soumettre une dépense" },
   { code: "depenses.decision", module: "Dépenses & caisse", label: "Valider / rejeter une dépense", restreinte: true },
   { code: "depenses.decaisser", module: "Dépenses & caisse", label: "Décaisser une dépense", restreinte: true },
   { code: "depenses.petite_caisse.doter", module: "Dépenses & caisse", label: "Doter la petite caisse du mois", restreinte: true },
   { code: "depenses.vignettes.mouvement", module: "Dépenses & caisse", label: "Mouvement de vignettes" },
 
+  { code: "retrocessions.consulter", module: "Rétrocessions", label: "Consulter les rétrocessions de tous (montants, rémunération)", restreinte: true },
   { code: "retrocessions.creer", module: "Rétrocessions", label: "Enregistrer une rétrocession" },
   { code: "retrocessions.decaisser", module: "Rétrocessions", label: "Décaisser une rétrocession", restreinte: true },
 
@@ -65,6 +73,7 @@ const CATALOGUE = [
   { code: "cabinet.conge.decision", module: "Cabinet (RH)", label: "Valider / rejeter un congé", restreinte: true },
   { code: "cabinet.presence.pointer", module: "Cabinet (RH)", label: "Pointer (présence)" },
   { code: "cabinet.bulletin.generer", module: "Cabinet (RH)", label: "Générer un bulletin", restreinte: true },
+  { code: "cabinet.bulletins.consulter", module: "Cabinet (RH)", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
 
   { code: "ia.resume", module: "Assistant IA", label: "Résumer" },
   { code: "ia.chronologie", module: "Assistant IA", label: "Reconstituer une chronologie" },

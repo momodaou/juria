@@ -47,6 +47,7 @@ export class LoginComponent {
       next: () => {
         this.chargement.set(false);
         this.messagerie.demarrer();
+        this.auth.chargerProfil();
         this.router.navigate(['/cockpit']);
       },
       error: (e) => {

@@ -60,7 +60,7 @@ async function resoudreTauxChange(devise, tauxFourni, userId) {
 }
 
 // GET /api/factures?statut=  |  GET /api/factures/impayees
-router.get("/impayees", async (req, res) => {
+router.get("/impayees", requirePermission("factures.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.montant_ttc, f.devise, f.statut, f.date_echeance,
@@ -77,7 +77,7 @@ router.get("/impayees", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   const { statut, dossier_id, client_id } = req.query;
   const params = [];
   const clauses = [];

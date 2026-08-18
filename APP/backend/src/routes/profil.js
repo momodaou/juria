@@ -7,7 +7,10 @@ const { pool } = require("../db");
 const { logAudit } = require("../audit");
 const router = express.Router();
 
-// GET /api/profil
+// GET /api/profil — inclut la liste des action_code autorisés pour le rôle
+// de l'appelant (permissions.autorise=TRUE), pour que le frontend puisse
+// masquer les sections/menus auxquels il n'a pas droit sans avoir à deviner
+// ou à essayer un appel pour voir s'il échoue.
 router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -15,7 +18,11 @@ router.get("/", async (req, res) => {
       [req.user.sub]
     );
     if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json(rows[0]);
+    const perms = await pool.query(
+      "SELECT action_code FROM permissions_role WHERE role = $1 AND autorise = TRUE",
+      [req.user.role]
+    );
+    res.json({ ...rows[0], permissions: perms.rows.map((r) => r.action_code) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

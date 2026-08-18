@@ -160,8 +160,21 @@ router.post("/presences", requirePermission("cabinet.presence.pointer"), async (
 });
 
 // GET /api/cabinet/bulletins?utilisateur_id=
+// Chacun voit toujours SON PROPRE bulletin sans permission particulière ;
+// voir celui de quelqu'un d'autre exige cabinet.bulletins.consulter. Avant
+// ce correctif, ?utilisateur_id=<autre> n'était filtré par rien d'autre que
+// la valeur par défaut (fausse impression de sécurité).
 router.get("/bulletins", async (req, res) => {
   const uid = req.query.utilisateur_id || req.user.sub;
+  if (uid !== req.user.sub) {
+    const { rows } = await pool.query(
+      "SELECT autorise FROM permissions_role WHERE role = $1 AND action_code = 'cabinet.bulletins.consulter'",
+      [req.user.role]
+    );
+    if (!rows[0] || !rows[0].autorise) {
+      return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+    }
+  }
   try {
     const { rows } = await pool.query(
       `SELECT id, mois, salaire_brut, salaire_net, primes, verse_le

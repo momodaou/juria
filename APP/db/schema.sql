@@ -1639,3 +1639,47 @@ ON CONFLICT (role, action_code) DO NOTHING;
 
 COMMIT;
 -- =============== FIN STATUTS COMPLÉMENTAIRES ===============
+
+-- =====================================================================
+--  ACTIONS DE CONSULTATION SENSIBLES (ajout 18/08/2026)
+--
+--  Suite à une discussion « role level security » : la matrice ne portait
+--  jusque-là que sur les actions de création/modification/décaissement,
+--  jamais sur le simple fait de VOIR une liste. Constat fait en creusant :
+--  factures/dépenses/rétrocessions/bulletins de paie étaient visibles par
+--  n'importe quel rôle ayant l'accès de base au module — y compris la
+--  rémunération individuelle de chacun (rétrocessions) et les bulletins de
+--  paie d'autrui (contournable via ?utilisateur_id= malgré le filtrage par
+--  défaut « soi-même »). Formule retenue (axe B validé par l'utilisateur,
+--  l'axe A — confidentialité fine par dossier/élément — volontairement
+--  mis de côté pour l'instant) :
+--    - factures / dépenses : module entier invisible si non autorisé, pas
+--      d'exception (ce ne sont pas des données personnelles).
+--    - rétrocessions / bulletins de paie : chacun voit toujours les siens
+--      (traité en code, pas ici — voir retrocessions.js / cabinet.js),
+--      cette table ne couvre que le droit de voir CEUX DES AUTRES.
+--    - Administrateur IT explicitement exclu des deux actions de
+--      rémunération (retrocessions.consulter, cabinet.bulletins.consulter) :
+--      son rôle est technique, pas de supervision financière — s'il a un
+--      besoin ponctuel de dépannage, il peut se l'accorder lui-même via la
+--      matrice (il en a le droit) puis le retirer, plutôt que de l'avoir
+--      ouvert en permanence par défaut.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','factures.consulter',TRUE),('associe_fondateur','factures.consulter',TRUE),
+ ('admin_general','factures.consulter',TRUE),('admin_it','factures.consulter',TRUE),
+ ('comptable','factures.consulter',TRUE),('assistant_comptable','factures.consulter',TRUE),
+
+ ('associe','depenses.consulter',TRUE),('associe_fondateur','depenses.consulter',TRUE),
+ ('admin_general','depenses.consulter',TRUE),('admin_it','depenses.consulter',TRUE),
+ ('comptable','depenses.consulter',TRUE),('assistant_comptable','depenses.consulter',TRUE),
+
+ ('associe','retrocessions.consulter',TRUE),('associe_fondateur','retrocessions.consulter',TRUE),
+ ('admin_general','retrocessions.consulter',TRUE),
+ ('comptable','retrocessions.consulter',TRUE),('assistant_comptable','retrocessions.consulter',TRUE),
+
+ ('associe','cabinet.bulletins.consulter',TRUE),('associe_fondateur','cabinet.bulletins.consulter',TRUE),
+ ('admin_general','cabinet.bulletins.consulter',TRUE),
+ ('comptable','cabinet.bulletins.consulter',TRUE),('assistant_comptable','cabinet.bulletins.consulter',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN ACTIONS DE CONSULTATION SENSIBLES ===============

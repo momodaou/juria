@@ -18,8 +18,30 @@ interface ReponseLogin {
 export class AuthService {
   private readonly tokenKey = 'juria_token';
   readonly utilisateur = signal<Utilisateur | null>(null);
+  /** Actions autorisées pour le rôle courant (permissions_role, autorise=TRUE) —
+   * sert à masquer les sections/menus sensibles côté écran (facturation,
+   * rétrocessions, dépenses, bulletins de paie « des autres »). */
+  readonly permissions = signal<Set<string>>(new Set());
 
   constructor(private http: HttpClient) {}
+
+  /** Recharge profil + permissions depuis le serveur — à appeler après une
+   * connexion réussie et au démarrage de l'appli si un jeton existe déjà
+   * (rechargement de page). */
+  chargerProfil(): void {
+    if (!this.token) return;
+    this.http.get<any>(`${environment.apiUrl}/api/profil`).subscribe({
+      next: (p) => {
+        this.utilisateur.set({ id: p.id, nom: `${p.prenom} ${p.nom}`, role: p.role });
+        this.permissions.set(new Set(p.permissions || []));
+      },
+      error: () => {},
+    });
+  }
+
+  peut(actionCode: string): boolean {
+    return this.permissions().has(actionCode);
+  }
 
   login(email: string, motDePasse: string): Observable<ReponseLogin> {
     return this.http

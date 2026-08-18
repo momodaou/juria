@@ -21,8 +21,23 @@ router.get("/qualites", (req, res) => {
 });
 
 // GET /api/retrocessions?beneficiaire_id=&statut=
+// Chacun voit toujours SES PROPRES rétrocessions (beneficiaire_id = soi-même)
+// sans permission particulière ; voir celles de quelqu'un d'autre — ou la
+// liste complète sans filtre — exige retrocessions.consulter (rémunération
+// individuelle, donnée sensible). Le paramètre n'est plus une simple
+// commodité d'affichage : c'est la frontière de sécurité elle-même.
 router.get("/", async (req, res) => {
   const { beneficiaire_id, statut } = req.query;
+  const consulteSesPropres = beneficiaire_id && beneficiaire_id === req.user.sub;
+  if (!consulteSesPropres) {
+    const { rows } = await pool.query(
+      "SELECT autorise FROM permissions_role WHERE role = $1 AND action_code = 'retrocessions.consulter'",
+      [req.user.role]
+    );
+    if (!rows[0] || !rows[0].autorise) {
+      return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+    }
+  }
   const params = [];
   const clauses = [];
   if (beneficiaire_id) { params.push(beneficiaire_id); clauses.push(`r.beneficiaire_id = $${params.length}`); }

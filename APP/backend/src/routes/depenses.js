@@ -7,7 +7,11 @@ const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=
-router.get("/", async (req, res) => {
+// Liste des dépenses du cabinet — donnée financière, pas juste une commodité
+// de suivi personnel (contrairement aux rétrocessions/bulletins, une dépense
+// n'a pas de « propriétaire » au sens rémunération) : gardée entièrement
+// derrière depenses.consulter, sans exception pour ses propres soumissions.
+router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   const { type, statut, dossier_id, petite_caisse } = req.query;
   const params = [];
   const clauses = [];

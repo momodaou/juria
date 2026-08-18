@@ -11,6 +11,9 @@ interface NavItem {
   label: string;
   /** Icône trait (24x24, style Feather-like), un seul path/groupe par entrée. */
   icon: SafeHtml;
+  /** Action de consultation requise (permissions_role) pour voir cette entrée
+   * dans le menu — absent = visible par tous, comme avant (18/08/2026). */
+  requiert?: string;
 }
 
 @Component({
@@ -45,13 +48,15 @@ interface NavItem {
 
           <nav>
             @for (item of navItems; track item.path) {
-              <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
-                <span class="ico" [innerHTML]="item.icon"></span>
-                <span class="lbl">{{ item.label }}</span>
-                @if (item.path === '/messagerie' && messagerie.nonLus() > 0) {
-                  <span class="badge-nonlus">{{ messagerie.nonLus() }}</span>
-                }
-              </a>
+              @if (!item.requiert || auth.peut(item.requiert)) {
+                <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
+                  <span class="ico" [innerHTML]="item.icon"></span>
+                  <span class="lbl">{{ item.label }}</span>
+                  @if (item.path === '/messagerie' && messagerie.nonLus() > 0) {
+                    <span class="badge-nonlus">{{ messagerie.nonLus() }}</span>
+                  }
+                </a>
+              }
             }
           </nav>
 
@@ -73,7 +78,10 @@ export class AppComponent implements OnInit {
   private readonly router = inject(Router);
 
   ngOnInit(): void {
-    if (this.auth.estConnecte) this.messagerie.demarrer();
+    if (this.auth.estConnecte) {
+      this.messagerie.demarrer();
+      this.auth.chargerProfil(); // permissions à jour après un rechargement de page
+    }
   }
   private readonly sanitizer = inject(DomSanitizer);
 
@@ -156,14 +164,14 @@ export class AppComponent implements OnInit {
     { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes },
     { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio },
     { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction },
-    { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses },
-    { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions },
+    { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter' },
+    { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter' },
     { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces },
     { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet },
     { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient },
     { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },
-    { path: '/facturation', label: 'Facturation', icon: this.icons.facturation },
+    { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter' },
   ];
 
   readonly collapsed = signal(localStorage.getItem(SIDEBAR_KEY) === '1');
