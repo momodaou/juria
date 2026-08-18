@@ -156,13 +156,22 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
         });
       }
     }
+    // Référencement automatique (AFF-AA-XXX) si non fourni — même patron que
+    // la numérotation des factures (factures.js). Jusqu'ici cette route
+    // exigeait un numero fourni par l'appelant alors qu'aucun écran
+    // frontend ne le générait, gap comblé en construisant le formulaire
+    // d'ouverture (ouverture.component.ts).
+    const yy = new Date().getFullYear().toString().slice(2);
+    const cpt = await pool.query("SELECT count(*) + 1 AS n FROM dossiers WHERE numero LIKE $1", [`AFF-${yy}-%`]);
+    const numero = b.numero || `AFF-${yy}-${String(cpt.rows[0].n).padStart(3, "0")}`;
+
     const { rows } = await pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, mode_honoraires, urgence, responsable_id, pro_bono)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11)
        RETURNING id, numero, intitule, pro_bono`,
-      [b.numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
+      [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono]
     );
     res.status(201).json(rows[0]);

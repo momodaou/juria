@@ -1,6 +1,8 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-ouverture',
@@ -57,6 +59,82 @@ import { ApiService } from '../../core/api.service';
 
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
+
+    @if (peutCreer()) {
+      <section class="panel">
+        <h3>Étape 2 — Création du dossier</h3>
+
+        <label>Client</label>
+        <select class="in" [(ngModel)]="dossier.client_id" name="clientId">
+          <option value="">— Sélectionner —</option>
+          @for (c of clients(); track c.id) {
+            <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
+          }
+        </select>
+
+        <div class="grid2">
+          <div>
+            <label>Pôle</label>
+            <select class="in" [(ngModel)]="dossier.pole" name="pole">
+              <option value="contentieux">Contentieux</option>
+              <option value="conseil">Conseil</option>
+            </select>
+          </div>
+          <div>
+            <label>Matière</label>
+            <input class="in" [(ngModel)]="dossier.matiere" name="matiere" placeholder="Ex. Recouvrement" />
+          </div>
+          <div>
+            <label>Juridiction</label>
+            <input class="in" [(ngModel)]="dossier.juridiction" name="juridiction" placeholder="Ex. Tribunal de commerce de Bamako" />
+          </div>
+          <div>
+            <label>Montant du litige (FCFA)</label>
+            <input class="in" type="number" [(ngModel)]="dossier.montant_litige" name="montantLitige" />
+          </div>
+          <div>
+            <label>Mode d'honoraires</label>
+            <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires">
+              <option value="forfait">Forfait</option>
+              <option value="temps_passe">Temps passé</option>
+              <option value="success_fee">Success fee</option>
+              <option value="abonnement">Abonnement</option>
+              <option value="consultation">Consultation</option>
+            </select>
+          </div>
+          <div>
+            <label>Urgence</label>
+            <select class="in" [(ngModel)]="dossier.urgence" name="urgence">
+              <option value="moyenne">Moyenne</option>
+              <option value="basse">Basse</option>
+              <option value="haute">Haute</option>
+            </select>
+          </div>
+          <div>
+            <label>Responsable</label>
+            <select class="in" [(ngModel)]="dossier.responsable_id" name="responsableId">
+              <option value="">— Sélectionner —</option>
+              @for (u of utilisateurs(); track u.id) {
+                <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        @if (auth.peut('dossiers.pro_bono.declarer')) {
+          <label class="pb">
+            <input type="checkbox" [(ngModel)]="dossier.pro_bono" name="proBono" />
+            Dossier pro bono (soumis au quota mensuel, frais de procédure minimum plutôt que le seuil d'honoraires classique)
+          </label>
+        }
+
+        <button class="btn" (click)="creerDossier()"
+                [disabled]="creation() || !dossier.client_id || !dossier.matiere || !dossier.responsable_id">
+          {{ creation() ? 'Création…' : 'Créer le dossier' }}
+        </button>
+        @if (erreurCreation()) { <p class="err">{{ erreurCreation() }}</p> }
+      </section>
+    }
   `,
   styles: [`
     .in{display:block;width:100%;max-width:520px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
@@ -73,10 +151,15 @@ import { ApiService } from '../../core/api.service';
     .decision{margin-top:14px}
     .decision .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
     .decision-finale{margin-top:12px;font-size:14px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+    .pb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate);margin:6px 0 14px;cursor:pointer}
+    .pb input{width:auto}
   `],
 })
-export class OuvertureComponent {
+export class OuvertureComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly router = inject(Router);
+  readonly auth = inject(AuthService);
 
   intitule = '';
   noms = '';
@@ -85,6 +168,35 @@ export class OuvertureComponent {
   readonly decisionPrise = signal<string | null>(null);
   readonly chargement = signal(false);
   readonly erreur = signal('');
+
+  // Étape 2 — création du dossier une fois l'absence de conflit confirmée
+  // (ou le conflit potentiel accepté par un associé). numero généré
+  // automatiquement côté serveur (référencement automatique, AFF-AA-XXX),
+  // pas demandé ici.
+  readonly clients = signal<any[]>([]);
+  readonly utilisateurs = signal<any[]>([]);
+  readonly creation = signal(false);
+  readonly erreurCreation = signal('');
+  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false };
+
+  ngOnInit(): void {
+    this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
+    this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
+  }
+
+  peutCreer(): boolean {
+    const r = this.resultat();
+    return !!r && (r.resultat === 'absence' || this.decisionPrise() === 'accepte');
+  }
+
+  creerDossier(): void {
+    this.erreurCreation.set('');
+    this.creation.set(true);
+    this.api.creerDossier({ intitule: this.intitule, ...this.dossier }).subscribe({
+      next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
+      error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
+    });
+  }
 
   verifier(): void {
     this.chargement.set(true);
