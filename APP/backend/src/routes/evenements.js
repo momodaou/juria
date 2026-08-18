@@ -2,6 +2,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
 const router = express.Router();
 
 // Détermine le niveau d'alerte à partir du nombre de jours restants.
@@ -56,35 +57,18 @@ router.post("/", requirePermission("evenements.creer"), async (req, res) => {
   }
 });
 
-// POST /api/evenements/jobs/alertes
-// Appelé chaque jour par Cloud Scheduler. Repère les échéances qui franchissent
-// un seuil (J-30/J-15/J-7/J-1/J0) et marque l'alerte comme envoyée (ici : renvoie
-// la liste ; l'envoi e-mail/notification est branché à cette étape).
-router.post("/jobs/alertes", async (req, res) => {
+// POST /api/evenements/jobs/alertes  (déclenchement manuel, authentifié)
+// Repère les échéances qui franchissent un seuil (J-30/J-15/J-7/J-1/J0) et
+// marque l'alerte comme envoyée. Jusqu'au 18/08/2026, n'importe quel
+// utilisateur authentifié pouvait déclencher ce job (aucun contrôle de
+// permission dessus) — corrigé au passage en creusant le même patron pour
+// construire le job d'alertes honoraires. Le déclenchement automatique
+// réel passe désormais par Cloud Scheduler → /internal/jobs/alertes-delais
+// (routes/internal-jobs.js, protégé par secret partagé, pas par un jeton
+// utilisateur) ; cette route reste utile pour un test/déclenchement manuel.
+router.post("/jobs/alertes", requirePermission("evenements.jobs.declencher"), async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT e.id, e.titre, e.date_echeance, e.dossier_id, d.numero AS dossier_numero,
-              e.responsable_id, (e.date_echeance::date - current_date) AS jours_restants,
-              e.alerte_j30, e.alerte_j15, e.alerte_j7, e.alerte_j1, e.alerte_j0
-       FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
-       WHERE e.statut = 'a_venir' AND e.date_echeance::date >= current_date`
-    );
-    const aNotifier = [];
-    for (const e of rows) {
-      const j = Number(e.jours_restants);
-      let col = null;
-      if (j === 0 && !e.alerte_j0) col = "alerte_j0";
-      else if (j <= 1 && !e.alerte_j1) col = "alerte_j1";
-      else if (j <= 7 && !e.alerte_j7) col = "alerte_j7";
-      else if (j <= 15 && !e.alerte_j15) col = "alerte_j15";
-      else if (j <= 30 && !e.alerte_j30) col = "alerte_j30";
-      if (col) {
-        await pool.query(`UPDATE evenements SET ${col} = true WHERE id = $1`, [e.id]);
-        aNotifier.push({ id: e.id, dossier: e.dossier_numero, titre: e.titre, jours: j, seuil: col });
-      }
-    }
-    // TODO (prod) : envoyer e-mail / notification interne pour chaque élément de aNotifier.
-    res.json({ traites: rows.length, notifies: aNotifier.length, details: aNotifier });
+    res.json(await executerJobAlertesDelais(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

@@ -1,7 +1,8 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService } from '../../core/api.service';
+import { ApiService, ParametresHonoraires } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-acces',
@@ -121,6 +122,29 @@ import { ApiService } from '../../core/api.service';
         } @else { <p class="muted">Aucune délégation.</p> }
       </section>
 
+      @if (auth.peut('parametres.honoraires.modifier') && parametres()) {
+        <section class="panel">
+          <h3>Seuils honoraires (anti-dissimulation)</h3>
+          <p class="muted">Planchers minimum, pas des forfaits imposés — un dossier peut toujours être facturé au-delà. Réservé Associé + Administrateur IT.</p>
+          <div class="grid2">
+            <div>
+              <label>Honoraires minimum — dossier classique (FCFA)</label>
+              <input class="in" type="number" [(ngModel)]="parametresEdit.honoraires_min_xof" name="seuilClassique" />
+            </div>
+            <div>
+              <label>Frais de procédure minimum — dossier pro bono (FCFA)</label>
+              <input class="in" type="number" [(ngModel)]="parametresEdit.frais_procedure_pro_bono_min_xof" name="seuilProBono" />
+            </div>
+            <div>
+              <label>Quota pro bono (dossiers/mois/responsable)</label>
+              <input class="in" type="number" [(ngModel)]="parametresEdit.quota_pro_bono_mensuel" name="quotaProBono" />
+            </div>
+          </div>
+          <button class="btn" (click)="enregistrerParametres()">Enregistrer</button>
+          @if (parametresMessage()) { <p class="muted" style="margin-top:8px">{{ parametresMessage() }}</p> }
+        </section>
+      }
+
       @if (matrice()) {
         <section class="panel">
           <h3>Matrice des permissions</h3>
@@ -199,7 +223,11 @@ import { ApiService } from '../../core/api.service';
 })
 export class AccesComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly utilisateurs = signal<any[]>([]);
+  readonly parametres = signal<ParametresHonoraires | null>(null);
+  readonly parametresMessage = signal('');
+  parametresEdit: Partial<ParametresHonoraires> = {};
   readonly delegations = signal<any[]>([]);
   readonly audit = signal<any[]>([]);
   readonly erreurGlobale = signal('');
@@ -257,6 +285,22 @@ export class AccesComponent implements OnInit {
     this.api.permissionsMatrice().subscribe({
       next: (m) => this.matrice.set(m),
       error: () => this.matrice.set(null),
+    });
+    // 403 attendu pour tout rôle hors Associé/Administrateur IT — la
+    // section est simplement masquée (auth.peut()), pas traité en erreur.
+    if (this.auth.peut('parametres.honoraires.modifier')) {
+      this.api.parametresHonoraires().subscribe({
+        next: (p) => { this.parametres.set(p); this.parametresEdit = { ...p }; },
+        error: () => {},
+      });
+    }
+  }
+
+  enregistrerParametres(): void {
+    this.parametresMessage.set('');
+    this.api.majParametresHonoraires(this.parametresEdit).subscribe({
+      next: (p) => { this.parametres.set(p); this.parametresEdit = { ...p }; this.parametresMessage.set('Enregistré.'); },
+      error: (e) => this.parametresMessage.set(e?.error?.error ?? 'Enregistrement impossible.'),
     });
   }
 

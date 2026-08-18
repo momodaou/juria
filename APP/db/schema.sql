@@ -1683,3 +1683,78 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('comptable','cabinet.bulletins.consulter',TRUE),('assistant_comptable','cabinet.bulletins.consulter',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN ACTIONS DE CONSULTATION SENSIBLES ===============
+
+-- =====================================================================
+--  SEUIL MINIMUM D'HONORAIRES PAR DOSSIER (anti-dissimulation, ajout
+--  18/08/2026)
+--
+--  Objectif métier : aucun dossier classique (non pro bono) ne doit rester
+--  sans honoraires facturés au-delà d'un plancher ; un dossier pro bono a
+--  son propre plancher (frais de procédure minimum) ET un quota mensuel de
+--  dossiers pro bono par responsable — sans blocage réel de ce quota,
+--  marquer un dossier "pro bono" serait une échappatoire triviale au
+--  plancher classique. Design complet et raisonnement dans HISTORY.md.
+--
+--  Les 3 seuils sont configurables (parametres_cabinet), pas codés en dur
+--  — même logique que la matrice de permissions : le seuil sert de soupape
+--  réglable, pas de blocage rigide. Valeurs de départ : 150 000 FCFA
+--  d'honoraires minimum classique, 50 000 FCFA de frais de procédure
+--  minimum pro bono, 2 dossiers pro bono/mois/responsable.
+-- =====================================================================
+ALTER TABLE parametres_cabinet
+  ADD COLUMN honoraires_min_xof NUMERIC(14,0) NOT NULL DEFAULT 150000,
+  ADD COLUMN frais_procedure_pro_bono_min_xof NUMERIC(14,0) NOT NULL DEFAULT 50000,
+  ADD COLUMN quota_pro_bono_mensuel INT NOT NULL DEFAULT 2;
+
+-- Alertes échelonnées (J+3/J+7/J+15 depuis date_ouverture) pour un dossier
+-- resté sous le seuil applicable — même patron que evenements.alerte_j30
+-- etc. : une colonne booléenne par palier pour ne notifier qu'au
+-- franchissement (idempotent).
+ALTER TABLE dossiers
+  ADD COLUMN alerte_honoraires_j3  BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN alerte_honoraires_j7  BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN alerte_honoraires_j15 BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Journal des alertes honoraires envoyées (persistance/traçabilité) —
+-- table dédiée plutôt que la messagerie interne (conversations/messages,
+-- pensée pour le chat humain, auteur_id NOT NULL) : une alerte système
+-- n'est pas une conversation.
+CREATE TABLE alertes_honoraires (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dossier_id      UUID NOT NULL REFERENCES dossiers(id),
+    niveau          VARCHAR(4) NOT NULL CHECK (niveau IN ('j3','j7','j15')),
+    destinataire_id UUID NOT NULL REFERENCES utilisateurs(id),
+    cree_le         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_alertes_honoraires_dossier ON alertes_honoraires(dossier_id);
+CREATE INDEX idx_alertes_honoraires_dest    ON alertes_honoraires(destinataire_id);
+
+BEGIN;
+
+-- dossiers.pro_bono.declarer : réservé par défaut au même cluster
+-- "direction" que factures.consulter — le champ dossiers.pro_bono existait
+-- déjà en base depuis le 17/08/2026 mais n'était réglable par aucune route ;
+-- il le devient ici, sous cette permission dédiée (pas dossiers.creer,
+-- ouverte à tous les rôles).
+--
+-- evenements.jobs.declencher : le déclenchement manuel du job d'alertes de
+-- délais n'avait jusqu'ici aucun contrôle de permission (n'importe quel
+-- utilisateur authentifié pouvait l'appeler) — trouvé en creusant le même
+-- patron pour construire le job d'alertes honoraires, corrigé au passage.
+--
+-- parametres.honoraires.modifier : édition des 3 seuils ci-dessus, réservée
+-- par défaut à associé + administrateur IT (même périmètre que la matrice
+-- de permissions elle-même, mais pas un requireRole en dur — pas de risque
+-- d'auto-verrouillage analogue à faire dépendre ce réglage de la matrice).
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','dossiers.pro_bono.declarer',TRUE),('associe_fondateur','dossiers.pro_bono.declarer',TRUE),
+ ('admin_general','dossiers.pro_bono.declarer',TRUE),('admin_it','dossiers.pro_bono.declarer',TRUE),
+
+ ('associe','evenements.jobs.declencher',TRUE),('associe_fondateur','evenements.jobs.declencher',TRUE),
+ ('admin_general','evenements.jobs.declencher',TRUE),('admin_it','evenements.jobs.declencher',TRUE),
+
+ ('associe','parametres.honoraires.modifier',TRUE),('admin_it','parametres.honoraires.modifier',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+COMMIT;
+-- =============== FIN SEUIL MINIMUM D'HONORAIRES ===============

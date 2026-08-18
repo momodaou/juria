@@ -30,6 +30,21 @@ router.get("/", async (req, res) => {
     const delais = await pool.query(
       `SELECT * FROM v_delais_a_venir LIMIT 8`
     );
+    // Dossiers sous le seuil d'honoraires (anti-dissimulation, 18/08/2026) :
+    // même calcul que routes/dossiers.js (cumul factures vs seuil applicable
+    // pro bono/classique), abonnement exempté.
+    const sousSeuil = await one(
+      `SELECT count(*) AS n
+       FROM dossiers d
+       CROSS JOIN parametres_cabinet p
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(f.montant_ttc_xof), 0) AS cumul_xof
+         FROM factures f WHERE f.dossier_id = d.id AND f.statut <> 'annulee'
+       ) fh ON true
+       WHERE d.statut IN ('ouvert','en_cours')
+         AND d.mode_honoraires IS DISTINCT FROM 'abonnement'
+         AND fh.cumul_xof < (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END)`
+    );
 
     res.json({
       dossiers_actifs: Number(dossiers.actifs),
@@ -37,6 +52,7 @@ router.get("/", async (req, res) => {
       audiences_semaine: Number(audiences.n),
       impayes_ttc: Number(impayes.total),
       heures_mois: Number(temps.heures),
+      dossiers_sous_seuil_honoraires: Number(sousSeuil.n),
       delais_a_venir: delais.rows,
     });
   } catch (e) {

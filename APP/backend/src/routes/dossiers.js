@@ -1,8 +1,34 @@
 // JURIA — routes Dossiers
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
+
+// Statut honoraires (anti-dissimulation, ajout 18/08/2026) : un dossier
+// pro bono a son propre plancher (frais de procédure minimum) ; un dossier
+// classique a un plancher d'honoraires. Comparaison faite en XOF via
+// factures.montant_ttc_xof (déjà calculé pour toute devise à l'émission —
+// pas de reconversion à faire ici, couvre nativement le "ou son équivalent
+// en devise" de la règle métier). Un abonnement (contrat-cadre) n'a pas de
+// notion de seuil par dossier individuel dans le schéma actuel : exempté
+// plutôt que mal évalué.
+const SELECT_HONORAIRES = `
+  fh.cumul_xof,
+  CASE WHEN d.mode_honoraires = 'abonnement' THEN 'abonnement'
+       WHEN fh.cumul_xof = 0 THEN 'sans_honoraires'
+       WHEN fh.cumul_xof < (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END)
+         THEN 'sous_seuil'
+       ELSE 'atteint'
+  END AS statut_honoraires,
+  (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END) AS honoraires_seuil_xof
+`;
+const JOIN_HONORAIRES = `
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(f.montant_ttc_xof), 0) AS cumul_xof
+    FROM factures f WHERE f.dossier_id = d.id AND f.statut <> 'annulee'
+  ) fh ON true
+  CROSS JOIN parametres_cabinet p
+`;
 
 // GET /api/dossiers?statut=&responsable=&q=
 router.get("/", async (req, res) => {
@@ -15,12 +41,14 @@ router.get("/", async (req, res) => {
   const where = cond.length ? `WHERE ${cond.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence,
+      `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence, d.pro_bono,
               COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
-              u.prenom || ' ' || u.nom AS responsable
+              u.prenom || ' ' || u.nom AS responsable,
+              ${SELECT_HONORAIRES}
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
+       ${JOIN_HONORAIRES}
        ${where}
        ORDER BY d.maj_le DESC
        LIMIT 200`,
@@ -40,10 +68,12 @@ router.get("/:id", async (req, res) => {
     const d = await pool.query(
       `SELECT d.*,
               COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom,
-              u.prenom || ' ' || u.nom AS responsable_nom
+              u.prenom || ' ' || u.nom AS responsable_nom,
+              ${SELECT_HONORAIRES}
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
+       ${JOIN_HONORAIRES}
        WHERE d.id = $1`,
       [id]
     );
@@ -98,17 +128,42 @@ router.get("/:id/documents", async (req, res) => {
 });
 
 // POST /api/dossiers
+// pro_bono=true est un cas à part : exige la permission dédiée
+// dossiers.pro_bono.declarer (pas dossiers.creer, ouverte à tous) et est
+// bloqué au-delà du quota mensuel/responsable — sans ce blocage, marquer
+// n'importe quel dossier "pro bono" deviendrait une échappatoire triviale
+// au seuil d'honoraires classique.
 router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
+  const proBono = !!b.pro_bono;
   try {
+    if (proBono) {
+      if (!(await estAutorise(req.user.role, "dossiers.pro_bono.declarer"))) {
+        return res.status(403).json({ error: "Non autorisé à déclarer un dossier pro bono" });
+      }
+      const { rows: [p] } = await pool.query(
+        "SELECT quota_pro_bono_mensuel FROM parametres_cabinet WHERE id = 1"
+      );
+      const { rows: [c] } = await pool.query(
+        `SELECT count(*) AS n FROM dossiers
+         WHERE pro_bono AND responsable_id = $1
+           AND date_trunc('month', date_ouverture) = date_trunc('month', current_date)`,
+        [b.responsable_id]
+      );
+      if (Number(c.n) >= p.quota_pro_bono_mensuel) {
+        return res.status(409).json({
+          error: `Quota pro bono mensuel atteint pour ce responsable (${p.quota_pro_bono_mensuel}/mois)`,
+        });
+      }
+    }
     const { rows } = await pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
-          montant_litige, mode_honoraires, urgence, responsable_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10)
-       RETURNING id, numero, intitule`,
+          montant_litige, mode_honoraires, urgence, responsable_id, pro_bono)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11)
+       RETURNING id, numero, intitule, pro_bono`,
       [b.numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
-       b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id]
+       b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono]
     );
     res.status(201).json(rows[0]);
   } catch (e) {

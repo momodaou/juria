@@ -9,7 +9,11 @@ const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 const TAUX_DEFAUT = { associe: 30, collaborateur: 25, non_avocat: 10 };
-const QUOTA_PRO_BONO_MENSUEL = 2;
+// Quota pro bono : anciennement une constante en dur (2/mois/associé) ;
+// devenu configurable (parametres_cabinet.quota_pro_bono_mensuel) le
+// 18/08/2026 pour que le seuil serve de vraie soupape réglable — c'est
+// aussi la valeur qui bloque réellement la création d'un dossier pro bono
+// au-delà du quota (dossiers.js), plus seulement affichée ici.
 
 // GET /api/retrocessions/qualites
 router.get("/qualites", (req, res) => {
@@ -129,6 +133,10 @@ router.post("/:id/decaisser", requirePermission("retrocessions.decaisser"), asyn
 router.get("/pro-bono", async (req, res) => {
   const mois = req.query.mois || new Date().toISOString().slice(0, 8) + "01";
   try {
+    const { rows: [p] } = await pool.query(
+      "SELECT quota_pro_bono_mensuel FROM parametres_cabinet WHERE id = 1"
+    );
+    const quota = p.quota_pro_bono_mensuel;
     const { rows } = await pool.query(
       `SELECT u.id AS associe_id, u.prenom || ' ' || u.nom AS associe,
               COUNT(d.id) FILTER (WHERE d.pro_bono AND date_trunc('month', d.date_ouverture) = $1::date) AS utilises
@@ -141,8 +149,8 @@ router.get("/pro-bono", async (req, res) => {
     );
     res.json(rows.map((r) => ({
       ...r,
-      quota: QUOTA_PRO_BONO_MENSUEL,
-      restants: Math.max(0, QUOTA_PRO_BONO_MENSUEL - Number(r.utilises)),
+      quota,
+      restants: Math.max(0, quota - Number(r.utilises)),
     })));
   } catch (e) {
     console.error(e);

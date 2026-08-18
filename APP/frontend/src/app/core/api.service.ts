@@ -9,6 +9,7 @@ export interface DashboardData {
   audiences_semaine: number;
   impayes_ttc: number;
   heures_mois: number;
+  dossiers_sous_seuil_honoraires: number;
   delais_a_venir: any[];
 }
 
@@ -21,6 +22,16 @@ export interface Dossier {
   urgence: string;
   client: string;
   responsable: string;
+  pro_bono: boolean;
+  cumul_xof: number;
+  honoraires_seuil_xof: number;
+  statut_honoraires: 'sans_honoraires' | 'sous_seuil' | 'atteint' | 'abonnement';
+}
+
+export interface ParametresHonoraires {
+  honoraires_min_xof: number;
+  frais_procedure_pro_bono_min_xof: number;
+  quota_pro_bono_mensuel: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -370,6 +381,14 @@ export class ApiService {
   }
   majPermission(role: string, action_code: string, autorise: boolean): Observable<any> {
     return this.http.put<any>(`${this.base}/api/acces/permissions`, { role, action_code, autorise });
+  }
+
+  // Seuils d'honoraires minimum + quota pro bono (anti-dissimulation)
+  parametresHonoraires(): Observable<ParametresHonoraires> {
+    return this.http.get<ParametresHonoraires>(`${this.base}/api/parametres/honoraires`);
+  }
+  majParametresHonoraires(payload: Partial<ParametresHonoraires>): Observable<ParametresHonoraires> {
+    return this.http.put<ParametresHonoraires>(`${this.base}/api/parametres/honoraires`, payload);
   }
 
   // Cabinet (RH)

@@ -25,9 +25,37 @@ import { ApiService } from '../../core/api.service';
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
           <div><span>Montant</span><b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
-          <div><span>Honoraires</span><b>{{ d.mode_honoraires || '—' }}</b></div>
+          <div><span>Mode d'honoraires</span><b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b></div>
         </div>
       </div>
+
+      <section class="panel">
+        <h3>Honoraires — anti-dissimulation</h3>
+        @if (d.statut_honoraires === 'abonnement') {
+          <p class="muted">Dossier facturé dans le cadre d'un abonnement — hors seuil automatique par dossier.</p>
+        } @else {
+          <div class="meta">
+            <div><span>Cumul facturé</span><b>{{ d.cumul_xof | number }} FCFA</b></div>
+            <div><span>Seuil applicable</span><b>{{ d.honoraires_seuil_xof | number }} FCFA{{ d.pro_bono ? ' (frais de procédure pro bono)' : ' (honoraires minimum)' }}</b></div>
+            <div>
+              <span>Statut</span>
+              <b>
+                <span class="tag"
+                      [class.ok]="d.statut_honoraires === 'atteint'"
+                      [class.attente]="d.statut_honoraires === 'sous_seuil'"
+                      [class.haute]="d.statut_honoraires === 'sans_honoraires'">
+                  {{ d.statut_honoraires === 'atteint' ? 'Seuil atteint' : d.statut_honoraires === 'sous_seuil' ? 'Sous le seuil' : 'Sans honoraires' }}
+                </span>
+              </b>
+            </div>
+          </div>
+          @if (d.alerte_honoraires_j3 || d.alerte_honoraires_j7 || d.alerte_honoraires_j15) {
+            <p class="muted" style="margin-top:8px">
+              Alertes déjà déclenchées : {{ alertesDeclenchees(d) }}
+            </p>
+          }
+        }
+      </section>
 
       <section class="panel">
         <h3>Parties adverses</h3>
@@ -183,6 +211,8 @@ import { ApiService } from '../../core/api.service';
     .btn:disabled{opacity:.6}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px}
+    .tag.ok{background:#e3f5ec;color:#157a4f}
+    .tag.attente{background:#fbf1dc;color:#9a6c12}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -223,6 +253,12 @@ export class DossierDetailComponent implements OnInit {
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();
+  }
+
+  alertesDeclenchees(d: any): string {
+    return [d.alerte_honoraires_j3 && 'J+3', d.alerte_honoraires_j7 && 'J+7', d.alerte_honoraires_j15 && 'J+15']
+      .filter((x) => x)
+      .join(', ');
   }
 
   private rafraichirDelais(): void {

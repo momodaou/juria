@@ -26,6 +26,7 @@ const CATALOGUE = [
   { code: "conflits.soumettre", module: "Nouveau dossier", label: "Soumettre un contrôle de conflit" },
   { code: "conflits.decision", module: "Nouveau dossier", label: "Décider sur un conflit potentiel", restreinte: true },
   { code: "dossiers.creer", module: "Nouveau dossier", label: "Créer le dossier" },
+  { code: "dossiers.pro_bono.declarer", module: "Nouveau dossier", label: "Déclarer un dossier pro bono", restreinte: true },
 
   { code: "clients.creer", module: "Clients & KYC", label: "Créer un client" },
   { code: "clients.modifier", module: "Clients & KYC", label: "Modifier la fiche client" },
@@ -35,6 +36,7 @@ const CATALOGUE = [
   { code: "originaux.restituer", module: "Clients & KYC", label: "Restituer un original" },
 
   { code: "evenements.creer", module: "Échéancier", label: "Ajouter une échéance" },
+  { code: "evenements.jobs.declencher", module: "Échéancier", label: "Déclencher manuellement le job d'alertes de délais", restreinte: true },
 
   { code: "audiences.ligne.creer", module: "Rôle d'audience", label: "Inscrire une audience au rôle" },
   { code: "audiences.role.valider", module: "Rôle d'audience", label: "Valider le rôle de la semaine", restreinte: true },
@@ -84,6 +86,8 @@ const CATALOGUE = [
 
   { code: "messagerie.creer_conversation", module: "Messagerie", label: "Créer une conversation" },
   { code: "messagerie.envoyer_message", module: "Messagerie", label: "Envoyer un message" },
+
+  { code: "parametres.honoraires.modifier", module: "Paramètres cabinet", label: "Modifier les seuils d'honoraires minimum et le quota pro bono", restreinte: true },
 ];
 
 const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));
@@ -92,15 +96,23 @@ const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));
 // marqué autorise=TRUE dans permissions_role. Refuse par défaut si aucune
 // ligne n'existe (jamais d'accès implicite) — voir schema.sql pour le
 // remplissage initial qui reproduit le comportement d'avant cette matrice.
+// Version "inline" du même contrôle, pour les cas où l'autorisation dépend
+// d'une condition dans le body (ex. dossiers.js : seule la déclaration
+// pro_bono=true exige la permission, pas la création elle-même) et ne peut
+// donc pas être un simple middleware de route.
+async function estAutorise(role, actionCode) {
+  const { rows } = await pool.query(
+    "SELECT autorise FROM permissions_role WHERE role = $1 AND action_code = $2",
+    [role, actionCode]
+  );
+  return !!(rows[0] && rows[0].autorise);
+}
+
 function requirePermission(actionCode) {
   return async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: "Non authentifié" });
     try {
-      const { rows } = await pool.query(
-        "SELECT autorise FROM permissions_role WHERE role = $1 AND action_code = $2",
-        [req.user.role, actionCode]
-      );
-      if (!rows[0] || !rows[0].autorise) {
+      if (!(await estAutorise(req.user.role, actionCode))) {
         return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
       }
       next();
@@ -111,4 +123,4 @@ function requirePermission(actionCode) {
   };
 }
 
-module.exports = { CATALOGUE, CODES_VALIDES, requirePermission };
+module.exports = { CATALOGUE, CODES_VALIDES, requirePermission, estAutorise };
