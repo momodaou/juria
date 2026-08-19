@@ -83,8 +83,45 @@ import { AuthService } from '../../core/auth.service';
             <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
           }
         </select>
-        @if (!dossier.client_id && clientNom) {
-          <p class="hint">Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus, ou <a routerLink="/clients" class="lien">créez-le dans Clients &amp; KYC</a> puis revenez sélectionner le client dans la liste.</p>
+        @if (!dossier.client_id && clientNom && creationClientCible() !== 'principal') {
+          <p class="hint">
+            Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus,
+            @if (auth.peut('clients.creer')) {
+              <button class="lien" type="button" (click)="ouvrirCreationClient('principal')">créez-le maintenant</button>,
+            }
+            ou <a routerLink="/clients" class="lien">complétez son KYC dans Clients &amp; KYC</a> plus tard.
+          </p>
+        }
+
+        @if (creationClientCible(); as cible) {
+          <div class="inline-client">
+            <label>Nouveau client — {{ cible === 'principal' ? 'client principal' : 'client additionnel' }}</label>
+            <select class="in" [(ngModel)]="nouveauClient.type" name="ncType">
+              <option value="morale">Personne morale</option>
+              <option value="physique">Personne physique</option>
+            </select>
+            @if (nouveauClient.type === 'morale') {
+              <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenomination" placeholder="Dénomination" />
+            } @else {
+              <div class="grid2">
+                <input class="in" [(ngModel)]="nouveauClient.prenom" name="ncPrenom" placeholder="Prénom" />
+                <input class="in" [(ngModel)]="nouveauClient.nom" name="ncNom" placeholder="Nom" />
+              </div>
+            }
+            <div class="grid2">
+              <input class="in" [(ngModel)]="nouveauClient.email" name="ncEmail" placeholder="Email (facultatif)" />
+              <input class="in" [(ngModel)]="nouveauClient.telephone" name="ncTelephone" placeholder="Téléphone (facultatif)" />
+            </div>
+            <p class="muted" style="margin:-6px 0 10px">KYC laissé « à faire » — à compléter dans Clients &amp; KYC quand vous aurez les pièces.</p>
+            <div class="upload">
+              <button class="btn" type="button" (click)="creerClientInline()"
+                      [disabled]="creationClientEnCours() || (nouveauClient.type === 'morale' ? !nouveauClient.denomination : !nouveauClient.nom)">
+                {{ creationClientEnCours() ? 'Création…' : 'Créer et sélectionner' }}
+              </button>
+              <button class="btn ghost" type="button" (click)="fermerCreationClient()">Annuler</button>
+            </div>
+            @if (erreurNouveauClient()) { <p class="err">{{ erreurNouveauClient() }}</p> }
+          </div>
         }
 
         <label>Autres clients sur ce dossier (facultatif — personnes physiques ou morales additionnelles)</label>
@@ -96,6 +133,9 @@ import { AuthService } from '../../core/auth.service';
             }
           </select>
           <button class="btn ghost" type="button" (click)="ajouterClientAdditionnel()" [disabled]="!clientAAjouter">Ajouter</button>
+          @if (auth.peut('clients.creer') && creationClientCible() !== 'additionnel') {
+            <button class="btn ghost" type="button" (click)="ouvrirCreationClient('additionnel')">+ Nouveau client</button>
+          }
         </div>
         @if (clientsAdditionnelsChoisis().length) {
           <div class="verifies" style="margin-bottom:12px">
@@ -197,6 +237,9 @@ import { AuthService } from '../../core/auth.service';
     .verifies .terme{display:block;margin-top:6px}
     .hint{font-size:12px;color:#9a6c12;margin:-6px 0 12px}
     .hint .lien{color:#9a6c12;text-decoration:underline}
+    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:inherit;padding:0;text-decoration:underline}
+    .muted{color:var(--grey);font-size:12px}
+    .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
   `],
 })
 export class OuvertureComponent implements OnInit {
@@ -231,6 +274,45 @@ export class OuvertureComponent implements OnInit {
   // plusieurs identités clientes (personnes physiques ou morales).
   readonly clientsAdditionnelsIds = signal<string[]>([]);
   clientAAjouter = '';
+
+  // Création de client à la volée (19/08/2026) — pour ne pas obliger à
+  // quitter l'écran d'ouverture pour créer un client manquant, tout en
+  // gardant Clients & KYC comme registre maître (le KYC complet se fait
+  // là-bas, cette création inline reste minimale, statut "à faire").
+  readonly creationClientCible = signal<'principal' | 'additionnel' | null>(null);
+  readonly creationClientEnCours = signal(false);
+  readonly erreurNouveauClient = signal('');
+  nouveauClient: any = { type: 'morale' };
+
+  ouvrirCreationClient(cible: 'principal' | 'additionnel'): void {
+    this.nouveauClient = { type: 'morale', denomination: cible === 'principal' ? this.clientNom : '' };
+    this.erreurNouveauClient.set('');
+    this.creationClientCible.set(cible);
+  }
+
+  fermerCreationClient(): void {
+    this.creationClientCible.set(null);
+  }
+
+  creerClientInline(): void {
+    const cible = this.creationClientCible();
+    if (!cible) return;
+    this.erreurNouveauClient.set('');
+    this.creationClientEnCours.set(true);
+    this.api.creerClient(this.nouveauClient).subscribe({
+      next: (r) => {
+        this.creationClientEnCours.set(false);
+        this.clients.update((liste) => [...liste, {
+          id: r.id, type: this.nouveauClient.type,
+          denomination: this.nouveauClient.denomination, prenom: this.nouveauClient.prenom, nom: this.nouveauClient.nom,
+        }]);
+        if (cible === 'principal') this.dossier.client_id = r.id;
+        else this.clientsAdditionnelsIds.update((ids) => [...ids, r.id]);
+        this.creationClientCible.set(null);
+      },
+      error: (e) => { this.creationClientEnCours.set(false); this.erreurNouveauClient.set(e?.error?.error ?? 'Création impossible.'); },
+    });
+  }
 
   ngOnInit(): void {
     this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
