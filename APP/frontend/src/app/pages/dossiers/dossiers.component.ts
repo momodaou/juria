@@ -18,23 +18,25 @@ import { ApiService, Dossier } from '../../core/api.service';
     <section class="panel">
       @if (dossiers().length) {
         <table>
-          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Phase</th><th>Urgence</th><th>Honoraires</th></tr>
+          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Phase</th><th>Urgence</th><th>Pro bono</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.numero }}</td>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}{{ d.pro_bono ? ' · Pro bono' : '' }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}</td>
               <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">
-                <span class="tag"
-                      [class.ok]="d.statut_honoraires === 'atteint'"
-                      [class.attente]="d.statut_honoraires === 'sous_seuil'"
-                      [class.haute]="d.statut_honoraires === 'sans_honoraires'"
-                      [title]="d.statut_honoraires !== 'abonnement' ? (d.cumul_xof | number) + ' / ' + (d.honoraires_seuil_xof | number) + ' FCFA' : ''">
-                  {{ libelleHonoraires(d.statut_honoraires) }}
-                </span>
+                @if (d.pro_bono) {
+                  <span class="tag"
+                        [class.ok]="d.statut_honoraires === 'atteint'"
+                        [class.attente]="d.statut_honoraires === 'sous_seuil'"
+                        [class.haute]="d.statut_honoraires === 'sans_honoraires'"
+                        [title]="(d.cumul_xof | number) + ' / ' + (d.honoraires_seuil_xof | number) + ' FCFA'">
+                    {{ libelleHonoraires(d.statut_honoraires) }}
+                  </span>
+                } @else { — }
               </td>
             </tr>
           }
@@ -70,13 +72,12 @@ export class DossiersComponent implements OnInit {
     });
   }
 
-  libelleHonoraires(statut: string): string {
+  libelleHonoraires(statut: string | null): string {
     switch (statut) {
       case 'atteint': return 'Seuil atteint';
       case 'sous_seuil': return 'Sous le seuil';
       case 'sans_honoraires': return 'Sans honoraires';
-      case 'abonnement': return 'Abonnement';
-      default: return statut;
+      default: return statut ?? '—';
     }
   }
 }

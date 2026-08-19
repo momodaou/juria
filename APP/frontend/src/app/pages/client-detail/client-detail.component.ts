@@ -1,8 +1,9 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-client-detail',
@@ -28,6 +29,9 @@ import { ApiService } from '../../core/api.service';
             <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(c)">
               {{ modeEdition() ? 'Annuler' : 'Modifier' }}
             </button>
+            @if (auth.peut('clients.supprimer')) {
+              <button class="btn ghost danger" (click)="supprimerClient()">Supprimer</button>
+            }
           </div>
         </div>
         <div class="meta">
@@ -177,11 +181,14 @@ import { ApiService } from '../../core/api.service';
     label{font-size:12px;color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
     .col2{grid-column:1 / -1}
+    .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
   `],
 })
 export class ClientDetailComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  readonly auth = inject(AuthService);
 
   readonly client = signal<any | null>(null);
   readonly erreur = signal('');
@@ -252,6 +259,14 @@ export class ClientDetailComponent implements OnInit {
           this.erreurEdition.set(e?.error?.error ?? 'Enregistrement impossible.');
         }
       },
+    });
+  }
+
+  supprimerClient(): void {
+    if (!window.confirm('Supprimer définitivement ce client ? Impossible si une activité (dossier, facture, pièce KYC…) est déjà enregistrée.')) return;
+    this.api.supprimerClient(this.clientId).subscribe({
+      next: () => this.router.navigate(['/clients']),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
     });
   }
 

@@ -1,8 +1,9 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-dossier-detail',
@@ -23,6 +24,12 @@ import { ApiService } from '../../core/api.service';
             <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(d)">
               {{ modeEdition() ? 'Annuler' : 'Modifier' }}
             </button>
+            @if (auth.peut('dossiers.archiver') && d.statut !== 'archive') {
+              <button class="btn ghost" (click)="archiverDossier()">Archiver</button>
+            }
+            @if (auth.peut('dossiers.supprimer')) {
+              <button class="btn ghost danger" (click)="supprimerDossier()">Supprimer</button>
+            }
           </div>
         </div>
         <div class="meta">
@@ -91,14 +98,12 @@ import { ApiService } from '../../core/api.service';
         </section>
       }
 
+      @if (d.pro_bono) {
       <section class="panel">
-        <h3>Honoraires</h3>
-        @if (d.statut_honoraires === 'abonnement') {
-          <p class="muted">Dossier facturé dans le cadre d'un abonnement — hors seuil automatique par dossier.</p>
-        } @else {
+        <h3>Honoraires — pro bono</h3>
           <div class="meta">
             <div><span>Cumul facturé</span><b>{{ d.cumul_xof | number }} FCFA</b></div>
-            <div><span>Seuil applicable</span><b>{{ d.honoraires_seuil_xof | number }} FCFA{{ d.pro_bono ? ' (frais de procédure pro bono)' : ' (honoraires minimum)' }}</b></div>
+            <div><span>Seuil applicable</span><b>{{ d.honoraires_seuil_xof | number }} FCFA (frais de procédure pro bono)</b></div>
             <div>
               <span>Statut</span>
               <b>
@@ -116,6 +121,39 @@ import { ApiService } from '../../core/api.service';
               Alertes déjà déclenchées : {{ alertesDeclenchees(d) }}
             </p>
           }
+      </section>
+      }
+
+      <section class="panel">
+        <h3>Clients associés au dossier</h3>
+        <p class="muted">Client principal : <b>{{ d.client_nom }}</b>. D'autres identités clientes (personnes physiques ou morales) peuvent être associées au même dossier.</p>
+        @if (d.clients_additionnels?.length) {
+          <table>
+            <tr><th>Nom</th><th>Type</th><th></th></tr>
+            @for (c of d.clients_additionnels; track c.id) {
+              <tr>
+                <td><a class="lien" [routerLink]="['/clients', c.id]">{{ c.nom }}</a></td>
+                <td>{{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}</td>
+                <td>
+                  @if (auth.peut('dossiers.clients_additionnels.gerer')) {
+                    <button class="lien" (click)="retirerClient(c.id)">Retirer</button>
+                  }
+                </td>
+              </tr>
+            }
+          </table>
+        } @else { <p class="muted">Aucun client supplémentaire.</p> }
+
+        @if (auth.peut('dossiers.clients_additionnels.gerer')) {
+          <div class="upload">
+            <select [(ngModel)]="clientAAjouter" name="clientAAjouter">
+              <option value="">Ajouter un client…</option>
+              @for (c of clientsDisponibles(); track c.id) {
+                <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
+              }
+            </select>
+            <button class="btn" (click)="ajouterClient()" [disabled]="!clientAAjouter">Ajouter</button>
+          </div>
         }
       </section>
 
@@ -271,6 +309,7 @@ import { ApiService } from '../../core/api.service';
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
+    .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
     .btn:disabled{opacity:.6}
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px}
@@ -284,6 +323,8 @@ import { ApiService } from '../../core/api.service';
 export class DossierDetailComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  readonly auth = inject(AuthService);
 
   private id = '';
   readonly dossier = signal<any | null>(null);
@@ -318,6 +359,48 @@ export class DossierDetailComponent implements OnInit {
   edit: any = {};
   readonly phases = ['consultation', 'ouverture', 'mise_en_etat', 'plaidoirie', 'decision', 'execution', 'recours', 'cloture'];
 
+  // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
+  // comporter plusieurs identités clientes.
+  readonly clients = signal<any[]>([]);
+  clientAAjouter = '';
+
+  clientsDisponibles(): any[] {
+    const d = this.dossier();
+    if (!d) return [];
+    const dejaLies = new Set([d.client_id, ...(d.clients_additionnels || []).map((c: any) => c.id)]);
+    return this.clients().filter((c) => !dejaLies.has(c.id));
+  }
+
+  ajouterClient(): void {
+    if (!this.clientAAjouter) return;
+    this.api.ajouterClientDossier(this.id, this.clientAAjouter).subscribe({
+      next: () => { this.clientAAjouter = ''; this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  retirerClient(clientId: string): void {
+    this.api.retirerClientDossier(this.id, clientId).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+    });
+  }
+
+  archiverDossier(): void {
+    if (!window.confirm('Archiver ce dossier ?')) return;
+    this.api.majDossier(this.id, { statut: 'archive', maj_le_attendu: this.dossier()?.maj_le }).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Archivage impossible.'),
+    });
+  }
+
+  supprimerDossier(): void {
+    if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
+    this.api.supprimerDossier(this.id).subscribe({
+      next: () => this.router.navigate(['/dossiers']),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
+    });
+  }
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
@@ -327,6 +410,7 @@ export class DossierDetailComponent implements OnInit {
       error: () => this.erreur.set('Dossier introuvable.'),
     });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.rafraichirDelais();
     this.rafraichirDocuments();
     this.rafraichirTemps();

@@ -1771,3 +1771,76 @@ SELECT r, 'dossiers.modifier', TRUE
 FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN ÉDITION D'UN DOSSIER ===============
+
+-- =====================================================================
+--  ABANDON DU SEUIL D'HONORAIRES CLASSIQUE (18/08/2026)
+--
+--  Décision explicite de l'utilisateur après mise en place le même jour :
+--  on abandonne le seuil de 150 000 FCFA pour les dossiers non pro bono
+--  (retrait complet — pas de désactivation cachée). Le volet pro bono est
+--  CONSERVÉ (frais de procédure minimum 50 000 FCFA + quota mensuel
+--  bloquant/responsable) : ce sont des règles distinctes, pas concernées
+--  par cet abandon.
+--
+--  Complément : « seuls les avocats ont droit à l'option Pro bono » —
+--  associé, associé-fondateur, Of Counsel, avocat collaborateur. Le seed
+--  initial de dossiers.pro_bono.declarer (17/08→18/08) incluait à tort
+--  admin_general/admin_it (calqué sur le cluster "direction" habituel) et
+--  omettait of_counsel/collaborateur — corrigé ici.
+-- =====================================================================
+ALTER TABLE parametres_cabinet DROP COLUMN honoraires_min_xof;
+
+DELETE FROM permissions_role
+WHERE action_code = 'dossiers.pro_bono.declarer' AND role IN ('admin_general','admin_it');
+
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('of_counsel','dossiers.pro_bono.declarer',TRUE),
+ ('collaborateur','dossiers.pro_bono.declarer',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN ABANDON SEUIL CLASSIQUE ===============
+
+-- =====================================================================
+--  SUPPRESSION / ARCHIVAGE DE DOSSIER OU CLIENT, CLIENTS MULTIPLES
+--  (ajout 18/08/2026, demande explicite de l'utilisateur)
+--
+--  Suppression volontairement limitée aux dossiers/clients "à l'ouverture"
+--  (sans activité réelle enregistrée) — vérifié en code (routes/dossiers.js,
+--  routes/clients.js), pas seulement documenté ici : les tables avec
+--  ON DELETE CASCADE (documents, temps, evenements, taches, KYC, originaux…)
+--  auraient sinon permis une suppression silencieuse de données réelles.
+--  L'archivage (dossiers.statut = 'archive', déjà possible depuis l'ajout
+--  du PUT ci-dessus) reste la voie normale pour un dossier clôturé.
+--
+--  dossier_clients_additionnels : un dossier garde un client "principal"
+--  (dossiers.client_id, inchangé — pas de rupture des requêtes existantes)
+--  et peut désormais avoir d'autres identités clientes associées
+--  (personnes physiques ou morales), table de liaison dédiée plutôt qu'une
+--  refonte de client_id en relation N-N (bien plus disruptif pour le reste
+--  de l'application, qui suppose partout un client unique par dossier).
+-- =====================================================================
+CREATE TABLE dossier_clients_additionnels (
+    dossier_id UUID NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
+    client_id  UUID NOT NULL REFERENCES clients(id),
+    cree_le    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (dossier_id, client_id)
+);
+
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','dossiers.supprimer',TRUE),('associe_fondateur','dossiers.supprimer',TRUE),
+ ('admin_general','dossiers.supprimer',TRUE),('admin_it','dossiers.supprimer',TRUE),
+
+ ('associe','clients.supprimer',TRUE),('associe_fondateur','clients.supprimer',TRUE),
+ ('admin_general','clients.supprimer',TRUE),('admin_it','clients.supprimer',TRUE),
+
+ ('associe','dossiers.archiver',TRUE),('associe_fondateur','dossiers.archiver',TRUE),
+ ('admin_general','dossiers.archiver',TRUE),('admin_it','dossiers.archiver',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+-- dossiers.clients_additionnels.gerer : ouverte à tous, même périmètre que
+-- dossiers.creer/modifier — ajouter un co-client n'est pas plus sensible
+-- que modifier la fiche elle-même.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'dossiers.clients_additionnels.gerer', TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+ON CONFLICT (role, action_code) DO NOTHING;
+-- =============== FIN SUPPRESSION / ARCHIVAGE / CLIENTS MULTIPLES ===============

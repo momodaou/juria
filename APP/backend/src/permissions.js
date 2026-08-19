@@ -23,14 +23,18 @@ const CATALOGUE = [
   { code: "documents.creer", module: "Dossiers 360", label: "Déposer un document" },
   { code: "communications.creer", module: "Dossiers 360", label: "Ajouter une communication" },
   { code: "dossiers.modifier", module: "Dossiers 360", label: "Modifier la fiche du dossier" },
+  { code: "dossiers.archiver", module: "Dossiers 360", label: "Archiver un dossier clôturé", restreinte: true },
+  { code: "dossiers.supprimer", module: "Dossiers 360", label: "Supprimer un dossier (sans activité enregistrée)", restreinte: true },
+  { code: "dossiers.clients_additionnels.gerer", module: "Dossiers 360", label: "Ajouter/retirer un client supplémentaire sur le dossier" },
 
   { code: "conflits.soumettre", module: "Nouveau dossier", label: "Soumettre un contrôle de conflit" },
   { code: "conflits.decision", module: "Nouveau dossier", label: "Décider sur un conflit potentiel", restreinte: true },
   { code: "dossiers.creer", module: "Nouveau dossier", label: "Créer le dossier" },
-  { code: "dossiers.pro_bono.declarer", module: "Nouveau dossier", label: "Déclarer un dossier pro bono", restreinte: true },
+  { code: "dossiers.pro_bono.declarer", module: "Nouveau dossier", label: "Déclarer un dossier pro bono (réservé aux avocats)", restreinte: true },
 
   { code: "clients.creer", module: "Clients & KYC", label: "Créer un client" },
   { code: "clients.modifier", module: "Clients & KYC", label: "Modifier la fiche client" },
+  { code: "clients.supprimer", module: "Clients & KYC", label: "Supprimer un client (sans activité enregistrée)", restreinte: true },
   { code: "clients.kyc_piece.ajouter", module: "Clients & KYC", label: "Ajouter une pièce KYC" },
   { code: "clients.kyc_piece.supprimer", module: "Clients & KYC", label: "Supprimer une pièce KYC" },
   { code: "originaux.creer", module: "Clients & KYC", label: "Enregistrer un original confié" },
@@ -88,7 +92,10 @@ const CATALOGUE = [
   { code: "messagerie.creer_conversation", module: "Messagerie", label: "Créer une conversation" },
   { code: "messagerie.envoyer_message", module: "Messagerie", label: "Envoyer un message" },
 
-  { code: "parametres.honoraires.modifier", module: "Paramètres cabinet", label: "Modifier les seuils d'honoraires minimum et le quota pro bono", restreinte: true },
+  // Code inchangé depuis sa création (18/08/2026) pour éviter une migration
+  // de renommage ; le périmètre s'est réduit au pro bono depuis l'abandon
+  // du seuil classique (150 000 FCFA) le même jour.
+  { code: "parametres.honoraires.modifier", module: "Paramètres cabinet", label: "Modifier le seuil de frais pro bono et le quota mensuel", restreinte: true },
 ];
 
 const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));

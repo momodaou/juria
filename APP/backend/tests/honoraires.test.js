@@ -1,11 +1,19 @@
-// JURIA — tests ciblés sur le seuil minimum d'honoraires par dossier
-// (anti-dissimulation, 18/08/2026) : déclaration pro bono + quota bloquant,
-// statut honoraires calculé (cumul de factures vs seuil applicable),
-// exemption des dossiers en abonnement, configurabilité des seuils, et le
-// job d'alertes échelonnées.
+// JURIA — tests ciblés sur le volet pro bono (18/08/2026) : déclaration
+// réservée aux avocats + quota bloquant, statut honoraires calculé (cumul
+// de factures vs seuil pro bono), configurabilité des seuils, et le job
+// d'alertes échelonnées.
+//
+// Historique : ce fichier couvrait à l'origine un second mécanisme, un
+// seuil d'honoraires minimum pour les dossiers CLASSIQUES (150 000 FCFA,
+// non pro bono) — abandonné par l'utilisateur le jour même de sa mise en
+// place (colonne honoraires_min_xof supprimée, statut_honoraires renvoie
+// désormais null pour un dossier non pro bono). Les tests correspondants
+// ont été retirés plutôt que laissés à figer un comportement disparu.
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const request = require("supertest");
 const app = require("../server");
+const { SECRET } = require("../src/auth");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
 const { executerJobAlertesHonoraires } = require("../src/jobs/alertesHonoraires");
 
@@ -22,6 +30,12 @@ afterAll(async () => {
 });
 
 // Crée un utilisateur de test frais avec le rôle demandé, retourne {id, token}.
+// Le jeton est signé directement (même charge utile que routes/auth.js)
+// plutôt que via POST /auth/login : ce fichier crée un grand nombre
+// d'utilisateurs de test (test.each sur 4 rôles avocats, etc.), et passer
+// par la route réelle épuise vite la limitation de débit du login
+// (10 tentatives/15 min/IP, express-rate-limit) — non pertinente ici,
+// l'authenticité du mot de passe n'étant pas ce que ces tests vérifient.
 async function creerUtilisateurRole(role) {
   const suffixe = Math.random().toString(36).slice(2, 9);
   const email = `test.${suffixe}@jfcavocats-mali.com`;
@@ -32,8 +46,8 @@ async function creerUtilisateurRole(role) {
      RETURNING id`,
     [`H${suffixe.slice(0, 7)}`, email, hash, role]
   );
-  const login = await request(app).post("/auth/login").send({ email, mot_de_passe: "TestHono123!" });
-  return { id: rows[0].id, token: login.body.token };
+  const token = jwt.sign({ sub: rows[0].id, role, nom: "Test Honoraires" }, SECRET, { expiresIn: "1h" });
+  return { id: rows[0].id, token };
 }
 
 async function creerClient(overrides = {}) {
@@ -56,25 +70,37 @@ async function creerDossier(tokenAppelant, payload) {
     });
 }
 
-describe("Déclaration pro bono — permission dédiée", () => {
-  test("refusée (403) pour un rôle sans dossiers.pro_bono.declarer", async () => {
+describe("Déclaration pro bono — réservée aux avocats (associé, associé-fondateur, Of Counsel, collaborateur)", () => {
+  test("refusée (403) pour un rôle non-avocat (assistante)", async () => {
     const clientId = await creerClient();
-    const collaborateur = await creerUtilisateurRole("collaborateur");
-    const res = await creerDossier(collaborateur.token, {
-      client_id: clientId, responsable_id: collaborateur.id, pro_bono: true,
+    const assistante = await creerUtilisateurRole("assistante");
+    const res = await creerDossier(assistante.token, {
+      client_id: clientId, responsable_id: assistante.id, pro_bono: true,
     });
     expect(res.status).toBe(403);
   });
 
-  test("acceptée pour un associé (a la permission)", async () => {
+  test("refusée (403) pour un administrateur (admin_general) — technique, pas avocat", async () => {
     const clientId = await creerClient();
-    const associe = await creerUtilisateurRole("associe");
-    const res = await creerDossier(associe.token, {
-      client_id: clientId, responsable_id: associe.id, pro_bono: true,
+    const admin = await creerUtilisateurRole("admin_general");
+    const res = await creerDossier(admin.token, {
+      client_id: clientId, responsable_id: admin.id, pro_bono: true,
     });
-    expect(res.status).toBe(201);
-    expect(res.body.pro_bono).toBe(true);
+    expect(res.status).toBe(403);
   });
+
+  test.each(["associe", "associe_fondateur", "of_counsel", "collaborateur"])(
+    "acceptée pour le rôle avocat %s",
+    async (role) => {
+      const clientId = await creerClient();
+      const avocat = await creerUtilisateurRole(role);
+      const res = await creerDossier(avocat.token, {
+        client_id: clientId, responsable_id: avocat.id, pro_bono: true,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.pro_bono).toBe(true);
+    }
+  );
 });
 
 describe("Quota pro bono — blocage réel à la création", () => {
@@ -101,17 +127,17 @@ describe("Quota pro bono — blocage réel à la création", () => {
   });
 });
 
-describe("Statut honoraires — cumul de factures vs seuil applicable", () => {
-  test("dossier classique : sans_honoraires → sous_seuil → atteint", async () => {
+describe("Statut honoraires pro bono — cumul de factures vs seuil", () => {
+  test("dossier pro bono : sans_honoraires → sous_seuil → atteint", async () => {
     const clientId = await creerClient();
-    const responsable = await creerUtilisateurRole("associe");
+    const associe = await creerUtilisateurRole("associe");
     const { body: parametres } = await request(app)
       .get("/api/parametres/honoraires")
       .set("Authorization", `Bearer ${token}`);
-    const seuil = Number(parametres.honoraires_min_xof);
+    const seuil = Number(parametres.frais_procedure_pro_bono_min_xof);
 
-    const creation = await creerDossier(token, {
-      client_id: clientId, responsable_id: responsable.id, mode_honoraires: "forfait",
+    const creation = await creerDossier(associe.token, {
+      client_id: clientId, responsable_id: associe.id, pro_bono: true, mode_honoraires: "forfait",
     });
     expect(creation.status).toBe(201);
     const dossierId = creation.body.id;
@@ -134,7 +160,6 @@ describe("Statut honoraires — cumul de factures vs seuil applicable", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(partiel.body.statut_honoraires).toBe("sous_seuil");
 
-    // Complément large pour franchir le seuil sans ambiguïté d'arrondi.
     await request(app)
       .post("/api/factures")
       .set("Authorization", `Bearer ${token}`)
@@ -146,80 +171,47 @@ describe("Statut honoraires — cumul de factures vs seuil applicable", () => {
     expect(atteint.body.statut_honoraires).toBe("atteint");
   });
 
-  test("dossier pro bono : seuil propre (frais de procédure), distinct du seuil classique", async () => {
-    const clientId = await creerClient();
-    const associe = await creerUtilisateurRole("associe");
-    const { body: parametres } = await request(app)
-      .get("/api/parametres/honoraires")
-      .set("Authorization", `Bearer ${token}`);
-    const seuilProBono = Number(parametres.frais_procedure_pro_bono_min_xof);
-
-    const creation = await creerDossier(associe.token, {
-      client_id: clientId, responsable_id: associe.id, pro_bono: true, mode_honoraires: "forfait",
-    });
-    expect(creation.status).toBe(201);
-    const dossierId = creation.body.id;
-
-    const avant = await request(app)
-      .get(`/api/dossiers/${dossierId}`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(Number(avant.body.honoraires_seuil_xof)).toBe(seuilProBono);
-    expect(avant.body.statut_honoraires).toBe("sans_honoraires");
-
-    // Un montant qui franchit le seuil pro bono mais resterait "sous_seuil"
-    // au seuil classique — prouve que les deux seuils sont bien distincts.
-    await request(app)
-      .post("/api/factures")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ client_id: clientId, dossier_id: dossierId, mode: "forfait", montant_ht: seuilProBono });
-
-    const apres = await request(app)
-      .get(`/api/dossiers/${dossierId}`)
-      .set("Authorization", `Bearer ${token}`);
-    expect(apres.body.statut_honoraires).toBe("atteint");
-  });
-
-  test("mode_honoraires='abonnement' : exempté, jamais rouge", async () => {
+  test("dossier non pro bono : statut_honoraires et seuil toujours null (seuil classique abandonné)", async () => {
     const clientId = await creerClient();
     const responsable = await creerUtilisateurRole("associe");
     const creation = await creerDossier(token, {
-      client_id: clientId, responsable_id: responsable.id, mode_honoraires: "abonnement",
+      client_id: clientId, responsable_id: responsable.id, mode_honoraires: "forfait",
     });
     expect(creation.status).toBe(201);
 
     const d = await request(app)
       .get(`/api/dossiers/${creation.body.id}`)
       .set("Authorization", `Bearer ${token}`);
-    expect(d.body.statut_honoraires).toBe("abonnement");
+    expect(d.body.statut_honoraires).toBeNull();
+    expect(d.body.honoraires_seuil_xof).toBeNull();
   });
 });
 
-describe("GET/PUT /api/parametres/honoraires", () => {
+describe("GET/PUT /api/parametres/honoraires (pro bono uniquement)", () => {
   test("lecture ouverte à tout rôle authentifié ; écriture réservée à la permission dédiée", async () => {
-    const collaborateur = await creerUtilisateurRole("collaborateur");
+    const collaborateur = await creerUtilisateurRole("juriste");
 
     const lecture = await request(app)
       .get("/api/parametres/honoraires")
       .set("Authorization", `Bearer ${collaborateur.token}`);
     expect(lecture.status).toBe(200);
+    expect(lecture.body.honoraires_min_xof).toBeUndefined();
     const original = lecture.body;
 
     const refus = await request(app)
       .put("/api/parametres/honoraires")
       .set("Authorization", `Bearer ${collaborateur.token}`)
-      .send({ honoraires_min_xof: 999999 });
+      .send({ quota_pro_bono_mensuel: 99 });
     expect(refus.status).toBe(403);
 
     const maj = await request(app)
       .put("/api/parametres/honoraires")
       .set("Authorization", `Bearer ${token}`)
-      .send({ honoraires_min_xof: 200000 });
+      .send({ frais_procedure_pro_bono_min_xof: 60000 });
     expect(maj.status).toBe(200);
-    expect(Number(maj.body.honoraires_min_xof)).toBe(200000);
+    expect(Number(maj.body.frais_procedure_pro_bono_min_xof)).toBe(60000);
 
-    // Restauration immédiate pour ne pas fausser les autres tests de ce
-    // fichier (valeur lue dynamiquement ailleurs, mais mieux vaut ne pas
-    // dépendre de l'ordre d'exécution des describe()).
+    // Restauration immédiate pour ne pas fausser les autres tests.
     await request(app)
       .put("/api/parametres/honoraires")
       .set("Authorization", `Bearer ${token}`)
@@ -227,12 +219,12 @@ describe("GET/PUT /api/parametres/honoraires", () => {
   });
 });
 
-describe("Job d'alertes honoraires — paliers échelonnés", () => {
-  test("dossier resté sous le seuil depuis >15 jours : palier J+15 déclenché directement, destinataires enregistrés", async () => {
+describe("Job d'alertes honoraires — paliers échelonnés (pro bono uniquement)", () => {
+  test("dossier pro bono resté sous le seuil depuis >15 jours : palier J+15 déclenché directement", async () => {
     const clientId = await creerClient();
-    const responsable = await creerUtilisateurRole("associe");
-    const creation = await creerDossier(token, {
-      client_id: clientId, responsable_id: responsable.id, mode_honoraires: "forfait",
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(associe.token, {
+      client_id: clientId, responsable_id: associe.id, pro_bono: true, mode_honoraires: "forfait",
     });
     const dossierId = creation.body.id;
 
@@ -262,10 +254,24 @@ describe("Job d'alertes honoraires — paliers échelonnés", () => {
     );
     expect(alertes.rows.length).toBeGreaterThan(0);
     expect(alertes.rows.every((r) => r.niveau === "j15")).toBe(true);
-    expect(alertes.rows.some((r) => r.destinataire_id === responsable.id)).toBe(true);
+    expect(alertes.rows.some((r) => r.destinataire_id === associe.id)).toBe(true);
 
     // Idempotence : un second passage ne renvoie plus ce dossier (déjà traité).
     const second = await executerJobAlertesHonoraires(pool, undefined);
     expect(second.details.find((r) => r.dossier === creation.body.numero)).toBeUndefined();
+  });
+
+  test("un dossier non pro bono, même ancien et sous n'importe quel seuil, n'est jamais concerné", async () => {
+    const clientId = await creerClient();
+    const responsable = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, {
+      client_id: clientId, responsable_id: responsable.id, mode_honoraires: "forfait",
+    });
+    await pool.query(
+      "UPDATE dossiers SET date_ouverture = current_date - INTERVAL '30 days' WHERE id = $1",
+      [creation.body.id]
+    );
+    const resultat = await executerJobAlertesHonoraires(pool, undefined);
+    expect(resultat.details.find((d) => d.dossier === creation.body.numero)).toBeUndefined();
   });
 });

@@ -260,4 +260,41 @@ router.delete("/:id/kyc-pieces/:pieceId", requirePermission("clients.kyc_piece.s
   }
 });
 
+// DELETE /api/clients/:id — suppression volontairement limitée à un client
+// "à l'ouverture", sans activité réelle enregistrée (aucun dossier — déjà
+// bloqué nativement par la contrainte FK dossiers.client_id — mais aussi
+// aucune facture, pièce KYC, original confié, lien avec un autre client,
+// ou rattachement comme client additionnel sur un dossier). Plusieurs de
+// ces tables ont ON DELETE CASCADE en base (pièces KYC, liens) : sans ce
+// contrôle applicatif, la suppression effacerait silencieusement des
+// pièces KYC/LBC-FT réelles.
+router.delete("/:id", requirePermission("clients.supprimer"), async (req, res) => {
+  const id = req.params.id;
+  try {
+    const chk = await pool.query(
+      `SELECT
+         (SELECT count(*) FROM dossiers WHERE client_id = $1) AS dossiers,
+         (SELECT count(*) FROM dossier_clients_additionnels WHERE client_id = $1) AS dossiers_additionnels,
+         (SELECT count(*) FROM factures WHERE client_id = $1) AS factures,
+         (SELECT count(*) FROM client_pieces_kyc WHERE client_id = $1) AS pieces_kyc,
+         (SELECT count(*) FROM originaux_confies WHERE client_id = $1) AS originaux,
+         (SELECT count(*) FROM client_liens WHERE client_id = $1 OR lie_a_id = $1) AS liens`,
+      [id]
+    );
+    const c = chk.rows[0];
+    const bloquants = Object.entries(c).filter(([, n]) => Number(n) > 0);
+    if (bloquants.length) {
+      return res.status(409).json({
+        error: `Suppression impossible : activité déjà enregistrée (${bloquants.map(([k, n]) => `${n} ${k}`).join(", ")}).`,
+      });
+    }
+    const del = await pool.query("DELETE FROM clients WHERE id = $1 RETURNING id", [id]);
+    if (!del.rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 module.exports = router;

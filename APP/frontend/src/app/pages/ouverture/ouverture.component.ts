@@ -87,6 +87,24 @@ import { AuthService } from '../../core/auth.service';
           <p class="hint">Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus, ou <a routerLink="/clients" class="lien">créez-le dans Clients &amp; KYC</a> puis revenez sélectionner le client dans la liste.</p>
         }
 
+        <label>Autres clients sur ce dossier (facultatif — personnes physiques ou morales additionnelles)</label>
+        <div class="upload">
+          <select [(ngModel)]="clientAAjouter" name="clientAAjouter">
+            <option value="">Ajouter un client…</option>
+            @for (c of clientsAdditionnelsDisponibles(); track c.id) {
+              <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
+            }
+          </select>
+          <button class="btn ghost" type="button" (click)="ajouterClientAdditionnel()" [disabled]="!clientAAjouter">Ajouter</button>
+        </div>
+        @if (clientsAdditionnelsChoisis().length) {
+          <div class="verifies" style="margin-bottom:12px">
+            @for (c of clientsAdditionnelsChoisis(); track c.id) {
+              <span class="chip">{{ c.denomination || (c.prenom + ' ' + c.nom) }} <button class="lien-x" type="button" (click)="retirerClientAdditionnel(c.id)">✕</button></span>
+            }
+          </div>
+        }
+
         <label>Parties adverses (séparées par des virgules, facultatif)</label>
         <input class="in" [(ngModel)]="partiesAdversesEdit" name="partiesAdversesEdit" placeholder="Ex. SODIMA Sarl, M. Traoré" />
 
@@ -166,6 +184,9 @@ import { AuthService } from '../../core/auth.service';
     .match{margin-top:8px;font-size:13px}
     .terme{font-weight:600}
     .chip{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:2px 9px;margin:2px;font-size:12px}
+    .lien-x{background:none;border:none;color:var(--slate);cursor:pointer;font-size:11px;padding:0 0 0 4px}
+    .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+    .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .decision{margin-top:14px}
     .decision .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
     .decision-finale{margin-top:12px;font-size:14px}
@@ -206,6 +227,11 @@ export class OuvertureComponent implements OnInit {
   partiesAdversesEdit = '';
   dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false };
 
+  // Clients additionnels (18/08/2026) — un même dossier peut comporter
+  // plusieurs identités clientes (personnes physiques ou morales).
+  readonly clientsAdditionnelsIds = signal<string[]>([]);
+  clientAAjouter = '';
+
   ngOnInit(): void {
     this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
@@ -213,6 +239,26 @@ export class OuvertureComponent implements OnInit {
 
   partiesAdversesListe(): string[] {
     return this.partiesAdverses.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  clientsAdditionnelsChoisis(): any[] {
+    const ids = new Set(this.clientsAdditionnelsIds());
+    return this.clients().filter((c) => ids.has(c.id));
+  }
+
+  clientsAdditionnelsDisponibles(): any[] {
+    const exclus = new Set([this.dossier.client_id, ...this.clientsAdditionnelsIds()]);
+    return this.clients().filter((c) => !exclus.has(c.id));
+  }
+
+  ajouterClientAdditionnel(): void {
+    if (!this.clientAAjouter) return;
+    this.clientsAdditionnelsIds.update((ids) => [...ids, this.clientAAjouter]);
+    this.clientAAjouter = '';
+  }
+
+  retirerClientAdditionnel(id: string): void {
+    this.clientsAdditionnelsIds.update((ids) => ids.filter((x) => x !== id));
   }
 
   peutCreer(): boolean {
@@ -239,7 +285,11 @@ export class OuvertureComponent implements OnInit {
     this.erreurCreation.set('');
     this.creation.set(true);
     const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
-    this.api.creerDossier({ intitule: this.intitule, ...this.dossier, parties_adverses: partiesAdverses }).subscribe({
+    this.api.creerDossier({
+      intitule: this.intitule, ...this.dossier,
+      parties_adverses: partiesAdverses,
+      clients_additionnels: this.clientsAdditionnelsIds(),
+    }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });

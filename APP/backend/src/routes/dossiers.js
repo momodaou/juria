@@ -4,23 +4,20 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
-// Statut honoraires (anti-dissimulation, ajout 18/08/2026) : un dossier
-// pro bono a son propre plancher (frais de procédure minimum) ; un dossier
-// classique a un plancher d'honoraires. Comparaison faite en XOF via
-// factures.montant_ttc_xof (déjà calculé pour toute devise à l'émission —
-// pas de reconversion à faire ici, couvre nativement le "ou son équivalent
-// en devise" de la règle métier). Un abonnement (contrat-cadre) n'a pas de
-// notion de seuil par dossier individuel dans le schéma actuel : exempté
-// plutôt que mal évalué.
+// Statut honoraires — pro bono uniquement (ajout 18/08/2026, seuil
+// classique abandonné le même jour à la demande de l'utilisateur : plus
+// aucune contrainte d'honoraires sur un dossier non pro bono). Comparaison
+// faite en XOF via factures.montant_ttc_xof (déjà calculé pour toute
+// devise à l'émission). NULL pour un dossier non pro bono — le frontend
+// n'affiche alors simplement rien pour cette colonne.
 const SELECT_HONORAIRES = `
   fh.cumul_xof,
-  CASE WHEN d.mode_honoraires = 'abonnement' THEN 'abonnement'
+  CASE WHEN NOT d.pro_bono THEN NULL
        WHEN fh.cumul_xof = 0 THEN 'sans_honoraires'
-       WHEN fh.cumul_xof < (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END)
-         THEN 'sous_seuil'
+       WHEN fh.cumul_xof < p.frais_procedure_pro_bono_min_xof THEN 'sous_seuil'
        ELSE 'atteint'
   END AS statut_honoraires,
-  (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END) AS honoraires_seuil_xof
+  (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE NULL END) AS honoraires_seuil_xof
 `;
 const JOIN_HONORAIRES = `
   LEFT JOIN LATERAL (
@@ -29,6 +26,14 @@ const JOIN_HONORAIRES = `
   ) fh ON true
   CROSS JOIN parametres_cabinet p
 `;
+
+// Tables portant une donnée "réelle" sur un dossier — si l'une d'elles a au
+// moins une ligne, la suppression est refusée (l'archivage devient la
+// seule voie). Plusieurs de ces tables ont ON DELETE CASCADE en base
+// (documents, temps, evenements, taches) : sans ce contrôle applicatif,
+// DELETE FROM dossiers effacerait silencieusement des pièces GED, du temps
+// facturable, des audiences planifiées, etc.
+const TABLES_ACTIVITE_DOSSIER = ["documents", "temps", "factures", "communications", "retrocessions", "evenements", "taches"];
 
 // GET /api/dossiers?statut=&responsable=&q=
 router.get("/", async (req, res) => {
@@ -89,7 +94,16 @@ router.get("/:id", async (req, res) => {
        WHERE di.dossier_id = $1`,
       [id]
     );
-    res.json({ ...d.rows[0], parties: parties.rows, equipe: equipe.rows });
+    // Clients additionnels (18/08/2026) : un dossier peut désormais
+    // comporter plusieurs identités clientes (personnes physiques ou
+    // morales) en plus du client principal (dossiers.client_id, inchangé).
+    const clientsAdditionnels = await pool.query(
+      `SELECT c.id, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS nom, c.type
+       FROM dossier_clients_additionnels dca JOIN clients c ON c.id = dca.client_id
+       WHERE dca.dossier_id = $1`,
+      [id]
+    );
+    res.json({ ...d.rows[0], parties: parties.rows, equipe: equipe.rows, clients_additionnels: clientsAdditionnels.rows });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -187,6 +201,17 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
       );
     }
 
+    // Clients additionnels (18/08/2026) : un même dossier peut comporter
+    // plusieurs identités clientes — b.clients_additionnels = tableau de
+    // client_id existants, en plus du client principal ci-dessus.
+    const clientsAdditionnels = Array.isArray(b.clients_additionnels) ? b.clients_additionnels.filter(Boolean) : [];
+    for (const clientId of clientsAdditionnels) {
+      await pool.query(
+        "INSERT INTO dossier_clients_additionnels (dossier_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+        [rows[0].id, clientId]
+      );
+    }
+
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -205,6 +230,11 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
 router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
+    // Archiver (statut='archive') exige en plus dossiers.archiver — un
+    // droit d'édition générale ne doit pas suffire à clore un dossier.
+    if (b.statut === "archive" && !(await estAutorise(req.user.role, "dossiers.archiver"))) {
+      return res.status(403).json({ error: "Non autorisé à archiver un dossier" });
+    }
     const clauseConcurrence = b.maj_le_attendu != null
       ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $14::timestamptz)"
       : "";
@@ -241,6 +271,64 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/dossiers/:id — suppression volontairement limitée aux
+// dossiers "à l'ouverture", sans activité réelle enregistrée. Un dossier
+// clôturé se ferme par archivage (PUT statut='archive'), pas par
+// suppression — voir TABLES_ACTIVITE_DOSSIER plus haut.
+router.delete("/:id", requirePermission("dossiers.supprimer"), async (req, res) => {
+  const id = req.params.id;
+  try {
+    const compteurs = await Promise.all(
+      TABLES_ACTIVITE_DOSSIER.map((t) =>
+        pool.query(`SELECT count(*) AS n FROM ${t} WHERE dossier_id = $1`, [id])
+      )
+    );
+    const bloquants = TABLES_ACTIVITE_DOSSIER
+      .map((t, i) => ({ table: t, n: Number(compteurs[i].rows[0].n) }))
+      .filter((x) => x.n > 0);
+    if (bloquants.length) {
+      return res.status(409).json({
+        error: `Suppression impossible : activité déjà enregistrée (${bloquants.map((x) => `${x.n} ${x.table}`).join(", ")}). Utilisez l'archivage à la place.`,
+      });
+    }
+    const del = await pool.query("DELETE FROM dossiers WHERE id = $1 RETURNING id", [id]);
+    if (!del.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST/DELETE /api/dossiers/:id/clients — clients additionnels (18/08/2026).
+router.post("/:id/clients", requirePermission("dossiers.clients_additionnels.gerer"), async (req, res) => {
+  const { client_id } = req.body || {};
+  if (!client_id) return res.status(400).json({ error: "client_id requis" });
+  try {
+    await pool.query(
+      "INSERT INTO dossier_clients_additionnels (dossier_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+      [req.params.id, client_id]
+    );
+    res.status(201).json({ dossier_id: req.params.id, client_id });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete("/:id/clients/:clientId", requirePermission("dossiers.clients_additionnels.gerer"), async (req, res) => {
+  try {
+    await pool.query(
+      "DELETE FROM dossier_clients_additionnels WHERE dossier_id = $1 AND client_id = $2",
+      [req.params.id, req.params.clientId]
+    );
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

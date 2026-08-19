@@ -25,12 +25,13 @@ export interface Dossier {
   responsable: string;
   pro_bono: boolean;
   cumul_xof: number;
-  honoraires_seuil_xof: number;
-  statut_honoraires: 'sans_honoraires' | 'sous_seuil' | 'atteint' | 'abonnement';
+  // null pour un dossier non pro bono — le seuil classique a été abandonné
+  // le 18/08/2026, seul le volet pro bono reste suivi.
+  honoraires_seuil_xof: number | null;
+  statut_honoraires: 'sans_honoraires' | 'sous_seuil' | 'atteint' | null;
 }
 
 export interface ParametresHonoraires {
-  honoraires_min_xof: number;
   frais_procedure_pro_bono_min_xof: number;
   quota_pro_bono_mensuel: number;
 }
@@ -85,6 +86,19 @@ export class ApiService {
     return this.http.put<any>(`${this.base}/api/dossiers/${id}`, payload);
   }
 
+  supprimerDossier(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/dossiers/${id}`);
+  }
+
+  // Clients additionnels sur un dossier (18/08/2026) — un même dossier peut
+  // comporter plusieurs identités clientes en plus du client principal.
+  ajouterClientDossier(dossierId: string, clientId: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/clients`, { client_id: clientId });
+  }
+  retirerClientDossier(dossierId: string, clientId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/dossiers/${dossierId}/clients/${clientId}`);
+  }
+
   clients(recherche = '', kyc = ''): Observable<any[]> {
     const params = new URLSearchParams();
     if (recherche) params.set('q', recherche);
@@ -103,6 +117,10 @@ export class ApiService {
 
   majClient(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/clients/${id}`, payload);
+  }
+
+  supprimerClient(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/clients/${id}`);
   }
 
   kycAlertes(jours = 30): Observable<any[]> {

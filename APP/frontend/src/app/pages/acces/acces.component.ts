@@ -124,13 +124,9 @@ import { AuthService } from '../../core/auth.service';
 
       @if (auth.peut('parametres.honoraires.modifier') && parametres()) {
         <section class="panel">
-          <h3>Seuils honoraires</h3>
-          <p class="muted">Planchers minimum, pas des forfaits imposés — un dossier peut toujours être facturé au-delà. Réservé Associé + Administrateur IT.</p>
+          <h3>Seuils pro bono</h3>
+          <p class="muted">Plancher minimum, pas un forfait imposé — un dossier pro bono peut toujours être facturé au-delà. Réservé aux avocats habilités (voir dossiers.pro_bono.declarer dans la matrice ci-dessous).</p>
           <div class="grid2">
-            <div>
-              <label>Honoraires minimum — dossier classique (FCFA)</label>
-              <input class="in" type="number" [(ngModel)]="parametresEdit.honoraires_min_xof" name="seuilClassique" />
-            </div>
             <div>
               <label>Frais de procédure minimum — dossier pro bono (FCFA)</label>
               <input class="in" type="number" [(ngModel)]="parametresEdit.frais_procedure_pro_bono_min_xof" name="seuilProBono" />

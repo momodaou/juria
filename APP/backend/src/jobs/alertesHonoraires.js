@@ -1,10 +1,10 @@
-// JURIA — job d'alertes honoraires (anti-dissimulation, ajout 18/08/2026).
-// Repère les dossiers sous le seuil d'honoraires applicable (classique ou
-// pro bono, voir routes/dossiers.js pour le même calcul) et notifie par
-// paliers croissants d'audience : J+3 le responsable seul, J+7 + la
-// direction (associés), J+15 + comptabilité/administration. Idempotent
-// (colonnes booléennes par dossier) et sans notion d'"apporteur" distincte
-// de dossiers.responsable_id, qui n'existe pas dans le schéma actuel.
+// JURIA — job d'alertes honoraires (ajout 18/08/2026, restreint au pro bono
+// depuis l'abandon du seuil classique le même jour). Repère les dossiers
+// pro bono sous le seuil de frais de procédure et notifie par paliers
+// croissants d'audience : J+3 le responsable seul, J+7 + la direction
+// (associés), J+15 + comptabilité/administration. Idempotent (colonnes
+// booléennes par dossier) et sans notion d'"apporteur" distincte de
+// dossiers.responsable_id, qui n'existe pas dans le schéma actuel.
 //
 // Persistance dans une table dédiée (alertes_honoraires) plutôt que dans
 // le système de messagerie (conversations/messages, pensé pour le chat
@@ -17,14 +17,14 @@ async function executerJobAlertesHonoraires(pool, bus) {
            (current_date - d.date_ouverture) AS jours,
            d.alerte_honoraires_j3, d.alerte_honoraires_j7, d.alerte_honoraires_j15,
            COALESCE(fh.cumul_xof, 0) AS cumul_xof,
-           (CASE WHEN d.pro_bono THEN p.frais_procedure_pro_bono_min_xof ELSE p.honoraires_min_xof END) AS seuil_xof
+           p.frais_procedure_pro_bono_min_xof AS seuil_xof
     FROM dossiers d
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(f.montant_ttc_xof), 0) AS cumul_xof
       FROM factures f WHERE f.dossier_id = d.id AND f.statut <> 'annulee'
     ) fh ON true
     CROSS JOIN parametres_cabinet p
-    WHERE d.statut IN ('ouvert','en_cours') AND d.mode_honoraires IS DISTINCT FROM 'abonnement'
+    WHERE d.statut IN ('ouvert','en_cours') AND d.pro_bono
   `);
 
   const direction = await pool.query(
