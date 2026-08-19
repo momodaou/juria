@@ -157,17 +157,66 @@ import { AuthService } from '../../core/auth.service';
             </select>
           </div>
           <div>
-            <label>Matière</label>
-            <input class="in" [(ngModel)]="dossier.matiere" name="matiere" placeholder="Ex. Recouvrement" />
+            <label>Matière — discipline{{ dossier.pole === 'conseil' ? ' (facultatif)' : '' }}</label>
+            <select class="in" [(ngModel)]="matiereChoisie" name="matiere" (ngModelChange)="onMatiereChange()">
+              <option value="">— Sélectionner —</option>
+              @for (m of matieres(); track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+            </select>
+            @if (matiereChoisie === 'autre') {
+              <input class="in" [(ngModel)]="dossier.matiere" name="matiereAutre" placeholder="Préciser la matière" />
+            }
           </div>
-          <div>
-            <label>Juridiction</label>
-            <input class="in" [(ngModel)]="dossier.juridiction" name="juridiction" placeholder="Ex. Tribunal de commerce de Bamako" />
+
+          @if (dossier.pole === 'contentieux') {
+            <div>
+              <label>Statut procédure</label>
+              <select class="in" [(ngModel)]="dossier.statut_procedure" name="statutProcedure">
+                <option value="">— Sélectionner —</option>
+                @for (s of statutsProcedure(); track s.code) { <option [value]="s.code">{{ s.libelle }}</option> }
+              </select>
+              @if (dossier.statut_procedure === 'autre') {
+                <input class="in" [(ngModel)]="dossier.statut_procedure_precision" name="statutProcedurePrecision" placeholder="Préciser" />
+              }
+            </div>
+            <div>
+              <label>Juridiction</label>
+              <select class="in" [(ngModel)]="juridictionChoisie" name="juridiction" (ngModelChange)="onJuridictionChange()">
+                <option value="">— Sélectionner —</option>
+                @for (j of juridictions(); track j.code) { <option [value]="j.code">{{ j.libelle }}</option> }
+              </select>
+              @if (juridictionChoisie === 'autre') {
+                <input class="in" [(ngModel)]="dossier.juridiction" name="juridictionAutre" placeholder="Préciser la juridiction" />
+              }
+            </div>
+            <div>
+              <label>Instance (degré)</label>
+              <select class="in" [(ngModel)]="dossier.instance_degre" name="instanceDegre">
+                <option value="premiere_instance">Première instance</option>
+                <option value="appel">Appel</option>
+                <option value="cassation">Cassation (dont CCJA)</option>
+                <option value="opposition">Opposition</option>
+                <option value="refere">Référé</option>
+                <option value="execution">Exécution</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div>
+              <label>Montant du litige (FCFA, facultatif)</label>
+              <input class="in" type="number" [(ngModel)]="dossier.montant_litige" name="montantLitige" />
+            </div>
+          } @else {
+            <div class="col2">
+              <label>Cabinet ou avocat partenaire (intermédiaire, facultatif)</label>
+              <input class="in" [(ngModel)]="dossier.intermediaire" name="intermediaire" placeholder="Ex. Cabinet correspondant ou confrère qui fait le tampon" />
+            </div>
+          }
+
+          <div class="col2">
+            <label>Nature / objet du dossier (facultatif)</label>
+            <textarea class="in" [(ngModel)]="dossier.objet" name="objet" rows="2"
+                      placeholder="Ex. Recouvrement d'une créance commerciale impayée"></textarea>
           </div>
-          <div>
-            <label>Montant du litige (FCFA)</label>
-            <input class="in" type="number" [(ngModel)]="dossier.montant_litige" name="montantLitige" />
-          </div>
+
           <div>
             <label>Mode d'honoraires</label>
             <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires">
@@ -204,8 +253,7 @@ import { AuthService } from '../../core/auth.service';
           </label>
         }
 
-        <button class="btn" (click)="creerDossier()"
-                [disabled]="creation() || !dossier.client_id || !dossier.matiere || !dossier.responsable_id">
+        <button class="btn" (click)="creerDossier()" [disabled]="creation() || !formValide()">
           {{ creation() ? 'Création…' : 'Créer le dossier' }}
         </button>
         @if (erreurCreation()) { <p class="err">{{ erreurCreation() }}</p> }
@@ -231,6 +279,8 @@ import { AuthService } from '../../core/auth.service';
     .decision .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
     .decision-finale{margin-top:12px;font-size:14px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+    .col2{grid-column:1 / -1}
+    textarea.in{font-family:inherit;resize:vertical}
     .pb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate);margin:6px 0 14px;cursor:pointer}
     .pb input{width:auto}
     .verifies{margin-top:10px;font-size:13px}
@@ -268,7 +318,37 @@ export class OuvertureComponent implements OnInit {
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
   partiesAdversesEdit = '';
-  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false };
+  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance' };
+
+  // Champs conditionnels par pôle (19/08/2026) — matière/statut procédure/
+  // juridiction passent par le mécanisme listes_valeurs déjà en place
+  // (GET /api/listes-valeurs?domaine=), pas un nouvel enum Postgres :
+  // ces listes sont éditables par la direction sans session de dev.
+  // L'instance (degré) branche pour la première fois la table `instances`,
+  // déjà en base mais jamais utilisée avant ce jour.
+  readonly matieres = signal<{ code: string; libelle: string }[]>([]);
+  readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
+  readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
+  matiereChoisie = '';
+  juridictionChoisie = '';
+
+  onMatiereChange(): void {
+    if (this.matiereChoisie === 'autre') { this.dossier.matiere = ''; return; }
+    const m = this.matieres().find((x) => x.code === this.matiereChoisie);
+    this.dossier.matiere = m ? m.libelle : '';
+  }
+
+  onJuridictionChange(): void {
+    if (this.juridictionChoisie === 'autre') { this.dossier.juridiction = ''; return; }
+    const j = this.juridictions().find((x) => x.code === this.juridictionChoisie);
+    this.dossier.juridiction = j ? j.libelle : '';
+  }
+
+  formValide(): boolean {
+    if (!this.dossier.client_id || !this.dossier.responsable_id) return false;
+    if (this.dossier.pole === 'contentieux' && !this.dossier.matiere) return false;
+    return true;
+  }
 
   // Clients additionnels (18/08/2026) — un même dossier peut comporter
   // plusieurs identités clientes (personnes physiques ou morales).
@@ -317,6 +397,9 @@ export class OuvertureComponent implements OnInit {
   ngOnInit(): void {
     this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.listesValeurs('matiere').subscribe({ next: (l) => this.matieres.set(l) });
+    this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
+    this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
   }
 
   partiesAdversesListe(): string[] {
@@ -367,10 +450,16 @@ export class OuvertureComponent implements OnInit {
     this.erreurCreation.set('');
     this.creation.set(true);
     const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
+    // Instance initiale : seulement pertinent en contentieux, et seulement
+    // si un degré ou une juridiction a effectivement été renseigné.
+    const instanceInitiale = this.dossier.pole === 'contentieux' && (this.dossier.instance_degre || this.dossier.juridiction)
+      ? { degre: this.dossier.instance_degre, juridiction: this.dossier.juridiction || null }
+      : undefined;
     this.api.creerDossier({
       intitule: this.intitule, ...this.dossier,
       parties_adverses: partiesAdverses,
       clients_additionnels: this.clientsAdditionnelsIds(),
+      instance_initiale: instanceInitiale,
     }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },

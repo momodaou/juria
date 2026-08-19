@@ -47,9 +47,37 @@ import { AuthService } from '../../core/auth.service';
           <h3>Modifier la fiche</h3>
           <div class="grid2">
             <div><label>Intitulé</label><input class="in" [(ngModel)]="edit.intitule" name="editIntitule" /></div>
-            <div><label>Matière</label><input class="in" [(ngModel)]="edit.matiere" name="editMatiere" /></div>
+            <div>
+              <label>Pôle</label>
+              <select class="in" [(ngModel)]="edit.pole" name="editPole">
+                <option value="contentieux">Contentieux</option>
+                <option value="conseil">Conseil</option>
+              </select>
+            </div>
+            <div><label>Matière — discipline</label><input class="in" [(ngModel)]="edit.matiere" name="editMatiere" /></div>
             <div><label>Juridiction</label><input class="in" [(ngModel)]="edit.juridiction" name="editJuridiction" /></div>
-            <div><label>Montant du litige (FCFA)</label><input class="in" type="number" [(ngModel)]="edit.montant_litige" name="editMontant" /></div>
+
+            @if (edit.pole === 'contentieux') {
+              <div>
+                <label>Statut procédure</label>
+                <select class="in" [(ngModel)]="edit.statut_procedure" name="editStatutProcedure">
+                  <option value="">— Sélectionner —</option>
+                  @for (s of statutsProcedure(); track s.code) { <option [value]="s.code">{{ s.libelle }}</option> }
+                </select>
+                @if (edit.statut_procedure === 'autre') {
+                  <input class="in" [(ngModel)]="edit.statut_procedure_precision" name="editStatutProcedurePrecision" placeholder="Préciser" />
+                }
+              </div>
+              <div><label>Montant du litige (FCFA, facultatif)</label><input class="in" type="number" [(ngModel)]="edit.montant_litige" name="editMontant" /></div>
+            } @else {
+              <div class="col2"><label>Cabinet ou avocat partenaire (intermédiaire, facultatif)</label><input class="in" [(ngModel)]="edit.intermediaire" name="editIntermediaire" /></div>
+            }
+
+            <div class="col2">
+              <label>Nature / objet du dossier</label>
+              <textarea class="in" [(ngModel)]="edit.objet" name="editObjet" rows="2"></textarea>
+            </div>
+
             <div>
               <label>Mode d'honoraires</label>
               <select class="in" [(ngModel)]="edit.mode_honoraires" name="editModeHonoraires">
@@ -156,6 +184,55 @@ import { AuthService } from '../../core/auth.service';
           </div>
         }
       </section>
+
+      @if (d.pole === 'contentieux') {
+        <section class="panel">
+          <h3>Instances</h3>
+          <p class="muted">1re instance, appel, cassation… chaque degré garde sa propre juridiction et son n° de rôle.</p>
+          @if (d.instances?.length) {
+            <table>
+              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Décision</th></tr>
+              @for (i of d.instances; track i.id) {
+                <tr>
+                  <td>{{ libelleDegre(i.degre) }}</td>
+                  <td>{{ i.juridiction || '—' }}</td>
+                  <td>{{ i.numero_role || '—' }}</td>
+                  <td>{{ i.decision || '—' }}</td>
+                </tr>
+              }
+            </table>
+          } @else { <p class="muted">Aucune instance enregistrée.</p> }
+
+          @if (auth.peut('dossiers.instances.gerer')) {
+            <div class="grid2" style="margin-top:12px">
+              <div>
+                <label>Degré</label>
+                <select class="in" [(ngModel)]="nouvelleInstance.degre" name="niDegre">
+                  <option value="premiere_instance">Première instance</option>
+                  <option value="appel">Appel</option>
+                  <option value="cassation">Cassation (dont CCJA)</option>
+                  <option value="opposition">Opposition</option>
+                  <option value="refere">Référé</option>
+                  <option value="execution">Exécution</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              <div>
+                <label>Juridiction</label>
+                <select class="in" [(ngModel)]="nouvelleInstance.juridiction" name="niJuridiction">
+                  <option value="">— Sélectionner —</option>
+                  @for (j of juridictions(); track j.code) { <option [value]="j.libelle">{{ j.libelle }}</option> }
+                </select>
+              </div>
+              <div><label>N° de rôle (facultatif)</label><input class="in" [(ngModel)]="nouvelleInstance.numero_role" name="niNumeroRole" /></div>
+            </div>
+            <button class="btn" (click)="ajouterInstance()" [disabled]="ajoutInstanceEnCours()">
+              {{ ajoutInstanceEnCours() ? 'Ajout…' : '+ Ajouter cette instance' }}
+            </button>
+            @if (erreurInstance()) { <p class="err">{{ erreurInstance() }}</p> }
+          }
+        </section>
+      }
 
       <section class="panel">
         <h3>Parties adverses</h3>
@@ -318,6 +395,8 @@ import { AuthService } from '../../core/auth.service';
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
     label{font-size:12px;color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+    .col2{grid-column:1 / -1}
+    textarea.in{font-family:inherit;resize:vertical}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -358,6 +437,16 @@ export class DossierDetailComponent implements OnInit {
   readonly utilisateurs = signal<any[]>([]);
   edit: any = {};
   readonly phases = ['consultation', 'ouverture', 'mise_en_etat', 'plaidoirie', 'decision', 'execution', 'recours', 'cloture'];
+  // Statut procédure (19/08/2026) — liste_valeurs déjà utilisée à la
+  // création (ouverture.component.ts), reprise ici pour l'édition.
+  readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
+
+  // Instances (19/08/2026) — 1re instance/appel/cassation… Table déjà en
+  // base mais jamais branchée avant ce jour (voir plan de la session).
+  readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
+  readonly ajoutInstanceEnCours = signal(false);
+  readonly erreurInstance = signal('');
+  nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '' };
 
   // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
   // comporter plusieurs identités clientes.
@@ -376,6 +465,25 @@ export class DossierDetailComponent implements OnInit {
     this.api.ajouterClientDossier(this.id, this.clientAAjouter).subscribe({
       next: () => { this.clientAAjouter = ''; this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  private readonly libellesDegre: Record<string, string> = {
+    premiere_instance: 'Première instance', appel: 'Appel', cassation: 'Cassation (dont CCJA)',
+    opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
+  };
+  libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
+
+  ajouterInstance(): void {
+    this.erreurInstance.set('');
+    this.ajoutInstanceEnCours.set(true);
+    this.api.ajouterInstance(this.id, this.nouvelleInstance).subscribe({
+      next: () => {
+        this.ajoutInstanceEnCours.set(false);
+        this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '' };
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => { this.ajoutInstanceEnCours.set(false); this.erreurInstance.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 
@@ -411,6 +519,8 @@ export class DossierDetailComponent implements OnInit {
     });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
+    this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
+    this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
     this.rafraichirDelais();
     this.rafraichirDocuments();
     this.rafraichirTemps();
@@ -419,9 +529,11 @@ export class DossierDetailComponent implements OnInit {
 
   activerEdition(d: any): void {
     this.edit = {
-      intitule: d.intitule, matiere: d.matiere, juridiction: d.juridiction,
+      intitule: d.intitule, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
       montant_litige: d.montant_litige, mode_honoraires: d.mode_honoraires,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
+      objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
+      intermediaire: d.intermediaire,
     };
     this.erreurEdition.set('');
     this.modeEdition.set(true);

@@ -135,3 +135,75 @@ describe("Clients additionnels — un dossier peut avoir plusieurs identités cl
     expect(apresRetrait.body.clients_additionnels).toHaveLength(0);
   });
 });
+
+// Ajout 19/08/2026 : champs objet/statut_procedure/intermediaire (existaient
+// pour objet, ou nouveaux, mais jamais exposés/persistés via l'API pour la
+// création) + branchement de la table `instances`, déjà en base mais jamais
+// utilisée par aucune route avant ce jour.
+describe("Champs objet/statut_procedure/intermediaire — persistés à la création et à l'édition", () => {
+  test("POST /api/dossiers les enregistre tous", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId, {
+      objet: "Recouvrement d'une créance impayée",
+      statut_procedure: "representation",
+      intermediaire: "Cabinet Correspondant XYZ",
+    });
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.objet).toBe("Recouvrement d'une créance impayée");
+    expect(relu.body.statut_procedure).toBe("representation");
+    expect(relu.body.intermediaire).toBe("Cabinet Correspondant XYZ");
+  });
+
+  test("PUT /api/dossiers/:id les met à jour", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const res = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ objet: "Objet modifié", statut_procedure: "autre", statut_procedure_precision: "Médiation" });
+    expect(res.status).toBe(200);
+
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.objet).toBe("Objet modifié");
+    expect(relu.body.statut_procedure).toBe("autre");
+    expect(relu.body.statut_procedure_precision).toBe("Médiation");
+  });
+});
+
+describe("Instances (1re instance / appel / cassation) — table déjà en base, branchée pour la première fois", () => {
+  test("instance_initiale à la création crée bien une ligne instances", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId, {
+      instance_initiale: { degre: "premiere_instance", juridiction: "Tribunal de Commerce de Bamako" },
+    });
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.instances).toHaveLength(1);
+    expect(relu.body.instances[0].degre).toBe("premiere_instance");
+    expect(relu.body.instances[0].juridiction).toBe("Tribunal de Commerce de Bamako");
+  });
+
+  test("POST puis PUT /api/dossiers/:id/instances — passage en appel puis décision rendue", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId, {
+      instance_initiale: { degre: "premiere_instance", juridiction: "TPI Bamako" },
+    });
+
+    const appel = await request(app)
+      .post(`/api/dossiers/${dossierId}/instances`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ degre: "appel", juridiction: "Cour d'Appel de Bamako" });
+    expect(appel.status).toBe(201);
+    expect(appel.body.degre).toBe("appel");
+
+    const maj = await request(app)
+      .put(`/api/dossiers/${dossierId}/instances/${appel.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ decision: "Confirmation du jugement de première instance", numero_role: "RG-2026-042" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.decision).toBe("Confirmation du jugement de première instance");
+    expect(maj.body.numero_role).toBe("RG-2026-042");
+
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.instances).toHaveLength(2);
+  });
+});

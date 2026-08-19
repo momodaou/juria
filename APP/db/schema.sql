@@ -1844,3 +1844,58 @@ SELECT r, 'dossiers.clients_additionnels.gerer', TRUE
 FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
 -- =============== FIN SUPPRESSION / ARCHIVAGE / CLIENTS MULTIPLES ===============
+
+-- =====================================================================
+--  CHAMPS CONDITIONNELS PAR PÔLE + BRANCHEMENT DE LA GESTION MULTI-
+--  INSTANCE (ajout 19/08/2026, demande utilisateur)
+--
+--  dossiers.objet existait déjà (utilisé par actes.js) mais n'était
+--  exposé dans aucun formulaire — comblé ici, pas recréé. La table
+--  `instances` (degré/juridiction/n° de rôle par degré de juridiction)
+--  existait déjà en base, commentée comme LE mécanisme prévu pour le
+--  suivi 1re instance/appel/cassation, mais jamais branchée à aucune
+--  route ni écran — branchée ici pour la première fois. matiere/
+--  statut_procedure/juridiction passent par le mécanisme générique
+--  listes_valeurs déjà en place (pas un nouvel ALTER TYPE Postgres :
+--  ces listes sont appelées à évoluir, mieux servies par une table
+--  éditable par la direction sans session de dev).
+-- =====================================================================
+ALTER TABLE dossiers
+  ADD COLUMN statut_procedure VARCHAR(60),            -- code listes_valeurs('statut_procedure')
+  ADD COLUMN statut_procedure_precision TEXT,         -- si code = 'autre'
+  ADD COLUMN intermediaire VARCHAR(200);              -- cabinet/avocat correspondant, facultatif
+
+INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
+ ('statut_procedure','assistance','Assistance',1,TRUE),
+ ('statut_procedure','representation','Représentation',2,TRUE),
+ ('statut_procedure','juridictionnelle_demande','Juridictionnelle — en demande',3,TRUE),
+ ('statut_procedure','juridictionnelle_defense','Juridictionnelle — en défense',4,TRUE),
+ ('statut_procedure','gracieuse','Gracieuse',5,TRUE),
+ ('statut_procedure','autre','Autre (préciser)',99,TRUE),
+
+ ('matiere','recouvrement','Recouvrement de créances',1,FALSE),
+ ('matiere','droit_commercial_ohada','Droit commercial / OHADA',2,FALSE),
+ ('matiere','droit_social','Droit social / travail',3,FALSE),
+ ('matiere','penal_affaires','Droit pénal des affaires',4,FALSE),
+ ('matiere','famille','Droit de la famille',5,FALSE),
+ ('matiere','immobilier_bail','Immobilier / bail',6,FALSE),
+ ('matiere','fiscal','Contentieux fiscal',7,FALSE),
+ ('matiere','arbitrage','Arbitrage',8,FALSE),
+ ('matiere','autre','Autre (préciser)',99,TRUE),
+
+ ('juridiction','tpi_bamako','Tribunal de première instance de Bamako',1,FALSE),
+ ('juridiction','tribunal_commerce_bamako','Tribunal de Commerce de Bamako',2,FALSE),
+ ('juridiction','tribunal_travail_bamako','Tribunal du Travail de Bamako',3,FALSE),
+ ('juridiction','cour_appel_bamako','Cour d''Appel de Bamako',4,FALSE),
+ ('juridiction','cour_supreme_mali','Cour Suprême du Mali',5,FALSE),
+ ('juridiction','ccja','CCJA (Cour Commune de Justice et d''Arbitrage — Abidjan)',6,FALSE),
+ ('juridiction','autre','Autre (préciser)',99,TRUE)
+ON CONFLICT (domaine, code) DO NOTHING;
+
+-- dossiers.instances.gerer : ouverte à tous, même périmètre que
+-- dossiers.creer/modifier/clients_additionnels.gerer.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'dossiers.instances.gerer', TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+ON CONFLICT (role, action_code) DO NOTHING;
+-- =============== FIN CHAMPS CONDITIONNELS PAR PÔLE ===============

@@ -26,6 +26,7 @@ const CATALOGUE = [
   { code: "dossiers.archiver", module: "Dossiers 360", label: "Archiver un dossier clôturé", restreinte: true },
   { code: "dossiers.supprimer", module: "Dossiers 360", label: "Supprimer un dossier (sans activité enregistrée)", restreinte: true },
   { code: "dossiers.clients_additionnels.gerer", module: "Dossiers 360", label: "Ajouter/retirer un client supplémentaire sur le dossier" },
+  { code: "dossiers.instances.gerer", module: "Dossiers 360", label: "Ajouter/modifier une instance (1re instance, appel, cassation…)" },
 
   { code: "conflits.soumettre", module: "Nouveau dossier", label: "Soumettre un contrôle de conflit" },
   { code: "conflits.decision", module: "Nouveau dossier", label: "Décider sur un conflit potentiel", restreinte: true },

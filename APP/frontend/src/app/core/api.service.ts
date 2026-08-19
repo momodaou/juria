@@ -90,6 +90,14 @@ export class ApiService {
     return this.http.delete<any>(`${this.base}/api/dossiers/${id}`);
   }
 
+  // Instances (19/08/2026) — 1re instance / appel / cassation… d'un dossier.
+  ajouterInstance(dossierId: string, payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances`, payload);
+  }
+  majInstance(dossierId: string, instanceId: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}`, payload);
+  }
+
   // Clients additionnels sur un dossier (18/08/2026) — un même dossier peut
   // comporter plusieurs identités clientes en plus du client principal.
   ajouterClientDossier(dossierId: string, clientId: string): Observable<any> {

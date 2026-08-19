@@ -103,7 +103,17 @@ router.get("/:id", async (req, res) => {
        WHERE dca.dossier_id = $1`,
       [id]
     );
-    res.json({ ...d.rows[0], parties: parties.rows, equipe: equipe.rows, clients_additionnels: clientsAdditionnels.rows });
+    // Instances (19/08/2026) : table déjà présente en base (degré/
+    // juridiction/n° de rôle par degré — 1re instance, appel, cassation…)
+    // mais jamais branchée à aucune route jusqu'ici.
+    const instances = await pool.query(
+      "SELECT id, degre, juridiction, numero_role, date_debut, decision FROM instances WHERE dossier_id = $1 ORDER BY date_debut NULLS LAST, cree_le",
+      [id]
+    );
+    res.json({
+      ...d.rows[0], parties: parties.rows, equipe: equipe.rows,
+      clients_additionnels: clientsAdditionnels.rows, instances: instances.rows,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -182,11 +192,13 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
-          montant_litige, mode_honoraires, urgence, responsable_id, pro_bono)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11)
+          montant_litige, mode_honoraires, urgence, responsable_id, pro_bono,
+          objet, statut_procedure, statut_procedure_precision, intermediaire)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11,$12,$13,$14,$15)
        RETURNING id, numero, intitule, pro_bono`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
-       b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono]
+       b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
+       b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du
@@ -209,6 +221,19 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
       await pool.query(
         "INSERT INTO dossier_clients_additionnels (dossier_id, client_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
         [rows[0].id, clientId]
+      );
+    }
+
+    // Instance initiale (19/08/2026) : degré + juridiction choisis à
+    // l'ouverture (pertinent surtout pour un dossier contentieux) —
+    // branche pour la première fois la table `instances`, déjà en base
+    // mais jusqu'ici jamais utilisée nulle part.
+    if (b.instance_initiale && (b.instance_initiale.degre || b.instance_initiale.juridiction)) {
+      await pool.query(
+        `INSERT INTO instances (dossier_id, degre, juridiction, numero_role)
+         VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4)`,
+        [rows[0].id, b.instance_initiale.degre || null, b.instance_initiale.juridiction || null,
+         b.instance_initiale.numero_role || null]
       );
     }
 
@@ -236,10 +261,11 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       return res.status(403).json({ error: "Non autorisé à archiver un dossier" });
     }
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $14::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
+      b.statut_procedure, b.statut_procedure_precision, b.intermediaire,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -257,8 +283,11 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          statut = COALESCE($10::statut_dossier, statut),
          objet = COALESCE($11, objet),
          numero_role = COALESCE($12, numero_role),
+         statut_procedure = COALESCE($13, statut_procedure),
+         statut_procedure_precision = COALESCE($14, statut_procedure_precision),
+         intermediaire = COALESCE($15, intermediaire),
          maj_le = now()
-       WHERE id = $13 ${clauseConcurrence}
+       WHERE id = $16 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, maj_le`,
       params
     );
@@ -329,6 +358,49 @@ router.delete("/:id/clients/:clientId", requirePermission("dossiers.clients_addi
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/dossiers/:id/instances — ajouter un degré (ex. passage en
+// appel après une première instance). Table `instances` déjà en base
+// (voir GET /:id) mais jamais utilisée avant ce jour.
+router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut)
+       VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5)
+       RETURNING id, degre, juridiction, numero_role, date_debut, decision`,
+      [req.params.id, b.degre || null, b.juridiction || null, b.numero_role || null, b.date_debut || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/dossiers/:id/instances/:instanceId — compléter une instance au
+// fil du temps (n° de rôle obtenu après coup, décision rendue…).
+router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      `UPDATE instances SET
+         juridiction = COALESCE($1, juridiction),
+         numero_role = COALESCE($2, numero_role),
+         date_debut = COALESCE($3, date_debut),
+         decision = COALESCE($4, decision)
+       WHERE id = $5 AND dossier_id = $6
+       RETURNING id, degre, juridiction, numero_role, date_debut, decision`,
+      [b.juridiction || null, b.numero_role || null, b.date_debut || null, b.decision || null,
+       req.params.instanceId, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Instance introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 
