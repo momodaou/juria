@@ -35,6 +35,54 @@ const JOIN_HONORAIRES = `
 // facturable, des audiences planifiées, etc.
 const TABLES_ACTIVITE_DOSSIER = ["documents", "temps", "factures", "communications", "retrocessions", "evenements", "taches"];
 
+// Référencement des dossiers (ajout 19/08/2026) — Guide de référencement
+// des dossiers, JFC Avocats : [TYPE]-[MATIÈRE]-[ANNÉE]-[N° d'ordre], ex.
+// CX-CIV-2026-0048. Compteur remis à 0001 chaque année, PAR type+matière
+// (pas global) — le LIKE incluant l'année suffit à obtenir ce reset
+// automatiquement d'une année sur l'autre.
+const TYPE_CODE = { conseil: "CS", contentieux: "CX" };
+
+async function genererNumero(pool, pole, codeMatiere) {
+  const typeCode = TYPE_CODE[pole] || "CX";
+  const annee = String(new Date().getFullYear());
+  const { rows } = await pool.query(
+    "SELECT count(*) + 1 AS n FROM dossiers WHERE numero LIKE $1",
+    [`${typeCode}-${codeMatiere}-${annee}-%`]
+  );
+  return `${typeCode}-${codeMatiere}-${annee}-${String(rows[0].n).padStart(4, "0")}`;
+}
+
+// Couleur de chemise physique déduite de (matière, type) — Guide §6,
+// déjà seedée dans codes_matiere.couleur.
+async function couleurPour(pool, pole, codeMatiere) {
+  const { rows } = await pool.query(
+    "SELECT couleur FROM codes_matiere WHERE code = $1 AND type = $2::pole_cabinet",
+    [codeMatiere, pole]
+  );
+  return rows[0] ? rows[0].couleur : null;
+}
+
+// GET /api/dossiers/meta/codes-matiere?pole=conseil|contentieux — référentiel
+// des codes matière (Guide de référencement §3), pour les listes déroulantes
+// de création/édition. Préfixé /meta/ pour ne jamais entrer en collision
+// avec GET /:id (Express ferait autrement correspondre "/codes-matiere"
+// à :id, ce préfixe l'évite quel que soit l'ordre d'enregistrement).
+router.get("/meta/codes-matiere", async (req, res) => {
+  const { pole } = req.query;
+  try {
+    const { rows } = await pool.query(
+      `SELECT code, type, libelle, couleur FROM codes_matiere
+       ${pole ? "WHERE type = $1::pole_cabinet" : ""}
+       ORDER BY (code = 'IND'), (code = 'AUT'), libelle`,
+      pole ? [pole] : []
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/dossiers?statut=&responsable=&q=
 router.get("/", async (req, res) => {
   const { statut, responsable, q } = req.query;
@@ -47,6 +95,7 @@ router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence, d.pro_bono,
+              d.code_matiere, d.couleur_chemise,
               d.client_id, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES}
@@ -180,25 +229,28 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
         });
       }
     }
-    // Référencement automatique (AFF-AA-XXX) si non fourni — même patron que
-    // la numérotation des factures (factures.js). Jusqu'ici cette route
-    // exigeait un numero fourni par l'appelant alors qu'aucun écran
-    // frontend ne le générait, gap comblé en construisant le formulaire
-    // d'ouverture (ouverture.component.ts).
-    const yy = new Date().getFullYear().toString().slice(2);
-    const cpt = await pool.query("SELECT count(*) + 1 AS n FROM dossiers WHERE numero LIKE $1", [`AFF-${yy}-%`]);
-    const numero = b.numero || `AFF-${yy}-${String(cpt.rows[0].n).padStart(3, "0")}`;
+    // Référencement automatique selon le Guide de référencement des
+    // dossiers (JFC Avocats) si non fourni : [TYPE]-[MATIÈRE]-[ANNÉE]-[N°],
+    // ex. CX-CIV-2026-0048. Sans matière choisie, IND ("chemise neutre à
+    // qualifier") est le repli explicitement prévu par le guide — jamais
+    // un prefix générique inventé comme c'était le cas jusqu'ici
+    // ("AFF-AA-XXX", sans rapport avec le guide adopté).
+    const codeMatiere = (b.code_matiere || "IND").toUpperCase();
+    const numero = b.numero || await genererNumero(pool, b.pole, codeMatiere);
+    const couleurChemise = await couleurPour(pool, b.pole, codeMatiere);
 
     const { rows } = await pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, mode_honoraires, urgence, responsable_id, pro_bono,
-          objet, statut_procedure, statut_procedure_precision, intermediaire)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11,$12,$13,$14,$15)
-       RETURNING id, numero, intitule, pro_bono`,
+          objet, statut_procedure, statut_procedure_precision, intermediaire,
+          code_matiere, couleur_chemise)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11,$12,$13,$14,$15,$16,$17)
+       RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
-       b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null]
+       b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
+       codeMatiere, couleurChemise]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du
@@ -260,12 +312,33 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     if (b.statut === "archive" && !(await estAutorise(req.user.role, "dossiers.archiver"))) {
       return res.status(403).json({ error: "Non autorisé à archiver un dossier" });
     }
+
+    // Requalification depuis IND (Guide de référencement §3) : seul cas où
+    // la référence, normalement stable et immuable (exigence explicite du
+    // guide), est reconstruite — un dossier référencé provisoirement en
+    // IND ("chemise neutre à qualifier") reçoit sa référence définitive
+    // dès que sa matière réelle est connue. Tout autre changement de
+    // matière laisse le numero inchangé.
+    let numeroRegenere = null;
+    let couleurRegeneree = null;
+    if (b.code_matiere) {
+      const actuel = await pool.query("SELECT code_matiere, pole FROM dossiers WHERE id = $1", [req.params.id]);
+      if (!actuel.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+      const codeMatiere = b.code_matiere.toUpperCase();
+      const pole = b.pole || actuel.rows[0].pole;
+      if (actuel.rows[0].code_matiere === "IND" && codeMatiere !== "IND") {
+        numeroRegenere = await genererNumero(pool, pole, codeMatiere);
+      }
+      couleurRegeneree = await couleurPour(pool, pole, codeMatiere);
+    }
+
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $20::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
       b.statut_procedure, b.statut_procedure_precision, b.intermediaire,
+      b.code_matiere ? b.code_matiere.toUpperCase() : null, couleurRegeneree, numeroRegenere,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -286,9 +359,12 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          statut_procedure = COALESCE($13, statut_procedure),
          statut_procedure_precision = COALESCE($14, statut_procedure_precision),
          intermediaire = COALESCE($15, intermediaire),
+         code_matiere = COALESCE($16, code_matiere),
+         couleur_chemise = COALESCE($17, couleur_chemise),
+         numero = COALESCE($18, numero),
          maj_le = now()
-       WHERE id = $16 ${clauseConcurrence}
-       RETURNING id, numero, intitule, statut, phase, maj_le`,
+       WHERE id = $19 ${clauseConcurrence}
+       RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, maj_le`,
       params
     );
     if (!rows[0]) {

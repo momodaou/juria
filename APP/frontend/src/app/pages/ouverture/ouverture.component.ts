@@ -151,20 +151,17 @@ import { AuthService } from '../../core/auth.service';
         <div class="grid2">
           <div>
             <label>Pôle</label>
-            <select class="in" [(ngModel)]="dossier.pole" name="pole">
+            <select class="in" [(ngModel)]="dossier.pole" name="pole" (ngModelChange)="onPoleChange()">
               <option value="contentieux">Contentieux</option>
               <option value="conseil">Conseil</option>
             </select>
           </div>
           <div>
-            <label>Matière — discipline{{ dossier.pole === 'conseil' ? ' (facultatif)' : '' }}</label>
-            <select class="in" [(ngModel)]="matiereChoisie" name="matiere" (ngModelChange)="onMatiereChange()">
-              <option value="">— Sélectionner —</option>
-              @for (m of matieres(); track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+            <label>Matière — discipline (facultatif, IND par défaut si non renseignée)</label>
+            <select class="in" [(ngModel)]="dossier.code_matiere" name="matiere" (ngModelChange)="onMatiereChange()">
+              <option value="">— Sélectionner (IND par défaut) —</option>
+              @for (m of matieres(); track m.code) { <option [value]="m.code">{{ m.code }} — {{ m.libelle }}</option> }
             </select>
-            @if (matiereChoisie === 'autre') {
-              <input class="in" [(ngModel)]="dossier.matiere" name="matiereAutre" placeholder="Préciser la matière" />
-            }
           </div>
 
           @if (dossier.pole === 'contentieux') {
@@ -318,23 +315,31 @@ export class OuvertureComponent implements OnInit {
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
   partiesAdversesEdit = '';
-  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance' };
+  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '' };
 
-  // Champs conditionnels par pôle (19/08/2026) — matière/statut procédure/
-  // juridiction passent par le mécanisme listes_valeurs déjà en place
-  // (GET /api/listes-valeurs?domaine=), pas un nouvel enum Postgres :
-  // ces listes sont éditables par la direction sans session de dev.
-  // L'instance (degré) branche pour la première fois la table `instances`,
-  // déjà en base mais jamais utilisée avant ce jour.
-  readonly matieres = signal<{ code: string; libelle: string }[]>([]);
+  // Champs conditionnels par pôle (19/08/2026) — matière suit désormais le
+  // Guide de référencement des dossiers (table codes_matiere, déjà en base
+  // mais jamais branchée jusqu'ici — remplace le domaine listes_valeurs
+  // ad hoc créé la veille avant la découverte de ce référentiel officiel).
+  // statut procédure/juridiction restent sur listes_valeurs, non concernés
+  // par le guide. L'instance (degré) branche la table `instances`.
+  readonly matieres = signal<{ code: string; libelle: string; couleur: string }[]>([]);
   readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
   readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
-  matiereChoisie = '';
   juridictionChoisie = '';
 
+  chargerMatieres(): void {
+    this.api.codesMatiere(this.dossier.pole).subscribe({ next: (l) => this.matieres.set(l) });
+  }
+
+  onPoleChange(): void {
+    this.dossier.code_matiere = '';
+    this.dossier.matiere = '';
+    this.chargerMatieres();
+  }
+
   onMatiereChange(): void {
-    if (this.matiereChoisie === 'autre') { this.dossier.matiere = ''; return; }
-    const m = this.matieres().find((x) => x.code === this.matiereChoisie);
+    const m = this.matieres().find((x) => x.code === this.dossier.code_matiere);
     this.dossier.matiere = m ? m.libelle : '';
   }
 
@@ -345,9 +350,7 @@ export class OuvertureComponent implements OnInit {
   }
 
   formValide(): boolean {
-    if (!this.dossier.client_id || !this.dossier.responsable_id) return false;
-    if (this.dossier.pole === 'contentieux' && !this.dossier.matiere) return false;
-    return true;
+    return !!(this.dossier.client_id && this.dossier.responsable_id);
   }
 
   // Clients additionnels (18/08/2026) — un même dossier peut comporter
@@ -397,7 +400,7 @@ export class OuvertureComponent implements OnInit {
   ngOnInit(): void {
     this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
-    this.api.listesValeurs('matiere').subscribe({ next: (l) => this.matieres.set(l) });
+    this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
   }

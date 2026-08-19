@@ -207,3 +207,83 @@ describe("Instances (1re instance / appel / cassation) — table déjà en base,
     expect(relu.body.instances).toHaveLength(2);
   });
 });
+
+// Ajout 19/08/2026 : la numérotation générait jusqu'ici un "AFF-AA-XXX"
+// générique sans rapport avec le Guide de référencement des dossiers
+// adopté par le cabinet (fourni par l'utilisateur, DOC/CLAUDE CODE - JURIA/).
+// Ces tests fixent la vraie formule : [TYPE]-[MATIÈRE]-[ANNÉE]-[N°], via la
+// table codes_matiere (déjà en base, jamais branchée avant ce jour).
+describe("Numérotation selon le Guide de référencement des dossiers", () => {
+  test("sans matière choisie : IND par défaut (chemise neutre à qualifier, prévu par le guide)", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "Sans matière", client_id: clientId, pole: "contentieux", responsable_id: userId });
+    expect(res.status).toBe(201);
+    const annee = new Date().getFullYear();
+    expect(res.body.numero).toMatch(new RegExp(`^CX-IND-${annee}-\\d{4}$`));
+    expect(res.body.code_matiere).toBe("IND");
+  });
+
+  test("code_matiere choisi : format CX-COM-AAAA-NNNN, compteur incrémental par type+matière", async () => {
+    const clientId = await creerClient();
+    const annee = new Date().getFullYear();
+
+    const premier = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "Commercial 1", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM" });
+    const second = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "Commercial 2", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM" });
+
+    expect(premier.body.numero).toMatch(new RegExp(`^CX-COM-${annee}-\\d{4}$`));
+    const n1 = Number(premier.body.numero.split("-")[3]);
+    const n2 = Number(second.body.numero.split("-")[3]);
+    expect(n2).toBe(n1 + 1);
+    expect(premier.body.couleur_chemise).toBe("bleu"); // Guide §6 : CX-COM → bleu
+  });
+
+  test("compteur distinct pour un autre type+matière (CS-AFF vs CX-COM)", async () => {
+    const clientId = await creerClient();
+    const annee = new Date().getFullYear();
+    const res = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "Conseil affaires", client_id: clientId, pole: "conseil", responsable_id: userId, code_matiere: "AFF" });
+    expect(res.body.numero).toMatch(new RegExp(`^CS-AFF-${annee}-0001$`));
+  });
+});
+
+describe("Requalification depuis IND — seul cas où la référence, normalement stable, est reconstruite", () => {
+  test("PUT code_matiere depuis IND régénère numero et couleur_chemise ; un changement ultérieur laisse numero stable", async () => {
+    const clientId = await creerClient();
+    const creation = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "À qualifier", client_id: clientId, pole: "contentieux", responsable_id: userId });
+    const dossierId = creation.body.id;
+    expect(creation.body.code_matiere).toBe("IND");
+    const ancienNumero = creation.body.numero;
+
+    const requalif = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ code_matiere: "CIV" });
+    expect(requalif.status).toBe(200);
+    expect(requalif.body.numero).not.toBe(ancienNumero);
+    expect(requalif.body.numero).toMatch(/^CX-CIV-\d{4}-\d{4}$/);
+    expect(requalif.body.code_matiere).toBe("CIV");
+    expect(requalif.body.couleur_chemise).toBe("jaune"); // Guide §6 : CX-CIV → jaune
+
+    const numeroApresRequalif = requalif.body.numero;
+    const autreChangement = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ code_matiere: "FAM" });
+    expect(autreChangement.status).toBe(200);
+    expect(autreChangement.body.numero).toBe(numeroApresRequalif);
+  });
+});

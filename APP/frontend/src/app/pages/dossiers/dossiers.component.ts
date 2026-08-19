@@ -21,7 +21,10 @@ import { ApiService, Dossier } from '../../core/api.service';
           <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Phase</th><th>Urgence</th><th>Pro bono</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.numero }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">
+                @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
+                {{ d.numero }}
+              </td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}</td>
               <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
@@ -53,6 +56,7 @@ import { ApiService, Dossier } from '../../core/api.service';
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .lien{color:var(--gold);text-decoration:none;font-size:13px}
     .lien:hover{text-decoration:underline}
+    .pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
   `],
 })
 export class DossiersComponent implements OnInit {
@@ -71,6 +75,12 @@ export class DossiersComponent implements OnInit {
       error: () => this.erreur.set('Impossible de charger les dossiers.'),
     });
   }
+
+  private readonly couleursCss: Record<string, string> = {
+    rouge: '#c0392b', jaune: '#d4ac0d', bleu: '#2874a6', vert: '#229954',
+    orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6',
+  };
+  couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
 
   libelleHonoraires(statut: string | null): string {
     switch (statut) {

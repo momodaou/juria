@@ -1899,3 +1899,45 @@ SELECT r, 'dossiers.instances.gerer', TRUE
 FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
 -- =============== FIN CHAMPS CONDITIONNELS PAR PÔLE ===============
+
+-- =====================================================================
+--  RÉFÉRENCEMENT DES DOSSIERS SELON LE GUIDE ADOPTÉ (ajout 19/08/2026)
+--
+--  Le « Guide de référencement des dossiers » (JFC Avocats, fourni par
+--  l'utilisateur, DOC/CLAUDE CODE - JURIA/) impose la formule
+--  [TYPE]-[MATIÈRE]-[ANNÉE]-[N° d'ordre], ex. CX-CIV-2026-0048, avec un
+--  compteur remis à 0001 chaque année PAR type+matière (pas global). La
+--  table codes_matiere existait déjà en base (précisément pour cette
+--  formule, seedée dès la création du schéma) mais n'était branchée à
+--  AUCUNE route — POST /api/dossiers générait un « AFF-AA-XXX » générique
+--  sans rapport avec le guide. Corrigé ici, pas réinventé.
+--
+--  Deux codes manquaient dans le seed initial de codes_matiere par rapport
+--  au guide lui-même : IND (« Indéterminée — à qualifier », chemise
+--  neutre, les deux types) et, côté conseil, FIS/AUT (présents côté
+--  contentieux mais oubliés côté conseil alors que le guide les liste pour
+--  les deux). Le code IND permet d'ouvrir un dossier avant que sa matière
+--  soit connue (§3 du guide) ; la référence n'est reconstruite QUE dans ce
+--  cas précis de requalification depuis IND — sinon elle reste stable et
+--  immuable comme le guide l'exige explicitement.
+--
+--  dossiers.matiere (texte libre) reste pour l'affichage rapide (libellé),
+--  alimenté automatiquement depuis codes_matiere.libelle — code_matiere
+--  porte la valeur qui compte pour la référence et la couleur de chemise.
+--  Le domaine listes_valeurs('matiere') créé le 18/08/2026 (avant la
+--  découverte de codes_matiere) est désactivé, pas supprimé — traçabilité,
+--  même principe que le reste de ce mécanisme.
+-- =====================================================================
+ALTER TABLE dossiers ADD COLUMN code_matiere VARCHAR(6);
+ALTER TABLE dossiers ADD CONSTRAINT fk_dossiers_code_matiere
+  FOREIGN KEY (code_matiere, pole) REFERENCES codes_matiere(code, type);
+
+INSERT INTO codes_matiere (code, type, libelle, couleur) VALUES
+ ('IND','contentieux','Indéterminée — à qualifier','gris'),
+ ('IND','conseil','Indéterminée — à qualifier','gris'),
+ ('FIS','conseil','Fiscal (conseil)','gris'),
+ ('AUT','conseil','Autre','gris')
+ON CONFLICT (code, type) DO NOTHING;
+
+UPDATE listes_valeurs SET actif = FALSE WHERE domaine = 'matiere';
+-- =============== FIN RÉFÉRENCEMENT SELON LE GUIDE ===============

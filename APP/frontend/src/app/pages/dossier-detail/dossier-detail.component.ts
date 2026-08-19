@@ -17,7 +17,13 @@ import { AuthService } from '../../core/auth.service';
         <div class="dcard-top">
           <div>
             <h1>{{ d.intitule }}</h1>
-            <div class="sub">{{ d.numero }} · {{ d.matiere || d.pole }} · {{ d.juridiction }}</div>
+            <div class="sub">
+              @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
+              <b class="ref">{{ d.numero }}</b> · {{ d.matiere || d.pole }} · {{ d.juridiction }}
+            </div>
+            @if (d.code_matiere === 'IND') {
+              <p class="hint-ind">Référencé provisoirement (matière indéterminée) — choisissez la matière définitive dans « Modifier la fiche » dès qu'elle est connue ; la référence sera alors reconstruite automatiquement.</p>
+            }
           </div>
           <div style="display:flex;gap:10px;align-items:center">
             <span class="tag" [class.haute]="d.urgence === 'haute'">Urgence {{ d.urgence }}</span>
@@ -49,12 +55,21 @@ import { AuthService } from '../../core/auth.service';
             <div><label>Intitulé</label><input class="in" [(ngModel)]="edit.intitule" name="editIntitule" /></div>
             <div>
               <label>Pôle</label>
-              <select class="in" [(ngModel)]="edit.pole" name="editPole">
+              <select class="in" [(ngModel)]="edit.pole" name="editPole" (ngModelChange)="onEditPoleChange()">
                 <option value="contentieux">Contentieux</option>
                 <option value="conseil">Conseil</option>
               </select>
             </div>
-            <div><label>Matière — discipline</label><input class="in" [(ngModel)]="edit.matiere" name="editMatiere" /></div>
+            <div>
+              <label>Matière — discipline</label>
+              <select class="in" [(ngModel)]="edit.code_matiere" name="editCodeMatiere" (ngModelChange)="onEditMatiereChange()">
+                <option value="">— Sélectionner —</option>
+                @for (m of matieres(); track m.code) { <option [value]="m.code">{{ m.code }} — {{ m.libelle }}</option> }
+              </select>
+              @if (dossier()?.code_matiere === 'IND' && edit.code_matiere && edit.code_matiere !== 'IND') {
+                <p class="muted" style="margin:-6px 0 12px">La référence sera reconstruite (sortie du provisoire IND).</p>
+              }
+            </div>
             <div><label>Juridiction</label><input class="in" [(ngModel)]="edit.juridiction" name="editJuridiction" /></div>
 
             @if (edit.pole === 'contentieux') {
@@ -395,6 +410,9 @@ import { AuthService } from '../../core/auth.service';
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
     label{font-size:12px;color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+    .pastille{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+    .ref{font-family:ui-monospace,monospace;letter-spacing:.02em}
+    .hint-ind{font-size:12px;color:#9a6c12;margin-top:4px}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
   `],
@@ -440,6 +458,29 @@ export class DossierDetailComponent implements OnInit {
   // Statut procédure (19/08/2026) — liste_valeurs déjà utilisée à la
   // création (ouverture.component.ts), reprise ici pour l'édition.
   readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
+  // Codes matière (Guide de référencement des dossiers, 19/08/2026) —
+  // table codes_matiere, pilote la référence et la couleur de chemise.
+  readonly matieres = signal<{ code: string; libelle: string; couleur: string }[]>([]);
+
+  private readonly couleursCss: Record<string, string> = {
+    rouge: '#c0392b', jaune: '#d4ac0d', bleu: '#2874a6', vert: '#229954',
+    orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6',
+  };
+  couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
+
+  chargerMatieres(pole: string): void {
+    this.api.codesMatiere(pole).subscribe({ next: (l) => this.matieres.set(l) });
+  }
+
+  onEditPoleChange(): void {
+    this.edit.code_matiere = '';
+    this.chargerMatieres(this.edit.pole);
+  }
+
+  onEditMatiereChange(): void {
+    const m = this.matieres().find((x) => x.code === this.edit.code_matiere);
+    this.edit.matiere = m ? m.libelle : '';
+  }
 
   // Instances (19/08/2026) — 1re instance/appel/cassation… Table déjà en
   // base mais jamais branchée avant ce jour (voir plan de la session).
@@ -533,8 +574,9 @@ export class DossierDetailComponent implements OnInit {
       montant_litige: d.montant_litige, mode_honoraires: d.mode_honoraires,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
-      intermediaire: d.intermediaire,
+      intermediaire: d.intermediaire, code_matiere: d.code_matiere,
     };
+    this.chargerMatieres(d.pole);
     this.erreurEdition.set('');
     this.modeEdition.set(true);
   }

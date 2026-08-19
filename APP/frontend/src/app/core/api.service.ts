@@ -24,6 +24,8 @@ export interface Dossier {
   client_id: string;
   responsable: string;
   pro_bono: boolean;
+  code_matiere: string | null;
+  couleur_chemise: string | null;
   cumul_xof: number;
   // null pour un dossier non pro bono — le seuil classique a été abandonné
   // le 18/08/2026, seul le volet pro bono reste suivi.
@@ -173,6 +175,13 @@ export class ApiService {
   // Listes de valeurs paramétrables (nomenclatures)
   listesValeurs(domaine: string): Observable<{ code: string; libelle: string }[]> {
     return this.http.get<{ code: string; libelle: string }[]>(`${this.base}/api/listes-valeurs?domaine=${domaine}`);
+  }
+
+  // Codes matière (Guide de référencement des dossiers, 19/08/2026) —
+  // référentiel type+matière+couleur de chemise, pilote la référence.
+  codesMatiere(pole?: string): Observable<{ code: string; type: string; libelle: string; couleur: string }[]> {
+    const q = pole ? `?pole=${pole}` : '';
+    return this.http.get<any[]>(`${this.base}/api/dossiers/meta/codes-matiere${q}`);
   }
 
   // Contrôle des conflits : renvoie { id, resultat, details, message }
