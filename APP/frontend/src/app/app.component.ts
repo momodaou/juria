@@ -3,6 +3,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/rou
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { AuthService } from './core/auth.service';
 import { MessagerieService } from './core/messagerie.service';
+import { MessagerieWidgetComponent } from './core/messagerie-widget.component';
 
 const SIDEBAR_KEY = 'juria.sidebar.dock';
 
@@ -19,7 +20,7 @@ interface NavItem {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, MessagerieWidgetComponent],
   template: `
     @if (auth.estConnecte) {
       <div class="app" [class.collapsed]="collapsed()">
@@ -67,6 +68,7 @@ interface NavItem {
         </aside>
         <main class="main"><router-outlet /></main>
       </div>
+      <app-messagerie-widget />
     } @else {
       <router-outlet />
     }
