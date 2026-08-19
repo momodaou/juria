@@ -1941,3 +1941,26 @@ ON CONFLICT (code, type) DO NOTHING;
 
 UPDATE listes_valeurs SET actif = FALSE WHERE domaine = 'matiere';
 -- =============== FIN RÉFÉRENCEMENT SELON LE GUIDE ===============
+
+-- =====================================================================
+--  JURIDICTIONS SUPPLÉMENTAIRES (ajout 19/08/2026, demande utilisateur)
+--  Complète le domaine listes_valeurs('juridiction') (§ ci-dessus) avec
+--  les organes manquants : TGI I à VI (juridictions de première instance
+--  de Bamako par commune), juridictions administratives, pôles
+--  spécialisés et tribunal pour enfants.
+-- =====================================================================
+INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
+ ('juridiction','tgi_1','TGI I',7,FALSE),
+ ('juridiction','tgi_2','TGI II',8,FALSE),
+ ('juridiction','tgi_3','TGI III',9,FALSE),
+ ('juridiction','tgi_4','TGI IV',10,FALSE),
+ ('juridiction','tgi_5','TGI V',11,FALSE),
+ ('juridiction','tgi_6','TGI VI',12,FALSE),
+ ('juridiction','ta_bamako','TA - Tribunal Administratif de Bamako',13,FALSE),
+ ('juridiction','caa_bamako','CAA - Cour d''Appel Administrative de Bamako',14,FALSE),
+ ('juridiction','pnef','PNEF - Pôle National Économique & Financier',15,FALSE),
+ ('juridiction','pole_cybercriminalite','Pôle Cybercriminalité',16,FALSE),
+ ('juridiction','pole_judiciaire_specialise','Pôle Judiciaire Spécialisé',17,FALSE),
+ ('juridiction','tribunal_enfants','Tribunal pour Enfants',18,FALSE)
+ON CONFLICT (domaine, code) DO NOTHING;
+-- =============== FIN JURIDICTIONS SUPPLÉMENTAIRES ===============
