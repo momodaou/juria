@@ -16,7 +16,8 @@ import { AuthService } from '../../core/auth.service';
       <div class="dcard">
         <div class="dcard-top">
           <div>
-            <h1>{{ d.intitule }}</h1>
+            <h1>{{ titrePrincipal(d) }}</h1>
+            @if (d.objet) { <p class="nature">{{ d.objet }}</p> }
             <div class="sub">
               @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
               <b class="ref">{{ d.numero }}</b> · {{ d.matiere || d.pole }} · {{ d.juridiction }}
@@ -413,6 +414,7 @@ import { AuthService } from '../../core/auth.service';
     .pastille{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
     .ref{font-family:ui-monospace,monospace;letter-spacing:.02em}
     .hint-ind{font-size:12px;color:#9a6c12;margin-top:4px}
+    .nature{color:#c3cdde;font-size:13px;margin:2px 0 0}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
   `],
@@ -467,6 +469,21 @@ export class DossierDetailComponent implements OnInit {
     orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6',
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
+
+  // En-tête « Client c/ Partie adverse » (20/08/2026, demande utilisateur ;
+  // simplifié le même jour — hypothèse pénale MP/parties civiles abandonnée
+  // sur décision explicite de l'utilisateur, voir HISTORY.md) — composé
+  // automatiquement depuis les champs déjà structurés (client_nom,
+  // clients_additionnels, dossier_parties rôle adverse) plutôt que ressaisi,
+  // pour rester toujours à jour. `objet` (nature du dossier) reste affiché
+  // en sous-titre, `intitule` sert de repli si aucun client n'est résolu.
+  titrePrincipal(d: any): string {
+    const clients = [d.client_nom, ...((d.clients_additionnels || []).map((c: any) => c.nom))].filter(Boolean);
+    const clientsStr = clients.join(', ');
+    const adverses = (d.parties || []).filter((p: any) => p.role === 'adverse').map((p: any) => p.denomination);
+    if (adverses.length) return `${clientsStr || '—'} c/ ${adverses.join(', ')}`;
+    return clientsStr || d.intitule || '—';
+  }
 
   chargerMatieres(pole: string): void {
     this.api.codesMatiere(pole).subscribe({ next: (l) => this.matieres.set(l) });

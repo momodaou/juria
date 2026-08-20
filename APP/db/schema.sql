@@ -1964,3 +1964,16 @@ INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
  ('juridiction','tribunal_enfants','Tribunal pour Enfants',18,FALSE)
 ON CONFLICT (domaine, code) DO NOTHING;
 -- =============== FIN JURIDICTIONS SUPPLÉMENTAIRES ===============
+
+-- =====================================================================
+--  RÔLES DE PARTIE PÉNAUX (ajout 20/08/2026, demande utilisateur)
+--  ⚠️ Fonctionnalité abandonnée le jour même (« on oublie les hypothèses
+--  pénales ») — code applicatif retiré (dossiers.js, ouverture.component.ts,
+--  dossier-detail.component.ts). Ces deux valeurs restent en base (déjà
+--  migrées en production, un ALTER TYPE ne se défait pas proprement) mais
+--  ne sont plus utilisées nulle part — même principe que le domaine
+--  listes_valeurs('matiere') désactivé le 19/08 : conservé, pas masqué.
+-- =====================================================================
+ALTER TYPE role_partie ADD VALUE IF NOT EXISTS 'ministere_public';
+ALTER TYPE role_partie ADD VALUE IF NOT EXISTS 'partie_civile';
+-- =============== FIN RÔLES DE PARTIE PÉNAUX ===============
