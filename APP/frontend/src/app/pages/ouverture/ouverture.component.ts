@@ -3,11 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { ClientPickerComponent } from '../../core/client-picker.component';
 
 @Component({
   selector: 'app-ouverture',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, ClientPickerComponent],
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
 
@@ -77,12 +78,9 @@ import { AuthService } from '../../core/auth.service';
         <h3>Étape 2 — Création du dossier</h3>
 
         <label>Client</label>
-        <select class="in" [(ngModel)]="dossier.client_id" name="clientId">
-          <option value="">— Sélectionner —</option>
-          @for (c of clients(); track c.id) {
-            <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
-          }
-        </select>
+        <app-client-picker [valeur]="dossier.client_id" [nomInitial]="nomClientPreselectionne"
+                            (valeurChange)="dossier.client_id = $event"
+                            placeholder="Rechercher le client (nom, RCCM, NIF, email…)"></app-client-picker>
         @if (!dossier.client_id && clientNom && creationClientCible() !== 'principal') {
           <p class="hint">
             Aucun client existant ne correspond exactement à « {{ clientNom }} » — vérifiez l'orthographe ci-dessus,
@@ -113,34 +111,42 @@ import { AuthService } from '../../core/auth.service';
               <input class="in" [(ngModel)]="nouveauClient.telephone" name="ncTelephone" placeholder="Téléphone (facultatif)" />
             </div>
             <p class="muted" style="margin:-6px 0 10px">KYC laissé « à faire » — à compléter dans Clients &amp; KYC quand vous aurez les pièces.</p>
-            <div class="upload">
-              <button class="btn" type="button" (click)="creerClientInline()"
-                      [disabled]="creationClientEnCours() || (nouveauClient.type === 'morale' ? !nouveauClient.denomination : !nouveauClient.nom)">
-                {{ creationClientEnCours() ? 'Création…' : 'Créer et sélectionner' }}
-              </button>
-              <button class="btn ghost" type="button" (click)="fermerCreationClient()">Annuler</button>
-            </div>
+
+            @if (doublonsClient().length) {
+              <div class="doublon">
+                <b>⚠ Client(s) déjà en base ressemblant à celui-ci :</b>
+                @for (d of doublonsClient(); track d.id) {
+                  <p><a class="lien" [routerLink]="['/clients', d.id]" target="_blank">{{ d.denomination || (d.prenom + ' ' + d.nom) }}</a> — {{ d.motifs.join(', ') }}</p>
+                }
+                <div class="upload">
+                  <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
+                  <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                </div>
+              </div>
+            } @else {
+              <div class="upload">
+                <button class="btn" type="button" (click)="creerClientInline()"
+                        [disabled]="creationClientEnCours() || (nouveauClient.type === 'morale' ? !nouveauClient.denomination : !nouveauClient.nom)">
+                  {{ creationClientEnCours() ? 'Création…' : 'Créer et sélectionner' }}
+                </button>
+                <button class="btn ghost" type="button" (click)="fermerCreationClient()">Annuler</button>
+              </div>
+            }
             @if (erreurNouveauClient()) { <p class="err">{{ erreurNouveauClient() }}</p> }
           </div>
         }
 
         <label>Autres clients sur ce dossier (facultatif — personnes physiques ou morales additionnelles)</label>
-        <div class="upload">
-          <select [(ngModel)]="clientAAjouter" name="clientAAjouter">
-            <option value="">Ajouter un client…</option>
-            @for (c of clientsAdditionnelsDisponibles(); track c.id) {
-              <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
-            }
-          </select>
-          <button class="btn ghost" type="button" (click)="ajouterClientAdditionnel()" [disabled]="!clientAAjouter">Ajouter</button>
-          @if (auth.peut('clients.creer') && creationClientCible() !== 'additionnel') {
-            <button class="btn ghost" type="button" (click)="ouvrirCreationClient('additionnel')">+ Nouveau client</button>
-          }
-        </div>
-        @if (clientsAdditionnelsChoisis().length) {
+        <app-client-picker [exclureIds]="exclureAdditionnels()" [reinitialiserApresChoix]="true"
+                            placeholder="Rechercher un client à ajouter…"
+                            (clientChoisi)="ajouterClientAdditionnel($event)"></app-client-picker>
+        @if (auth.peut('clients.creer') && creationClientCible() !== 'additionnel') {
+          <button class="btn ghost" type="button" style="margin:-4px 0 12px" (click)="ouvrirCreationClient('additionnel')">+ Nouveau client</button>
+        }
+        @if (clientsAdditionnels().length) {
           <div class="verifies" style="margin-bottom:12px">
-            @for (c of clientsAdditionnelsChoisis(); track c.id) {
-              <span class="chip">{{ c.denomination || (c.prenom + ' ' + c.nom) }} <button class="lien-x" type="button" (click)="retirerClientAdditionnel(c.id)">✕</button></span>
+            @for (c of clientsAdditionnels(); track c.id) {
+              <span class="chip">{{ c.nom }} <button class="lien-x" type="button" (click)="retirerClientAdditionnel(c.id)">✕</button></span>
             }
           </div>
         }
@@ -287,6 +293,9 @@ import { AuthService } from '../../core/auth.service';
     .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:inherit;padding:0;text-decoration:underline}
     .muted{color:var(--grey);font-size:12px}
     .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+    .doublon{background:#fff;border:1px solid #f0dcae;border-radius:8px;padding:12px 14px;margin-top:4px}
+    .doublon p{margin:4px 0;font-size:13px}
+    .doublon .lien{color:var(--gold);text-decoration:underline}
   `],
 })
 export class OuvertureComponent implements OnInit {
@@ -310,7 +319,10 @@ export class OuvertureComponent implements OnInit {
   // ici (éditables) plutôt que de disparaître après le contrôle des
   // conflits — corrige un gap signalé par l'utilisateur : le client et les
   // parties adverses vérifiés n'apparaissaient nulle part ensuite.
-  readonly clients = signal<any[]>([]);
+  // Sélecteur client principal/additionnel (21/08/2026, diagnostic
+  // utilisateur) — ne précharge plus la liste complète des clients (capée
+  // à 200, sans recherche) : <app-client-picker> interroge GET /api/clients
+  // ?q= à la demande (voir client-picker.component.ts).
   readonly utilisateurs = signal<any[]>([]);
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
@@ -354,9 +366,14 @@ export class OuvertureComponent implements OnInit {
   }
 
   // Clients additionnels (18/08/2026) — un même dossier peut comporter
-  // plusieurs identités clientes (personnes physiques ou morales).
-  readonly clientsAdditionnelsIds = signal<string[]>([]);
-  clientAAjouter = '';
+  // plusieurs identités clientes (personnes physiques ou morales). Stocke
+  // désormais {id, nom} directement (fourni par le picker au choix) plutôt
+  // que de simples ids à résoudre dans une liste préchargée (supprimée).
+  readonly clientsAdditionnels = signal<{ id: string; nom: string }[]>([]);
+
+  exclureAdditionnels(): string[] {
+    return [this.dossier.client_id, ...this.clientsAdditionnels().map((c) => c.id)].filter(Boolean);
+  }
 
   // Création de client à la volée (19/08/2026) — pour ne pas obliger à
   // quitter l'écran d'ouverture pour créer un client manquant, tout en
@@ -365,32 +382,49 @@ export class OuvertureComponent implements OnInit {
   readonly creationClientCible = signal<'principal' | 'additionnel' | null>(null);
   readonly creationClientEnCours = signal(false);
   readonly erreurNouveauClient = signal('');
+  // Contrôle de doublon avant création (20/08/2026) — voir clients.js.
+  readonly doublonsClient = signal<any[]>([]);
   nouveauClient: any = { type: 'morale' };
 
   ouvrirCreationClient(cible: 'principal' | 'additionnel'): void {
     this.nouveauClient = { type: 'morale', denomination: cible === 'principal' ? this.clientNom : '' };
     this.erreurNouveauClient.set('');
+    this.doublonsClient.set([]);
     this.creationClientCible.set(cible);
   }
 
   fermerCreationClient(): void {
     this.creationClientCible.set(null);
+    this.doublonsClient.set([]);
   }
 
-  creerClientInline(): void {
+  creerClientInline(ignorerDoublon = false): void {
     const cible = this.creationClientCible();
     if (!cible) return;
     this.erreurNouveauClient.set('');
+    if (!ignorerDoublon) {
+      this.api.verifierDoublonClient(this.nouveauClient).subscribe({
+        next: (d) => { if (d.length) this.doublonsClient.set(d); else this.creerClientInlineReellement(cible); },
+        error: () => this.creerClientInlineReellement(cible),
+      });
+      return;
+    }
+    this.doublonsClient.set([]);
+    this.creerClientInlineReellement(cible);
+  }
+
+  private creerClientInlineReellement(cible: 'principal' | 'additionnel'): void {
     this.creationClientEnCours.set(true);
     this.api.creerClient(this.nouveauClient).subscribe({
       next: (r) => {
         this.creationClientEnCours.set(false);
-        this.clients.update((liste) => [...liste, {
-          id: r.id, type: this.nouveauClient.type,
-          denomination: this.nouveauClient.denomination, prenom: this.nouveauClient.prenom, nom: this.nouveauClient.nom,
-        }]);
-        if (cible === 'principal') this.dossier.client_id = r.id;
-        else this.clientsAdditionnelsIds.update((ids) => [...ids, r.id]);
+        const nom = this.nouveauClient.denomination || `${this.nouveauClient.prenom ?? ''} ${this.nouveauClient.nom ?? ''}`.trim();
+        if (cible === 'principal') {
+          this.dossier.client_id = r.id;
+          this.nomClientPreselectionne = nom;
+        } else {
+          this.clientsAdditionnels.update((liste) => [...liste, { id: r.id, nom }]);
+        }
         this.creationClientCible.set(null);
       },
       error: (e) => { this.creationClientEnCours.set(false); this.erreurNouveauClient.set(e?.error?.error ?? 'Création impossible.'); },
@@ -398,7 +432,6 @@ export class OuvertureComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
@@ -409,24 +442,14 @@ export class OuvertureComponent implements OnInit {
     return this.partiesAdverses.split(',').map((s) => s.trim()).filter(Boolean);
   }
 
-  clientsAdditionnelsChoisis(): any[] {
-    const ids = new Set(this.clientsAdditionnelsIds());
-    return this.clients().filter((c) => ids.has(c.id));
-  }
-
-  clientsAdditionnelsDisponibles(): any[] {
-    const exclus = new Set([this.dossier.client_id, ...this.clientsAdditionnelsIds()]);
-    return this.clients().filter((c) => !exclus.has(c.id));
-  }
-
-  ajouterClientAdditionnel(): void {
-    if (!this.clientAAjouter) return;
-    this.clientsAdditionnelsIds.update((ids) => [...ids, this.clientAAjouter]);
-    this.clientAAjouter = '';
+  ajouterClientAdditionnel(c: any): void {
+    if (!c) return;
+    const nom = c.denomination || `${c.prenom ?? ''} ${c.nom ?? ''}`.trim();
+    this.clientsAdditionnels.update((liste) => [...liste, { id: c.id, nom }]);
   }
 
   retirerClientAdditionnel(id: string): void {
-    this.clientsAdditionnelsIds.update((ids) => ids.filter((x) => x !== id));
+    this.clientsAdditionnels.update((liste) => liste.filter((x) => x.id !== id));
   }
 
   peutCreer(): boolean {
@@ -434,19 +457,34 @@ export class OuvertureComponent implements OnInit {
     return !!r && (r.resultat === 'absence' || this.decisionPrise() === 'accepte');
   }
 
+  // Nom affiché par <app-client-picker> pour le client principal quand une
+  // sélection est déjà connue (pré-sélection ci-dessous, ou création à la
+  // volée) — le picker n'a plus de liste préchargée dans laquelle chercher
+  // ce nom lui-même.
+  nomClientPreselectionne: string | null = null;
+
   // Pré-sélectionne le client si son nom (saisi à l'étape 1) correspond
-  // exactement, à la casse près, à un client existant — sinon laisse le
-  // champ vide avec l'indice affiché dans le template plutôt que de deviner.
+  // exactement, à la casse près, à un client existant — recherché via
+  // l'API (21/08/2026 : ne dépend plus d'une liste complète préchargée)
+  // ; sinon laisse le champ vide avec l'indice affiché dans le template
+  // plutôt que de deviner.
   private preselectionnerClient(): void {
+    this.partiesAdversesEdit = this.partiesAdverses;
     if (this.dossier.client_id) return;
     const cible = this.clientNom.trim().toLowerCase();
     if (!cible) return;
-    const trouve = this.clients().find((c: any) => {
-      const nom = (c.denomination || `${c.prenom} ${c.nom}`).trim().toLowerCase();
-      return nom === cible;
+    this.api.clients(this.clientNom.trim()).subscribe({
+      next: (liste) => {
+        const trouve = liste.find((c: any) => {
+          const nom = (c.denomination || `${c.prenom} ${c.nom}`).trim().toLowerCase();
+          return nom === cible;
+        });
+        if (trouve) {
+          this.dossier.client_id = trouve.id;
+          this.nomClientPreselectionne = trouve.denomination || `${trouve.prenom} ${trouve.nom}`;
+        }
+      },
     });
-    if (trouve) this.dossier.client_id = trouve.id;
-    this.partiesAdversesEdit = this.partiesAdverses;
   }
 
   creerDossier(): void {
@@ -461,7 +499,7 @@ export class OuvertureComponent implements OnInit {
     this.api.creerDossier({
       intitule: this.intitule, ...this.dossier,
       parties_adverses: partiesAdverses,
-      clients_additionnels: this.clientsAdditionnelsIds(),
+      clients_additionnels: this.clientsAdditionnels().map((c) => c.id),
       instance_initiale: instanceInitiale,
     }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },

@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-biblio',
@@ -82,7 +83,10 @@ import { ApiService } from '../../core/api.service';
               <td>{{ r.matiere || '—' }}</td>
               <td>{{ r.date_publication ? (r.date_publication | date:'dd/MM/yyyy') : '—' }}</td>
               <td>
-                @if (r.a_fichier) { <button class="lien" (click)="telecharger(r.id)">Télécharger</button> }
+                @if (r.a_fichier) {
+                  <button class="lien" (click)="apercu(r)">Aperçu</button>
+                  <button class="lien" (click)="telecharger(r.id)">Télécharger</button>
+                }
                 <button class="lien" (click)="supprimer(r.id)">Supprimer</button>
               </td>
             </tr>
@@ -108,6 +112,7 @@ import { ApiService } from '../../core/api.service';
 })
 export class BiblioComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly preview = inject(DocumentPreviewService);
   readonly ressources = signal<any[]>([]);
   readonly afficherForm = signal(false);
   readonly creation = signal(false);
@@ -123,6 +128,11 @@ export class BiblioComponent implements OnInit {
     modele: 'Modèle', consultation: 'Consultation', checklist: 'Checklist',
   };
   libelleType(t: string): string { return this.libelles[t] ?? t; }
+
+  // Aperçu sans ouverture classique (21/08/2026, demande utilisateur).
+  apercu(r: any): void {
+    this.preview.ouvrir(r.titre, this.api.telechargerFichierBiblio(r.id));
+  }
 
   telecharger(id: string): void {
     this.api.telechargerFichierBiblio(id).subscribe({

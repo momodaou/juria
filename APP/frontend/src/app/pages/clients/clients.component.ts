@@ -69,9 +69,26 @@ import { ApiService } from '../../core/api.service';
           <div><label>Pays</label><input class="in" [(ngModel)]="form.pays" name="pays" placeholder="Mali" /></div>
           <div class="col2"><label>Adresse</label><input class="in" [(ngModel)]="form.adresse" name="adresse" /></div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="creation()">
-          {{ creation() ? 'Création…' : 'Créer le client' }}
-        </button>
+
+        @if (doublons().length) {
+          <div class="doublon">
+            <b>⚠ Client(s) déjà en base ressemblant à celui-ci :</b>
+            @for (d of doublons(); track d.id) {
+              <p>
+                <a class="lien" [routerLink]="['/clients', d.id]">{{ d.denomination || (d.prenom + ' ' + d.nom) }}</a>
+                — {{ d.motifs.join(', ') }}
+              </p>
+            }
+            <div class="btns">
+              <button class="btn ghost" (click)="doublons.set([])">Annuler, je vérifie</button>
+              <button class="btn" (click)="creerQuandMeme()" [disabled]="creation()">Créer quand même</button>
+            </div>
+          </div>
+        } @else {
+          <button class="btn" (click)="creer()" [disabled]="creation()">
+            {{ creation() ? 'Création…' : 'Créer le client' }}
+          </button>
+        }
         @if (erreurCreation()) { <p class="err">{{ erreurCreation() }}</p> }
       </section>
     }
@@ -127,6 +144,10 @@ import { ApiService } from '../../core/api.service';
     .filtre-kyc{width:auto;margin:0;max-width:220px}
     .panel.alerte{border-left:4px solid var(--amber)}
     .tag.ok{background:#e3f5ec;color:#157a4f}
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:4px}
+    .doublon p{margin:4px 0;font-size:13px}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
+    .lien{color:var(--gold);text-decoration:underline}
   `],
 })
 export class ClientsComponent implements OnInit {
@@ -137,6 +158,8 @@ export class ClientsComponent implements OnInit {
   readonly afficherForm = signal(false);
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
+  // Contrôle de doublon avant création (20/08/2026) — voir clients.js.
+  readonly doublons = signal<any[]>([]);
 
   recherche = '';
   filtreKyc = '';
@@ -166,13 +189,27 @@ export class ClientsComponent implements OnInit {
   }
 
   creer(): void {
-    this.creation.set(true);
     this.erreurCreation.set('');
+    this.doublons.set([]);
+    this.api.verifierDoublonClient(this.form).subscribe({
+      next: (d) => { if (d.length) this.doublons.set(d); else this.creerReellement(); },
+      error: () => this.creerReellement(), // le contrôle échoue → ne bloque pas la création
+    });
+  }
+
+  creerQuandMeme(): void {
+    this.doublons.set([]);
+    this.creerReellement();
+  }
+
+  private creerReellement(): void {
+    this.creation.set(true);
     this.api.creerClient(this.form).subscribe({
       next: () => {
         this.creation.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'morale', pays: 'Mali' };
+        this.doublons.set([]);
         this.charger();
       },
       error: (e) => {

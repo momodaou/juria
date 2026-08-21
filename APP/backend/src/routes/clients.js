@@ -21,9 +21,14 @@ router.get("/", async (req, res) => {
   const params = [];
   const clauses = [];
   if (q) {
+    // Élargi le 20/08/2026 (diagnostic utilisateur) : ne cherchait jusqu'ici
+    // que dénomination/nom/prénom, alors que RCCM/NIF/email/téléphone sont
+    // en pratique les identifiants utilisés pour retrouver un client KYC.
     params.push(`%${q}%`);
     clauses.push(
-      `COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $${params.length}`
+      `(COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $${params.length}
+        OR rccm ILIKE $${params.length} OR nif ILIKE $${params.length}
+        OR email ILIKE $${params.length} OR telephone ILIKE $${params.length})`
     );
   }
   if (kyc) {
@@ -71,13 +76,69 @@ router.get("/kyc/alertes", async (req, res) => {
   }
 });
 
+// GET /api/clients/verifier-doublon?type=&denomination=&prenom=&nom=&rccm=&nif=
+// (20/08/2026, diagnostic utilisateur) — aucune contrainte d'unicité n'existe
+// en base sur rccm/nif (deux clients peuvent légitimement partager un champ
+// mal renseigné), donc la création elle-même (POST /) n'est PAS bloquée ici
+// — seulement précédée d'un contrôle côté écran, sur le même principe que le
+// contrôle de conflit à l'ouverture : on prévient, l'utilisateur décide.
+// Sans ce contrôle, rien ne signalait qu'un client existait déjà (RCCM/NIF
+// identique ou nom identique à l'espace/tiret près), fragmentant son
+// historique entre deux fiches distinctes.
+router.get("/verifier-doublon", async (req, res) => {
+  const { type, denomination, prenom, nom, rccm, nif } = req.query;
+  const nomComplet = (type === "physique" ? [prenom, nom].filter(Boolean).join(" ") : denomination || "").trim();
+  const rccmT = (rccm || "").trim();
+  const nifT = (nif || "").trim();
+  if (!nomComplet && !rccmT && !nifT) return res.json([]);
+  try {
+    const clauses = [];
+    const params = [];
+    if (rccmT) { params.push(rccmT); clauses.push(`rccm ILIKE $${params.length}`); }
+    if (nifT) { params.push(nifT); clauses.push(`nif ILIKE $${params.length}`); }
+    if (nomComplet) {
+      // Comparaison insensible à l'espace/tiret/point/virgule (21/08/2026 —
+      // le contrôle existait depuis le 20/08 mais ne comparait en réalité
+      // que la casse, malgré le commentaire ci-dessus qui promettait déjà
+      // "à l'espace/tiret près" : « Bâtir SA » ne rapprochait pas « Bâtir-SA »).
+      // Uniquement sur le nom — RCCM/NIF restent comparés tels quels
+      // au-dessus, ces identifiants officiels ne devant pas être normalisés
+      // (un espace/tiret peut y être significatif).
+      params.push(nomComplet);
+      clauses.push(
+        `regexp_replace(lower(COALESCE(denomination, TRIM(COALESCE(prenom,'') || ' ' || COALESCE(nom,'')))), '[\\s\\-.,]', '', 'g')
+           = regexp_replace(lower($${params.length}), '[\\s\\-.,]', '', 'g')`
+      );
+    }
+    const { rows } = await pool.query(
+      `SELECT id, type, denomination, prenom, nom, rccm, nif, pays
+       FROM clients WHERE ${clauses.join(" OR ")} LIMIT 10`,
+      params
+    );
+    const norm = (s) => (s || "").trim().toLowerCase();
+    const normNom = (s) => norm(s).replace(/[\s\-.,]/g, "");
+    const doublons = rows.map((c) => ({
+      ...c,
+      motifs: [
+        rccmT && norm(c.rccm) === norm(rccmT) ? "RCCM identique" : null,
+        nifT && norm(c.nif) === norm(nifT) ? "NIF identique" : null,
+        nomComplet && normNom(c.denomination || `${c.prenom} ${c.nom}`) === normNom(nomComplet) ? "Nom identique" : null,
+      ].filter(Boolean),
+    }));
+    res.json(doublons);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/clients/:id — fiche 360° (KYC, dossiers, originaux confiés, liens)
 router.get("/:id", async (req, res) => {
   try {
     const cli = await pool.query("SELECT * FROM clients WHERE id = $1", [req.params.id]);
     if (!cli.rows[0]) return res.status(404).json({ error: "Client introuvable" });
 
-    const [pieces, dossiers, originaux, liens] = await Promise.all([
+    const [pieces, dossiers, originaux, liens, liensInverses] = await Promise.all([
       pool.query(
         `SELECT id, libelle, date_expiration, cree_le,
                 (date_expiration IS NOT NULL AND date_expiration < current_date) AS expiree
@@ -101,6 +162,17 @@ router.get("/:id", async (req, res) => {
          WHERE l.client_id = $1`,
         [req.params.id]
       ),
+      // Sens inverse (20/08/2026, diagnostic utilisateur) : un lien n'était
+      // visible que du côté où il avait été saisi (l.client_id = ce client)
+      // — si A a été déclaré "filiale de" B, la fiche de B ne montrait rien.
+      // Même table, la relation "vue depuis l'autre bout" en résulte.
+      pool.query(
+        `SELECT l.id, l.nature, l.client_id AS lie_a_id,
+                COALESCE(c2.denomination, c2.prenom || ' ' || c2.nom) AS lie_a_nom
+         FROM client_liens l JOIN clients c2 ON c2.id = l.client_id
+         WHERE l.lie_a_id = $1`,
+        [req.params.id]
+      ),
     ]);
 
     res.json({
@@ -109,6 +181,7 @@ router.get("/:id", async (req, res) => {
       dossiers: dossiers.rows,
       originaux_confies: originaux.rows,
       liens: liens.rows,
+      liens_inverses: liensInverses.rows,
     });
   } catch (e) {
     console.error(e);
@@ -211,15 +284,20 @@ router.post("/:id/kyc-pieces", requirePermission("clients.kyc_piece.ajouter"), u
   if (!b.libelle) return res.status(400).json({ error: "libelle requis (ex. « Passeport »)" });
   try {
     let chemin = null;
+    // type_mime capturé depuis le 21/08/2026 (voir schema.sql) — permet un
+    // aperçu fiable (Content-Type correct au téléchargement) ; les pièces
+    // antérieures à cette migration resteront à NULL.
+    let typeMime = null;
     if (req.file) {
       const dest = `kyc/${req.params.id}/${Date.now()}_${req.file.originalname}`.replace(/\s+/g, "_");
       chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
+      typeMime = req.file.mimetype;
     }
     const { rows } = await pool.query(
-      `INSERT INTO client_pieces_kyc (client_id, libelle, chemin_storage, date_expiration)
-       VALUES ($1,$2,$3,$4)
+      `INSERT INTO client_pieces_kyc (client_id, libelle, chemin_storage, date_expiration, type_mime)
+       VALUES ($1,$2,$3,$4,$5)
        RETURNING id, libelle, date_expiration, cree_le`,
-      [req.params.id, b.libelle, chemin, b.date_expiration || null]
+      [req.params.id, b.libelle, chemin, b.date_expiration || null, typeMime]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -232,11 +310,12 @@ router.post("/:id/kyc-pieces", requirePermission("clients.kyc_piece.ajouter"), u
 router.get("/:id/kyc-pieces/:pieceId/download", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT libelle, chemin_storage FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",
+      "SELECT libelle, chemin_storage, type_mime FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",
       [req.params.pieceId, req.params.id]
     );
     if (!rows[0] || !rows[0].chemin_storage) return res.status(404).json({ error: "Pièce introuvable" });
     const buf = await readObject(rows[0].chemin_storage);
+    res.setHeader("Content-Type", rows[0].type_mime || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${rows[0].libelle}"`);
     res.send(buf);
   } catch (e) {
@@ -254,6 +333,49 @@ router.delete("/:id/kyc-pieces/:pieceId", requirePermission("clients.kyc_piece.s
     );
     if (!rowCount) return res.status(404).json({ error: "Pièce introuvable" });
     res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST/DELETE /api/clients/:id/liens — personnes/entités liées (bénéficiaires
+// effectifs, filiales, dirigeants…) (20/08/2026, diagnostic utilisateur) :
+// la table `client_liens` existait depuis le tout premier schéma et était
+// déjà LUE par GET /:id (ci-dessus), mais aucune route ne permettait de
+// jamais l'alimenter — fonctionnalité LBC-FT du module Clients & KYC
+// entièrement inaccessible jusqu'ici. Gardée par `clients.modifier` (pas
+// une nouvelle action dédiée) : relier un client à un autre fait partie de
+// l'édition de sa fiche identité/KYC, même niveau que le statut KYC déjà
+// modifiable sous ce même droit.
+router.post("/:id/liens", requirePermission("clients.modifier"), async (req, res) => {
+  const { lie_a_id, nature } = req.body || {};
+  if (!lie_a_id || !nature) return res.status(400).json({ error: "lie_a_id et nature requis" });
+  if (lie_a_id === req.params.id) return res.status(400).json({ error: "Un client ne peut pas être lié à lui-même" });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO client_liens (client_id, lie_a_id, nature) VALUES ($1,$2,$3)
+       RETURNING id, nature, lie_a_id`,
+      [req.params.id, lie_a_id, nature]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete("/:id/liens/:lienId", requirePermission("clients.modifier"), async (req, res) => {
+  try {
+    // Un lien peut avoir été saisi depuis l'un ou l'autre bout (voir
+    // liens_inverses de GET /:id) — on autorise sa suppression depuis les
+    // deux fiches, pas seulement celle où il a été créé.
+    const { rowCount } = await pool.query(
+      "DELETE FROM client_liens WHERE id = $1 AND (client_id = $2 OR lie_a_id = $2)",
+      [req.params.lienId, req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Lien introuvable" });
+    res.status(204).send();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

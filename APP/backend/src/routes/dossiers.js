@@ -29,11 +29,21 @@ const JOIN_HONORAIRES = `
 
 // Tables portant une donnée "réelle" sur un dossier — si l'une d'elles a au
 // moins une ligne, la suppression est refusée (l'archivage devient la
-// seule voie). Plusieurs de ces tables ont ON DELETE CASCADE en base
-// (documents, temps, evenements, taches) : sans ce contrôle applicatif,
-// DELETE FROM dossiers effacerait silencieusement des pièces GED, du temps
-// facturable, des audiences planifiées, etc.
-const TABLES_ACTIVITE_DOSSIER = ["documents", "temps", "factures", "communications", "retrocessions", "evenements", "taches"];
+// seule voie). Toutes ont ON DELETE CASCADE en base (documents, temps,
+// evenements, taches, mais aussi dossier_parties/instances/clients
+// additionnels) : sans ce contrôle applicatif, DELETE FROM dossiers
+// effacerait silencieusement des pièces GED, du temps facturable, des
+// audiences planifiées, etc.
+// dossier_parties/instances/dossier_clients_additionnels ajoutées le
+// 20/08/2026 (diagnostic utilisateur) : un dossier "à l'ouverture" avec
+// déjà une partie/instance/client additionnel saisi pouvait jusqu'ici être
+// supprimé sans avertissement, perdant silencieusement ces informations —
+// pas de la même nature que documents/factures/etc., mais un travail de
+// saisie réel tout de même.
+const TABLES_ACTIVITE_DOSSIER = [
+  "documents", "temps", "factures", "communications", "retrocessions", "evenements", "taches",
+  "dossier_parties", "instances", "dossier_clients_additionnels",
+];
 
 // Référencement des dossiers (ajout 19/08/2026) — Guide de référencement
 // des dossiers, JFC Avocats : [TYPE]-[MATIÈRE]-[ANNÉE]-[N° d'ordre], ex.
@@ -83,12 +93,20 @@ router.get("/meta/codes-matiere", async (req, res) => {
   }
 });
 
-// GET /api/dossiers?statut=&responsable=&q=
+// GET /api/dossiers?statut=&responsable=&q=&masquer_archives=
+// masquer_archives (20/08/2026, diagnostic utilisateur) : ces filtres
+// existaient déjà côté API mais n'étaient jamais exposés à l'écran — la
+// liste mélangeait systématiquement dossiers actifs et archivés, sans
+// colonne Statut ni vue "mes dossiers". `statut` et `masquer_archives`
+// sont mutuellement exclusifs côté écran (l'un ou l'autre), tous deux
+// combinables avec `responsable` (dont "mes dossiers" n'est qu'un cas
+// particulier — le responsable connecté).
 router.get("/", async (req, res) => {
-  const { statut, responsable, q } = req.query;
+  const { statut, responsable, q, masquer_archives } = req.query;
   const cond = [];
   const params = [];
   if (statut) { params.push(statut); cond.push(`d.statut = $${params.length}`); }
+  else if (masquer_archives === "true") { cond.push(`d.statut <> 'archive'`); }
   if (responsable) { params.push(responsable); cond.push(`d.responsable_id = $${params.length}`); }
   if (q) { params.push(`%${q}%`); cond.push(`(d.intitule ILIKE $${params.length} OR d.numero ILIKE $${params.length})`); }
   const where = cond.length ? `WHERE ${cond.join(" AND ")}` : "";
@@ -304,6 +322,12 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
 // demandée entre les deux écrans. `pro_bono` volontairement exclu : sa
 // déclaration passe par sa propre logique (permission + quota) dans
 // POST /, un PUT libre la contournerait.
+// `client_id` (client principal) ajouté le 20/08/2026 — jusqu'ici le seul
+// moyen de faire évoluer les identités clientes d'un dossier après sa
+// création était les clients ADDITIONNELS (POST/DELETE /:id/clients), le
+// client principal restait figé à sa valeur de création (gap signalé par
+// l'utilisateur : nom de client saisissable/modifiable au formulaire de
+// dossier partout, y compris en édition).
 router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
@@ -333,12 +357,13 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     }
 
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $20::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $21::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
       b.statut_procedure, b.statut_procedure_precision, b.intermediaire,
       b.code_matiere ? b.code_matiere.toUpperCase() : null, couleurRegeneree, numeroRegenere,
+      b.client_id || null,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -362,9 +387,10 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          code_matiere = COALESCE($16, code_matiere),
          couleur_chemise = COALESCE($17, couleur_chemise),
          numero = COALESCE($18, numero),
+         client_id = COALESCE($19, client_id),
          maj_le = now()
-       WHERE id = $19 ${clauseConcurrence}
-       RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, maj_le`,
+       WHERE id = $20 ${clauseConcurrence}
+       RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
       params
     );
     if (!rows[0]) {
@@ -477,6 +503,65 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// POST/PUT/DELETE /api/dossiers/:id/parties — rectifier les parties adverses
+// après la création (20/08/2026, demande utilisateur : gap signalé — seule
+// l'ouverture (POST /) permettait jusqu'ici de les saisir, aucune route ne
+// permettait de corriger une erreur de saisie ensuite). Même patron que
+// les clients additionnels/instances ci-dessus. `dossier_parties` (déjà en
+// base) n'est pas une fiche client — aucun champ KYC n'y est rattaché, ces
+// routes ne touchent jamais la table `clients`/`client_pieces_kyc`.
+router.post("/:id/parties", requirePermission("dossiers.parties.gerer"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.denomination) return res.status(400).json({ error: "denomination requise" });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO dossier_parties (dossier_id, role, denomination, conseil)
+       VALUES ($1, COALESCE($2::role_partie,'adverse'), $3, $4)
+       RETURNING id, role, denomination, conseil`,
+      [req.params.id, b.role || null, b.denomination, b.conseil || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    // role ajouté le 20/08/2026 (diagnostic utilisateur) — jusqu'ici la
+    // seule route de correction ne permettait de revoir que le nom/conseil,
+    // pas de qualifier une partie autrement qu'« adverse » (rôle imposé à
+    // la création). Cast explicite ::role_partie — motif de bug récurrent
+    // du projet sur un COALESCE face à une colonne ENUM (voir CLAUDE.md).
+    const { rows } = await pool.query(
+      `UPDATE dossier_parties SET
+         role = COALESCE($1::role_partie, role),
+         denomination = COALESCE($2, denomination),
+         conseil = COALESCE($3, conseil)
+       WHERE id = $4 AND dossier_id = $5
+       RETURNING id, role, denomination, conseil`,
+      [b.role || null, b.denomination || null, b.conseil || null, req.params.partieId, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Partie introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.delete("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer"), async (req, res) => {
+  try {
+    await pool.query("DELETE FROM dossier_parties WHERE id = $1 AND dossier_id = $2", [req.params.partieId, req.params.id]);
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

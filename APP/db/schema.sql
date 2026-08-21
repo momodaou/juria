@@ -1845,6 +1845,17 @@ FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
 -- =============== FIN SUPPRESSION / ARCHIVAGE / CLIENTS MULTIPLES ===============
 
+-- dossiers.parties.gerer (20/08/2026) : rectifier une partie adverse après
+-- la création (gap signalé — seule l'ouverture permettait de les saisir).
+-- Ouverte à tous par défaut, même rationale que clients_additionnels.gerer
+-- ci-dessus : une partie adverse n'est pas une fiche client, aucun KYC n'y
+-- est attaché, corriger son nom n'est pas plus sensible que le reste de la
+-- fiche dossier.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'dossiers.parties.gerer', TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+ON CONFLICT (role, action_code) DO NOTHING;
+
 -- =====================================================================
 --  CHAMPS CONDITIONNELS PAR PÔLE + BRANCHEMENT DE LA GESTION MULTI-
 --  INSTANCE (ajout 19/08/2026, demande utilisateur)
@@ -1977,3 +1988,20 @@ ON CONFLICT (domaine, code) DO NOTHING;
 ALTER TYPE role_partie ADD VALUE IF NOT EXISTS 'ministere_public';
 ALTER TYPE role_partie ADD VALUE IF NOT EXISTS 'partie_civile';
 -- =============== FIN RÔLES DE PARTIE PÉNAUX ===============
+
+-- =====================================================================
+--  APERÇU DE FICHIER SANS OUVERTURE (ajout 21/08/2026, demande utilisateur)
+--  client_pieces_kyc n'avait jamais capturé le type MIME du fichier
+--  téléversé (contrairement à documents/ressources_biblio, qui l'ont dès
+--  le premier schéma) — la route de téléchargement ne pouvait donc pas
+--  fixer un Content-Type correct, empêchant tout aperçu fiable (et même,
+--  en pratique, faisant tout télécharger en application/octet-stream par
+--  défaut). Les pièces déjà téléversées avant cette migration resteront à
+--  NULL (pas de mimetype d'origine à retrouver a posteriori) — le libellé
+--  (ex. « Passeport ») n'étant pas non plus un nom de fichier avec
+--  extension, l'aperçu affichera simplement « non disponible » pour ces
+--  pièces-là (repli explicite, pas une détection hasardeuse) ; seules les
+--  pièces téléversées après cette migration bénéficient d'un aperçu fiable.
+-- =====================================================================
+ALTER TABLE client_pieces_kyc ADD COLUMN IF NOT EXISTS type_mime VARCHAR(120);
+-- =============== FIN APERÇU DE FICHIER SANS OUVERTURE ===============

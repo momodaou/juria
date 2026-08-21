@@ -4,11 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { ClientPickerComponent } from '../../core/client-picker.component';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-dossier-detail',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, FormsModule],
+  imports: [DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent],
   template: `
     <a routerLink="/dossiers" class="back">← Retour aux dossiers</a>
 
@@ -16,7 +18,7 @@ import { AuthService } from '../../core/auth.service';
       <div class="dcard">
         <div class="dcard-top">
           <div>
-            <h1>{{ titrePrincipal(d) }}</h1>
+            <h1>{{ d.intitule }}</h1>
             @if (d.objet) { <p class="nature">{{ d.objet }}</p> }
             <div class="sub">
               @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
@@ -54,6 +56,59 @@ import { AuthService } from '../../core/auth.service';
           <h3>Modifier la fiche</h3>
           <div class="grid2">
             <div><label>Intitulé</label><input class="in" [(ngModel)]="edit.intitule" name="editIntitule" /></div>
+            <div>
+              <label>Client</label>
+              <app-client-picker [valeur]="edit.client_id" [nomInitial]="nomClientPreselectionne || d.client_nom"
+                                  (valeurChange)="edit.client_id = $event"
+                                  placeholder="Rechercher le client (nom, RCCM, NIF, email…)"></app-client-picker>
+              @if (auth.peut('clients.creer') && creationClientCible() !== 'principal') {
+                <button class="btn ghost" type="button" (click)="ouvrirCreationClient('principal')">+ Nouveau client</button>
+              }
+              @if (creationClientCible() === 'principal') {
+                <div class="inline-client">
+                  <label>Nouveau client — client principal</label>
+                  <select class="in" [(ngModel)]="nouveauClient.type" name="ncType">
+                    <option value="morale">Personne morale</option>
+                    <option value="physique">Personne physique</option>
+                  </select>
+                  @if (nouveauClient.type === 'morale') {
+                    <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenomination" placeholder="Dénomination" />
+                  } @else {
+                    <div class="grid2">
+                      <input class="in" [(ngModel)]="nouveauClient.prenom" name="ncPrenom" placeholder="Prénom" />
+                      <input class="in" [(ngModel)]="nouveauClient.nom" name="ncNom" placeholder="Nom" />
+                    </div>
+                  }
+                  <div class="grid2">
+                    <input class="in" [(ngModel)]="nouveauClient.email" name="ncEmail" placeholder="Email (facultatif)" />
+                    <input class="in" [(ngModel)]="nouveauClient.telephone" name="ncTelephone" placeholder="Téléphone (facultatif)" />
+                  </div>
+                  <p class="muted" style="margin:-6px 0 10px">KYC laissé « à faire » — à compléter dans Clients &amp; KYC quand vous aurez les pièces.</p>
+
+                  @if (doublonsClient().length) {
+                    <div class="doublon">
+                      <b>⚠ Client(s) déjà en base ressemblant à celui-ci :</b>
+                      @for (dbl of doublonsClient(); track dbl.id) {
+                        <p><a class="lien" [routerLink]="['/clients', dbl.id]" target="_blank">{{ dbl.denomination || (dbl.prenom + ' ' + dbl.nom) }}</a> — {{ dbl.motifs.join(', ') }}</p>
+                      }
+                      <div class="upload">
+                        <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
+                        <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                      </div>
+                    </div>
+                  } @else {
+                    <div class="upload">
+                      <button class="btn" type="button" (click)="creerClientInline()"
+                              [disabled]="creationClientEnCours() || (nouveauClient.type === 'morale' ? !nouveauClient.denomination : !nouveauClient.nom)">
+                        {{ creationClientEnCours() ? 'Création…' : 'Créer et sélectionner' }}
+                      </button>
+                      <button class="btn ghost" type="button" (click)="fermerCreationClient()">Annuler</button>
+                    </div>
+                  }
+                  @if (erreurNouveauClient()) { <p class="err">{{ erreurNouveauClient() }}</p> }
+                </div>
+              }
+            </div>
             <div>
               <label>Pôle</label>
               <select class="in" [(ngModel)]="edit.pole" name="editPole" (ngModelChange)="onEditPoleChange()">
@@ -170,7 +225,12 @@ import { AuthService } from '../../core/auth.service';
 
       <section class="panel">
         <h3>Clients associés au dossier</h3>
-        <p class="muted">Client principal : <b>{{ d.client_nom }}</b>. D'autres identités clientes (personnes physiques ou morales) peuvent être associées au même dossier.</p>
+        <p class="muted">
+          Client principal : <a class="lien" [routerLink]="['/clients', d.client_id]"><b>{{ d.client_nom }}</b></a>
+          (cliquez pour corriger son nom depuis Clients &amp; KYC en cas d'erreur de saisie — sans effet sur son statut KYC).
+          D'autres identités clientes (personnes physiques ou morales) peuvent être associées au même dossier ; leur nom
+          ci-dessous est également un lien vers leur fiche pour rectification.
+        </p>
         @if (d.clients_additionnels?.length) {
           <table>
             <tr><th>Nom</th><th>Type</th><th></th></tr>
@@ -189,15 +249,56 @@ import { AuthService } from '../../core/auth.service';
         } @else { <p class="muted">Aucun client supplémentaire.</p> }
 
         @if (auth.peut('dossiers.clients_additionnels.gerer')) {
-          <div class="upload">
-            <select [(ngModel)]="clientAAjouter" name="clientAAjouter">
-              <option value="">Ajouter un client…</option>
-              @for (c of clientsDisponibles(); track c.id) {
-                <option [value]="c.id">{{ c.denomination || (c.prenom + ' ' + c.nom) }}</option>
+          <app-client-picker [exclureIds]="exclureAdditionnels(d)" [reinitialiserApresChoix]="true"
+                              placeholder="Rechercher un client à ajouter…"
+                              (clientChoisi)="ajouterClient($event)"></app-client-picker>
+          @if (auth.peut('clients.creer') && creationClientCible() !== 'additionnel') {
+            <button class="btn ghost" type="button" style="margin:-4px 0 12px" (click)="ouvrirCreationClient('additionnel')">+ Nouveau client</button>
+          }
+          @if (creationClientCible() === 'additionnel') {
+            <div class="inline-client">
+              <label>Nouveau client — client additionnel</label>
+              <select class="in" [(ngModel)]="nouveauClient.type" name="ncTypeAdd">
+                <option value="morale">Personne morale</option>
+                <option value="physique">Personne physique</option>
+              </select>
+              @if (nouveauClient.type === 'morale') {
+                <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenominationAdd" placeholder="Dénomination" />
+              } @else {
+                <div class="grid2">
+                  <input class="in" [(ngModel)]="nouveauClient.prenom" name="ncPrenomAdd" placeholder="Prénom" />
+                  <input class="in" [(ngModel)]="nouveauClient.nom" name="ncNomAdd" placeholder="Nom" />
+                </div>
               }
-            </select>
-            <button class="btn" (click)="ajouterClient()" [disabled]="!clientAAjouter">Ajouter</button>
-          </div>
+              <div class="grid2">
+                <input class="in" [(ngModel)]="nouveauClient.email" name="ncEmailAdd" placeholder="Email (facultatif)" />
+                <input class="in" [(ngModel)]="nouveauClient.telephone" name="ncTelephoneAdd" placeholder="Téléphone (facultatif)" />
+              </div>
+              <p class="muted" style="margin:-6px 0 10px">KYC laissé « à faire » — à compléter dans Clients &amp; KYC quand vous aurez les pièces.</p>
+
+              @if (doublonsClient().length) {
+                <div class="doublon">
+                  <b>⚠ Client(s) déjà en base ressemblant à celui-ci :</b>
+                  @for (dbl of doublonsClient(); track dbl.id) {
+                    <p><a class="lien" [routerLink]="['/clients', dbl.id]" target="_blank">{{ dbl.denomination || (dbl.prenom + ' ' + dbl.nom) }}</a> — {{ dbl.motifs.join(', ') }}</p>
+                  }
+                  <div class="upload">
+                    <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
+                    <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="upload">
+                  <button class="btn" type="button" (click)="creerClientInline()"
+                          [disabled]="creationClientEnCours() || (nouveauClient.type === 'morale' ? !nouveauClient.denomination : !nouveauClient.nom)">
+                    {{ creationClientEnCours() ? 'Création…' : 'Créer et ajouter' }}
+                  </button>
+                  <button class="btn ghost" type="button" (click)="fermerCreationClient()">Annuler</button>
+                </div>
+              }
+              @if (erreurNouveauClient()) { <p class="err">{{ erreurNouveauClient() }}</p> }
+            </div>
+          }
         }
       </section>
 
@@ -251,15 +352,56 @@ import { AuthService } from '../../core/auth.service';
       }
 
       <section class="panel">
-        <h3>Parties adverses</h3>
+        <h3>Parties au dossier</h3>
+        <p class="muted">Corrigez ici une partie mal saisie à l'ouverture, ou précisez son rôle réel (tiers, co-défendeur…) — cette table n'a aucun lien avec les fiches clients ni leur KYC.</p>
         @if (d.parties?.length) {
           <table>
-            <tr><th>Rôle</th><th>Dénomination</th><th>Conseil</th></tr>
+            <tr><th>Rôle</th><th>Dénomination</th><th>Conseil</th><th></th></tr>
             @for (p of d.parties; track p.id) {
-              <tr><td>{{ p.role }}</td><td>{{ p.denomination }}</td><td>{{ p.conseil || '—' }}</td></tr>
+              @if (partieEnEdition() === p.id) {
+                <tr>
+                  <td>
+                    <select class="in" style="margin:0" [(ngModel)]="partieEdit.role" name="peRole">
+                      @for (r of rolesPartie; track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
+                    </select>
+                  </td>
+                  <td><input class="in" style="margin:0" [(ngModel)]="partieEdit.denomination" name="peDenomination" /></td>
+                  <td><input class="in" style="margin:0" [(ngModel)]="partieEdit.conseil" name="peConseil" placeholder="Conseil (facultatif)" /></td>
+                  <td>
+                    <button class="lien" (click)="enregistrerPartie(p.id)" [disabled]="!partieEdit.denomination">Enregistrer</button>
+                    <button class="lien" (click)="annulerEditionPartie()">Annuler</button>
+                  </td>
+                </tr>
+              } @else {
+                <tr>
+                  <td>{{ libelleRolePartie(p.role) }}</td>
+                  <td>{{ p.denomination }}</td>
+                  <td>{{ p.conseil || '—' }}</td>
+                  <td>
+                    @if (auth.peut('dossiers.parties.gerer')) {
+                      <button class="lien" (click)="demarrerEditionPartie(p)">Modifier</button>
+                      <button class="lien" (click)="retirerPartie(p.id)">Retirer</button>
+                    }
+                  </td>
+                </tr>
+              }
             }
           </table>
         } @else { <p class="muted">Aucune partie enregistrée.</p> }
+
+        @if (auth.peut('dossiers.parties.gerer')) {
+          <div class="upload">
+            <select class="in" style="margin:0;max-width:180px" [(ngModel)]="nouvellePartie.role" name="npRole">
+              @for (r of rolesPartie; track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
+            </select>
+            <input class="in" style="margin:0;max-width:240px" [(ngModel)]="nouvellePartie.denomination" name="npDenomination" placeholder="Nom de la partie" />
+            <input class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvellePartie.conseil" name="npConseil" placeholder="Conseil (facultatif)" />
+            <button class="btn" (click)="ajouterPartie()" [disabled]="!nouvellePartie.denomination || ajoutPartieEnCours()">
+              {{ ajoutPartieEnCours() ? 'Ajout…' : '+ Ajouter une partie' }}
+            </button>
+          </div>
+          @if (erreurPartie()) { <p class="err">{{ erreurPartie() }}</p> }
+        }
       </section>
 
       <section class="panel">
@@ -316,7 +458,10 @@ import { AuthService } from '../../core/auth.service';
               <tr>
                 <td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td>
                 <td>v{{ doc.version }}</td><td>{{ doc.statut }}</td>
-                <td><button class="lien" (click)="ouvrir(doc)">Ouvrir</button></td>
+                <td>
+                  <button class="lien" (click)="apercu(doc)">Aperçu</button>
+                  <button class="lien" (click)="ouvrir(doc)">Ouvrir</button>
+                </td>
               </tr>
             }
           </table>
@@ -417,6 +562,10 @@ import { AuthService } from '../../core/auth.service';
     .nature{color:#c3cdde;font-size:13px;margin:2px 0 0}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
+    .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0 14px}
+    .doublon{background:#fff;border:1px solid #f0dcae;border-radius:8px;padding:12px 14px;margin-top:4px}
+    .doublon p{margin:4px 0;font-size:13px}
+    .doublon .lien{color:var(--gold);text-decoration:underline}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -424,6 +573,7 @@ export class DossierDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
+  private readonly preview = inject(DocumentPreviewService);
 
   private id = '';
   readonly dossier = signal<any | null>(null);
@@ -470,21 +620,6 @@ export class DossierDetailComponent implements OnInit {
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
 
-  // En-tête « Client c/ Partie adverse » (20/08/2026, demande utilisateur ;
-  // simplifié le même jour — hypothèse pénale MP/parties civiles abandonnée
-  // sur décision explicite de l'utilisateur, voir HISTORY.md) — composé
-  // automatiquement depuis les champs déjà structurés (client_nom,
-  // clients_additionnels, dossier_parties rôle adverse) plutôt que ressaisi,
-  // pour rester toujours à jour. `objet` (nature du dossier) reste affiché
-  // en sous-titre, `intitule` sert de repli si aucun client n'est résolu.
-  titrePrincipal(d: any): string {
-    const clients = [d.client_nom, ...((d.clients_additionnels || []).map((c: any) => c.nom))].filter(Boolean);
-    const clientsStr = clients.join(', ');
-    const adverses = (d.parties || []).filter((p: any) => p.role === 'adverse').map((p: any) => p.denomination);
-    if (adverses.length) return `${clientsStr || '—'} c/ ${adverses.join(', ')}`;
-    return clientsStr || d.intitule || '—';
-  }
-
   chargerMatieres(pole: string): void {
     this.api.codesMatiere(pole).subscribe({ next: (l) => this.matieres.set(l) });
   }
@@ -507,22 +642,89 @@ export class DossierDetailComponent implements OnInit {
   nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '' };
 
   // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
-  // comporter plusieurs identités clientes.
-  readonly clients = signal<any[]>([]);
-  clientAAjouter = '';
-
-  clientsDisponibles(): any[] {
-    const d = this.dossier();
-    if (!d) return [];
-    const dejaLies = new Set([d.client_id, ...(d.clients_additionnels || []).map((c: any) => c.id)]);
-    return this.clients().filter((c) => !dejaLies.has(c.id));
+  // comporter plusieurs identités clientes. Sélecteur avec recherche
+  // (21/08/2026, diagnostic utilisateur) — ne précharge plus la liste
+  // complète des clients, voir client-picker.component.ts.
+  exclureAdditionnels(d: any): string[] {
+    return [d.client_id, ...(d.clients_additionnels || []).map((c: any) => c.id)].filter(Boolean);
   }
 
-  ajouterClient(): void {
-    if (!this.clientAAjouter) return;
-    this.api.ajouterClientDossier(this.id, this.clientAAjouter).subscribe({
-      next: () => { this.clientAAjouter = ''; this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }); },
+  ajouterClient(c: any): void {
+    if (!c) return;
+    this.api.ajouterClientDossier(this.id, c.id).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  // Renseigner/créer un client à la volée depuis la fiche dossier (20/08/2026,
+  // demande utilisateur) — même patron que ouverture.component.ts, pour ne
+  // pas obliger à quitter l'écran vers Clients & KYC. Un seul signal
+  // `creationClientCible` distingue les deux usages : 'principal' (change
+  // edit.client_id, appliqué à l'enregistrement de la fiche) ou
+  // 'additionnel' (rattaché immédiatement au dossier via
+  // ajouterClientDossier, sans attendre l'enregistrement).
+  readonly creationClientCible = signal<'principal' | 'additionnel' | null>(null);
+  readonly creationClientEnCours = signal(false);
+  readonly erreurNouveauClient = signal('');
+  // Contrôle de doublon avant création (20/08/2026) — voir clients.js.
+  readonly doublonsClient = signal<any[]>([]);
+  nouveauClient: any = { type: 'morale' };
+  // Nom affiché par <app-client-picker> pour le client principal après une
+  // création à la volée (21/08/2026) — le picker n'a plus de liste
+  // préchargée dans laquelle chercher ce nom lui-même ; sans ce champ le
+  // sélecteur retomberait sur `d.client_nom` (l'ANCIEN client), périmé dès
+  // qu'on vient d'en choisir/créer un autre.
+  nomClientPreselectionne: string | null = null;
+
+  ouvrirCreationClient(cible: 'principal' | 'additionnel'): void {
+    this.nouveauClient = { type: 'morale' };
+    this.erreurNouveauClient.set('');
+    this.doublonsClient.set([]);
+    this.creationClientCible.set(cible);
+  }
+
+  fermerCreationClient(): void {
+    this.creationClientCible.set(null);
+    this.doublonsClient.set([]);
+  }
+
+  creerClientInline(ignorerDoublon = false): void {
+    const cible = this.creationClientCible();
+    if (!cible) return;
+    this.erreurNouveauClient.set('');
+    if (!ignorerDoublon) {
+      this.api.verifierDoublonClient(this.nouveauClient).subscribe({
+        next: (d) => { if (d.length) this.doublonsClient.set(d); else this.creerClientInlineReellement(cible); },
+        error: () => this.creerClientInlineReellement(cible),
+      });
+      return;
+    }
+    this.doublonsClient.set([]);
+    this.creerClientInlineReellement(cible);
+  }
+
+  private creerClientInlineReellement(cible: 'principal' | 'additionnel'): void {
+    this.creationClientEnCours.set(true);
+    this.api.creerClient(this.nouveauClient).subscribe({
+      next: (r) => {
+        this.creationClientEnCours.set(false);
+        if (cible === 'principal') {
+          this.edit.client_id = r.id;
+          this.nomClientPreselectionne = this.nouveauClient.denomination
+            || `${this.nouveauClient.prenom ?? ''} ${this.nouveauClient.nom ?? ''}`.trim();
+          this.creationClientCible.set(null);
+        } else {
+          this.api.ajouterClientDossier(this.id, r.id).subscribe({
+            next: () => {
+              this.creationClientCible.set(null);
+              this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+            },
+            error: (e) => this.erreurNouveauClient.set(e?.error?.error ?? 'Client créé mais rattachement au dossier impossible.'),
+          });
+        }
+      },
+      error: (e) => { this.creationClientEnCours.set(false); this.erreurNouveauClient.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }
 
@@ -546,8 +748,79 @@ export class DossierDetailComponent implements OnInit {
   }
 
   retirerClient(clientId: string): void {
+    if (!window.confirm('Retirer ce client du dossier ?')) return;
     this.api.retirerClientDossier(this.id, clientId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
+  // Parties adverses — rectification après la création (20/08/2026,
+  // demande utilisateur : seule l'ouverture permettait de les saisir).
+  // Édition en ligne (une seule partie à la fois), même esprit que le
+  // mode édition de la fiche mais localisé à la ligne concernée.
+  readonly partieEnEdition = signal<string | null>(null);
+  partieEdit: any = {};
+  nouvellePartie: any = { role: 'adverse', denomination: '', conseil: '' };
+  readonly ajoutPartieEnCours = signal(false);
+  readonly erreurPartie = signal('');
+
+  // Rôles de partie (20/08/2026, diagnostic utilisateur) — les 5 valeurs
+  // réellement utilisées de l'enum role_partie ; ministere_public/
+  // partie_civile existent en base (migration non réversible du 20/08) mais
+  // restent délibérément absentes ici, cf. l'hypothèse pénale abandonnée le
+  // même jour (voir CLAUDE.md).
+  readonly rolesPartie = [
+    { code: 'adverse', libelle: 'Partie adverse' },
+    { code: 'tiers', libelle: 'Tiers' },
+    { code: 'conseil_adverse', libelle: 'Conseil adverse' },
+    { code: 'co_demandeur', libelle: 'Co-demandeur' },
+    { code: 'co_defendeur', libelle: 'Co-défendeur' },
+  ];
+  libelleRolePartie(code: string): string {
+    return this.rolesPartie.find((r) => r.code === code)?.libelle ?? code;
+  }
+
+  demarrerEditionPartie(p: any): void {
+    this.partieEdit = { role: p.role, denomination: p.denomination, conseil: p.conseil };
+    this.erreurPartie.set('');
+    this.partieEnEdition.set(p.id);
+  }
+
+  annulerEditionPartie(): void {
+    this.partieEnEdition.set(null);
+  }
+
+  enregistrerPartie(partieId: string): void {
+    this.erreurPartie.set('');
+    this.api.majPartieDossier(this.id, partieId, this.partieEdit).subscribe({
+      next: () => {
+        this.partieEnEdition.set(null);
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => this.erreurPartie.set(e?.error?.error ?? 'Enregistrement impossible.'),
+    });
+  }
+
+  ajouterPartie(): void {
+    if (!this.nouvellePartie.denomination) return;
+    this.erreurPartie.set('');
+    this.ajoutPartieEnCours.set(true);
+    this.api.ajouterPartieDossier(this.id, this.nouvellePartie).subscribe({
+      next: () => {
+        this.ajoutPartieEnCours.set(false);
+        this.nouvellePartie = { role: 'adverse', denomination: '', conseil: '' };
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => { this.ajoutPartieEnCours.set(false); this.erreurPartie.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
+  }
+
+  retirerPartie(partieId: string): void {
+    if (!window.confirm('Retirer cette partie du dossier ?')) return;
+    this.api.retirerPartieDossier(this.id, partieId).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreurPartie.set(e?.error?.error ?? 'Retrait impossible.'),
     });
   }
 
@@ -576,7 +849,6 @@ export class DossierDetailComponent implements OnInit {
       error: () => this.erreur.set('Dossier introuvable.'),
     });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
-    this.api.clients().subscribe({ next: (c) => this.clients.set(c) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
     this.rafraichirDelais();
@@ -587,7 +859,7 @@ export class DossierDetailComponent implements OnInit {
 
   activerEdition(d: any): void {
     this.edit = {
-      intitule: d.intitule, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
+      intitule: d.intitule, client_id: d.client_id, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
       montant_litige: d.montant_litige, mode_honoraires: d.mode_honoraires,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
@@ -595,11 +867,14 @@ export class DossierDetailComponent implements OnInit {
     };
     this.chargerMatieres(d.pole);
     this.erreurEdition.set('');
+    this.creationClientCible.set(null);
+    this.nomClientPreselectionne = null;
     this.modeEdition.set(true);
   }
 
   annulerEdition(): void {
     this.modeEdition.set(false);
+    if (this.creationClientCible() === 'principal') this.creationClientCible.set(null);
   }
 
   enregistrerDossier(): void {
@@ -698,6 +973,13 @@ export class DossierDetailComponent implements OnInit {
       next: () => { this.envoi.set(false); this.fichier.set(null); this.rafraichirDocuments(); },
       error: (e) => { this.envoi.set(false); this.erreur.set(e?.error?.error ?? 'Téléversement impossible'); },
     });
+  }
+
+  // Aperçu sans ouverture classique (21/08/2026, demande utilisateur) —
+  // réutilise le même téléchargement authentifié que "Ouvrir", juste passé
+  // au composant partagé plutôt qu'ouvert dans un nouvel onglet.
+  apercu(doc: any): void {
+    this.preview.ouvrir(doc.nom, this.api.telechargerDocument(doc.id));
   }
 
   ouvrir(doc: any): void {

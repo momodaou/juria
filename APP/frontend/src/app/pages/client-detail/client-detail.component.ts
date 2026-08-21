@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-client-detail',
@@ -97,7 +98,11 @@ import { AuthService } from '../../core/auth.service';
                   @if (p.expiree) { <span class="tag haute">expirée</span> }
                 </td>
                 <td>{{ p.cree_le | date:'dd/MM/yyyy' }}</td>
-                <td><button class="lien" (click)="supprimerPiece(p.id)">Supprimer</button></td>
+                <td>
+                  <button class="lien" (click)="apercuPiece(p)">Aperçu</button>
+                  <button class="lien" (click)="ouvrirPiece(p)">Ouvrir</button>
+                  <button class="lien" (click)="supprimerPiece(p.id)">Supprimer</button>
+                </td>
               </tr>
             }
           </table>
@@ -112,6 +117,41 @@ import { AuthService } from '../../core/auth.service';
           </button>
         </div>
         @if (erreurPiece()) { <p class="err">{{ erreurPiece() }}</p> }
+      </section>
+
+      <section class="panel">
+        <h3>Personnes &amp; entités liées</h3>
+        <p class="muted">Bénéficiaires effectifs, filiales, dirigeants, représentants… (LBC-FT). Un lien saisi ici apparaît aussi sur la fiche de l'autre client.</p>
+        @if (liensCombines(c).length) {
+          <table>
+            <tr><th>Nature</th><th>Client lié</th><th></th></tr>
+            @for (l of liensCombines(c); track l.id) {
+              <tr>
+                <td>{{ l.nature }}</td>
+                <td><a class="lien" [routerLink]="['/clients', l.lie_a_id]">{{ l.lie_a_nom }}</a></td>
+                <td>
+                  @if (auth.peut('clients.modifier')) {
+                    <button class="lien" (click)="retirerLien(l.id)">Retirer</button>
+                  }
+                </td>
+              </tr>
+            }
+          </table>
+        } @else { <p class="muted">Aucun lien enregistré.</p> }
+
+        @if (auth.peut('clients.modifier')) {
+          <div class="upload">
+            <select class="sel" [(ngModel)]="nouveauLien.lie_a_id" name="lienClient">
+              <option value="">Client lié…</option>
+              @for (autre of autresClients(); track autre.id) {
+                <option [value]="autre.id">{{ autre.denomination || (autre.prenom + ' ' + autre.nom) }}</option>
+              }
+            </select>
+            <input class="sel" [(ngModel)]="nouveauLien.nature" name="lienNature" placeholder="Nature (ex. filiale, dirigeant, bénéficiaire effectif…)" />
+            <button class="btn" (click)="ajouterLien()" [disabled]="!nouveauLien.lie_a_id || !nouveauLien.nature">Ajouter</button>
+          </div>
+          @if (erreurLien()) { <p class="err">{{ erreurLien() }}</p> }
+        }
       </section>
 
       <section class="panel">
@@ -189,6 +229,7 @@ export class ClientDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
+  private readonly preview = inject(DocumentPreviewService);
 
   readonly client = signal<any | null>(null);
   readonly erreur = signal('');
@@ -212,6 +253,41 @@ export class ClientDetailComponent implements OnInit {
   fichierChoisi: File | null = null;
   nouvelOriginal: { type_piece: string; description: string; emplacement: string } = { type_piece: '', description: '', emplacement: '' };
 
+  // Personnes/entités liées (20/08/2026, diagnostic utilisateur) — la table
+  // client_liens existait déjà (lue par GET /api/clients/:id) mais n'avait
+  // jusqu'ici aucun écran ni aucune route d'écriture (voir clients.js).
+  readonly clientsTous = signal<any[]>([]);
+  readonly erreurLien = signal('');
+  nouveauLien: { lie_a_id: string; nature: string } = { lie_a_id: '', nature: '' };
+
+  // Combine les deux sens (liens saisis depuis cette fiche + liens saisis
+  // depuis l'autre bout) en une seule liste pour l'affichage.
+  liensCombines(c: any): any[] {
+    return [...(c.liens || []), ...(c.liens_inverses || [])];
+  }
+
+  autresClients(): any[] {
+    const dejaLies = new Set([this.clientId, ...this.liensCombines(this.client()).map((l: any) => l.lie_a_id)]);
+    return this.clientsTous().filter((c) => !dejaLies.has(c.id));
+  }
+
+  ajouterLien(): void {
+    if (!this.nouveauLien.lie_a_id || !this.nouveauLien.nature) return;
+    this.erreurLien.set('');
+    this.api.ajouterLienClient(this.clientId, this.nouveauLien).subscribe({
+      next: () => { this.nouveauLien = { lie_a_id: '', nature: '' }; this.charger(); },
+      error: (e) => this.erreurLien.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  retirerLien(lienId: string): void {
+    if (!window.confirm('Retirer ce lien ?')) return;
+    this.api.retirerLienClient(this.clientId, lienId).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreurLien.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
   private readonly libellesKyc: Record<string, string> = {
     a_faire: 'À faire', incomplet: 'Incomplet', piece_expiree: 'Pièce expirée', a_jour: 'À jour',
   };
@@ -221,6 +297,7 @@ export class ClientDetailComponent implements OnInit {
     this.clientId = this.route.snapshot.paramMap.get('id') ?? '';
     this.charger();
     this.api.listesValeurs('type_original').subscribe({ next: (t) => this.typesOriginal.set(t) });
+    this.api.clients().subscribe({ next: (c) => this.clientsTous.set(c) });
   }
 
   charger(): void {
@@ -308,8 +385,33 @@ export class ClientDetailComponent implements OnInit {
       });
   }
 
+  // Ouverture classique + aperçu sans ouverture (21/08/2026, demande
+  // utilisateur) — n'existaient pas du tout ici jusqu'ici (seule la
+  // suppression était exposée, alors que l'API de téléchargement existait
+  // déjà). Le Content-Type renvoyé par le serveur dépend de `type_mime`,
+  // capturé uniquement depuis cette même date (voir schema.sql/clients.js)
+  // — les pièces plus anciennes retombent sur "aperçu non disponible".
+  apercuPiece(p: any): void {
+    this.preview.ouvrir(p.libelle, this.api.telechargerPieceKyc(this.clientId, p.id));
+  }
+
+  ouvrirPiece(p: any): void {
+    this.api.telechargerPieceKyc(this.clientId, p.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => this.erreurPiece.set('Ouverture impossible.'),
+    });
+  }
+
   supprimerPiece(pieceId: string): void {
-    this.api.supprimerPieceKyc(this.clientId, pieceId).subscribe({ next: () => this.charger() });
+    if (!window.confirm('Supprimer définitivement cette pièce KYC ?')) return;
+    this.api.supprimerPieceKyc(this.clientId, pieceId).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreurPiece.set(e?.error?.error ?? 'Suppression impossible.'),
+    });
   }
 
   ajouterOriginal(): void {

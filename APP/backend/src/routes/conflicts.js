@@ -15,18 +15,25 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
   try {
     const details = [];
     for (const t of termes) {
-      const like = `%${t}%`;
+      // Comparaison insensible à l'espace/tiret/point/virgule (21/08/2026,
+      // diagnostic utilisateur) — un simple ILIKE %terme% ratait un
+      // rapprochement pourtant réel dès qu'un espace/tiret différait entre
+      // le nom saisi et le nom déjà en base (ex. « Bâtir SA » vs
+      // « Bâtir-SA »). Même normalisation que le contrôle de doublon client
+      // (clients.js, GET /verifier-doublon).
       const cli = await pool.query(
         `SELECT id, 'client' AS source, COALESCE(denomination, prenom || ' ' || nom) AS nom
          FROM clients
-         WHERE COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'') ILIKE $1`,
-        [like]
+         WHERE regexp_replace(lower(COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'')), '[\\s\\-.,]', '', 'g')
+               LIKE '%' || regexp_replace(lower($1), '[\\s\\-.,]', '', 'g') || '%'`,
+        [t]
       );
       const par = await pool.query(
         `SELECT dp.id, 'partie_adverse' AS source, dp.denomination AS nom, d.numero AS dossier
          FROM dossier_parties dp JOIN dossiers d ON d.id = dp.dossier_id
-         WHERE dp.denomination ILIKE $1`,
-        [like]
+         WHERE regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g')
+               LIKE '%' || regexp_replace(lower($1), '[\\s\\-.,]', '', 'g') || '%'`,
+        [t]
       );
       if (cli.rows.length || par.rows.length) {
         details.push({ terme: t, correspondances: [...cli.rows, ...par.rows] });

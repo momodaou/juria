@@ -48,8 +48,15 @@ export class ApiService {
     return this.http.get<DashboardData>(`${this.base}/api/dashboard`);
   }
 
-  dossiers(recherche = ''): Observable<Dossier[]> {
-    const q = recherche ? `?q=${encodeURIComponent(recherche)}` : '';
+  // filtres.statut/responsable/masquer_archives (20/08/2026, diagnostic
+  // utilisateur) — le backend les acceptait déjà, jamais exposés à l'écran.
+  dossiers(recherche = '', filtres: { statut?: string; responsable?: string; masquer_archives?: boolean } = {}): Observable<Dossier[]> {
+    const params = new URLSearchParams();
+    if (recherche) params.set('q', recherche);
+    if (filtres.statut) params.set('statut', filtres.statut);
+    if (filtres.responsable) params.set('responsable', filtres.responsable);
+    if (filtres.masquer_archives) params.set('masquer_archives', 'true');
+    const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<Dossier[]>(`${this.base}/api/dossiers${q}`);
   }
 
@@ -109,6 +116,17 @@ export class ApiService {
     return this.http.delete<any>(`${this.base}/api/dossiers/${dossierId}/clients/${clientId}`);
   }
 
+  // Parties adverses (20/08/2026) — rectification après la création.
+  ajouterPartieDossier(dossierId: string, payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/parties`, payload);
+  }
+  majPartieDossier(dossierId: string, partieId: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/dossiers/${dossierId}/parties/${partieId}`, payload);
+  }
+  retirerPartieDossier(dossierId: string, partieId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/dossiers/${dossierId}/parties/${partieId}`);
+  }
+
   clients(recherche = '', kyc = ''): Observable<any[]> {
     const params = new URLSearchParams();
     if (recherche) params.set('q', recherche);
@@ -123,6 +141,25 @@ export class ApiService {
 
   creerClient(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/clients`, payload);
+  }
+
+  // Contrôle de doublon avant création (20/08/2026, diagnostic utilisateur) —
+  // ne bloque rien, signale seulement une correspondance RCCM/NIF/nom déjà
+  // en base pour laisser l'utilisateur confirmer ou aller sur la fiche
+  // existante plutôt que de créer un doublon silencieux.
+  verifierDoublonClient(payload: { type: string; denomination?: string; prenom?: string; nom?: string; rccm?: string; nif?: string }): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    return this.http.get<any[]>(`${this.base}/api/clients/verifier-doublon?${params.toString()}`);
+  }
+
+  // Personnes/entités liées (20/08/2026) — bénéficiaires effectifs, filiales,
+  // dirigeants… (table déjà en base, jusqu'ici inaccessible depuis l'écran).
+  ajouterLienClient(clientId: string, payload: { lie_a_id: string; nature: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/clients/${clientId}/liens`, payload);
+  }
+  retirerLienClient(clientId: string, lienId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/clients/${clientId}/liens/${lienId}`);
   }
 
   majClient(id: string, payload: any): Observable<any> {
