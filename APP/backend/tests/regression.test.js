@@ -160,3 +160,24 @@ describe("PUT /api/dossiers/:id — édition et verrou optimiste", () => {
     expect(ok.status).toBe(200);
   });
 });
+
+// Ajout 21/08/2026 : bug trouvé en production (500 systématique, ~77 appels
+// échoués sur 30 jours dans les journaux Cloud Run) — variante du motif
+// récurrent du projet : $1 poussé dans `params` mais jamais référencé dans
+// le WHERE dès que dossier_id était fourni ("could not determine data type
+// of parameter $1"), le WHERE ne référençant alors que $2.
+describe("GET /api/temps?dossier_id= — bug de production (500 systématique)", () => {
+  test("avec dossier_id : ne renvoie pas 500", async () => {
+    const res = await request(app)
+      .get(`/api/temps?dossier_id=${dossierId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test("sans dossier_id : mes saisies", async () => {
+    const res = await request(app).get("/api/temps").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});

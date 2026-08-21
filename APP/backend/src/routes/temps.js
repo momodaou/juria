@@ -7,10 +7,12 @@ const router = express.Router();
 // GET /api/temps?dossier_id=...   (sinon : mes saisies)
 router.get("/", async (req, res) => {
   const { dossier_id } = req.query;
-  const params = [];
-  let where = "WHERE t.utilisateur_id = $1";
-  params.push(req.user.sub);
-  if (dossier_id) { params.push(dossier_id); where = `WHERE t.dossier_id = $${params.length}`; }
+  // dossier_id : $1 = dossier_id uniquement (motif de bug récurrent du
+  // projet, cf. CLAUDE.md — un $1 poussé dans params mais jamais référencé
+  // dans le WHERE ci-dessous faisait échouer Postgres avec « could not
+  // determine data type of parameter $1 » à chaque appel avec dossier_id).
+  const params = dossier_id ? [dossier_id] : [req.user.sub];
+  const where = dossier_id ? "WHERE t.dossier_id = $1" : "WHERE t.utilisateur_id = $1";
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.date_saisie, t.duree_minutes, t.taux_horaire, t.facturable, t.description,
