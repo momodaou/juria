@@ -139,7 +139,7 @@ router.get("/modeles", (req, res) => {
 
 async function construireContexte(dossierId, avocatNom) {
   const d = await pool.query(
-    `SELECT d.*, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom
+    `SELECT d.*, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
      FROM dossiers d JOIN clients c ON c.id = d.client_id WHERE d.id = $1`,
     [dossierId]
   );

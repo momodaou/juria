@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT o.id, o.type_piece, o.description, o.recu_le, o.emplacement,
               o.restitue, o.restitue_le, o.restitue_a,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               d.numero AS dossier_numero
        FROM originaux_confies o
        LEFT JOIN clients c ON c.id = o.client_id

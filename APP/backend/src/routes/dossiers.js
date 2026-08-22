@@ -114,7 +114,7 @@ router.get("/", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence, d.pro_bono,
               d.code_matiere, d.couleur_chemise,
-              d.client_id, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
+              d.client_id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES}
        FROM dossiers d
@@ -139,7 +139,7 @@ router.get("/:id", async (req, res) => {
   try {
     const d = await pool.query(
       `SELECT d.*,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               u.prenom || ' ' || u.nom AS responsable_nom,
               ${SELECT_HONORAIRES}
        FROM dossiers d
@@ -165,7 +165,7 @@ router.get("/:id", async (req, res) => {
     // comporter plusieurs identités clientes (personnes physiques ou
     // morales) en plus du client principal (dossiers.client_id, inchangé).
     const clientsAdditionnels = await pool.query(
-      `SELECT c.id, COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS nom, c.type
+      `SELECT c.id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS nom, c.type
        FROM dossier_clients_additionnels dca JOIN clients c ON c.id = dca.client_id
        WHERE dca.dossier_id = $1`,
       [id]

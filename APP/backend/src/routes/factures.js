@@ -64,7 +64,7 @@ router.get("/impayees", requirePermission("factures.consulter"), async (req, res
   try {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.montant_ttc, f.devise, f.statut, f.date_echeance,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               f.montant_ttc - COALESCE((SELECT SUM(montant) FROM paiements p WHERE p.facture_id = f.id),0) AS reste
        FROM factures f JOIN clients c ON c.id = f.client_id
        WHERE f.statut IN ('emise','partielle','impayee')
@@ -90,7 +90,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
       `SELECT f.id, f.numero, f.mode, f.montant_ht, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut,
               f.date_emission, f.date_echeance,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero
        FROM factures f
        JOIN clients c ON c.id = f.client_id

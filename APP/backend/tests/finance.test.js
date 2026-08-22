@@ -209,3 +209,41 @@ describe("Facturation — multi-devises, taux verrouillé à l'émission", () =>
     expect(Number(rows[0].montant_xof)).toBe(Math.round(400 * 655.957));
   });
 });
+
+describe("Facturation — nom du client affiché (bug dénomination vide, 22/08/2026)", () => {
+  // Contexte : un client "personne physique" créé avec denomination:'' (au
+  // lieu de NULL — cas réel trouvé en production, cf. HISTORY.md) faisait
+  // échouer COALESCE(c.denomination, c.prenom||' '||c.nom) : COALESCE ne
+  // saute que les valeurs NULL, pas les chaînes vides, donc le nom affiché
+  // sur la facture restait vide au lieu de retomber sur "Prénom Nom".
+  test("POST /api/clients normalise une dénomination vide ('') en NULL, pas en ''", async () => {
+    const res = await request(app)
+      .post("/api/clients")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ type: "physique", denomination: "", prenom: "Aminata", nom: "Traoré" });
+    expect(res.status).toBe(201);
+    const { rows } = await pool.query("SELECT denomination FROM clients WHERE id = $1", [res.body.id]);
+    expect(rows[0].denomination).toBeNull();
+  });
+
+  test("une facture affiche prénom+nom même si la dénomination du client est restée '' en base (donnée historique)", async () => {
+    const clientId = await creerClient({ type: "physique", denomination: "Ignoré", prenom: "Kamafily", nom: "Sissoko" });
+    // Simule la donnée corrompue trouvée en production (créée avant le
+    // correctif ci-dessus) : impossible à obtenir via l'API depuis ce
+    // correctif, d'où l'écriture directe pour reproduire l'état constaté.
+    await pool.query("UPDATE clients SET denomination = '' WHERE id = $1", [clientId]);
+
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    expect(facture.status).toBe(201);
+
+    const liste = await request(app)
+      .get("/api/factures")
+      .set("Authorization", `Bearer ${token}`);
+    const ligne = liste.body.find((f) => f.id === facture.body.id);
+    expect(ligne).toBeDefined();
+    expect(ligne.client).toBe("Kamafily Sissoko");
+  });
+});

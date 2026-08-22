@@ -60,7 +60,7 @@ router.get("/kyc/alertes", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT p.id, p.libelle, p.date_expiration, c.id AS client_id,
-              COALESCE(c.denomination, c.prenom || ' ' || c.nom) AS client_nom,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               (p.date_expiration - current_date) AS jours_restants
        FROM client_pieces_kyc p
        JOIN clients c ON c.id = p.client_id
@@ -106,7 +106,7 @@ router.get("/verifier-doublon", async (req, res) => {
       // (un espace/tiret peut y être significatif).
       params.push(nomComplet);
       clauses.push(
-        `regexp_replace(lower(COALESCE(denomination, TRIM(COALESCE(prenom,'') || ' ' || COALESCE(nom,'')))), '[\\s\\-.,]', '', 'g')
+        `regexp_replace(lower(COALESCE(NULLIF(denomination, ''), TRIM(COALESCE(prenom,'') || ' ' || COALESCE(nom,'')))), '[\\s\\-.,]', '', 'g')
            = regexp_replace(lower($${params.length}), '[\\s\\-.,]', '', 'g')`
       );
     }
@@ -157,7 +157,7 @@ router.get("/:id", async (req, res) => {
       ),
       pool.query(
         `SELECT l.id, l.nature, l.lie_a_id,
-                COALESCE(c2.denomination, c2.prenom || ' ' || c2.nom) AS lie_a_nom
+                COALESCE(NULLIF(c2.denomination, ''), c2.prenom || ' ' || c2.nom) AS lie_a_nom
          FROM client_liens l JOIN clients c2 ON c2.id = l.lie_a_id
          WHERE l.client_id = $1`,
         [req.params.id]
@@ -168,7 +168,7 @@ router.get("/:id", async (req, res) => {
       // Même table, la relation "vue depuis l'autre bout" en résulte.
       pool.query(
         `SELECT l.id, l.nature, l.client_id AS lie_a_id,
-                COALESCE(c2.denomination, c2.prenom || ' ' || c2.nom) AS lie_a_nom
+                COALESCE(NULLIF(c2.denomination, ''), c2.prenom || ' ' || c2.nom) AS lie_a_nom
          FROM client_liens l JOIN clients c2 ON c2.id = l.client_id
          WHERE l.lie_a_id = $1`,
         [req.params.id]
@@ -192,6 +192,14 @@ router.get("/:id", async (req, res) => {
 // POST /api/clients
 router.post("/", requirePermission("clients.creer"), async (req, res) => {
   const b = req.body || {};
+  // Une dénomination vide ('') doit être stockée NULL, pas '' — sinon
+  // COALESCE(denomination, prenom||' '||nom), utilisé partout où le nom
+  // d'un client est affiché, s'arrête sur cette chaîne vide (COALESCE ne
+  // saute que les NULL) et affiche un nom vide au lieu de basculer sur
+  // prénom+nom pour une personne physique. Bug trouvé le 22/08/2026 (client
+  // créé via ouverture.component.ts, qui envoie denomination:'' par défaut
+  // même pour un type physique).
+  const denomination = b.denomination === "" ? null : b.denomination;
   try {
     const { rows } = await pool.query(
       `INSERT INTO clients
@@ -199,7 +207,7 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
           nationalite, email, telephone, adresse, ville, pays, cree_par)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13,'Mali'),$14)
        RETURNING id, type, denomination, nom`,
-      [b.type, b.denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
+      [b.type, denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
        b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays, req.user.sub]
     );
     res.status(201).json(rows[0]);
@@ -228,7 +236,10 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
     const clauseConcurrence = b.maj_le_attendu != null
       ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz)"
       : "";
-    const params = [b.denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
+    // Même normalisation qu'à la création (voir POST /) : '' -> NULL pour
+    // que COALESCE(denomination, prenom||' '||nom) fonctionne à l'affichage.
+    const denomination = b.denomination === "" ? null : b.denomination;
+    const params = [denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
       b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays,
       b.beneficiaires_effectifs, b.notes, b.kyc_statut, req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);

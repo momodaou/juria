@@ -22,7 +22,7 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
       // « Bâtir-SA »). Même normalisation que le contrôle de doublon client
       // (clients.js, GET /verifier-doublon).
       const cli = await pool.query(
-        `SELECT id, 'client' AS source, COALESCE(denomination, prenom || ' ' || nom) AS nom
+        `SELECT id, 'client' AS source, COALESCE(NULLIF(denomination, ''), prenom || ' ' || nom) AS nom
          FROM clients
          WHERE regexp_replace(lower(COALESCE(denomination,'') || ' ' || COALESCE(nom,'') || ' ' || COALESCE(prenom,'')), '[\\s\\-.,]', '', 'g')
                LIKE '%' || regexp_replace(lower($1), '[\\s\\-.,]', '', 'g') || '%'`,
