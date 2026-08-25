@@ -66,6 +66,7 @@ const CATALOGUE = [
   { code: "temps.creer", module: "Chrono & Facturation", label: "Saisir du temps passé" },
   { code: "factures.creer", module: "Chrono & Facturation", label: "Émettre une facture" },
   { code: "factures.paiement.ajouter", module: "Chrono & Facturation", label: "Encaisser un paiement" },
+  { code: "factures.annuler", module: "Chrono & Facturation", label: "Annuler une facture émise (non réglée)", restreinte: true },
 
   { code: "depenses.consulter", module: "Dépenses & caisse", label: "Consulter les dépenses (liste, montants)", restreinte: true },
   { code: "depenses.creer", module: "Dépenses & caisse", label: "Soumettre une dépense" },

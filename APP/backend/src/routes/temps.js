@@ -4,19 +4,25 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
 
-// GET /api/temps?dossier_id=...   (sinon : mes saisies)
+// GET /api/temps?dossier_id=...&non_factures=true   (sinon : mes saisies)
+// non_factures=true : ne renvoie que les temps facturables pas encore
+// rattachés à une facture (t.facture_id IS NULL) — sert à alimenter l'écran
+// « Facturer les temps » (voir POST /api/factures, b.temps_ids) sans jamais
+// proposer un temps déjà facturé.
 router.get("/", async (req, res) => {
-  const { dossier_id } = req.query;
+  const { dossier_id, non_factures } = req.query;
   // dossier_id : $1 = dossier_id uniquement (motif de bug récurrent du
   // projet, cf. CLAUDE.md — un $1 poussé dans params mais jamais référencé
   // dans le WHERE ci-dessous faisait échouer Postgres avec « could not
   // determine data type of parameter $1 » à chaque appel avec dossier_id).
   const params = dossier_id ? [dossier_id] : [req.user.sub];
-  const where = dossier_id ? "WHERE t.dossier_id = $1" : "WHERE t.utilisateur_id = $1";
+  const clauses = [dossier_id ? "t.dossier_id = $1" : "t.utilisateur_id = $1"];
+  if (non_factures === "true") clauses.push("t.facturable = TRUE", "t.facture_id IS NULL");
+  const where = `WHERE ${clauses.join(" AND ")}`;
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.date_saisie, t.duree_minutes, t.taux_horaire, t.facturable, t.description,
-              d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS auteur
+              t.facture_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS auteur
        FROM temps t
        JOIN dossiers d ON d.id = t.dossier_id
        JOIN utilisateurs u ON u.id = t.utilisateur_id

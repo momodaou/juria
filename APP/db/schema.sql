@@ -2005,3 +2005,28 @@ ALTER TYPE role_partie ADD VALUE IF NOT EXISTS 'partie_civile';
 -- =====================================================================
 ALTER TABLE client_pieces_kyc ADD COLUMN IF NOT EXISTS type_mime VARCHAR(120);
 -- =============== FIN APERÇU DE FICHIER SANS OUVERTURE ===============
+
+-- =====================================================================
+--  DIAGNOSTIC FACTURATION — TEMPS -> FACTURE + ANNULATION (ajout 25/08/2026)
+--
+--  Suite au diagnostic Facturation du 22/08/2026 (HISTORY.md), 2 des 6
+--  gaps identifiés tranchés par l'utilisateur :
+--   - temps passé enfin relié à la facturation : POST /api/factures accepte
+--     désormais b.temps_ids (temps.facture_id, prévu au schéma depuis le
+--     début, jamais alimenté) — pas de nouvelle action cataloguée, réutilise
+--     factures.creer (créer une facture depuis des temps reste créer une
+--     facture).
+--   - correction d'une facture émise : annulation seule (pas de correction
+--     de montant après coup) — POST /api/factures/:id/annuler, nouvelle
+--     action dédiée, refusée si un paiement existe déjà. Même cluster
+--     "direction/comptabilité" que factures.consulter/depenses.decaisser.
+--  (Les 4 autres constats du diagnostic — TVA robustesse, validation
+--  montant_ht, verrouillage taux du jour, valeurs mortes de statut_facture —
+--  sont des correctifs de code sans impact sur permissions_role.)
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','factures.annuler',TRUE),('associe_fondateur','factures.annuler',TRUE),
+ ('admin_general','factures.annuler',TRUE),('admin_it','factures.annuler',TRUE),
+ ('comptable','factures.annuler',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN DIAGNOSTIC FACTURATION (25/08/2026) ===============

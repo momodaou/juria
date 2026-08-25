@@ -109,34 +109,103 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
 // POST /api/factures
 // { dossier_id?, client_id?, mode, montant_ht, devise?, taux_applique?,
 //   taux_tva?, provision?, date_echeance? }
+// ... ou, pour facturer du temps déjà saisi plutôt que saisir un montant :
+// { dossier_id, mode, temps_ids: [...], devise?('XOF' uniquement), ... }
+// — montant_ht est alors calculé depuis les temps sélectionnés (voir
+// diagnostic Facturation du 22/08/2026, HISTORY.md) et b.montant_ht est
+// ignoré s'il est fourni en même temps que temps_ids.
 router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
+  const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+
     let clientId = b.client_id;
-    if (!clientId && b.dossier_id) {
-      const d = await pool.query("SELECT client_id FROM dossiers WHERE id = $1", [b.dossier_id]);
+    let dossierId = b.dossier_id || null;
+
+    // Le taux horaire des temps saisis est toujours enregistré en FCFA
+    // (temps.taux_horaire, cf. schema.sql) — la conversion vers une autre
+    // devise n'a pas de sens ici sans un taux à appliquer à un montant qui
+    // n'existe pas encore comme tel : refusé plutôt que de deviner.
+    const devise = (b.devise || "XOF").toUpperCase();
+    if (tempsIds.length && devise !== "XOF") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "La facturation depuis des temps saisis n'est prise en charge qu'en XOF (taux horaire toujours enregistré en FCFA)." });
+    }
+
+    let ht;
+    let tempsFactures = [];
+    if (tempsIds.length) {
+      // Verrouille les lignes sélectionnées pour éviter qu'un même temps
+      // soit facturé deux fois en cas de double clic/appel concurrent
+      // (même famille de garde que les corrections de concurrence du
+      // 17/08/2026, cf. CLAUDE.md).
+      const t = await client.query(
+        `SELECT id, dossier_id, duree_minutes, taux_horaire FROM temps
+         WHERE id = ANY($1::uuid[]) AND facturable = TRUE AND facture_id IS NULL
+         FOR UPDATE`,
+        [tempsIds]
+      );
+      if (t.rows.length !== tempsIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Certains temps sélectionnés ont déjà été facturés ou ne sont plus disponibles." });
+      }
+      const dossiersDistincts = new Set(t.rows.map((r) => r.dossier_id));
+      if (dossiersDistincts.size > 1) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Les temps sélectionnés appartiennent à des dossiers différents." });
+      }
+      const dossierTemps = t.rows[0].dossier_id;
+      if (dossierId && dossierId !== dossierTemps) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "dossier_id ne correspond pas au dossier des temps sélectionnés." });
+      }
+      dossierId = dossierTemps;
+      ht = t.rows.reduce((somme, r) => somme + Math.round((Number(r.duree_minutes) / 60) * Number(r.taux_horaire)), 0);
+      tempsFactures = t.rows.map((r) => r.id);
+    } else {
+      const htRaw = Number(b.montant_ht);
+      if (!Number.isFinite(htRaw) || htRaw <= 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "montant_ht invalide (nombre positif requis)" });
+      }
+      ht = Math.round(htRaw);
+    }
+
+    if (!clientId && dossierId) {
+      const d = await client.query("SELECT client_id FROM dossiers WHERE id = $1", [dossierId]);
       clientId = d.rows[0] ? d.rows[0].client_id : null;
     }
-    if (!clientId) return res.status(400).json({ error: "client_id ou dossier_id valide requis" });
-    if (!b.mode) return res.status(400).json({ error: "mode d'honoraires requis" });
+    if (!clientId) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "client_id ou dossier_id valide requis" });
+    }
+    if (!b.mode) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "mode d'honoraires requis" });
+    }
 
-    const devise = (b.devise || "XOF").toUpperCase();
     const { taux, erreur } = await resoudreTauxChange(devise, b.taux_applique, req.user.sub);
-    if (erreur) return res.status(400).json({ error: erreur });
+    if (erreur) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: erreur });
+    }
 
     // TVA : 18 % par défaut pour un client localisé au Mali, 0 % par défaut
     // pour un client hors Mali (prestation hors territorialité) — ce sont
     // des VALEURS DE DÉPART, pas un avis fiscal, toujours écrasées si
     // b.taux_tva est fourni explicitement. À valider avec l'expert-comptable
-    // du cabinet avant de s'y fier en production réelle.
+    // du cabinet avant de s'y fier en production réelle. Comparaison
+    // insensible à la casse/espaces (« MALI », « mali » ne tombaient pas
+    // dans la règle par défaut avant ce correctif — diagnostic du 22/08/2026).
     let tauxTva = b.taux_tva !== undefined ? Number(b.taux_tva) : null;
     if (tauxTva == null) {
-      const cl = await pool.query("SELECT pays FROM clients WHERE id = $1", [clientId]);
+      const cl = await client.query("SELECT pays FROM clients WHERE id = $1", [clientId]);
       const pays = cl.rows[0] ? cl.rows[0].pays : null;
-      tauxTva = !pays || pays === "Mali" ? 18 : 0;
+      tauxTva = !pays || pays.trim().toLowerCase() === "mali" ? 18 : 0;
     }
 
-    const ht = Math.round(Number(b.montant_ht || 0));
     const tva = Math.round((ht * tauxTva) / 100);
     const ttc = ht + tva;
     const ttcXof = Math.round(ttc * taux);
@@ -146,10 +215,10 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
 
     // Numérotation automatique : F-AA-XXX
     const yy = new Date().getFullYear().toString().slice(2);
-    const c = await pool.query("SELECT count(*) + 1 AS n FROM factures WHERE numero LIKE $1", [`F-${yy}-%`]);
+    const c = await client.query("SELECT count(*) + 1 AS n FROM factures WHERE numero LIKE $1", [`F-${yy}-%`]);
     const numero = b.numero || `F-${yy}-${String(c.rows[0].n).padStart(3, "0")}`;
 
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `INSERT INTO factures
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
@@ -157,13 +226,61 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,current_date,TRUE,$12,
                $13,'emise',current_date,$14)
        RETURNING id, numero, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof, statut`,
-      [numero, clientId, b.dossier_id || null, b.mode, ht, tauxTva, tva, ttc, b.provision,
+      [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
        devise, taux, ttcXof, libellePrincipal, b.date_echeance || null]
     );
-    res.status(201).json(rows[0]);
+
+    if (tempsFactures.length) {
+      await client.query("UPDATE temps SET facture_id = $1 WHERE id = ANY($2::uuid[])", [rows[0].id, tempsFactures]);
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json({ ...rows[0], temps_factures: tempsFactures.length || undefined });
   } catch (e) {
+    await client.query("ROLLBACK");
     console.error(e);
     res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/factures/:id/annuler
+// Annule une facture émise à tort — refusée si un paiement a déjà été
+// enregistré dessus (une facture partiellement/totalement réglée ne
+// s'annule pas, elle se corrige par un avoir, hors périmètre actuel —
+// diagnostic Facturation du 22/08/2026, HISTORY.md). Les temps éventuellement
+// rattachés (b.temps_ids à la création) sont libérés (facture_id remis à
+// NULL) pour pouvoir être refacturés.
+router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = await client.query("SELECT COALESCE(SUM(montant),0) AS regle FROM paiements WHERE facture_id = $1", [req.params.id]);
+    if (Number(p.rows[0].regle) > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Facture déjà réglée (au moins partiellement) : impossible de l'annuler." });
+    }
+    const maj = await client.query(
+      "UPDATE factures SET statut = 'annulee' WHERE id = $1 AND statut <> 'annulee' RETURNING id, numero, statut",
+      [req.params.id]
+    );
+    if (!maj.rows[0]) {
+      await client.query("ROLLBACK");
+      const existe = await pool.query("SELECT id FROM factures WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json(
+        existe.rows[0] ? { error: "Facture déjà annulée." } : { error: "Facture introuvable" }
+      );
+    }
+    await client.query("UPDATE temps SET facture_id = NULL WHERE facture_id = $1", [req.params.id]);
+    await client.query("COMMIT");
+    res.json(maj.rows[0]);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

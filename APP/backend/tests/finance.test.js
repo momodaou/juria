@@ -15,11 +15,13 @@ const app = require("../server");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
 
 let token;
+let userId;
 
 beforeAll(async () => {
   await assurerUtilisateurTest();
   const login = await request(app).post("/auth/login").send({ email: EMAIL_TEST, mot_de_passe: MDP_TEST });
   token = login.body.token;
+  userId = login.body.utilisateur.id;
 });
 
 afterAll(async () => {
@@ -31,6 +33,29 @@ async function creerClient(overrides = {}) {
     .post("/api/clients")
     .set("Authorization", `Bearer ${token}`)
     .send({ type: "morale", denomination: `Client test ${Date.now()}-${Math.random()}`, ...overrides });
+  return res.body.id;
+}
+
+async function creerDossier(clientId, overrides = {}) {
+  const res = await request(app)
+    .post("/api/dossiers")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      numero: `FIN-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      intitule: "Dossier test facturation",
+      client_id: clientId,
+      pole: "contentieux",
+      responsable_id: userId,
+      ...overrides,
+    });
+  return res.body.id;
+}
+
+async function creerTemps(dossierId, overrides = {}) {
+  const res = await request(app)
+    .post("/api/temps")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ dossier_id: dossierId, duree_minutes: 60, taux_horaire: 25000, ...overrides });
   return res.body.id;
 }
 
@@ -245,5 +270,187 @@ describe("Facturation — nom du client affiché (bug dénomination vide, 22/08/
     const ligne = liste.body.find((f) => f.id === facture.body.id);
     expect(ligne).toBeDefined();
     expect(ligne.client).toBe("Kamafily Sissoko");
+  });
+});
+
+describe("Facturation — validation montant_ht (diagnostic 22/08/2026)", () => {
+  test("montant_ht = 0 refusé", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  test("montant_ht négatif refusé", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: -1000 });
+    expect(res.status).toBe(400);
+  });
+
+  test("montant_ht non numérique refusé", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: "abc" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("Facturation — TVA par localisation insensible à la casse/espaces (diagnostic 22/08/2026)", () => {
+  test("pays = 'MALI' (majuscules) applique bien 18 %, pas 0 %", async () => {
+    const clientId = await creerClient({ pays: "MALI" });
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_ttc)).toBe(118000);
+  });
+
+  test("pays = ' Mali ' (espaces superflus) applique bien 18 %", async () => {
+    const clientId = await creerClient({ pays: " Mali " });
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_ttc)).toBe(118000);
+  });
+});
+
+describe("Facturation depuis des temps saisis (diagnostic 22/08/2026)", () => {
+  test("crée une facture depuis 2 temps sélectionnés, montant_ht = somme, temps marqués facturés", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const t1 = await creerTemps(dossierId, { duree_minutes: 60, taux_horaire: 25000 }); // 25 000
+    const t2 = await creerTemps(dossierId, { duree_minutes: 30, taux_horaire: 25000 }); // 12 500
+    const t3 = await creerTemps(dossierId, { duree_minutes: 60, taux_horaire: 10000 }); // pas sélectionné
+
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [t1, t2] });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_ht)).toBe(37500);
+    expect(res.body.devise).toBe("XOF");
+
+    const { rows } = await pool.query("SELECT id, facture_id FROM temps WHERE id = ANY($1::uuid[])", [[t1, t2, t3]]);
+    const parId = Object.fromEntries(rows.map((r) => [r.id, r.facture_id]));
+    expect(parId[t1]).toBe(res.body.id);
+    expect(parId[t2]).toBe(res.body.id);
+    expect(parId[t3]).toBeNull();
+  });
+
+  test("un temps déjà facturé ne peut pas être resélectionné (409)", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const t1 = await creerTemps(dossierId);
+    const premiere = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [t1] });
+    expect(premiere.status).toBe(201);
+
+    const seconde = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [t1] });
+    expect(seconde.status).toBe(409);
+  });
+
+  test("une devise non-XOF avec temps_ids est refusée (taux horaire toujours en FCFA)", async () => {
+    const clientId = await creerClient({ pays: "France" });
+    const dossierId = await creerDossier(clientId);
+    const t1 = await creerTemps(dossierId);
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", devise: "EUR", temps_ids: [t1] });
+    expect(res.status).toBe(400);
+  });
+
+  test("GET /api/temps?non_factures=true n'expose que les temps facturables non encore facturés", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const facturable = await creerTemps(dossierId, { facturable: true });
+    const nonFacturable = await creerTemps(dossierId, { facturable: false });
+    await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [facturable] });
+
+    const liste = await request(app)
+      .get(`/api/temps?dossier_id=${dossierId}&non_factures=true`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(liste.status).toBe(200);
+    const ids = liste.body.map((t) => t.id);
+    expect(ids).not.toContain(facturable); // déjà facturé
+    expect(ids).not.toContain(nonFacturable); // pas facturable
+  });
+});
+
+describe("POST /api/factures/:id/annuler (diagnostic 22/08/2026)", () => {
+  test("annule une facture émise sans paiement", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    const res = await request(app)
+      .post(`/api/factures/${facture.body.id}/annuler`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.statut).toBe("annulee");
+  });
+
+  test("refuse d'annuler une facture déjà (même partiellement) réglée", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app)
+      .post(`/api/factures/${facture.body.id}/paiements`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant: 10000, mode: "virement" });
+
+    const res = await request(app)
+      .post(`/api/factures/${facture.body.id}/annuler`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(409);
+  });
+
+  test("refuse d'annuler deux fois la même facture", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app).post(`/api/factures/${facture.body.id}/annuler`).set("Authorization", `Bearer ${token}`);
+    const res = await request(app)
+      .post(`/api/factures/${facture.body.id}/annuler`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(409);
+  });
+
+  test("libère les temps rattachés (facture_id remis à NULL) en cas d'annulation", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const t1 = await creerTemps(dossierId);
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [t1] });
+
+    await request(app).post(`/api/factures/${facture.body.id}/annuler`).set("Authorization", `Bearer ${token}`);
+
+    const { rows } = await pool.query("SELECT facture_id FROM temps WHERE id = $1", [t1]);
+    expect(rows[0].facture_id).toBeNull();
   });
 });

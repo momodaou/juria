@@ -234,6 +234,11 @@ export class ApiService {
   tempsDossier(dossierId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/temps?dossier_id=${dossierId}`);
   }
+  // Temps facturables pas encore rattachés à une facture (voir "Facturer les
+  // temps" dans l'écran Facturation).
+  tempsNonFactures(dossierId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/temps?dossier_id=${dossierId}&non_factures=true`);
+  }
   creerTemps(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/temps`, payload);
   }
@@ -255,6 +260,9 @@ export class ApiService {
   }
   ajouterPaiement(id: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/${id}/paiements`, payload);
+  }
+  annulerFacture(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/factures/${id}/annuler`, {});
   }
 
   // Échéancier / délais
