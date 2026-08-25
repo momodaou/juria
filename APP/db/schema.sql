@@ -2030,3 +2030,34 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('comptable','factures.annuler',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN DIAGNOSTIC FACTURATION (25/08/2026) ===============
+
+-- =====================================================================
+--  FACTURE PDF + DÉBOURS REFACTURABLES ENFIN CÂBLÉS (ajout 25/08/2026)
+--
+--  Question utilisateur : « une facture émise ne s'affiche pas (aucun
+--  fichier visible) — le schéma proposé suffit-il ? ». Réponse : les
+--  DONNÉES étaient quasi suffisantes (parametres_cabinet, clients,
+--  factures) ; ce qui manquait réellement était (1) tout mécanisme de
+--  génération de PDF (aucun, nulle part dans l'appli — voir
+--  backend/src/facturePdf.js, pdfkit) et (2) le câblage des débours
+--  refacturables au client, prévu en base sous une forme jamais utilisée
+--  (`depenses.avance_pour_client`/`refacture`, vue `v_debours_a_refacturer`
+--  jamais interrogée par aucune route) — même mal que `temps.facture_id`
+--  avant le 25/08/2026 (voir plus haut dans ce fichier).
+--
+--  Remplacé par le même patron que `temps.facture_id` (traçabilité de QUELLE
+--  facture a absorbé quelle dépense, pas juste un booléen "déjà facturée" —
+--  permet aussi de libérer la dépense si la facture est annulée, comme pour
+--  les temps). Les deux colonnes remplacées n'avaient jamais été écrites
+--  par aucune route depuis leur création (colonnes mortes confirmées) :
+--  contrairement aux valeurs d'ENUM (non modifiables proprement), une
+--  colonne booléenne inutilisée peut être retirée sans risque de perte de
+--  données réelles.
+-- =====================================================================
+DROP VIEW IF EXISTS v_debours_a_refacturer;
+ALTER TABLE depenses
+  DROP COLUMN IF EXISTS avance_pour_client,
+  DROP COLUMN IF EXISTS refacture,
+  ADD COLUMN IF NOT EXISTS facture_id UUID REFERENCES factures(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_depenses_facture ON depenses(facture_id);
+-- =============== FIN FACTURE PDF + DÉBOURS REFACTURABLES ===============

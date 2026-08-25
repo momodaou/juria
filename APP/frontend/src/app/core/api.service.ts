@@ -264,6 +264,11 @@ export class ApiService {
   annulerFacture(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/${id}/annuler`, {});
   }
+  // Support « papier numérique » de la facture (25/08/2026) — généré à la
+  // volée, pas stocké en GED (voir facturePdf.js).
+  telechargerFacturePdf(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/factures/${id}/pdf`, { responseType: 'blob' });
+  }
 
   // Échéancier / délais
   evenements(): Observable<any[]> {
@@ -368,11 +373,16 @@ export class ApiService {
   }
 
   // Dépenses & caisse
-  depenses(filtres: { type?: string; statut?: string; dossier_id?: string } = {}): Observable<any[]> {
+  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean } = {}): Observable<any[]> {
     const params = new URLSearchParams();
-    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any[]>(`${this.base}/api/depenses${q}`);
+  }
+  // Débours décaissés, refacturables au client, pas encore rattachés à une
+  // facture (voir "Facturer un dossier" dans l'écran Facturation).
+  depensesARefacturer(dossierId: string): Observable<any[]> {
+    return this.depenses({ dossier_id: dossierId, a_refacturer: true });
   }
   creerDepense(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses`, payload);

@@ -59,6 +59,42 @@ async function creerTemps(dossierId, overrides = {}) {
   return res.body.id;
 }
 
+// Crée une dépense refacturable et la fait passer par le circuit complet
+// (soumise -> validée -> décaissée) : seule une dépense décaissée est
+// éligible à la refacturation (voir factures.js).
+// pdfkit encode le texte des polices standard (Helvetica) en runs
+// hexadécimaux <...> entrecoupés d'ajustements numériques de crénage dans
+// les tableaux TJ (ex. "[<54> 80 <6f74616c...> 0] TJ") plutôt qu'en chaînes
+// littérales lisibles — même sans compression du flux. Pour un test ciblé
+// sur de l'ASCII pur (WinAnsiEncoding = ASCII sur cette plage), reconstruire
+// le texte en concaténant les runs hex dans l'ordre suffit à retrouver les
+// mots entiers malgré le découpage par le crénage.
+function extraireTexteVisible(pdfBuffer) {
+  const brut = pdfBuffer.toString("latin1");
+  return [...brut.matchAll(/<([0-9a-fA-F]+)>/g)]
+    .map((m) => Buffer.from(m[1], "hex").toString("latin1"))
+    .join("");
+}
+
+async function creerDeboursDecaisse(dossierId, overrides = {}) {
+  const creation = await request(app)
+    .post("/api/depenses")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      type: "ponctuelle",
+      categorie: "frais_procedure",
+      libelle: "Frais de greffe test",
+      montant: 15000,
+      refacturable_client: true,
+      dossier_id: dossierId,
+      ...overrides,
+    });
+  const id = creation.body.id;
+  await request(app).post(`/api/depenses/${id}/decision`).set("Authorization", `Bearer ${token}`).send({ statut: "validee" });
+  await request(app).post(`/api/depenses/${id}/decaisser`).set("Authorization", `Bearer ${token}`);
+  return id;
+}
+
 describe("Rétrocessions — calcul par qualité et règle tout ou rien", () => {
   let beneficiaireId;
 
@@ -452,5 +488,184 @@ describe("POST /api/factures/:id/annuler (diagnostic 22/08/2026)", () => {
 
     const { rows } = await pool.query("SELECT facture_id FROM temps WHERE id = $1", [t1]);
     expect(rows[0].facture_id).toBeNull();
+  });
+});
+
+describe("Facturation — débours refacturables au client (25/08/2026)", () => {
+  test("crée une facture depuis 1 débours décaissé, montant_debours = montant de la dépense, TTC = HT+TVA+débours", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const depenseId = await creerDeboursDecaisse(dossierId);
+
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", montant_ht: 100000, depense_ids: [depenseId] });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_debours)).toBe(15000);
+    // 100000 HT + 18% TVA (118000) + 15000 débours hors TVA = 133000
+    expect(Number(res.body.montant_ttc)).toBe(133000);
+
+    const { rows } = await pool.query("SELECT facture_id FROM depenses WHERE id = $1", [depenseId]);
+    expect(rows[0].facture_id).toBe(res.body.id);
+  });
+
+  test("une dépense pas encore décaissée (juste validée) n'est pas éligible", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const creation = await request(app)
+      .post("/api/depenses")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ type: "ponctuelle", categorie: "frais_procedure", libelle: "Non décaissée", montant: 5000, refacturable_client: true, dossier_id: dossierId });
+    await request(app).post(`/api/depenses/${creation.body.id}/decision`).set("Authorization", `Bearer ${token}`).send({ statut: "validee" });
+
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", montant_ht: 10000, depense_ids: [creation.body.id] });
+    expect(res.status).toBe(409);
+  });
+
+  test("une dépense déjà refacturée ne peut pas être resélectionnée (409)", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const depenseId = await creerDeboursDecaisse(dossierId);
+    await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", montant_ht: 10000, depense_ids: [depenseId] });
+
+    const seconde = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", montant_ht: 10000, depense_ids: [depenseId] });
+    expect(seconde.status).toBe(409);
+  });
+
+  test("une facture composée uniquement de débours (sans montant_ht) est acceptée", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const depenseId = await creerDeboursDecaisse(dossierId);
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", depense_ids: [depenseId] });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_ht)).toBe(0);
+    expect(Number(res.body.montant_debours)).toBe(15000);
+    expect(Number(res.body.montant_ttc)).toBe(15000);
+  });
+
+  test("l'annulation libère les dépenses rattachées (facture_id remis à NULL)", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const depenseId = await creerDeboursDecaisse(dossierId);
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", depense_ids: [depenseId] });
+
+    await request(app).post(`/api/factures/${facture.body.id}/annuler`).set("Authorization", `Bearer ${token}`);
+
+    const { rows } = await pool.query("SELECT facture_id FROM depenses WHERE id = $1", [depenseId]);
+    expect(rows[0].facture_id).toBeNull();
+  });
+
+  test("GET /api/depenses?a_refacturer=true n'expose que les dépenses décaissées, refacturables, non encore facturées", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const eligible = await creerDeboursDecaisse(dossierId);
+    const nonRefacturable = await creerDeboursDecaisse(dossierId, { libelle: "Non refacturable", refacturable_client: false });
+
+    const liste = await request(app)
+      .get(`/api/depenses?dossier_id=${dossierId}&a_refacturer=true`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(liste.status).toBe(200);
+    const ids = liste.body.map((d) => d.id);
+    expect(ids).toContain(eligible);
+    expect(ids).not.toContain(nonRefacturable);
+  });
+});
+
+describe("Facturation — montant_frais (25/08/2026)", () => {
+  test("montant_frais s'ajoute au TTC, hors TVA", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000, montant_frais: 3000 });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.montant_frais)).toBe(3000);
+    expect(Number(res.body.montant_ttc)).toBe(121000); // 100000 + 18000 TVA + 3000 frais
+  });
+
+  test("montant_frais négatif refusé", async () => {
+    const clientId = await creerClient();
+    const res = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000, montant_frais: -500 });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/factures/:id/pdf — support « papier numérique » (25/08/2026)", () => {
+  test("renvoie un vrai PDF (en-tête %PDF) pour une facture existante", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+
+    const res = await request(app)
+      .get(`/api/factures/${facture.body.id}/pdf`)
+      .buffer(true)
+      .parse((response, cb) => {
+        const chunks = [];
+        response.on("data", (c) => chunks.push(c));
+        response.on("end", () => cb(null, Buffer.concat(chunks)));
+      })
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/pdf");
+    expect(res.body.length).toBeGreaterThan(500); // vrai contenu, pas une réponse vide
+    expect(res.body.slice(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
+  test("404 propre pour une facture inexistante", async () => {
+    const res = await request(app)
+      .get("/api/factures/00000000-0000-0000-0000-000000000000/pdf")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("le PDF liste nommément les temps et débours rattachés à la facture (plus volumineux qu'une facture sans détail)", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const t1 = await creerTemps(dossierId, { description: "Redaction assignation" });
+    const depenseId = await creerDeboursDecaisse(dossierId, { libelle: "Frais de greffe unique" });
+
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "temps_passe", temps_ids: [t1], depense_ids: [depenseId] });
+    expect(facture.status).toBe(201);
+
+    const pdf = (id) =>
+      request(app)
+        .get(`/api/factures/${id}/pdf`)
+        .buffer(true)
+        .parse((response, cb) => {
+          const chunks = [];
+          response.on("data", (c) => chunks.push(c));
+          response.on("end", () => cb(null, Buffer.concat(chunks)));
+        })
+        .set("Authorization", `Bearer ${token}`);
+
+    const res = await pdf(facture.body.id);
+    expect(res.status).toBe(200);
+    const texte = extraireTexteVisible(res.body);
+    expect(texte).toContain("Redaction assignation");
+    expect(texte).toContain("Frais de greffe unique");
   });
 });

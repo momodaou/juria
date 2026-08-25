@@ -3,6 +3,7 @@ import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-facturation',
@@ -58,8 +59,8 @@ import { AuthService } from '../../core/auth.service';
     </section>
 
     <section class="panel">
-      <h3>Facturer les temps</h3>
-      <p class="desc">Sélectionne un dossier pour lister les temps facturables pas encore rattachés à une facture, puis coche ceux à inclure. Le montant HT est calculé automatiquement (durée × taux horaire) — uniquement en FCFA (le taux horaire est toujours enregistré en XOF).</p>
+      <h3>Facturer un dossier (temps + débours)</h3>
+      <p class="desc">Sélectionne un dossier pour lister les temps facturables et les débours décaissés/refacturables pas encore rattachés à une facture, puis coche ce qui doit y figurer. Le montant est calculé automatiquement — uniquement en FCFA (temps et débours sont toujours enregistrés en XOF).</p>
       <div class="form">
         <label>Dossier
           <select [(ngModel)]="dossierTempsId" name="dossierTemps" (ngModelChange)="chargerTempsNonFactures()">
@@ -77,6 +78,7 @@ import { AuthService } from '../../core/auth.service';
         </label>
       </div>
       @if (tempsNonFactures().length) {
+        <h4>Temps facturables</h4>
         <table>
           <tr><th></th><th>Date</th><th>Auteur</th><th>Durée</th><th>Taux horaire</th><th>Montant HT</th><th>Description</th></tr>
           @for (t of tempsNonFactures(); track t.id) {
@@ -91,10 +93,29 @@ import { AuthService } from '../../core/auth.service';
             </tr>
           }
         </table>
-        <p><strong>Total sélectionné : {{ totalTempsSelectionnes() | number }} FCFA</strong></p>
-        <button class="btn" (click)="facturerTemps()" [disabled]="!tempsSelectionnes().size">Émettre la facture</button>
+      }
+      @if (deboursARefacturer().length) {
+        <h4>Débours décaissés à refacturer</h4>
+        <table>
+          <tr><th></th><th>Date</th><th>Libellé</th><th>Montant</th></tr>
+          @for (d of deboursARefacturer(); track d.id) {
+            <tr>
+              <td><input type="checkbox" [checked]="deboursSelectionnes().has(d.id)" (change)="basculerDebours(d.id)" /></td>
+              <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
+              <td>{{ d.libelle }}</td>
+              <td>{{ d.montant | number }} FCFA</td>
+            </tr>
+          }
+        </table>
+      }
+      @if (tempsNonFactures().length || deboursARefacturer().length) {
+        <p>
+          <strong>Honoraires sélectionnés : {{ totalTempsSelectionnes() | number }} FCFA</strong>
+          @if (deboursARefacturer().length) { <strong> — Débours sélectionnés : {{ totalDeboursSelectionnes() | number }} FCFA</strong> }
+        </p>
+        <button class="btn" (click)="facturerTemps()" [disabled]="!tempsSelectionnes().size && !deboursSelectionnes().size">Émettre la facture</button>
       } @else if (dossierTempsId) {
-        <p class="muted">Aucun temps facturable en attente pour ce dossier.</p>
+        <p class="muted">Rien en attente de facturation pour ce dossier (ni temps facturable, ni débours décaissé refacturable).</p>
       }
     </section>
 
@@ -127,7 +148,9 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
               <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
               <td><span class="tag" [class.haute]="f.statut !== 'payee'">{{ f.statut }}</span></td>
-              <td>
+              <td class="actions">
+                <button class="lien" (click)="apercuPdf(f)">Aperçu</button>
+                <button class="lien" (click)="ouvrirPdf(f)">Télécharger</button>
                 @if (auth.peut('factures.annuler') && f.statut === 'emise') {
                   <button class="lien" (click)="annuler(f)">Annuler</button>
                 }
@@ -148,11 +171,14 @@ import { AuthService } from '../../core/auth.service';
     .ok-msg{color:var(--green);font-size:13px;margin-top:10px}
     .hint{font-weight:400;color:var(--slate);font-size:11px;white-space:normal;max-width:220px}
     .desc{font-size:12px;color:var(--slate);max-width:640px;margin:0 0 10px}
+    h4{margin:14px 0 6px;font-size:13px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
   `],
 })
 export class FacturationComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly preview = inject(DocumentPreviewService);
 
   readonly dossiers = signal<Dossier[]>([]);
   readonly factures = signal<any[]>([]);
@@ -169,9 +195,11 @@ export class FacturationComponent implements OnInit {
   // 0% (client hors Mali) selon la localisation — voir factures.js.
   tva: number | null = null;
 
-  // Facturer les temps
+  // Facturer un dossier (temps + débours)
   readonly tempsNonFactures = signal<any[]>([]);
   readonly tempsSelectionnes = signal<Set<string>>(new Set());
+  readonly deboursARefacturer = signal<any[]>([]);
+  readonly deboursSelectionnes = signal<Set<string>>(new Set());
   dossierTempsId = '';
   modeTemps = 'temps_passe';
 
@@ -188,10 +216,15 @@ export class FacturationComponent implements OnInit {
 
   chargerTempsNonFactures(): void {
     this.tempsSelectionnes.set(new Set());
-    if (!this.dossierTempsId) { this.tempsNonFactures.set([]); return; }
+    this.deboursSelectionnes.set(new Set());
+    if (!this.dossierTempsId) { this.tempsNonFactures.set([]); this.deboursARefacturer.set([]); return; }
     this.api.tempsNonFactures(this.dossierTempsId).subscribe({
       next: (t) => this.tempsNonFactures.set(t),
       error: () => this.tempsNonFactures.set([]),
+    });
+    this.api.depensesARefacturer(this.dossierTempsId).subscribe({
+      next: (d) => this.deboursARefacturer.set(d),
+      error: () => this.deboursARefacturer.set([]),
     });
   }
 
@@ -205,19 +238,30 @@ export class FacturationComponent implements OnInit {
     this.tempsSelectionnes.set(s);
   }
 
+  basculerDebours(id: string): void {
+    const s = new Set(this.deboursSelectionnes());
+    if (s.has(id)) s.delete(id); else s.add(id);
+    this.deboursSelectionnes.set(s);
+  }
+
   totalTempsSelectionnes(): number {
     return this.tempsNonFactures()
       .filter((t) => this.tempsSelectionnes().has(t.id))
       .reduce((somme, t) => somme + this.montantTemps(t), 0);
   }
 
+  totalDeboursSelectionnes(): number {
+    return this.deboursARefacturer()
+      .filter((d) => this.deboursSelectionnes().has(d.id))
+      .reduce((somme, d) => somme + Number(d.montant), 0);
+  }
+
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
-    this.api.creerFacture({
-      dossier_id: this.dossierTempsId,
-      mode: this.modeTemps,
-      temps_ids: Array.from(this.tempsSelectionnes()),
-    }).subscribe({
+    const payload: any = { dossier_id: this.dossierTempsId, mode: this.modeTemps };
+    if (this.tempsSelectionnes().size) payload.temps_ids = Array.from(this.tempsSelectionnes());
+    if (this.deboursSelectionnes().size) payload.depense_ids = Array.from(this.deboursSelectionnes());
+    this.api.creerFacture(payload).subscribe({
       next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
     });
@@ -229,6 +273,24 @@ export class FacturationComponent implements OnInit {
     this.api.annulerFacture(f.id).subscribe({
       next: () => this.rafraichir(),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Annulation impossible'),
+    });
+  }
+
+  // Support « papier numérique » (25/08/2026) — même patron que l'aperçu de
+  // fichier du 21/08 : réutilise le même téléchargement authentifié pour
+  // l'aperçu et le téléchargement direct.
+  apercuPdf(f: any): void {
+    this.preview.ouvrir(`${f.numero}.pdf`, this.api.telechargerFacturePdf(f.id));
+  }
+
+  ouvrirPdf(f: any): void {
+    this.api.telechargerFacturePdf(f.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => this.erreur.set('Téléchargement du PDF impossible'),
     });
   }
 

@@ -2,6 +2,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { envoyerFacturePdf } = require("../facturePdf");
 const router = express.Router();
 
 // Recalcule et met à jour le statut d'une facture selon les paiements reçus.
@@ -87,7 +88,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.numero, f.mode, f.montant_ht, f.montant_ttc, f.devise,
+      `SELECT f.id, f.numero, f.mode, f.montant_ht, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut,
               f.date_emission, f.date_echeance,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
@@ -106,17 +107,37 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   }
 });
 
+// Vérifie qu'un lot de lignes (temps ou dépenses) verrouillées appartient
+// toutes à un même dossier, cohérent avec dossierId s'il est déjà connu —
+// factorisé pour éviter de dupliquer la même logique entre temps_ids et
+// depense_ids (voir diagnostic Facturation, 22-25/08/2026).
+function verifierDossierUnique(rows, dossierIdConnu) {
+  const distincts = new Set(rows.map((r) => r.dossier_id));
+  if (distincts.size > 1) return { erreur: "Les lignes sélectionnées appartiennent à des dossiers différents." };
+  const dossierLignes = rows[0].dossier_id;
+  if (dossierIdConnu && dossierLignes && dossierIdConnu !== dossierLignes) {
+    return { erreur: "dossier_id ne correspond pas au dossier des lignes sélectionnées." };
+  }
+  return { dossierId: dossierLignes || dossierIdConnu };
+}
+
 // POST /api/factures
 // { dossier_id?, client_id?, mode, montant_ht, devise?, taux_applique?,
-//   taux_tva?, provision?, date_echeance? }
+//   taux_tva?, provision?, montant_frais?, date_echeance? }
 // ... ou, pour facturer du temps déjà saisi plutôt que saisir un montant :
 // { dossier_id, mode, temps_ids: [...], devise?('XOF' uniquement), ... }
 // — montant_ht est alors calculé depuis les temps sélectionnés (voir
 // diagnostic Facturation du 22/08/2026, HISTORY.md) et b.montant_ht est
 // ignoré s'il est fourni en même temps que temps_ids.
+// ... et/ou, pour refacturer des débours déjà avancés pour le client :
+// { depense_ids: [...] } — montant_debours calculé depuis les dépenses
+// `refacturable_client=TRUE` et déjà décaissées sélectionnées (diagnostic
+// Facturation, 25/08/2026 — « le schéma proposé suffit-il ? »). temps_ids
+// et depense_ids sont combinables sur une même facture.
 router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
+  const depenseIds = Array.isArray(b.depense_ids) ? b.depense_ids.filter(Boolean) : [];
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -124,14 +145,14 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
     let clientId = b.client_id;
     let dossierId = b.dossier_id || null;
 
-    // Le taux horaire des temps saisis est toujours enregistré en FCFA
-    // (temps.taux_horaire, cf. schema.sql) — la conversion vers une autre
-    // devise n'a pas de sens ici sans un taux à appliquer à un montant qui
-    // n'existe pas encore comme tel : refusé plutôt que de deviner.
+    // Le taux horaire des temps saisis (comme le montant d'une dépense) est
+    // toujours enregistré en FCFA — la conversion vers une autre devise n'a
+    // pas de sens ici sans un taux à appliquer à un montant qui n'existe pas
+    // encore comme tel : refusé plutôt que de deviner.
     const devise = (b.devise || "XOF").toUpperCase();
-    if (tempsIds.length && devise !== "XOF") {
+    if ((tempsIds.length || depenseIds.length) && devise !== "XOF") {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "La facturation depuis des temps saisis n'est prise en charge qu'en XOF (taux horaire toujours enregistré en FCFA)." });
+      return res.status(400).json({ error: "La facturation depuis des temps saisis ou des débours n'est prise en charge qu'en XOF (montants toujours enregistrés en FCFA)." });
     }
 
     let ht;
@@ -151,26 +172,62 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "Certains temps sélectionnés ont déjà été facturés ou ne sont plus disponibles." });
       }
-      const dossiersDistincts = new Set(t.rows.map((r) => r.dossier_id));
-      if (dossiersDistincts.size > 1) {
+      const verif = verifierDossierUnique(t.rows, dossierId);
+      if (verif.erreur) {
         await client.query("ROLLBACK");
-        return res.status(400).json({ error: "Les temps sélectionnés appartiennent à des dossiers différents." });
+        return res.status(400).json({ error: verif.erreur });
       }
-      const dossierTemps = t.rows[0].dossier_id;
-      if (dossierId && dossierId !== dossierTemps) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({ error: "dossier_id ne correspond pas au dossier des temps sélectionnés." });
-      }
-      dossierId = dossierTemps;
+      dossierId = verif.dossierId;
       ht = t.rows.reduce((somme, r) => somme + Math.round((Number(r.duree_minutes) / 60) * Number(r.taux_horaire)), 0);
       tempsFactures = t.rows.map((r) => r.id);
-    } else {
+    } else if (!depenseIds.length) {
       const htRaw = Number(b.montant_ht);
       if (!Number.isFinite(htRaw) || htRaw <= 0) {
         await client.query("ROLLBACK");
         return res.status(400).json({ error: "montant_ht invalide (nombre positif requis)" });
       }
       ht = Math.round(htRaw);
+    } else {
+      // Facture composée uniquement de débours (pas d'honoraires) : montant_ht
+      // reste optionnel, 0 par défaut plutôt que rejeté.
+      const htRaw = b.montant_ht !== undefined ? Number(b.montant_ht) : 0;
+      if (!Number.isFinite(htRaw) || htRaw < 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "montant_ht invalide (nombre positif ou nul)" });
+      }
+      ht = Math.round(htRaw);
+    }
+
+    let debours = 0;
+    let deboursFactures = [];
+    if (depenseIds.length) {
+      // Une dépense n'est refacturable que si elle a été explicitement
+      // marquée comme telle ET réellement décaissée (le cabinet a bien
+      // avancé l'argent) — pas juste soumise/validée.
+      const d = await client.query(
+        `SELECT id, dossier_id, montant FROM depenses
+         WHERE id = ANY($1::uuid[]) AND refacturable_client = TRUE AND statut = 'decaissee' AND facture_id IS NULL
+         FOR UPDATE`,
+        [depenseIds]
+      );
+      if (d.rows.length !== depenseIds.length) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Certaines dépenses sélectionnées ne sont plus disponibles (déjà refacturées, non décaissées, ou non refacturables)." });
+      }
+      const verif = verifierDossierUnique(d.rows, dossierId);
+      if (verif.erreur) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: verif.erreur });
+      }
+      dossierId = verif.dossierId;
+      debours = d.rows.reduce((somme, r) => somme + Math.round(Number(r.montant)), 0);
+      deboursFactures = d.rows.map((r) => r.id);
+    }
+
+    const frais = b.montant_frais !== undefined ? Math.round(Number(b.montant_frais)) : 0;
+    if (!Number.isFinite(frais) || frais < 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "montant_frais invalide" });
     }
 
     if (!clientId && dossierId) {
@@ -206,8 +263,12 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       tauxTva = !pays || pays.trim().toLowerCase() === "mali" ? 18 : 0;
     }
 
+    // TVA calculée uniquement sur les honoraires (HT) — frais et débours
+    // sont hors TVA (un débours est un remboursement, pas une prestation ;
+    // même traitement retenu pour les frais par cohérence, faute de cas
+    // d'usage contraire signalé).
     const tva = Math.round((ht * tauxTva) / 100);
-    const ttc = ht + tva;
+    const ttc = ht + tva + frais + debours;
     const ttcXof = Math.round(ttc * taux);
     const libellePrincipal = ["xof", "devise"].includes(b.libelle_principal)
       ? b.libelle_principal
@@ -222,20 +283,28 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       `INSERT INTO factures
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
-          libelle_principal, statut, date_emission, date_echeance)
+          libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,current_date,TRUE,$12,
-               $13,'emise',current_date,$14)
-       RETURNING id, numero, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof, statut`,
+               $13,$14,$15,'emise',current_date,$16)
+       RETURNING id, numero, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
+                 montant_frais, montant_debours, statut`,
       [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
-       devise, taux, ttcXof, libellePrincipal, b.date_echeance || null]
+       devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null]
     );
 
     if (tempsFactures.length) {
       await client.query("UPDATE temps SET facture_id = $1 WHERE id = ANY($2::uuid[])", [rows[0].id, tempsFactures]);
     }
+    if (deboursFactures.length) {
+      await client.query("UPDATE depenses SET facture_id = $1 WHERE id = ANY($2::uuid[])", [rows[0].id, deboursFactures]);
+    }
 
     await client.query("COMMIT");
-    res.status(201).json({ ...rows[0], temps_factures: tempsFactures.length || undefined });
+    res.status(201).json({
+      ...rows[0],
+      temps_factures: tempsFactures.length || undefined,
+      depenses_facturees: deboursFactures.length || undefined,
+    });
   } catch (e) {
     await client.query("ROLLBACK");
     console.error(e);
@@ -249,9 +318,9 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
 // Annule une facture émise à tort — refusée si un paiement a déjà été
 // enregistré dessus (une facture partiellement/totalement réglée ne
 // s'annule pas, elle se corrige par un avoir, hors périmètre actuel —
-// diagnostic Facturation du 22/08/2026, HISTORY.md). Les temps éventuellement
-// rattachés (b.temps_ids à la création) sont libérés (facture_id remis à
-// NULL) pour pouvoir être refacturés.
+// diagnostic Facturation du 22/08/2026, HISTORY.md). Les temps et dépenses
+// éventuellement rattachés (b.temps_ids/b.depense_ids à la création) sont
+// libérés (facture_id remis à NULL) pour pouvoir être refacturés.
 router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, res) => {
   const client = await pool.connect();
   try {
@@ -273,6 +342,7 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
       );
     }
     await client.query("UPDATE temps SET facture_id = NULL WHERE facture_id = $1", [req.params.id]);
+    await client.query("UPDATE depenses SET facture_id = NULL WHERE facture_id = $1", [req.params.id]);
     await client.query("COMMIT");
     res.json(maj.rows[0]);
   } catch (e) {
@@ -306,6 +376,19 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/factures/:id/pdf
+// Support « papier numérique » d'une facture — générée à la volée depuis
+// les données figées en base (voir facturePdf.js), pas persistée en GED.
+router.get("/:id/pdf", requirePermission("factures.consulter"), async (req, res) => {
+  try {
+    const trouvee = await envoyerFacturePdf(pool, req.params.id, res);
+    if (!trouvee) res.status(404).json({ error: "Facture introuvable" });
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

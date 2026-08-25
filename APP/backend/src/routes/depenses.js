@@ -6,25 +6,35 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
 
-// GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=
+// GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=&a_refacturer=
 // Liste des dépenses du cabinet — donnée financière, pas juste une commodité
 // de suivi personnel (contrairement aux rétrocessions/bulletins, une dépense
 // n'a pas de « propriétaire » au sens rémunération) : gardée entièrement
-// derrière depenses.consulter, sans exception pour ses propres soumissions.
+// derrière depenses.consulter, sans exception pour ses propres soumissions
+// — y compris pour le filtre a_refacturer (alimente le panneau « Facturer
+// les temps / débours » de l'écran Facturation, réservé aux mêmes profils).
+// a_refacturer=true : ne renvoie que les dépenses réellement décaissées,
+// marquées refacturables au client, pas encore rattachées à une facture
+// (diagnostic Facturation, 25/08/2026 — d.facture_id, prévu au schéma sous
+// une autre forme (avance_pour_client/refacture) mais jamais câblé, cf.
+// HISTORY.md).
 router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
-  const { type, statut, dossier_id, petite_caisse } = req.query;
+  const { type, statut, dossier_id, petite_caisse, a_refacturer } = req.query;
   const params = [];
   const clauses = [];
   if (type) { params.push(type); clauses.push(`d.type = $${params.length}::type_depense`); }
   if (statut) { params.push(statut); clauses.push(`d.statut = $${params.length}::statut_depense`); }
   if (dossier_id) { params.push(dossier_id); clauses.push(`d.dossier_id = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
+  if (a_refacturer === "true") {
+    clauses.push("d.refacturable_client = TRUE", "d.statut = 'decaissee'", "d.facture_id IS NULL");
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              c.intitule AS compte, dos.numero AS dossier_numero,
+              d.facture_id, c.intitule AS compte, dos.numero AS dossier_numero,
               u.prenom || ' ' || u.nom AS soumis_par
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
