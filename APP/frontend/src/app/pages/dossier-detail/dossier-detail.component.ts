@@ -989,7 +989,11 @@ export class DossierDetailComponent implements OnInit {
         window.open(url, '_blank');
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       },
-      error: () => this.erreur.set('Téléchargement impossible'),
+      error: (e) => this.erreur.set(
+        e?.status === 404
+          ? "Fichier introuvable dans le stockage — probablement déposé avant le 21/08/2026 (perdu lors d'un redéploiement) ; à retéléverser."
+          : 'Téléchargement impossible'
+      ),
     });
   }
 }

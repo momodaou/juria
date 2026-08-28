@@ -3,7 +3,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject } = require("../storage");
+const { saveObject, readObject, FichierIntrouvableError } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
@@ -86,6 +86,9 @@ router.get("/:id/fichier", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${rows[0].titre}"`);
     res.send(buf);
   } catch (e) {
+    if (e instanceof FichierIntrouvableError) {
+      return res.status(404).json({ error: "Fichier introuvable dans le stockage — probablement déposé avant le 21/08/2026 (perdu lors d'un redéploiement, cf. HISTORY.md) ; à retéléverser." });
+    }
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }

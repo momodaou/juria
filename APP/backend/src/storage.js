@@ -16,6 +16,15 @@ if (process.env.GED_BUCKET) {
 
 const LOCAL_DIR = path.join(__dirname, "..", "uploads");
 
+// Levée par readObject quand le fichier référencé en base n'existe plus
+// dans le stockage — distinct d'une erreur serveur générique pour que les
+// routes appelantes puissent renvoyer un 404 clair plutôt qu'un 500 muet
+// (28/08/2026, diagnostic « aperçu GED ne fonctionne pas » : le cas réel
+// rencontré était des documents chargés avant le correctif du 21/08/2026
+// — GED_BUCKET absent, fichiers écrits sur le disque éphémère du conteneur
+// puis perdus au redéploiement suivant — jamais distingué d'une panne).
+class FichierIntrouvableError extends Error {}
+
 // Enregistre un fichier ; renvoie le chemin de stockage (gs://... ou file://...)
 async function saveObject(buffer, destName, mime) {
   if (bucket) {
@@ -33,11 +42,21 @@ async function saveObject(buffer, destName, mime) {
 async function readObject(cheminStorage) {
   if (bucket && cheminStorage.startsWith("gs://")) {
     const name = cheminStorage.replace(`gs://${process.env.GED_BUCKET}/`, "");
-    const [buf] = await bucket.file(name).download();
-    return buf;
+    try {
+      const [buf] = await bucket.file(name).download();
+      return buf;
+    } catch (e) {
+      if (e.code === 404) throw new FichierIntrouvableError(`Objet absent du bucket : ${name}`);
+      throw e;
+    }
   }
   const p = cheminStorage.replace("file://", "");
-  return fs.readFileSync(p);
+  try {
+    return fs.readFileSync(p);
+  } catch (e) {
+    if (e.code === "ENOENT") throw new FichierIntrouvableError(`Fichier absent du disque local : ${p}`);
+    throw e;
+  }
 }
 
-module.exports = { saveObject, readObject };
+module.exports = { saveObject, readObject, FichierIntrouvableError };

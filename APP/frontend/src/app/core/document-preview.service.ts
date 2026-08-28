@@ -23,7 +23,18 @@ export class DocumentPreviewService {
     this.visible.set(true);
     telechargement$.subscribe({
       next: (b) => { this.blob.set(b); this.chargement.set(false); },
-      error: () => { this.erreur.set('Impossible de charger le fichier.'); this.chargement.set(false); },
+      // 404 : distingué depuis le 28/08/2026 (diagnostic « l'aperçu ne
+      // fonctionne pas ») — cas réel rencontré : fichier déposé avant le
+      // correctif GED du 21/08/2026, perdu lors d'un redéploiement
+      // suivant. Le statut HTTP reste lisible même en responseType:'blob'.
+      error: (e) => {
+        this.erreur.set(
+          e?.status === 404
+            ? "Fichier introuvable dans le stockage — probablement déposé avant le 21/08/2026 (perdu lors d'un redéploiement) ; à retéléverser."
+            : 'Impossible de charger le fichier.'
+        );
+        this.chargement.set(false);
+      },
     });
   }
 
