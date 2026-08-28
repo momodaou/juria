@@ -59,4 +59,28 @@ async function readObject(cheminStorage) {
   }
 }
 
-module.exports = { saveObject, readObject, FichierIntrouvableError };
+// Supprime un fichier stocké — tolérant à un objet déjà absent (28/08/2026,
+// ajouté pour DELETE /api/documents/:id : ne doit jamais faire échouer la
+// suppression de la LIGNE en base sous prétexte que le fichier physique
+// avait déjà disparu, ex. le cas des documents perdus avant le correctif
+// GED du 21/08/2026 — voir FichierIntrouvableError ci-dessus).
+async function deleteObject(cheminStorage) {
+  if (!cheminStorage) return;
+  if (bucket && cheminStorage.startsWith("gs://")) {
+    const name = cheminStorage.replace(`gs://${process.env.GED_BUCKET}/`, "");
+    try {
+      await bucket.file(name).delete();
+    } catch (e) {
+      if (e.code !== 404) throw e;
+    }
+    return;
+  }
+  const p = cheminStorage.replace("file://", "");
+  try {
+    fs.unlinkSync(p);
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+}
+
+module.exports = { saveObject, readObject, deleteObject, FichierIntrouvableError };

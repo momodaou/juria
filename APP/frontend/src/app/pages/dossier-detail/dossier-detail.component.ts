@@ -461,6 +461,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <td>
                   <button class="lien" (click)="apercu(doc)">Aperçu</button>
                   <button class="lien" (click)="ouvrir(doc)">Ouvrir</button>
+                  @if (auth.peut('documents.supprimer')) {
+                    <button class="lien" (click)="supprimerDocument(doc)">Supprimer</button>
+                  }
                 </td>
               </tr>
             }
@@ -994,6 +997,16 @@ export class DossierDetailComponent implements OnInit {
           ? "Fichier introuvable dans le stockage — probablement déposé avant le 21/08/2026 (perdu lors d'un redéploiement) ; à retéléverser."
           : 'Téléchargement impossible'
       ),
+    });
+  }
+
+  // Gap comblé le 28/08/2026 : aucune route de suppression n'existait pour
+  // un document GED (constat utilisateur).
+  supprimerDocument(doc: any): void {
+    if (!window.confirm(`Supprimer définitivement « ${doc.nom} » ?`)) return;
+    this.api.supprimerDocument(doc.id).subscribe({
+      next: () => this.rafraichirDocuments(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
     });
   }
 }

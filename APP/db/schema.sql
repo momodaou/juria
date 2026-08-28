@@ -2108,3 +2108,21 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('comptable','parametres.cabinet.modifier',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN FACTURE PDF ENRICHIE ===============
+
+-- =====================================================================
+--  SUPPRESSION D'UN DOCUMENT GED (ajout 28/08/2026)
+--
+--  Constat utilisateur : « on ne peut pas supprimer de documents du GED,
+--  je suppose que cette action doit nécessairement être listée dans les
+--  permissions ». Vérifié : ce n'est pas un souci de matrice — il
+--  n'existait tout simplement AUCUNE route DELETE pour `documents` (ni
+--  bouton côté écran). Nouvelle action `documents.supprimer`, ouverte à
+--  tous les rôles par défaut — même périmètre que les suppressions déjà
+--  existantes et non restreintes (clients.kyc_piece.supprimer,
+--  biblio.supprimer).
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'documents.supprimer', TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN SUPPRESSION D'UN DOCUMENT GED ===============

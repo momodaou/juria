@@ -114,6 +114,10 @@ export class ApiService {
   telechargerDocument(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/documents/${id}/download`, { responseType: 'blob' });
   }
+  // GED — supprimer une pièce (28/08/2026, gap comblé : aucune route n'existait)
+  supprimerDocument(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/documents/${id}`);
+  }
 
   creerDossier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers`, payload);

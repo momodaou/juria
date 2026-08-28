@@ -72,3 +72,53 @@ test("un document dont le fichier physique a disparu renvoie 404 explicite, pas 
   expect(perdu.status).toBe(404);
   expect(perdu.body.error).toMatch(/introuvable/i);
 });
+
+// Constat utilisateur (28/08/2026) : « on ne peut pas supprimer de
+// documents du GED » — il n'existait tout simplement aucune route DELETE.
+describe("DELETE /api/documents/:id (ajout 28/08/2026)", () => {
+  test("supprime la ligne ET le fichier physique — le téléchargement suivant renvoie 404 introuvable", async () => {
+    const dossierId = await creerDossier();
+    const upload = await request(app)
+      .post("/api/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .field("dossier_id", dossierId)
+      .attach("fichier", Buffer.from("contenu"), { filename: "a-supprimer.txt", contentType: "text/plain" });
+    expect(upload.status).toBe(201);
+
+    const suppr = await request(app)
+      .delete(`/api/documents/${upload.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppr.status).toBe(204);
+
+    const dl = await request(app)
+      .get(`/api/documents/${upload.body.id}/download`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(dl.status).toBe(404);
+    expect(dl.body.error).toMatch(/introuvable/i);
+  });
+
+  test("404 pour un document déjà supprimé / inexistant", async () => {
+    const res = await request(app)
+      .delete("/api/documents/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("supprime sans échouer même si le fichier physique était déjà perdu", async () => {
+    const dossierId = await creerDossier();
+    const upload = await request(app)
+      .post("/api/documents")
+      .set("Authorization", `Bearer ${token}`)
+      .field("dossier_id", dossierId)
+      .attach("fichier", Buffer.from("contenu"), { filename: "deja-perdu.txt", contentType: "text/plain" });
+    await pool.query(
+      "UPDATE documents SET chemin_storage = 'file:///chemin/qui/n/existe/plus.txt' WHERE id = $1",
+      [upload.body.id]
+    );
+
+    const suppr = await request(app)
+      .delete(`/api/documents/${upload.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppr.status).toBe(204);
+  });
+});

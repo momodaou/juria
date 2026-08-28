@@ -21,6 +21,11 @@ const { pool } = require("./db");
 
 const CATALOGUE = [
   { code: "documents.creer", module: "Dossiers 360", label: "Déposer un document" },
+  // Ajout 28/08/2026 : aucune route de suppression n'existait pour un
+  // document GED (constat utilisateur « on ne peut pas supprimer de
+  // documents »), pas un souci de matrice — même périmètre que
+  // clients.kyc_piece.supprimer/biblio.supprimer (ouvert à tous par défaut).
+  { code: "documents.supprimer", module: "Dossiers 360", label: "Supprimer un document (GED)" },
   { code: "communications.creer", module: "Dossiers 360", label: "Ajouter une communication" },
   { code: "dossiers.modifier", module: "Dossiers 360", label: "Modifier la fiche du dossier" },
   { code: "dossiers.archiver", module: "Dossiers 360", label: "Archiver un dossier clôturé", restreinte: true },

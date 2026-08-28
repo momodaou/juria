@@ -1035,3 +1035,19 @@ Ceci clôt le diagnostic du 20/08/2026 (Dossiers / Nouveau dossier / Clients & K
 **Déploiement production — effectué et vérifié le 28/08/2026** (accord utilisateur, « oui, déploie »). Correctif de code pur, aucune migration nécessaire. API `juria-00046-nzz` (précédente `juria-00045-fhv`), frontend `juria-web-00041-928` (précédente `juria-web-00040-dwx`) — les deux déploiements sont passés sans blocage du classificateur cette fois.
 
 **Vérifié directement en production** : `/health` 200 des deux services. Le document réellement perdu (`JGMT KATI - Expertise.pdf`) renvoie désormais `404` avec le message explicite (confirmé mot pour mot) au lieu du `500` générique d'avant ; un document valide (créé lors du diagnostic) continue de se télécharger normalement (`200`) — pas de régression sur le cas nominal.
+
+## 2026-08-28 — Suppression d'un document GED — gap comblé (pas un souci de permissions)
+
+**Demande utilisateur** : « On ne peut pas supprimer de documents du GED. Je suppose que cette action doit nécessairement être listée dans les permissions ? »
+
+**Vérifié, pas supposé** : ce n'était pas un problème de matrice — `documents.js` n'avait tout simplement **aucune route `DELETE`** (seulement `POST` et `GET .../download`), et aucun bouton « Supprimer » côté écran. Rien à débloquer dans la matrice puisque l'action n'existait nulle part.
+
+**Comblé** :
+- `backend/src/storage.js` : nouvelle `deleteObject()` (GCS + repli disque local), tolérante à un objet déjà absent — ne doit jamais faire échouer la suppression de la ligne en base sous prétexte que le fichier physique avait déjà disparu (cas des documents perdus avant le correctif GED du 21/08/2026, cf. diagnostic du jour même).
+- `backend/src/routes/documents.js` : `DELETE /api/documents/:id`, gardée par une nouvelle action cataloguée `documents.supprimer` — **ouverte à tous les rôles par défaut**, même périmètre que les suppressions déjà existantes et non restreintes (`clients.kyc_piece.supprimer`, `biblio.supprimer`). Supprime la ligne **et** l'objet physique — corrige au passage, dès la création de cette route, le gap déjà documenté le 21/08/2026 (suppression KYC ne nettoyant jamais Cloud Storage) plutôt que de le reproduire. Contrainte de clé étrangère (`bulletins_paie.document_id`) interceptée explicitement (`409`) plutôt qu'un `500` brut — cas non atteignable en pratique aujourd'hui (`cabinet.js` n'écrit jamais cette colonne), gardé par précaution.
+- `backend/src/permissions.js` + `db/schema.sql` : nouvelle action `documents.supprimer`, seedée `TRUE` pour les 13 rôles.
+- Frontend : bouton « Supprimer » sur chaque pièce de l'onglet GED (`dossier-detail.component.ts`), gardé par `auth.peut('documents.supprimer')`, confirmation avant suppression, réutilise `rafraichirDocuments()`.
+
+**Vérification** : suite étendue à **129/129** (3 nouveaux tests dans `tests/gedFichierPerdu.test.js` — suppression réelle + téléchargement suivant `404`, suppression d'un id inexistant `404`, suppression tolérante à un fichier physique déjà perdu). Build Angular OK.
+
+**Non fait dans cette passe** (hors du symptôme signalé) : même gap non corrigé sur les suppressions KYC/bibliothèque existantes (`clients.js`/`biblio.js` toujours sans `deleteObject()`) — signalé, pas traité, à reprendre si demandé.

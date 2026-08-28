@@ -2,7 +2,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject, FichierIntrouvableError } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
@@ -65,6 +65,37 @@ router.get("/:id/download", async (req, res) => {
       // disque éphémère du conteneur puis perdus au(x) redéploiement(s)
       // suivant(s) — fichier définitivement introuvable, pas une panne.
       return res.status(404).json({ error: "Fichier introuvable dans le stockage — probablement déposé avant le 21/08/2026 (perdu lors d'un redéploiement, cf. HISTORY.md) ; à retéléverser." });
+    }
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// DELETE /api/documents/:id
+// Constat utilisateur (28/08/2026) : « on ne peut pas supprimer de
+// documents du GED » — confirmé, il n'existait tout simplement aucune
+// route de suppression (ni permission dédiée, ni bouton côté écran), pas
+// un souci de matrice de permissions comme suspecté. Ajouté ici, même
+// patron que clients.js (kyc-pieces) et biblio.js — ouvert à tous les
+// rôles par défaut (voir schema.sql), pas restreint à la direction.
+// Supprime aussi l'objet physique (deleteObject, tolérant à un objet déjà
+// absent) : les suppressions KYC/bibliothèque existantes ne le faisaient
+// pas (gap déjà documenté le 21/08/2026, cf. HISTORY.md) — corrigé ici dès
+// la création de cette route plutôt que reproduit.
+router.delete("/:id", requirePermission("documents.supprimer"), async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT chemin_storage FROM documents WHERE id = $1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Document introuvable" });
+    await pool.query("DELETE FROM documents WHERE id = $1", [req.params.id]);
+    await deleteObject(rows[0].chemin_storage);
+    res.status(204).end();
+  } catch (e) {
+    // Contrainte de clé étrangère (ex. bulletin de paie archivant ce
+    // document) : refus explicite plutôt qu'un 500 brut. Cas non atteint
+    // en pratique aujourd'hui (cabinet.js n'écrit jamais bulletins_paie.
+    // document_id), gardé par précaution.
+    if (e.code === "23503") {
+      return res.status(409).json({ error: "Ce document est référencé ailleurs (ex. un bulletin de paie archivé) et ne peut pas être supprimé." });
     }
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
