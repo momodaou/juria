@@ -5,6 +5,7 @@ import { AuthService } from './core/auth.service';
 import { MessagerieService } from './core/messagerie.service';
 import { MessagerieWidgetComponent } from './core/messagerie-widget.component';
 import { DocumentPreviewComponent } from './core/document-preview.component';
+import { ExportPrintComponent } from './core/export-print.component';
 
 const SIDEBAR_KEY = 'juria.sidebar.dock';
 
@@ -21,7 +22,7 @@ interface NavItem {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, MessagerieWidgetComponent, DocumentPreviewComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, MessagerieWidgetComponent, DocumentPreviewComponent, ExportPrintComponent],
   template: `
     @if (auth.estConnecte) {
       <div class="app" [class.collapsed]="collapsed()">
@@ -67,7 +68,10 @@ interface NavItem {
             <span class="lbl">Se déconnecter</span>
           </button>
         </aside>
-        <main class="main"><router-outlet /></main>
+        <main class="main">
+          <app-export-print />
+          <div id="vue-active"><router-outlet /></div>
+        </main>
       </div>
       <app-messagerie-widget />
       <app-document-preview />
