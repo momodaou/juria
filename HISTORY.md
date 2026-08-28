@@ -1051,3 +1051,7 @@ Ceci clôt le diagnostic du 20/08/2026 (Dossiers / Nouveau dossier / Clients & K
 **Vérification** : suite étendue à **129/129** (3 nouveaux tests dans `tests/gedFichierPerdu.test.js` — suppression réelle + téléchargement suivant `404`, suppression d'un id inexistant `404`, suppression tolérante à un fichier physique déjà perdu). Build Angular OK.
 
 **Non fait dans cette passe** (hors du symptôme signalé) : même gap non corrigé sur les suppressions KYC/bibliothèque existantes (`clients.js`/`biblio.js` toujours sans `deleteObject()`) — signalé, pas traité, à reprendre si demandé.
+
+**Déploiement production — effectué et vérifié le 28/08/2026** (accord utilisateur, « oui, déploie »). Migration (`permissions_role`, action `documents.supprimer`) importée sur Cloud SQL (`--user=juria_app`, sans piège). API `juria-00047-75f` (précédente `juria-00046-nzz`), frontend `juria-web-00042-kt6` (précédente `juria-web-00041-928`) — les deux déploiements sont passés sans blocage du classificateur.
+
+**Vérifié directement en production** : `/health` 200 des deux services, `GET /api/profil` confirme `documents.supprimer` accordé. Cycle complet réel : document téléversé → téléchargeable (`200`) → supprimé (`204`) → téléchargement suivant renvoie `404 "Document introuvable"` (la ligne n'existe plus, distinct du cas « fichier perdu » traité plus haut).
