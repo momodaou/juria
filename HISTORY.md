@@ -1031,3 +1031,7 @@ Ceci clôt le diagnostic du 20/08/2026 (Dossiers / Nouveau dossier / Clients & K
 **Vérification** : suite de tests étendue à **126/126** (`tests/gedFichierPerdu.test.js`, nouveau — upload réel, téléchargement OK, puis `chemin_storage` basculé vers un chemin inexistant en base pour simuler la perte, confirmant `404` explicite au lieu de `500`). Build Angular OK.
 
 **Non fait dans cette passe** (hors du symptôme signalé, pas de demande explicite) : aucune tentative de récupérer les 2 fichiers perdus (impossible, déjà établi le 21/08) ; pas de purge des lignes orphelines côté écran (l'utilisateur peut retéléverser par-dessus, l'historique de version gérera la nouvelle pièce) ; pas d'audit systématique des documents/pièces KYC/ressources bibliothèque antérieurs au 21/08 pour en dénombrer d'autres.
+
+**Déploiement production — effectué et vérifié le 28/08/2026** (accord utilisateur, « oui, déploie »). Correctif de code pur, aucune migration nécessaire. API `juria-00046-nzz` (précédente `juria-00045-fhv`), frontend `juria-web-00041-928` (précédente `juria-web-00040-dwx`) — les deux déploiements sont passés sans blocage du classificateur cette fois.
+
+**Vérifié directement en production** : `/health` 200 des deux services. Le document réellement perdu (`JGMT KATI - Expertise.pdf`) renvoie désormais `404` avec le message explicite (confirmé mot pour mot) au lieu du `500` générique d'avant ; un document valide (créé lors du diagnostic) continue de se télécharger normalement (`200`) — pas de régression sur le cas nominal.
