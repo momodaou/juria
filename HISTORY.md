@@ -1067,3 +1067,7 @@ Ceci clôt le diagnostic du 20/08/2026 (Dossiers / Nouveau dossier / Clients & K
 Aucun changement de schéma ni de permission (les 2 actions existaient déjà — `clients.kyc_piece.supprimer`, `biblio.supprimer` — seul le comportement de la route change) : redéploiement de code pur.
 
 **Vérification** : suite étendue à **131/131** (2 nouveaux tests, `apercu-fichiers.test.js` — vérifient avec `fs.existsSync()` que le fichier physique disparaît réellement après suppression, pas seulement la ligne en base, pour KYC et bibliothèque). Le test équivalent sur `documents.js` (GED) renforcé de la même façon au passage.
+
+**Déploiement production — effectué et vérifié le 28/08/2026** (accord utilisateur, « oui, corrige ça aussi »). Correctif de code pur, aucune migration nécessaire (les 2 permissions existaient déjà). API `juria-00048-lrc` (précédente `juria-00047-75f`), pas de redéploiement frontend (aucun fichier frontend touché).
+
+**Vérifié directement en production, sur le vrai bucket GCS** (pas seulement en local avec le repli disque) : pièce KYC de test téléversée → objet confirmé présent (`gcloud storage ls`) → supprimée via l'API (`204`) → objet confirmé absent du bucket juste après. Client de test supprimé après vérification (plus aucune activité résiduelle, suppression acceptée).
