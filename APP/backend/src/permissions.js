@@ -99,6 +99,11 @@ const CATALOGUE = [
   // de renommage ; le périmètre s'est réduit au pro bono depuis l'abandon
   // du seuil classique (150 000 FCFA) le même jour.
   { code: "parametres.honoraires.modifier", module: "Paramètres cabinet", label: "Modifier le seuil de frais pro bono et le quota mensuel", restreinte: true },
+
+  // Ajout 28/08/2026 (facture PDF enrichie) : identité du cabinet (en-tête
+  // facture) + comptes bancaires (RIB imprimé sur la facture) n'avaient
+  // aucune route d'écriture jusqu'ici — voir schema.sql.
+  { code: "parametres.cabinet.modifier", module: "Paramètres cabinet", label: "Modifier l'identité du cabinet et les comptes bancaires", restreinte: true },
 ];
 
 const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));

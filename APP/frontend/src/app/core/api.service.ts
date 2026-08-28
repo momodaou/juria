@@ -38,6 +38,34 @@ export interface ParametresHonoraires {
   quota_pro_bono_mensuel: number;
 }
 
+// Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
+export interface ParametresCabinet {
+  raison_sociale: string;
+  forme: string | null;
+  adresse: string | null;
+  telephone: string | null;
+  email: string | null;
+  nif: string | null;
+  rccm: string | null;
+  compte_carpa: string | null;
+  mentions_legales: string | null;
+}
+
+export interface CompteBancaire {
+  id: string;
+  intitule: string;
+  type: string;
+  banque: string | null;
+  numero: string | null;
+  operateur: string | null;
+  actif: boolean;
+  code_banque?: string | null;
+  code_guichet?: string | null;
+  cle_rib?: string | null;
+  iban?: string | null;
+  bic?: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly base = environment.apiUrl;
@@ -484,6 +512,26 @@ export class ApiService {
   }
   majParametresHonoraires(payload: Partial<ParametresHonoraires>): Observable<ParametresHonoraires> {
     return this.http.put<ParametresHonoraires>(`${this.base}/api/parametres/honoraires`, payload);
+  }
+
+  // Identité du cabinet + comptes bancaires (28/08/2026, facture PDF enrichie)
+  parametresCabinet(): Observable<ParametresCabinet> {
+    return this.http.get<ParametresCabinet>(`${this.base}/api/parametres/cabinet`);
+  }
+  majParametresCabinet(payload: Partial<ParametresCabinet>): Observable<ParametresCabinet> {
+    return this.http.put<ParametresCabinet>(`${this.base}/api/parametres/cabinet`, payload);
+  }
+  // Liste complète (actifs + inactifs, RIB inclus) pour la gestion — à
+  // distinguer de comptesBancaires() ci-dessous (liste allégée, actifs
+  // seulement, pour les sélecteurs de règlement).
+  comptesBancairesGestion(): Observable<CompteBancaire[]> {
+    return this.http.get<CompteBancaire[]>(`${this.base}/api/parametres/comptes-bancaires`);
+  }
+  creerCompteBancaire(payload: Partial<CompteBancaire>): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.base}/api/parametres/comptes-bancaires`, payload);
+  }
+  majCompteBancaire(id: string, payload: Partial<CompteBancaire>): Observable<{ id: string }> {
+    return this.http.put<{ id: string }>(`${this.base}/api/parametres/comptes-bancaires/${id}`, payload);
   }
 
   // Cabinet (RH)

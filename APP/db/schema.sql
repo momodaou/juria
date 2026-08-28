@@ -2061,3 +2061,50 @@ ALTER TABLE depenses
   ADD COLUMN IF NOT EXISTS facture_id UUID REFERENCES factures(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_depenses_facture ON depenses(facture_id);
 -- =============== FIN FACTURE PDF + DÉBOURS REFACTURABLES ===============
+
+-- =====================================================================
+--  FACTURE PDF ENRICHIE — informations manquantes (ajout 28/08/2026)
+--
+--  Demande utilisateur : la facture PDF du 25/08/2026 ne reprenait pas
+--  toutes les informations d'une note d'honoraires professionnelle (modèle
+--  papier fourni en référence, DOC/CLAUDE CODE - JURIA/Modèle - Note
+--  d'honoraires...) : montant en toutes lettres, dossier suivi par,
+--  coordonnées bancaires du cabinet pour le règlement, mention libre.
+--
+--  - comptes_bancaires : n'avait que banque/numero (texte libre) — un
+--    virement demande un RIB structuré (code banque, code guichet, clé
+--    RIB) + IBAN/BIC pour l'international. Colonnes nullables : un compte
+--    espèces/mobile money n'a pas de RIB.
+--  - factures.mention : instruction libre imprimée sur la facture (ex.
+--    « Les frais de transfert sont à la charge du client », cf. modèle) —
+--    distincte de parametres_cabinet.mentions_legales (mentions légales
+--    fixes du cabinet, pas une instruction propre à CETTE facture).
+--  - mode_reglement/compte_reglement_id existaient déjà sur factures
+--    depuis le 17/08/2026 mais n'étaient alimentés par aucune route
+--    (POST /api/factures ne les acceptait pas) — câblés ici.
+--
+--  Gestion de l'identité du cabinet (parametres_cabinet.raison_sociale/
+--  adresse/telephone/email/nif/rccm/compte_carpa/mentions_legales) et des
+--  comptes bancaires eux-mêmes (comptes_bancaires) n'avait — comme le
+--  seuil pro bono avant le 18/08/2026 — AUCUNE route d'écriture : seule
+--  une valeur par défaut ('JFC AVOCATS MALI') existait, le reste à NULL.
+--  Nouvelle action cataloguée parametres.cabinet.modifier (même cluster
+--  "direction/comptabilité" que factures.annuler — la comptabilité gère
+--  couramment les RIB du cabinet), permet désormais de les saisir sans
+--  passer par un import SQL manuel.
+-- =====================================================================
+ALTER TABLE comptes_bancaires
+  ADD COLUMN IF NOT EXISTS code_banque  VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS code_guichet VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS cle_rib      VARCHAR(10),
+  ADD COLUMN IF NOT EXISTS iban         VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS bic          VARCHAR(20);
+
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS mention TEXT;
+
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','parametres.cabinet.modifier',TRUE),('associe_fondateur','parametres.cabinet.modifier',TRUE),
+ ('admin_general','parametres.cabinet.modifier',TRUE),('admin_it','parametres.cabinet.modifier',TRUE),
+ ('comptable','parametres.cabinet.modifier',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN FACTURE PDF ENRICHIE ===============

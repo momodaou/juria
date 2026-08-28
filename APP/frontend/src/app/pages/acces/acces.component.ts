@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, ParametresHonoraires } from '../../core/api.service';
+import { ApiService, ParametresHonoraires, ParametresCabinet, CompteBancaire } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
@@ -141,6 +141,70 @@ import { AuthService } from '../../core/auth.service';
         </section>
       }
 
+      @if (auth.peut('parametres.cabinet.modifier') && cabinet()) {
+        <section class="panel">
+          <h3>Identité du cabinet</h3>
+          <p class="muted">Imprimée sur les factures, actes et notes d'honoraires (en-tête, bloc « informations de paiement »).</p>
+          <div class="grid2">
+            <div><label>Raison sociale</label><input class="in" [(ngModel)]="cabinetEdit.raison_sociale" name="cabRaison" /></div>
+            <div><label>Forme</label><input class="in" [(ngModel)]="cabinetEdit.forme" name="cabForme" /></div>
+            <div><label>Adresse</label><input class="in" [(ngModel)]="cabinetEdit.adresse" name="cabAdresse" /></div>
+            <div><label>Téléphone</label><input class="in" [(ngModel)]="cabinetEdit.telephone" name="cabTel" /></div>
+            <div><label>E-mail</label><input class="in" [(ngModel)]="cabinetEdit.email" name="cabEmail" /></div>
+            <div><label>NIF</label><input class="in" [(ngModel)]="cabinetEdit.nif" name="cabNif" /></div>
+            <div><label>RCCM</label><input class="in" [(ngModel)]="cabinetEdit.rccm" name="cabRccm" /></div>
+            <div><label>Compte CARPA</label><input class="in" [(ngModel)]="cabinetEdit.compte_carpa" name="cabCarpa" /></div>
+          </div>
+          <label>Mentions légales (pied de page facture)</label>
+          <textarea class="in" rows="2" [(ngModel)]="cabinetEdit.mentions_legales" name="cabMentions" style="width:100%"></textarea>
+          <button class="btn" (click)="enregistrerCabinet()">Enregistrer</button>
+          @if (cabinetMessage()) { <p class="muted" style="margin-top:8px">{{ cabinetMessage() }}</p> }
+        </section>
+
+        <section class="panel">
+          <h3>Comptes bancaires du cabinet</h3>
+          <p class="muted">RIB imprimé sur la facture (bloc « informations de paiement »). Un compte désactivé n'apparaît plus dans les sélecteurs de règlement mais reste visible ici (historique).</p>
+          @if (comptes().length) {
+            <table>
+              <tr><th>Intitulé</th><th>Banque</th><th>N° compte</th><th>Code banque</th><th>Code guichet</th><th>Clé RIB</th><th>IBAN</th><th>BIC</th><th>Statut</th><th></th></tr>
+              @for (c of comptes(); track c.id) {
+                <tr>
+                  <td>{{ c.intitule }}</td><td>{{ c.banque || '—' }}</td><td>{{ c.numero || '—' }}</td>
+                  <td>{{ c.code_banque || '—' }}</td><td>{{ c.code_guichet || '—' }}</td><td>{{ c.cle_rib || '—' }}</td>
+                  <td>{{ c.iban || '—' }}</td><td>{{ c.bic || '—' }}</td>
+                  <td><span class="tag" [class.ok]="c.actif" [class.haute]="!c.actif">{{ c.actif ? 'Actif' : 'Inactif' }}</span></td>
+                  <td><button class="lien" (click)="basculerCompte(c)">{{ c.actif ? 'Désactiver' : 'Réactiver' }}</button></td>
+                </tr>
+              }
+            </table>
+          } @else { <p class="muted">Aucun compte bancaire enregistré.</p> }
+
+          <h4 style="margin-top:14px">Ajouter un compte</h4>
+          <div class="grid2">
+            <div><label>Intitulé</label><input class="in" [(ngModel)]="compteEdit.intitule" name="ctIntitule" /></div>
+            <div>
+              <label>Type</label>
+              <select class="in" [(ngModel)]="compteEdit.type" name="ctType">
+                <option value="fonctionnement">Fonctionnement</option>
+                <option value="carpa">CARPA</option>
+                <option value="especes">Espèces</option>
+                <option value="mobile_money">Mobile money</option>
+                <option value="virement_etranger">Virement étranger</option>
+              </select>
+            </div>
+            <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
+            <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
+            <div><label>Code banque</label><input class="in" [(ngModel)]="compteEdit.code_banque" name="ctCodeBanque" /></div>
+            <div><label>Code guichet</label><input class="in" [(ngModel)]="compteEdit.code_guichet" name="ctCodeGuichet" /></div>
+            <div><label>Clé RIB</label><input class="in" [(ngModel)]="compteEdit.cle_rib" name="ctCleRib" /></div>
+            <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
+            <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
+          </div>
+          <button class="btn" (click)="ajouterCompte()">Ajouter</button>
+          @if (compteMessage()) { <p class="muted" style="margin-top:8px">{{ compteMessage() }}</p> }
+        </section>
+      }
+
       @if (matrice()) {
         <section class="panel">
           <h3>Matrice des permissions</h3>
@@ -231,6 +295,14 @@ export class AccesComponent implements OnInit {
   readonly erreurCompte = signal('');
   readonly dernierMotDePasse = signal<{ nom: string; mdp: string; creation: boolean } | null>(null);
 
+  // Identité du cabinet + comptes bancaires (28/08/2026, facture PDF enrichie)
+  readonly cabinet = signal<ParametresCabinet | null>(null);
+  readonly cabinetMessage = signal('');
+  cabinetEdit: Partial<ParametresCabinet> = {};
+  readonly comptes = signal<CompteBancaire[]>([]);
+  readonly compteMessage = signal('');
+  compteEdit: Partial<CompteBancaire> = { type: 'fonctionnement' };
+
   nouvelleDeleg: any = { portee: 'temporaire' };
   nouveauCompte: any = { role: 'collaborateur' };
 
@@ -290,6 +362,14 @@ export class AccesComponent implements OnInit {
         error: () => {},
       });
     }
+    // 403 attendu hors direction/comptabilité — section simplement masquée.
+    if (this.auth.peut('parametres.cabinet.modifier')) {
+      this.api.parametresCabinet().subscribe({
+        next: (c) => { this.cabinet.set(c); this.cabinetEdit = { ...c }; },
+        error: () => {},
+      });
+      this.chargerComptes();
+    }
   }
 
   enregistrerParametres(): void {
@@ -297,6 +377,34 @@ export class AccesComponent implements OnInit {
     this.api.majParametresHonoraires(this.parametresEdit).subscribe({
       next: (p) => { this.parametres.set(p); this.parametresEdit = { ...p }; this.parametresMessage.set('Enregistré.'); },
       error: (e) => this.parametresMessage.set(e?.error?.error ?? 'Enregistrement impossible.'),
+    });
+  }
+
+  enregistrerCabinet(): void {
+    this.cabinetMessage.set('');
+    this.api.majParametresCabinet(this.cabinetEdit).subscribe({
+      next: (c) => { this.cabinet.set(c); this.cabinetEdit = { ...c }; this.cabinetMessage.set('Enregistré.'); },
+      error: (e) => this.cabinetMessage.set(e?.error?.error ?? 'Enregistrement impossible.'),
+    });
+  }
+
+  chargerComptes(): void {
+    this.api.comptesBancairesGestion().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
+  }
+
+  ajouterCompte(): void {
+    this.compteMessage.set('');
+    if (!this.compteEdit.intitule || !this.compteEdit.type) { this.compteMessage.set('Intitulé et type requis.'); return; }
+    this.api.creerCompteBancaire(this.compteEdit).subscribe({
+      next: () => { this.compteEdit = { type: 'fonctionnement' }; this.compteMessage.set('Compte ajouté.'); this.chargerComptes(); },
+      error: (e) => this.compteMessage.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  basculerCompte(c: CompteBancaire): void {
+    this.api.majCompteBancaire(c.id, { actif: !c.actif }).subscribe({
+      next: () => this.chargerComptes(),
+      error: (e) => this.compteMessage.set(e?.error?.error ?? 'Mise à jour impossible.'),
     });
   }
 

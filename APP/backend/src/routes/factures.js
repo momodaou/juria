@@ -134,6 +134,10 @@ function verifierDossierUnique(rows, dossierIdConnu) {
 // `refacturable_client=TRUE` et déjà décaissées sélectionnées (diagnostic
 // Facturation, 25/08/2026 — « le schéma proposé suffit-il ? »). temps_ids
 // et depense_ids sont combinables sur une même facture.
+// mode_reglement?, compte_reglement_id?, mention? : existaient déjà au
+// schéma (17/08/2026) mais n'étaient acceptés par aucune route — câblés le
+// 28/08/2026 (facture PDF enrichie) pour imprimer les coordonnées
+// bancaires du cabinet et une instruction libre sur la facture.
 router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
@@ -283,13 +287,15 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       `INSERT INTO factures
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
-          libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance)
+          libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance,
+          mode_reglement, compte_reglement_id, mention)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,current_date,TRUE,$12,
-               $13,$14,$15,'emise',current_date,$16)
+               $13,$14,$15,'emise',current_date,$16,$17,$18,$19)
        RETURNING id, numero, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
                  montant_frais, montant_debours, statut`,
       [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
-       devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null]
+       devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null,
+       b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null]
     );
 
     if (tempsFactures.length) {

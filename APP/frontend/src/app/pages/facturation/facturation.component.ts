@@ -52,6 +52,17 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <input type="number" [(ngModel)]="tva" name="tva" />
           <span class="hint">Par défaut : 18 % (client Mali) / 0 % (client hors Mali) — laisser vide pour appliquer ce défaut.</span>
         </label>
+        <label>Compte à créditer
+          <select [(ngModel)]="compteReglementId" name="compte">
+            <option value="">— non précisé —</option>
+            @for (c of comptes(); track c.id) {
+              <option [value]="c.id">{{ c.intitule }}{{ c.banque ? ' — ' + c.banque : '' }}</option>
+            }
+          </select>
+        </label>
+        <label>Mention (facultatif)
+          <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
+        </label>
         <button class="btn" (click)="creer()" [disabled]="!dossierId || !montantHt">Émettre</button>
       </div>
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
@@ -75,6 +86,17 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <option value="temps_passe">Temps passé</option>
             <option value="forfait">Forfait</option>
           </select>
+        </label>
+        <label>Compte à créditer
+          <select [(ngModel)]="compteReglementId" name="compteTemps">
+            <option value="">— non précisé —</option>
+            @for (c of comptes(); track c.id) {
+              <option [value]="c.id">{{ c.intitule }}{{ c.banque ? ' — ' + c.banque : '' }}</option>
+            }
+          </select>
+        </label>
+        <label>Mention (facultatif)
+          <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
       </div>
       @if (tempsNonFactures().length) {
@@ -183,6 +205,7 @@ export class FacturationComponent implements OnInit {
   readonly dossiers = signal<Dossier[]>([]);
   readonly factures = signal<any[]>([]);
   readonly impayees = signal<any[]>([]);
+  readonly comptes = signal<{ id: string; intitule: string; type: string; banque?: string }[]>([]);
   readonly message = signal('');
   readonly erreur = signal('');
 
@@ -194,6 +217,12 @@ export class FacturationComponent implements OnInit {
   // Laissé vide par défaut : le backend applique alors 18% (client Mali) ou
   // 0% (client hors Mali) selon la localisation — voir factures.js.
   tva: number | null = null;
+  // Réglage/informations de paiement (28/08/2026, facture PDF enrichie) —
+  // mode_reglement/compte_reglement_id/mention existaient déjà au schéma
+  // depuis le 17/08/2026 mais n'étaient acceptés par aucune route avant ce
+  // jour ; partagés entre les deux formulaires d'émission ci-dessous.
+  compteReglementId = '';
+  mention = '';
 
   // Facturer un dossier (temps + débours)
   readonly tempsNonFactures = signal<any[]>([]);
@@ -205,6 +234,7 @@ export class FacturationComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
+    this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
     this.rafraichir();
   }
 
@@ -256,11 +286,19 @@ export class FacturationComponent implements OnInit {
       .reduce((somme, d) => somme + Number(d.montant), 0);
   }
 
+  // Injecte compte à créditer / mode de règlement / mention dans un payload
+  // de création de facture — partagé par les deux formulaires d'émission.
+  private ajouterInfosReglement(payload: any): void {
+    if (this.compteReglementId) { payload.compte_reglement_id = this.compteReglementId; payload.mode_reglement = 'virement'; }
+    if (this.mention) payload.mention = this.mention;
+  }
+
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
     const payload: any = { dossier_id: this.dossierTempsId, mode: this.modeTemps };
     if (this.tempsSelectionnes().size) payload.temps_ids = Array.from(this.tempsSelectionnes());
     if (this.deboursSelectionnes().size) payload.depense_ids = Array.from(this.deboursSelectionnes());
+    this.ajouterInfosReglement(payload);
     this.api.creerFacture(payload).subscribe({
       next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
@@ -304,6 +342,7 @@ export class FacturationComponent implements OnInit {
     };
     if (this.tva !== null) payload.taux_tva = this.tva;
     if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
+    this.ajouterInfosReglement(payload);
     this.api.creerFacture(payload).subscribe({
       next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.montantHt = null; this.tauxApplique = null; this.rafraichir(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
