@@ -7,6 +7,7 @@
 // renvoyait un 500 « Erreur serveur » générique, indiscernable d'une
 // vraie panne. Corrigé : storage.js distingue ce cas (FichierIntrouvableError)
 // et les 3 routes de téléchargement renvoient un 404 explicite.
+const fs = require("fs");
 const request = require("supertest");
 const app = require("../server");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
@@ -85,10 +86,15 @@ describe("DELETE /api/documents/:id (ajout 28/08/2026)", () => {
       .attach("fichier", Buffer.from("contenu"), { filename: "a-supprimer.txt", contentType: "text/plain" });
     expect(upload.status).toBe(201);
 
+    const { rows } = await pool.query("SELECT chemin_storage FROM documents WHERE id = $1", [upload.body.id]);
+    const chemin = rows[0].chemin_storage.replace("file://", "");
+    expect(fs.existsSync(chemin)).toBe(true);
+
     const suppr = await request(app)
       .delete(`/api/documents/${upload.body.id}`)
       .set("Authorization", `Bearer ${token}`);
     expect(suppr.status).toBe(204);
+    expect(fs.existsSync(chemin)).toBe(false);
 
     const dl = await request(app)
       .get(`/api/documents/${upload.body.id}/download`)

@@ -4,7 +4,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject, FichierIntrouvableError } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
@@ -339,13 +339,17 @@ router.get("/:id/kyc-pieces/:pieceId/download", async (req, res) => {
 });
 
 // DELETE /api/clients/:id/kyc-pieces/:pieceId
+// Nettoie aussi l'objet physique du stockage (28/08/2026 — gap signalé par
+// l'utilisateur juste après le même correctif sur documents.js : la ligne
+// disparaissait mais le fichier restait orphelin dans le bucket/disque).
 router.delete("/:id/kyc-pieces/:pieceId", requirePermission("clients.kyc_piece.supprimer"), async (req, res) => {
   try {
-    const { rowCount } = await pool.query(
-      "DELETE FROM client_pieces_kyc WHERE id = $1 AND client_id = $2",
+    const { rows } = await pool.query(
+      "DELETE FROM client_pieces_kyc WHERE id = $1 AND client_id = $2 RETURNING chemin_storage",
       [req.params.pieceId, req.params.id]
     );
-    if (!rowCount) return res.status(404).json({ error: "Pièce introuvable" });
+    if (!rows[0]) return res.status(404).json({ error: "Pièce introuvable" });
+    await deleteObject(rows[0].chemin_storage);
     res.status(204).end();
   } catch (e) {
     console.error(e);

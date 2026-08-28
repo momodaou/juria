@@ -1055,3 +1055,15 @@ Ceci clôt le diagnostic du 20/08/2026 (Dossiers / Nouveau dossier / Clients & K
 **Déploiement production — effectué et vérifié le 28/08/2026** (accord utilisateur, « oui, déploie »). Migration (`permissions_role`, action `documents.supprimer`) importée sur Cloud SQL (`--user=juria_app`, sans piège). API `juria-00047-75f` (précédente `juria-00046-nzz`), frontend `juria-web-00042-kt6` (précédente `juria-web-00041-928`) — les deux déploiements sont passés sans blocage du classificateur.
 
 **Vérifié directement en production** : `/health` 200 des deux services, `GET /api/profil` confirme `documents.supprimer` accordé. Cycle complet réel : document téléversé → téléchargeable (`200`) → supprimé (`204`) → téléchargement suivant renvoie `404 "Document introuvable"` (la ligne n'existe plus, distinct du cas « fichier perdu » traité plus haut).
+
+## 2026-08-28 — Nettoyage du stockage sur suppression KYC/bibliothèque (gap identique comblé)
+
+**Demande utilisateur** : « oui, corrige ça aussi » (suite au signalement fait en clôturant la suppression GED : les suppressions KYC/bibliothèque ne nettoyaient jamais Cloud Storage, gap déjà noté le 21/08/2026 mais jamais traité).
+
+**Correctif** : réutilise `deleteObject()` (`storage.js`, ajouté plus tôt dans la journée) sur les 2 routes concernées :
+- `DELETE /api/clients/:id/kyc-pieces/:pieceId` — `DELETE ... RETURNING chemin_storage` puis `deleteObject()`.
+- `DELETE /api/biblio/:id` — même patron.
+
+Aucun changement de schéma ni de permission (les 2 actions existaient déjà — `clients.kyc_piece.supprimer`, `biblio.supprimer` — seul le comportement de la route change) : redéploiement de code pur.
+
+**Vérification** : suite étendue à **131/131** (2 nouveaux tests, `apercu-fichiers.test.js` — vérifient avec `fs.existsSync()` que le fichier physique disparaît réellement après suppression, pas seulement la ligne en base, pour KYC et bibliothèque). Le test équivalent sur `documents.js` (GED) renforcé de la même façon au passage.

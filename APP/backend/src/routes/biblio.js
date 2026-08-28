@@ -3,7 +3,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject, FichierIntrouvableError } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
@@ -95,10 +95,13 @@ router.get("/:id/fichier", async (req, res) => {
 });
 
 // DELETE /api/biblio/:id
+// Nettoie aussi l'objet physique du stockage (28/08/2026 — même gap que
+// clients.js/documents.js, comblé dans la foulée).
 router.delete("/:id", requirePermission("biblio.supprimer"), async (req, res) => {
   try {
-    const { rowCount } = await pool.query("DELETE FROM ressources_biblio WHERE id = $1", [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: "Ressource introuvable" });
+    const { rows } = await pool.query("DELETE FROM ressources_biblio WHERE id = $1 RETURNING chemin_storage", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Ressource introuvable" });
+    await deleteObject(rows[0].chemin_storage);
     res.status(204).end();
   } catch (e) {
     console.error(e);
