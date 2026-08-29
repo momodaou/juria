@@ -2226,3 +2226,36 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('assistant_comptable','cabinet.consulter',FALSE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = FALSE;
 -- =============== FIN CABINET (RH) RÉSERVÉ DIRECTION/FINANCE ===============
+
+-- =====================================================================
+--  ARCHIVISTE — 5 ACTIONS RÉTABLIES DANS SON PROPRE PÉRIMÈTRE (29/08/2026)
+--
+--  En vérifiant le déploiement de la passe précédente, courriers.consulter
+--  s'est révélé à FALSE pour archiviste — contradiction directe avec la
+--  décision de lui garder Registre du courrier — corrigé en production
+--  d'abord (PUT /api/acces/permissions), reporté ici.
+--
+--  En creusant plus loin (à la demande de l'utilisateur, qui a explicitement
+--  invité à ne pas suivre l'état actuel de la matrice sans esprit critique),
+--  4 autres actions déjà à FALSE avant même cette semaine se sont révélées
+--  incohérentes avec le périmètre GED/courrier/bibliothèque du rôle :
+--  documents.supprimer (son cœur de métier), courriers.creer/statut.modifier
+--  (registre du courrier explicitement dans son périmètre), biblio.supprimer
+--  (incohérent avec biblio.creer, déjà accordé). depenses.creer en plus :
+--  action de libre-service ouverte à tous les autres rôles (soumettre une
+--  dépense personnelle), rien ne justifiait qu'elle seule en soit privée.
+--
+--  Les autres actions déjà à FALSE pour archiviste (factures.creer,
+--  retrocessions.creer, dossiers.clients_additionnels/instances/
+--  parties.gerer, depenses.vignettes.mouvement...) sont laissées telles
+--  quelles — gestion de dossier/finance, hors du périmètre du rôle.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('archiviste','courriers.consulter',TRUE),
+ ('archiviste','documents.supprimer',TRUE),
+ ('archiviste','courriers.creer',TRUE),
+ ('archiviste','courriers.statut.modifier',TRUE),
+ ('archiviste','depenses.creer',TRUE),
+ ('archiviste','biblio.supprimer',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN ARCHIVISTE — ACTIONS RÉTABLIES ===============
