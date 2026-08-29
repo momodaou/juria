@@ -1169,3 +1169,25 @@ Chaque composant a nécessité l'ajout de `AuthService` (import + injection) —
 **Vérification** : build Angular production sans erreur. Aucun changement backend ni de schéma — correctif d'interface pur, aucune migration/déploiement API nécessaire, frontend seul.
 
 **Déploiement production — effectué le 29/08/2026** (accord utilisateur, « oui, déploie »). Frontend seul (aucun changement backend/schéma), `juria-web-00046-7td` (précédente `juria-web-00045-9mx`). Vérifié : page d'accueil `200`.
+
+## 2026-08-29 — Cabinet RH resserré + menu de l'Archiviste réduit
+
+**Contexte** : l'utilisateur délègue explicitement (« je te laisse déterminer selon toi... au vu de la configuration actuelle des permissions... sauf si tu estimeras qu'il y a des arbitrages à faire »). Analyse faite à partir de la config réelle des permissions (déjà présente) et des descriptions de statuts déjà actées dans `CLAUDE.md`, avec 2 points remontés en arbitrage plutôt que décidés seul :
+
+1. **Cabinet (RH) → vue d'équipe** (`GET /equipe`) expose le `taux_horaire` de chaque membre — donnée proche de la rémunération. Option retenue (recommandée) : réservée à Associé/Administrateur général/Administrateur IT/Comptable.
+2. **Archiviste** — sa description (« pensé pour GED/courrier/bibliothèque », 17/08/2026) suggère un menu réduit. Option retenue (recommandée) : réduire effectivement.
+
+Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiaire, Juriste, Administrateur général, Administrateur IT), aucune restriction supplémentaire recommandée sur les modules de travail courant (Dossiers, Clients & KYC, Échéancier, Rôle d'audience, Registre du courrier, Atelier d'actes, Bibliothèque, Plan d'action, Assistant IA) — outils de base du métier, les retirer créerait de la friction sans gain de confidentialité réel. Of Counsel et Collaborateur traités ensemble (droits déjà identiques par décision antérieure).
+
+**Implémentation — Cabinet RH** : `cabinet.consulter` (déjà en place, seedé « tout sauf associe_fondateur » la veille) révoqué en plus pour `of_counsel`, `collaborateur`, `avocat_stagiaire`, `stagiaire`, `juriste`, `assistante`, `assistant_comptable`. Congés/présence restent en libre-service pour tous (inchangé, même nuance que la veille).
+
+**Implémentation — Archiviste** :
+- 4 nouvelles actions cataloguées : `clients.consulter`, `actes.consulter`, `taches.consulter`, `ia.consulter` — même patron « tout le monde sauf l'exception » que la veille.
+- Routes gardées : `GET /api/actes/modeles` (`actes.consulter`), `GET /api/taches` (`taches.consulter` — couvre à la fois Plan d'action et la liste de tâches affichée dans Échéancier, les deux onglets étant masqués ensemble pour Archiviste, aucun autre rôle actuellement dans ce cas).
+- **`clients.consulter` : exception documentée**, masque le menu uniquement — `GET /api/clients` reste volontairement non gardé côté serveur, car partagé avec `<app-client-picker>` (recherche de client utilisée sur les écrans Dossiers pour tous les rôles) : le gardait aurait cassé cette fonctionnalité pour tout le monde, pas seulement pour Archiviste. Scinder proprement en deux routes distinctes (une « recherche légère » ouverte, une « registre complet » gardée) n'a pas été fait dans cette passe — signalé comme piste si une vraie séparation est souhaitée plus tard.
+- `ia.consulter` : aucune route à garder (chaque capacité IA — résumé, chronologie, etc. — est un `POST` déjà individuellement gardé par sa propre action) — sert uniquement à masquer l'onglet du menu.
+- `Nouveau dossier` : pas de nouvelle action — gardé directement par `dossiers.creer` (déjà existante), l'écran n'ayant aucune autre utilité que créer un dossier.
+- **20 actions de création/modification révoquées individuellement pour Archiviste** (`dossiers.creer`, `conflits.soumettre`, `clients.creer/modifier/kyc_piece.*`, `originaux.*`, `evenements.creer`, `audiences.ligne.creer/retour.saisir`, `actes.generer`, `taches.creer/statut.modifier`, les 6 `ia.*`, `echeancier.consulter`, `audiences.consulter`, `cabinet.consulter`) — cohérent avec la position déjà tenue cette semaine : masquer un onglet doit aussi retirer la capacité réelle, pas seulement le bouton.
+- Conserve : Dossiers (pour la GED), Registre du courrier, Bibliothèque, Cockpit, Messagerie, Portail client, Mon compte.
+
+**Vérification** : suite étendue à **166/166** (nouveaux tests dans `accesGarde.test.js` — Cabinet RH refusé/autorisé selon le rôle, congés/présence toujours en libre-service, Archiviste refusé sur les 5 routes nouvellement gardées, créations refusées (client/dossier/acte/tâche), `GET /api/clients` volontairement toujours ouvert pour elle, Dossiers/Courrier/Bibliothèque toujours accessibles, aucune régression pour Collaborateur sur Atelier d'actes/Plan d'action). Build Angular OK.

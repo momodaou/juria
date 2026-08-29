@@ -39,6 +39,7 @@ const CATALOGUE = [
   { code: "dossiers.creer", module: "Nouveau dossier", label: "Créer le dossier" },
   { code: "dossiers.pro_bono.declarer", module: "Nouveau dossier", label: "Déclarer un dossier pro bono (réservé aux avocats)", restreinte: true },
 
+  { code: "clients.consulter", module: "Clients & KYC", label: "Consulter le registre clients", restreinte: true },
   { code: "clients.creer", module: "Clients & KYC", label: "Créer un client" },
   { code: "clients.modifier", module: "Clients & KYC", label: "Modifier la fiche client" },
   { code: "clients.supprimer", module: "Clients & KYC", label: "Supprimer un client (sans activité enregistrée)", restreinte: true },
@@ -68,11 +69,13 @@ const CATALOGUE = [
   { code: "courriers.creer", module: "Registre du courrier", label: "Enregistrer un courrier" },
   { code: "courriers.statut.modifier", module: "Registre du courrier", label: "Faire évoluer le statut" },
 
+  { code: "actes.consulter", module: "Atelier d'actes", label: "Consulter l'atelier d'actes", restreinte: true },
   { code: "actes.generer", module: "Atelier d'actes", label: "Générer un acte" },
 
   { code: "biblio.creer", module: "Bibliothèque", label: "Ajouter une ressource" },
   { code: "biblio.supprimer", module: "Bibliothèque", label: "Supprimer une ressource" },
 
+  { code: "taches.consulter", module: "Plan d'action", label: "Consulter le plan d'action", restreinte: true },
   { code: "taches.creer", module: "Plan d'action", label: "Créer une tâche" },
   { code: "taches.statut.modifier", module: "Plan d'action", label: "Déplacer une tâche" },
   { code: "taches.valider", module: "Plan d'action", label: "Valider une tâche", restreinte: true },
@@ -104,6 +107,10 @@ const CATALOGUE = [
   { code: "cabinet.bulletin.generer", module: "Cabinet (RH)", label: "Générer un bulletin", restreinte: true },
   { code: "cabinet.bulletins.consulter", module: "Cabinet (RH)", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
 
+  // Pas de route GET à garder ici (chaque capacité IA est un POST déjà
+  // individuellement gardé) — ia.consulter sert uniquement à masquer
+  // l'onglet du menu, pas de donnée à protéger par elle-même.
+  { code: "ia.consulter", module: "Assistant IA", label: "Consulter l'Assistant IA", restreinte: true },
   { code: "ia.resume", module: "Assistant IA", label: "Résumer" },
   { code: "ia.chronologie", module: "Assistant IA", label: "Reconstituer une chronologie" },
   { code: "ia.extraction_faits", module: "Assistant IA", label: "Extraire des faits" },

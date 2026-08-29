@@ -173,14 +173,22 @@ export class AppComponent implements OnInit {
     { path: '/cockpit', label: 'Cockpit', icon: this.icons.cockpit },
     { path: '/messagerie', label: 'Messagerie', icon: this.icons.messagerie },
     { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers },
-    { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture },
-    { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients },
+    // Pas de nouvelle action .consulter : l'écran n'a aucune autre utilité
+    // que créer un dossier — la garde dossiers.creer suffit (aucune raison
+    // de le voir sans pouvoir créer).
+    { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture, requiert: 'dossiers.creer' },
+    // clients.consulter : masque uniquement le menu — GET /api/clients
+    // reste volontairement non gardé côté serveur, partagé avec le
+    // sélecteur de client (<app-client-picker>) utilisé sur les écrans
+    // Dossiers, hors périmètre d'un blocage sûr sans le scinder en deux
+    // routes distinctes (29/08/2026, pas fait dans cette passe).
+    { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients, requiert: 'clients.consulter' },
     { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier, requiert: 'echeancier.consulter' },
     { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience, requiert: 'audiences.consulter' },
     { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier, requiert: 'courriers.consulter' },
-    { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes },
+    { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes, requiert: 'actes.consulter' },
     { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio },
-    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction },
+    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction, requiert: 'taches.consulter' },
     { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter' },
     { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter' },
     // rolesAutorises reflète exactement la garde requireRole() côté serveur
@@ -189,7 +197,7 @@ export class AppComponent implements OnInit {
     // pas seulement la matrice interne).
     { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'] },
     { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet, requiert: 'cabinet.consulter' },
-    { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa },
+    { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa, requiert: 'ia.consulter' },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient },
     { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter' },

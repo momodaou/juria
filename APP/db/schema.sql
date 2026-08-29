@@ -2158,3 +2158,71 @@ CROSS JOIN unnest(ARRAY['echeancier.consulter','audiences.consulter','courriers.
 WHERE r <> 'associe_fondateur'
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN VISIBILITÉ DE MODULE PAR PROFIL ===============
+
+-- =====================================================================
+--  ARCHIVISTE — MENU RÉDUIT À GED / COURRIER / BIBLIOTHÈQUE (29/08/2026)
+--
+--  Suite de l'exercice « pour chaque profil, quels onglets » : le rôle
+--  Archiviste est décrit depuis le 17/08/2026 comme « pensé pour GED/
+--  courrier/bibliothèque mais pas verrouillé en dur » — cette passe le
+--  verrouille enfin, sur confirmation explicite de l'utilisateur.
+--
+--  3 nouvelles actions .consulter (même patron « tout le monde sauf
+--  l'exception » que la passe précédente) : clients.consulter (menu
+--  seulement — GET /api/clients reste volontairement non gardé côté
+--  serveur, partagé avec le sélecteur de client <app-client-picker> des
+--  écrans Dossiers, qu'on ne veut pas casser pour les autres rôles),
+--  actes.consulter (garde GET /api/actes/modeles), taches.consulter
+--  (garde GET /api/taches — Plan d'action ET la liste tâches affichée
+--  dans Échéancier, les deux onglets partant ensemble pour Archiviste,
+--  aucun autre rôle n'est aujourd'hui dans cette situation).
+--
+--  ia.consulter n'a aucune route à garder (chaque capacité IA est un POST
+--  déjà individuellement gardé, rien à lister) — sert uniquement à masquer
+--  l'onglet du menu.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY['clients.consulter','actes.consulter','taches.consulter','ia.consulter']) AS a
+WHERE r <> 'archiviste'
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+-- Nouveau dossier (dossiers.creer/conflits.soumettre) et le reste du menu
+-- déjà masqué (Échéancier/Rôle d'audience via la passe précédente) :
+-- révoqués pour Archiviste spécifiquement, en plus du masquage du menu —
+-- ce n'est pas qu'un habillage d'écran, la capacité elle-même disparaît.
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('archiviste','dossiers.creer',FALSE),('archiviste','conflits.soumettre',FALSE),
+ ('archiviste','clients.creer',FALSE),('archiviste','clients.modifier',FALSE),
+ ('archiviste','clients.kyc_piece.ajouter',FALSE),('archiviste','clients.kyc_piece.supprimer',FALSE),
+ ('archiviste','originaux.creer',FALSE),('archiviste','originaux.restituer',FALSE),
+ ('archiviste','evenements.creer',FALSE),
+ ('archiviste','audiences.ligne.creer',FALSE),('archiviste','audiences.retour.saisir',FALSE),
+ ('archiviste','actes.generer',FALSE),
+ ('archiviste','taches.creer',FALSE),('archiviste','taches.statut.modifier',FALSE),
+ ('archiviste','ia.resume',FALSE),('archiviste','ia.chronologie',FALSE),
+ ('archiviste','ia.extraction_faits',FALSE),('archiviste','ia.analyse_contrat',FALSE),
+ ('archiviste','ia.traduction',FALSE),('archiviste','ia.comparaison',FALSE),
+ ('archiviste','echeancier.consulter',FALSE),('archiviste','audiences.consulter',FALSE),
+ ('archiviste','cabinet.consulter',FALSE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = FALSE;
+-- =============== FIN ARCHIVISTE — MENU RÉDUIT ===============
+
+-- =====================================================================
+--  CABINET (RH) — VUE D'ÉQUIPE RÉSERVÉE À LA DIRECTION/FINANCE (29/08/2026)
+--
+--  cabinet.consulter (ajout précédent, seedé « tout le monde sauf
+--  associe_fondateur ») exposait le taux horaire de chaque membre
+--  (GET /equipe) à tout le cabinet. Resserré sur confirmation explicite
+--  de l'utilisateur : réservé à Associé/Administrateur général/
+--  Administrateur IT/Comptable — congés/présence restent en libre-service
+--  pour tous, inchangé (voir passe précédente).
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('of_counsel','cabinet.consulter',FALSE),('collaborateur','cabinet.consulter',FALSE),
+ ('avocat_stagiaire','cabinet.consulter',FALSE),('stagiaire','cabinet.consulter',FALSE),
+ ('juriste','cabinet.consulter',FALSE),('assistante','cabinet.consulter',FALSE),
+ ('assistant_comptable','cabinet.consulter',FALSE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = FALSE;
+-- =============== FIN CABINET (RH) RÉSERVÉ DIRECTION/FINANCE ===============

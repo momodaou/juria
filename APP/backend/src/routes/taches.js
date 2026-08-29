@@ -5,7 +5,7 @@ const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/taches?dossier_id=...  |  ?mine=1  (mes tâches)
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("taches.consulter"), async (req, res) => {
   const { dossier_id, mine } = req.query;
   const params = [];
   let where = "";

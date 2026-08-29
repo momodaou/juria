@@ -63,7 +63,7 @@ describe("Visibilité de module par profil — 4 onglets masqués pour associe_f
     ["/api/evenements", "associe"],
     ["/api/roles-audience", "collaborateur"],
     ["/api/courriers", "juriste"],
-    ["/api/cabinet/equipe", "assistante"],
+    ["/api/cabinet/equipe", "comptable"],
   ])("%s toujours autorisé (200) pour %s — les 12 autres profils sont inchangés", async (route, role) => {
     const token = await creerUtilisateurRole(role);
     const res = await request(app).get(route).set("Authorization", `Bearer ${token}`);
@@ -76,5 +76,98 @@ describe("Visibilité de module par profil — 4 onglets masqués pour associe_f
     expect(conges.status).toBe(200);
     const presences = await request(app).get("/api/cabinet/presences").set("Authorization", `Bearer ${token}`);
     expect(presences.status).toBe(200);
+  });
+});
+
+// Cabinet RH resserré à la direction/finance (29/08/2026) : la vue
+// d'équipe expose le taux horaire de chacun — décision explicite de
+// l'utilisateur de la réserver, congés/présence restant en libre-service.
+describe("Cabinet (RH) — vue d'équipe réservée à la direction/finance (29/08/2026)", () => {
+  test.each(["of_counsel", "collaborateur", "avocat_stagiaire", "stagiaire", "juriste", "assistante", "assistant_comptable"])(
+    "%s : GET /api/cabinet/equipe refusé (403)",
+    async (role) => {
+      const token = await creerUtilisateurRole(role);
+      const res = await request(app).get("/api/cabinet/equipe").set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    }
+  );
+
+  test.each(["associe", "admin_general", "admin_it", "comptable"])(
+    "%s : GET /api/cabinet/equipe toujours autorisé (200)",
+    async (role) => {
+      const token = await creerUtilisateurRole(role);
+      const res = await request(app).get("/api/cabinet/equipe").set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(200);
+    }
+  );
+
+  test("un rôle sans cabinet.consulter garde congés/présence en libre-service", async () => {
+    const token = await creerUtilisateurRole("collaborateur");
+    const conges = await request(app).get("/api/cabinet/conges").set("Authorization", `Bearer ${token}`);
+    expect(conges.status).toBe(200);
+    const presences = await request(app).get("/api/cabinet/presences").set("Authorization", `Bearer ${token}`);
+    expect(presences.status).toBe(200);
+  });
+});
+
+// Archiviste — menu réduit à GED/Courrier/Bibliothèque (29/08/2026),
+// décision explicite de l'utilisateur reprenant la description du rôle
+// déjà actée le 17/08/2026 (« pensé pour GED/courrier/bibliothèque »).
+describe("Archiviste — menu réduit à GED/Courrier/Bibliothèque (29/08/2026)", () => {
+  test.each([
+    ["/api/actes/modeles", "actes.consulter"],
+    ["/api/taches", "taches.consulter"],
+    ["/api/evenements", "echeancier.consulter (déjà masqué pour un autre profil, confirmé aussi pour archiviste)"],
+    ["/api/roles-audience", "audiences.consulter (idem)"],
+    ["/api/cabinet/equipe", "cabinet.consulter (idem)"],
+  ])("archiviste : %s refusé (403)", async (route) => {
+    const token = await creerUtilisateurRole("archiviste");
+    const res = await request(app).get(route).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  test("archiviste : ne peut plus créer de dossier, de client, générer un acte ou une tâche", async () => {
+    const token = await creerUtilisateurRole("archiviste");
+    const client = await request(app)
+      .post("/api/clients")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination: "Client archiviste test" });
+    expect(client.status).toBe(403);
+
+    const dossier = await request(app)
+      .post("/api/dossiers")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ numero: `ARCH-${Date.now()}`, intitule: "Test", client_id: "00000000-0000-0000-0000-000000000000", pole: "contentieux", responsable_id: "00000000-0000-0000-0000-000000000000" });
+    expect(dossier.status).toBe(403);
+
+    const acte = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`).send({});
+    expect(acte.status).toBe(403);
+
+    const tache = await request(app).post("/api/taches").set("Authorization", `Bearer ${token}`).send({ titre: "Test" });
+    expect(tache.status).toBe(403);
+  });
+
+  test("archiviste : GET /api/clients reste ouvert côté serveur (menu masqué seulement) — partagé avec le sélecteur de client", async () => {
+    const token = await creerUtilisateurRole("archiviste");
+    const res = await request(app).get("/api/clients").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  test("archiviste : Dossiers, Registre du courrier et Bibliothèque restent accessibles", async () => {
+    const token = await creerUtilisateurRole("archiviste");
+    const dossiers = await request(app).get("/api/dossiers").set("Authorization", `Bearer ${token}`);
+    expect(dossiers.status).toBe(200);
+    const courriers = await request(app).get("/api/courriers").set("Authorization", `Bearer ${token}`);
+    expect(courriers.status).toBe(200);
+    const biblio = await request(app).get("/api/biblio").set("Authorization", `Bearer ${token}`);
+    expect(biblio.status).toBe(200);
+  });
+
+  test("les autres profils gardent Nouveau dossier / Atelier d'actes / Plan d'action / Assistant IA", async () => {
+    const token = await creerUtilisateurRole("collaborateur");
+    const actes = await request(app).get("/api/actes/modeles").set("Authorization", `Bearer ${token}`);
+    expect(actes.status).toBe(200);
+    const taches = await request(app).get("/api/taches").set("Authorization", `Bearer ${token}`);
+    expect(taches.status).toBe(200);
   });
 });

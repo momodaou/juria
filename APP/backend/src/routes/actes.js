@@ -133,7 +133,7 @@ Fait à Bamako, le ${ctx.date}`,
 };
 
 // GET /api/actes/modeles
-router.get("/modeles", (req, res) => {
+router.get("/modeles", requirePermission("actes.consulter"), (req, res) => {
   res.json(Object.entries(MODELES).map(([code, m]) => ({ code, nom: m.nom, categorie: m.categorie })));
 });
 
