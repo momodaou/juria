@@ -1141,3 +1141,7 @@ Aucun changement de schéma ni de permission (les 2 actions existaient déjà �
 - **Tests** (`accesGarde.test.js`, étendu) : `associe_fondateur` → `403` sur les 5 routes gardées ; 4 autres rôles (`associe`, `collaborateur`, `juriste`, `assistante`) → `200` inchangé sur les mêmes routes (preuve que les 12 autres profils ne sont pas affectés) ; congés/présence → `200` pour `associe_fondateur` malgré le module masqué (preuve du libre-service préservé).
 
 **Vérification** : suite étendue à **145/145** (schéma neuf, 10 nouveaux tests). Build Angular OK. Établit le patron réutilisable pour la suite de l'exercice (Of Counsel, Collaborateur, etc.) — chaque nouveau module à cacher pour un profil suit désormais ce même schéma : action `.consulter` dédiée, seedée pour tout le monde sauf l'exception, route(s) de liste gardée(s), `requiert` côté menu.
+
+**Déploiement production — effectué et vérifié le 29/08/2026** (accord utilisateur, « oui, déploie »). Migration `permissions_role` importée (`--user=juria_app`, sans piège). API `juria-00050-25l` (précédente `juria-00049-dnj`), frontend `juria-web-00045-9mx` (précédente `juria-web-00044-f86`).
+
+**Vérifié directement en production avec le compte de test associé-fondateur** (réactivé, testé, redésactivé) : `403` confirmé sur les 4 routes nouvellement gardées ; `200` confirmé pour congés et présence (libre-service préservé) ; `200` confirmé pour un compte associé sur les 4 mêmes routes (aucune régression sur les 12 autres profils).
