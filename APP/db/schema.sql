@@ -2259,3 +2259,81 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('archiviste','biblio.supprimer',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN ARCHIVISTE — ACTIONS RÉTABLIES ===============
+
+-- =====================================================================
+--  AUDIT COMPLET DES 10 PROFILS RESTANTS (29/08/2026)
+--
+--  Suite de l'exercice « pour chaque profil » : l'utilisateur délègue
+--  entièrement (« je te laisse traiter les profils par toi-même »).
+--  Plutôt que de décider du périmètre onglet par onglet comme pour
+--  Cabinet RH/Archiviste, audit systématique de l'état RÉEL de
+--  permissions_role pour les 10 rôles encore non passés en revue,
+--  comparé à l'intention documentée (CLAUDE.md/HISTORY.md) — révèle
+--  plusieurs écarts non liés à cette session (dérive historique, même
+--  famille que courriers.consulter trouvé faux pour Archiviste plus tôt
+--  aujourd'hui), pas des décisions de périmètre.
+--
+--  - of_counsel : décision du 18/08/2026 « identique à Avocat
+--    collaborateur » jamais respectée en pratique (27/62 actions au lieu
+--    d'être un miroir exact) — 14 actions manquantes accordées.
+--  - avocat_stagiaire / juriste : 3-4 actions restreintes (déclencher le
+--    job d'alertes, valider une tâche, déclarer un pro bono, diffuser le
+--    rôle) accordées à tort à des profils censés être plus encadrés
+--    qu'un collaborateur/avocat titulaire — révoquées.
+--  - stagiaire : cabinet.conge.demander/depenses.creer — actions de
+--    libre-service ouvertes à tous les 12 autres rôles, manquantes ici
+--    sans raison apparente — rétablies.
+--  - admin_general / comptable / assistant_comptable / admin_it :
+--    plusieurs actions explicitement seedées TRUE lors de leur création
+--    (18/08 et 25/08/2026, citations exactes dans HISTORY.md) mais FALSE
+--    en réalité — retrocessions.consulter, factures.consulter/creer/
+--    annuler, depenses.consulter/creer, cabinet.bulletins.consulter,
+--    temps.creer — rétablies conformément à l'intention documentée.
+--
+--  40 corrections au total, déjà appliquées en production via
+--  PUT /api/acces/permissions (une par une, tracées dans journal_audit) ;
+--  reportées ici pour qu'une base locale fraîche reste cohérente.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('of_counsel','audiences.ligne.creer',TRUE),
+ ('of_counsel','clients.modifier',TRUE),
+ ('of_counsel','courriers.consulter',TRUE),
+ ('of_counsel','courriers.creer',TRUE),
+ ('of_counsel','depenses.creer',TRUE),
+ ('of_counsel','depenses.vignettes.mouvement',TRUE),
+ ('of_counsel','dossiers.clients_additionnels.gerer',TRUE),
+ ('of_counsel','dossiers.instances.gerer',TRUE),
+ ('of_counsel','dossiers.modifier',TRUE),
+ ('of_counsel','dossiers.parties.gerer',TRUE),
+ ('of_counsel','echeancier.consulter',TRUE),
+ ('of_counsel','evenements.creer',TRUE),
+ ('of_counsel','taches.creer',TRUE),
+ ('of_counsel','taches.statut.modifier',TRUE),
+ ('avocat_stagiaire','audiences.role.diffuser',FALSE),
+ ('avocat_stagiaire','dossiers.pro_bono.declarer',FALSE),
+ ('avocat_stagiaire','evenements.jobs.declencher',FALSE),
+ ('avocat_stagiaire','taches.valider',FALSE),
+ ('juriste','dossiers.pro_bono.declarer',FALSE),
+ ('juriste','evenements.jobs.declencher',FALSE),
+ ('juriste','taches.valider',FALSE),
+ ('stagiaire','cabinet.conge.demander',TRUE),
+ ('stagiaire','depenses.creer',TRUE),
+ ('admin_general','retrocessions.consulter',TRUE),
+ ('admin_general','factures.annuler',TRUE),
+ ('admin_general','factures.creer',TRUE),
+ ('assistante','echeancier.consulter',TRUE),
+ ('assistante','evenements.creer',TRUE),
+ ('comptable','factures.annuler',TRUE),
+ ('comptable','retrocessions.consulter',TRUE),
+ ('comptable','cabinet.bulletins.consulter',TRUE),
+ ('assistant_comptable','retrocessions.consulter',TRUE),
+ ('assistant_comptable','cabinet.bulletins.consulter',TRUE),
+ ('assistant_comptable','factures.consulter',TRUE),
+ ('admin_it','factures.consulter',TRUE),
+ ('admin_it','depenses.consulter',TRUE),
+ ('admin_it','factures.creer',TRUE),
+ ('admin_it','factures.annuler',TRUE),
+ ('admin_it','depenses.creer',TRUE),
+ ('admin_it','temps.creer',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+-- =============== FIN AUDIT COMPLET DES 10 PROFILS RESTANTS ===============
