@@ -17,6 +17,10 @@ interface NavItem {
   /** Action de consultation requise (permissions_role) pour voir cette entrée
    * dans le menu — absent = visible par tous, comme avant (18/08/2026). */
   requiert?: string;
+  /** Rôles autorisés à voir cette entrée, pour un module gardé par un
+   * requireRole() codé en dur côté serveur (pas une action permissions_role
+   * — ex. Accès & permissions) — absent = visible par tous (29/08/2026). */
+  rolesAutorises?: string[];
 }
 
 @Component({
@@ -51,7 +55,7 @@ interface NavItem {
 
           <nav>
             @for (item of navItems; track item.path) {
-              @if (!item.requiert || auth.peut(item.requiert)) {
+              @if ((!item.requiert || auth.peut(item.requiert)) && peutVoirRole(item)) {
                 <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
                   <span class="ico" [innerHTML]="item.icon"></span>
                   <span class="lbl">{{ item.label }}</span>
@@ -84,6 +88,11 @@ export class AppComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly messagerie = inject(MessagerieService);
   private readonly router = inject(Router);
+
+  peutVoirRole(item: NavItem): boolean {
+    if (!item.rolesAutorises) return true;
+    return item.rolesAutorises.includes(this.auth.utilisateur()?.role ?? '');
+  }
 
   ngOnInit(): void {
     if (this.auth.estConnecte) {
@@ -174,7 +183,11 @@ export class AppComponent implements OnInit {
     { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction },
     { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter' },
     { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter' },
-    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces },
+    // rolesAutorises reflète exactement la garde requireRole() côté serveur
+    // (backend/src/routes/acces.js) — associe_fondateur exclu depuis le
+    // 29/08/2026 (correction explicite de l'utilisateur : le module entier,
+    // pas seulement la matrice interne).
+    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'] },
     { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet },
     { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient },

@@ -1107,3 +1107,17 @@ Aucun changement de schéma ni de permission (les 2 actions existaient déjà �
 **Clarification apportée à l'utilisateur en même temps** (question posée sur « Accès & permissions » pour ce profil) : le module lui-même (comptes, délégations, journal d'audit) N'EST PAS verrouillé pour l'associé-fondateur — cette note ne s'applique qu'aux profils hors du cluster direction (`associe`, `associe_fondateur`, `admin_general`, `admin_it`). Seule la Matrice des permissions, à l'intérieur du module, lui reste fermée.
 
 **Livrable produit dans la foulée** : page de référence publiée en artefact (matrice d'accès par profil, 13 rôles, données lues en direct depuis la production), avec un bandeau signalant le bug puis mis à jour pour signaler sa correction une fois appliquée. Pas de commit de code (correctif de données uniquement, aucun fichier applicatif modifié) — seule la documentation (`CLAUDE.md`/`HISTORY.md`) est commitée.
+
+## 2026-08-29 — Correction de politique : Accès & permissions fermé en entier à l'associé-fondateur
+
+**Demande utilisateur** (suite immédiate à la correction du bug ci-dessus) : « non, le reste du module (comptes, délégations, journal d'audit) aussi doit lui être hors d'atteinte. »
+
+**Contexte** : la décision du 17/08/2026 était « associé-fondateur = mêmes droits qu'associé partout SAUF la Matrice ». L'utilisateur resserre aujourd'hui : le module Accès & permissions **dans son ensemble** doit lui être fermé, pas seulement l'écran Matrice qui l'était déjà.
+
+**Implémentation** :
+- `backend/src/routes/acces.js` : garde commune du routeur resserrée de `requireRole("associe","associe_fondateur","admin_general","admin_it")` à `requireRole("associe","admin_general","admin_it")` — `associe_fondateur` retiré. S'applique à toutes les routes du module (création/validation de compte, réinitialisation de mot de passe, évolution de rôle, activation/désactivation, délégations, journal d'audit) ; la Matrice, déjà restreinte à associé (classique) + admin IT, reste inchangée.
+- `app.component.ts` : nouveau champ `NavItem.rolesAutorises?: string[]` — distinct de `requiert` (qui ne couvre que les actions cataloguées `permissions_role`) puisque cette garde est un `requireRole()` en dur côté serveur, pas une action de la matrice. Entrée « Accès & permissions » masquée du menu pour tout rôle hors de `['associe','admin_general','admin_it']` — reflète exactement la garde serveur, plutôt que de laisser un lien visible qui renverrait 403 au clic pour l'associé-fondateur.
+- Nouveau test `backend/tests/accesGarde.test.js` : confirme `200` pour associé/admin général/admin IT et `403` pour associé-fondateur sur 2 routes du module (audit, délégations).
+- **Aucun changement** sur les actions hors de ce module (ex. `parametres.cabinet.modifier`/`parametres.honoraires.modifier`, routées par `/api/parametres`) — l'associé-fondateur les garde, seul le module Accès & permissions lui-même est concerné.
+
+**Vérification** : suite étendue à **135/135** (schéma neuf). Build Angular OK.

@@ -11,11 +11,17 @@ const { logAudit } = require("../audit");
 const { CATALOGUE, CODES_VALIDES } = require("../permissions");
 
 const router = express.Router();
-// Gestion des comptes/rôles/délégations : associé (et associé-fondateur,
-// mêmes droits), administrateur général ou administrateur IT. La matrice
-// de permissions ci-dessous (routes /permissions) applique une restriction
-// plus étroite, volontairement écartée de cette garde commune — voir plus bas.
-router.use(requireRole("associe", "associe_fondateur", "admin_general", "admin_it"));
+// Gestion des comptes/rôles/délégations : associé, administrateur général
+// ou administrateur IT. La matrice de permissions ci-dessous (routes
+// /permissions) applique une restriction plus étroite encore, volontairement
+// écartée de cette garde commune — voir plus bas.
+//
+// associe_fondateur volontairement EXCLU (29/08/2026, correction explicite
+// de l'utilisateur) : contrairement à la décision initiale du 17/08/2026
+// (mêmes droits qu'associe SAUF la matrice), le module Accès & permissions
+// dans son ensemble — comptes, délégations, journal d'audit — lui est
+// désormais fermé, pas seulement la matrice.
+router.use(requireRole("associe", "admin_general", "admin_it"));
 
 // 13 statuts réels du cabinet (17/08/2026, complété après coup avec
 // associe_fondateur et la distinction avocat_stagiaire/stagiaire) — voir
