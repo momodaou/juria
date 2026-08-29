@@ -1121,3 +1121,7 @@ Aucun changement de schéma ni de permission (les 2 actions existaient déjà �
 - **Aucun changement** sur les actions hors de ce module (ex. `parametres.cabinet.modifier`/`parametres.honoraires.modifier`, routées par `/api/parametres`) — l'associé-fondateur les garde, seul le module Accès & permissions lui-même est concerné.
 
 **Vérification** : suite étendue à **135/135** (schéma neuf). Build Angular OK.
+
+**Déploiement production — effectué et vérifié le 29/08/2026** (accord utilisateur, « oui, déploie »). API `juria-00049-dnj` (précédente `juria-00048-lrc`), frontend `juria-web-00044-f86` (précédente `juria-web-00043-7dm`).
+
+**Vérifié directement en production avec un vrai compte associé-fondateur** (créé, validé, connecté, désactivé après vérification) : `GET /api/acces/audit` et `GET /api/acces/delegations` → `403` (module entier fermé, pas seulement la matrice) ; `GET /api/profil` confirme les 63 permissions ailleurs toujours intactes (`dossiers.creer` notamment) — la fermeture d'Accès & permissions n'a rien touché d'autre.
