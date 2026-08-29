@@ -2126,3 +2126,35 @@ SELECT r, 'documents.supprimer', TRUE
 FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN SUPPRESSION D'UN DOCUMENT GED ===============
+
+-- =====================================================================
+--  VISIBILITÉ DE MODULE PAR PROFIL — ÉCHÉANCIER / RÔLE D'AUDIENCE /
+--  REGISTRE DU COURRIER / CABINET RH (ajout 29/08/2026)
+--
+--  Exercice « pour chaque profil, quels onglets » demandé par l'utilisateur
+--  (matrice de référence publiée en artefact) : premier cas concret,
+--  l'Avocat associé-fondateur ne doit plus voir ces 4 onglets.
+--
+--  Différent du patron factures/dépenses/rétrocessions/bulletins du
+--  18/08/2026 (modules réservés à une petite grappe direction dès
+--  l'origine) : ces 4 modules étaient ouverts à TOUS les rôles sans
+--  exception. Le besoin est donc l'inverse — fermer pour UN profil précis
+--  sans toucher aux 12 autres — d'où un seed « tout le monde sauf
+--  associe_fondateur » plutôt qu'une petite grappe positive.
+--
+--  cabinet.consulter ne garde que la vue de supervision d'équipe
+--  (GET /equipe, /echeances) — congés/présence restent en libre-service
+--  (cabinet.conge.demander/cabinet.presence.pointer, déjà ouverts à tous)
+--  même si le module est masqué du menu pour un profil donné : un
+--  associé-fondateur qui ne voit plus l'onglet Cabinet (RH) garde la
+--  capacité de poser un congé ou pointer par ailleurs (hors périmètre de
+--  cet écran-là) — nuance actée avec l'utilisateur en construisant le
+--  correctif.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY['echeancier.consulter','audiences.consulter','courriers.consulter','cabinet.consulter']) AS a
+WHERE r <> 'associe_fondateur'
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN VISIBILITÉ DE MODULE PAR PROFIL ===============

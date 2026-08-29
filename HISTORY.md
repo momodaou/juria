@@ -1125,3 +1125,19 @@ Aucun changement de schéma ni de permission (les 2 actions existaient déjà �
 **Déploiement production — effectué et vérifié le 29/08/2026** (accord utilisateur, « oui, déploie »). API `juria-00049-dnj` (précédente `juria-00048-lrc`), frontend `juria-web-00044-f86` (précédente `juria-web-00043-7dm`).
 
 **Vérifié directement en production avec un vrai compte associé-fondateur** (créé, validé, connecté, désactivé après vérification) : `GET /api/acces/audit` et `GET /api/acces/delegations` → `403` (module entier fermé, pas seulement la matrice) ; `GET /api/profil` confirme les 63 permissions ailleurs toujours intactes (`dossiers.creer` notamment) — la fermeture d'Accès & permissions n'a rien touché d'autre.
+
+## 2026-08-29 — Visibilité de module par profil : premier cas concret (Avocat associé-fondateur)
+
+**Demande utilisateur** (dans l'exercice « pour chaque profil, quels onglets ») : « Associé fondateur : masquer Échéancier, Cabinet RH, Rôle d'audience, Registre du courrier. »
+
+**Constat préalable** : ces 4 modules n'avaient jusqu'ici **aucune restriction de visibilité** — ouverts à tous les 13 rôles sans exception, contrairement à factures/dépenses/rétrocessions/bulletins (réservés à une petite grappe direction/comptabilité dès leur origine, 18/08/2026). Le besoin ici est donc l'inverse : fermer pour **un seul profil** sans toucher aux 12 autres — un seed « tout le monde sauf associe_fondateur » plutôt qu'une petite grappe positive.
+
+**Implémentation** :
+- **4 nouvelles actions cataloguées** (`permissions.js`) : `echeancier.consulter`, `audiences.consulter`, `courriers.consulter`, `cabinet.consulter`.
+- **Routes gardées** : `GET /api/evenements`, `GET /api/roles-audience`, `GET /api/courriers` (liste principale de chaque module) + `GET /api/cabinet/equipe` et `GET /api/cabinet/echeances` pour `cabinet.consulter`.
+- **`cabinet.consulter` volontairement limité à la supervision** : congés (`GET/POST /api/cabinet/conges`) et présence (`GET/POST /api/cabinet/presences`) restent en libre-service, non gardés — nuance actée en construisant le correctif (perdre l'onglet Cabinet (RH) du menu ne doit pas priver quelqu'un de la capacité de poser un congé ou pointer, actions déjà ouvertes à tous depuis le 17/08/2026 et indépendantes de la vue d'équipe).
+- **Seed** (`schema.sql`) : `INSERT ... SELECT r, a, TRUE FROM unnest(enum_range(...)) CROSS JOIN unnest(ARRAY[...]) WHERE r <> 'associe_fondateur'` — les 4 actions accordées aux 12 autres rôles, refusées uniquement à `associe_fondateur`.
+- **Frontend** : `requiert` ajouté sur les 4 `NavItem` correspondants (`app.component.ts`) — masque l'entrée de menu, cohérent avec la garde serveur.
+- **Tests** (`accesGarde.test.js`, étendu) : `associe_fondateur` → `403` sur les 5 routes gardées ; 4 autres rôles (`associe`, `collaborateur`, `juriste`, `assistante`) → `200` inchangé sur les mêmes routes (preuve que les 12 autres profils ne sont pas affectés) ; congés/présence → `200` pour `associe_fondateur` malgré le module masqué (preuve du libre-service préservé).
+
+**Vérification** : suite étendue à **145/145** (schéma neuf, 10 nouveaux tests). Build Angular OK. Établit le patron réutilisable pour la suite de l'exercice (Of Counsel, Collaborateur, etc.) — chaque nouveau module à cacher pour un profil suit désormais ce même schéma : action `.consulter` dédiée, seedée pour tout le monde sauf l'exception, route(s) de liste gardée(s), `requiert` côté menu.

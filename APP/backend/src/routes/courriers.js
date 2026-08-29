@@ -61,7 +61,7 @@ async function appliquerDeclencheurs(client, courrier, utilisateurId) {
 }
 
 // GET /api/courriers?sens=&dossier_id=&statut=&q=
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   const { sens, dossier_id, statut, q } = req.query;
   const params = [];
   const clauses = [];

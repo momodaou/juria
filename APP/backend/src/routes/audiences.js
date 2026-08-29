@@ -27,7 +27,7 @@ async function trouverOuCreerRole(client, semaineDebut, creePar) {
 }
 
 // GET /api/roles-audience?semaine=YYYY-MM-DD — rôle de la semaine (par défaut : semaine courante)
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
   const semaine = lundiDeSemaine(req.query.semaine || new Date().toISOString().slice(0, 10));
   try {
     const role = await pool.query("SELECT * FROM roles_audience WHERE semaine_debut = $1", [semaine]);

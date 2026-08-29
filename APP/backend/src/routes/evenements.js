@@ -17,7 +17,7 @@ function niveauAlerte(jours) {
 }
 
 // GET /api/evenements  (à venir, tous dossiers) — avec jours restants + niveau d'alerte
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.id, e.type, e.titre, e.date_echeance, e.statut, e.dossier_id,

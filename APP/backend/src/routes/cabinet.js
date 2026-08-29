@@ -6,7 +6,10 @@ const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 // GET /api/cabinet/equipe — membres, heures du mois, dossiers actifs, échéance de congé/contrat
-router.get("/equipe", async (req, res) => {
+// Gardé par cabinet.consulter (29/08/2026) : vue de supervision d'équipe —
+// contrairement à congés/présence ci-dessous, laissés en libre-service même
+// si le module est masqué du menu pour un profil donné.
+router.get("/equipe", requirePermission("cabinet.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, u.code, u.prenom, u.nom, u.role, u.pole, u.taux_horaire, u.actif,
@@ -27,7 +30,7 @@ router.get("/equipe", async (req, res) => {
 });
 
 // GET /api/cabinet/echeances — fin d'essai, fin de contrat, visite médicale à venir
-router.get("/echeances", async (req, res) => {
+router.get("/echeances", requirePermission("cabinet.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT utilisateur_id, prenom, nom, type_echeance, echeance,

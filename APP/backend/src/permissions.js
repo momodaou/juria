@@ -47,14 +47,24 @@ const CATALOGUE = [
   { code: "originaux.creer", module: "Clients & KYC", label: "Enregistrer un original confié" },
   { code: "originaux.restituer", module: "Clients & KYC", label: "Restituer un original" },
 
+  // .consulter (29/08/2026) : contrairement à factures/dépenses/rétrocessions/
+  // bulletins (18/08/2026, module réservé à une petite grappe direction dès
+  // l'origine), ces 4 modules étaient ouverts à TOUS les rôles sans
+  // exception — le besoin ici est l'inverse : fermer le module pour un
+  // profil précis (ex. associé-fondateur) sans toucher aux autres. Seedé
+  // TRUE pour tous les rôles sauf exception explicite, pas sur une petite
+  // grappe — voir schema.sql.
+  { code: "echeancier.consulter", module: "Échéancier", label: "Consulter l'échéancier", restreinte: true },
   { code: "evenements.creer", module: "Échéancier", label: "Ajouter une échéance" },
   { code: "evenements.jobs.declencher", module: "Échéancier", label: "Déclencher manuellement le job d'alertes de délais", restreinte: true },
 
+  { code: "audiences.consulter", module: "Rôle d'audience", label: "Consulter le rôle d'audience", restreinte: true },
   { code: "audiences.ligne.creer", module: "Rôle d'audience", label: "Inscrire une audience au rôle" },
   { code: "audiences.role.valider", module: "Rôle d'audience", label: "Valider le rôle de la semaine", restreinte: true },
   { code: "audiences.role.diffuser", module: "Rôle d'audience", label: "Diffuser le rôle", restreinte: true },
   { code: "audiences.retour.saisir", module: "Rôle d'audience", label: "Saisir un retour d'audience" },
 
+  { code: "courriers.consulter", module: "Registre du courrier", label: "Consulter le registre du courrier", restreinte: true },
   { code: "courriers.creer", module: "Registre du courrier", label: "Enregistrer un courrier" },
   { code: "courriers.statut.modifier", module: "Registre du courrier", label: "Faire évoluer le statut" },
 
@@ -84,6 +94,10 @@ const CATALOGUE = [
   { code: "retrocessions.creer", module: "Rétrocessions", label: "Enregistrer une rétrocession" },
   { code: "retrocessions.decaisser", module: "Rétrocessions", label: "Décaisser une rétrocession", restreinte: true },
 
+  // Ne gate QUE la vue d'équipe/échéances RH (supervision) — pas congés/
+  // présence, qui restent du libre-service même si le module est masqué du
+  // menu pour un profil donné (voir cabinet.js).
+  { code: "cabinet.consulter", module: "Cabinet (RH)", label: "Consulter l'équipe et les échéances RH", restreinte: true },
   { code: "cabinet.conge.demander", module: "Cabinet (RH)", label: "Demander un congé" },
   { code: "cabinet.conge.decision", module: "Cabinet (RH)", label: "Valider / rejeter un congé", restreinte: true },
   { code: "cabinet.presence.pointer", module: "Cabinet (RH)", label: "Pointer (présence)" },

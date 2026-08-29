@@ -42,3 +42,39 @@ describe("Garde du module Accès & permissions — associe_fondateur exclu (29/0
     expect(delegations.status).toBe(403);
   });
 });
+
+// Premier cas concret de l'exercice « pour chaque profil, quels onglets »
+// (matrice de référence, 29/08/2026) : Échéancier / Rôle d'audience /
+// Registre du courrier / Cabinet (RH) masqués pour l'associé-fondateur.
+describe("Visibilité de module par profil — 4 onglets masqués pour associe_fondateur (29/08/2026)", () => {
+  test.each([
+    ["/api/evenements", "echeancier.consulter"],
+    ["/api/roles-audience", "audiences.consulter"],
+    ["/api/courriers", "courriers.consulter"],
+    ["/api/cabinet/equipe", "cabinet.consulter"],
+    ["/api/cabinet/echeances", "cabinet.consulter"],
+  ])("associe_fondateur : %s refusé (403)", async (route) => {
+    const token = await creerUtilisateurRole("associe_fondateur");
+    const res = await request(app).get(route).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
+
+  test.each([
+    ["/api/evenements", "associe"],
+    ["/api/roles-audience", "collaborateur"],
+    ["/api/courriers", "juriste"],
+    ["/api/cabinet/equipe", "assistante"],
+  ])("%s toujours autorisé (200) pour %s — les 12 autres profils sont inchangés", async (route, role) => {
+    const token = await creerUtilisateurRole(role);
+    const res = await request(app).get(route).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  test("associe_fondateur : congés/présence restent en libre-service malgré le module masqué", async () => {
+    const token = await creerUtilisateurRole("associe_fondateur");
+    const conges = await request(app).get("/api/cabinet/conges").set("Authorization", `Bearer ${token}`);
+    expect(conges.status).toBe(200);
+    const presences = await request(app).get("/api/cabinet/presences").set("Authorization", `Bearer ${token}`);
+    expect(presences.status).toBe(200);
+  });
+});
