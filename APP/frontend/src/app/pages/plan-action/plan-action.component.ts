@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 const COLONNES = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -97,7 +98,7 @@ const COLONNES = [
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
               <div class="carte-actions">
                 @if (col.statut !== 'a_faire') { <button class="lien" (click)="deplacer(t, -1)">←</button> }
-                @if (col.statut === 'a_valider') { <button class="lien" (click)="valider(t)">Valider</button> }
+                @if (col.statut === 'a_valider' && auth.peut('taches.valider')) { <button class="lien" (click)="valider(t)">Valider</button> }
                 @if (col.statut !== 'termine') { <button class="lien" (click)="deplacer(t, 1)">→</button> }
               </div>
             </div>
@@ -134,6 +135,7 @@ const COLONNES = [
 })
 export class PlanActionComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly colonnes = COLONNES;
   readonly taches = signal<any[]>([]);
   readonly utilisateurs = signal<any[]>([]);

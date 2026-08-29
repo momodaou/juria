@@ -50,7 +50,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             </div>
           }
 
-          @if (r.resultat === 'potentiel' && !decisionPrise()) {
+          @if (r.resultat === 'potentiel' && !decisionPrise() && auth.peut('conflits.decision')) {
             <div class="decision">
               <label>Décision de l'associé</label>
               <input class="in" [(ngModel)]="motif" name="motif" placeholder="Motif (obligatoire)" />

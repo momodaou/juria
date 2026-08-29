@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-role-audience',
@@ -26,8 +27,8 @@ import { ApiService, Dossier } from '../../core/api.service';
           <span class="tag" [class.ok]="r.statut === 'diffuse'">
             {{ r.statut ? libelleStatut(r.statut) : 'Aucun rôle pour cette semaine' }}
           </span>
-          @if (r.id && r.statut === 'brouillon') { <button class="btn sm" (click)="valider(r.id)">Valider le rôle</button> }
-          @if (r.id && r.statut === 'valide') { <button class="btn sm" (click)="diffuser(r.id)">Diffuser à l'équipe</button> }
+          @if (r.id && r.statut === 'brouillon' && auth.peut('audiences.role.valider')) { <button class="btn sm" (click)="valider(r.id)">Valider le rôle</button> }
+          @if (r.id && r.statut === 'valide' && auth.peut('audiences.role.diffuser')) { <button class="btn sm" (click)="diffuser(r.id)">Diffuser à l'équipe</button> }
         </div>
 
         @if (r.lignes?.length) {
@@ -154,6 +155,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class RoleAudienceComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly role = signal<any | null>(null);
   readonly motifs = signal<{ id: string; libelle: string }[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);

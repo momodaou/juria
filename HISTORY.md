@@ -1145,3 +1145,25 @@ Aucun changement de schéma ni de permission (les 2 actions existaient déjà �
 **Déploiement production — effectué et vérifié le 29/08/2026** (accord utilisateur, « oui, déploie »). Migration `permissions_role` importée (`--user=juria_app`, sans piège). API `juria-00050-25l` (précédente `juria-00049-dnj`), frontend `juria-web-00045-9mx` (précédente `juria-web-00044-f86`).
 
 **Vérifié directement en production avec le compte de test associé-fondateur** (réactivé, testé, redésactivé) : `403` confirmé sur les 4 routes nouvellement gardées ; `200` confirmé pour congés et présence (libre-service préservé) ; `200` confirmé pour un compte associé sur les 4 mêmes routes (aucune régression sur les 12 autres profils).
+
+## 2026-08-29 — Balayage « niveau 4 → niveau 2 » : boutons visibles qui échouaient au clic
+
+**Contexte** : question de l'utilisateur sur la manière dont les restrictions se manifestent à l'écran (onglet masqué / action masquée / bouton visible mais refusé au clic). Réponse donnée avec une grille de lecture à 4 niveaux, puis accord explicite (« on applique tout ce que tu as proposé ») pour convertir systématiquement le niveau 4 (bouton visible, échoue en 403) en niveau 2 (bouton masqué côté écran quand la permission manque).
+
+**Méthode** : audit des 26 actions cataloguées marquées `restreinte: true` (celles conçues dès l'origine pour être réservées à une partie des rôles — les plus susceptibles d'être réellement restreintes en pratique, donc les plus rentables à corriger en premier). Croisement avec une recherche de `auth.peut('<code>')` dans le frontend.
+
+**Résultat de l'audit** : 14/26 déjà correctes (7 via garde explicite déjà en place — `dossiers.archiver/supprimer`, `clients.supprimer`, `factures.annuler`, `dossiers.pro_bono.declarer`, `parametres.cabinet.modifier/honoraires.modifier` —, 7 via le masquage d'onglet `requiert` qui couvre tout le module — les `.consulter`). **10 corrigées dans cette passe** :
+- `ouverture.component.ts` : `conflits.decision` (bloc « Décision de l'associé »).
+- `role-audience.component.ts` : `audiences.role.valider`, `audiences.role.diffuser`.
+- `cabinet.component.ts` : `cabinet.conge.decision` (Approuver/Refuser), `cabinet.bulletin.generer` (section Bulletins entière).
+- `depenses.component.ts` : `depenses.decision` (Valider/Rejeter), `depenses.decaisser` (Décaisser), `depenses.petite_caisse.doter` (section Petite caisse entière).
+- `retrocessions.component.ts` : `retrocessions.decaisser`.
+- `plan-action.component.ts` : `taches.valider`.
+
+Chaque composant a nécessité l'ajout de `AuthService` (import + injection) — aucun n'en disposait avant cette passe, seul `ouverture.component.ts` l'avait déjà (pour un autre usage).
+
+**2 actions `restreinte` sans bouton correspondant, rien à corriger** : `evenements.jobs.declencher` (déclenchement manuel du job d'alertes de délais — aucun bouton dans l'écran Échéancier, appelé manuellement via l'API ou Cloud Scheduler) ; `cabinet.bulletins.consulter` (garde serveur défensive du 18/08/2026 contre le contournement `?utilisateur_id=` — aucun écran de consultation des bulletins de tous n'a jamais été construit côté frontend, rien à masquer).
+
+**Gap restant, signalé et volontairement non traité** : les ~41 actions cataloguées **non** marquées `restreinte` (ouvertes à tous les rôles par défaut aujourd'hui) n'ont toujours aucune garde côté écran — un risque dormant, qui ne se manifeste que si quelqu'un restreint l'une d'elles pour un rôle via la Matrice sans que le bouton correspondant soit mis à jour. Pratique retenue pour la suite : câbler la garde écran **au moment où** une action est effectivement restreinte pour la première fois (comme déjà fait pour chaque nouvelle fermeture de module cette semaine), plutôt qu'un balayage complet préventif des 41 actions dès maintenant — jugé disproportionné tant qu'aucune ne l'est réellement.
+
+**Vérification** : build Angular production sans erreur. Aucun changement backend ni de schéma — correctif d'interface pur, aucune migration/déploiement API nécessaire, frontend seul.

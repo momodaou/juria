@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-depenses',
@@ -118,11 +119,11 @@ import { ApiService } from '../../core/api.service';
               <td>{{ d.dossier_numero || '—' }}</td>
               <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ d.statut }}</span></td>
               <td>
-                @if (d.statut === 'soumise') {
+                @if (d.statut === 'soumise' && auth.peut('depenses.decision')) {
                   <button class="lien" (click)="decision(d, 'validee')">Valider</button>
                   <button class="lien" (click)="decision(d, 'rejetee')">Rejeter</button>
                 }
-                @if (d.statut === 'validee') { <button class="lien" (click)="decaisser(d)">Décaisser</button> }
+                @if (d.statut === 'validee' && auth.peut('depenses.decaisser')) { <button class="lien" (click)="decaisser(d)">Décaisser</button> }
               </td>
             </tr>
           }
@@ -130,14 +131,16 @@ import { ApiService } from '../../core/api.service';
       } @else { <p class="muted">Aucune dépense.</p> }
     </section>
 
-    <section class="panel">
-      <h3>Petite caisse — dotation mensuelle</h3>
-      <div class="upload">
-        <input class="sel" type="date" [(ngModel)]="dotationMois" name="dotationMois" />
-        <input class="sel" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
-        <button class="btn sm" (click)="definirDotation()">Enregistrer</button>
-      </div>
-    </section>
+    @if (auth.peut('depenses.petite_caisse.doter')) {
+      <section class="panel">
+        <h3>Petite caisse — dotation mensuelle</h3>
+        <div class="upload">
+          <input class="sel" type="date" [(ngModel)]="dotationMois" name="dotationMois" />
+          <input class="sel" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
+          <button class="btn sm" (click)="definirDotation()">Enregistrer</button>
+        </div>
+      </section>
+    }
 
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
@@ -172,6 +175,7 @@ import { ApiService } from '../../core/api.service';
 })
 export class DepensesComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly depenses = signal<any[]>([]);
   readonly comptes = signal<any[]>([]);
   readonly caisse = signal<any | null>(null);

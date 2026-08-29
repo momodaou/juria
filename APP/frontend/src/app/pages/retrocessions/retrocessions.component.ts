@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-retrocessions',
@@ -89,7 +90,7 @@ import { ApiService, Dossier } from '../../core/api.service';
                 @if (r.facture_numero && !r.honoraires_encaisses) { <span class="tag haute">non encaissée</span> }
               </td>
               <td>
-                @if (r.statut !== 'decaissee') {
+                @if (r.statut !== 'decaissee' && auth.peut('retrocessions.decaisser')) {
                   <button class="lien" (click)="decaisser(r)" [disabled]="r.facture_numero && !r.honoraires_encaisses">Décaisser</button>
                 }
               </td>
@@ -116,6 +117,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class RetrocessionsComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly retros = signal<any[]>([]);
   readonly qualites = signal<{ code: string; libelle: string; taux: number }[]>([]);
   readonly utilisateurs = signal<any[]>([]);

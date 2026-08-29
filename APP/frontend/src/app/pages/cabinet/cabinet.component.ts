@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-cabinet',
@@ -85,7 +86,7 @@ import { ApiService } from '../../core/api.service';
               <td>{{ c.date_debut | date:'dd/MM/yyyy' }}</td><td>{{ c.date_fin | date:'dd/MM/yyyy' }}</td>
               <td><span class="tag" [class.ok]="c.statut==='approuve'" [class.haute]="c.statut==='refuse'">{{ c.statut }}</span></td>
               <td>
-                @if (c.statut === 'demande') {
+                @if (c.statut === 'demande' && auth.peut('cabinet.conge.decision')) {
                   <button class="lien" (click)="decider(c, 'approuve')">Approuver</button>
                   <button class="lien" (click)="decider(c, 'refuse')">Refuser</button>
                 }
@@ -96,19 +97,21 @@ import { ApiService } from '../../core/api.service';
       } @else { <p class="muted">Aucune demande.</p> }
     </section>
 
-    <section class="panel">
-      <h3>Bulletins de paie (option légère — archivage indicatif)</h3>
-      <div class="upload">
-        <select class="sel" [(ngModel)]="nouveauBulletin.utilisateur_id" name="bulUser">
-          <option value="">Membre…</option>
-          @for (m of equipe(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
-        </select>
-        <input class="sel" type="date" [(ngModel)]="nouveauBulletin.mois" name="bulMois" />
-        <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_brut" name="bulBrut" placeholder="Brut" />
-        <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_net" name="bulNet" placeholder="Net" />
-        <button class="btn sm" (click)="archiverBulletin()">Archiver</button>
-      </div>
-    </section>
+    @if (auth.peut('cabinet.bulletin.generer')) {
+      <section class="panel">
+        <h3>Bulletins de paie (option légère — archivage indicatif)</h3>
+        <div class="upload">
+          <select class="sel" [(ngModel)]="nouveauBulletin.utilisateur_id" name="bulUser">
+            <option value="">Membre…</option>
+            @for (m of equipe(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+          </select>
+          <input class="sel" type="date" [(ngModel)]="nouveauBulletin.mois" name="bulMois" />
+          <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_brut" name="bulBrut" placeholder="Brut" />
+          <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_net" name="bulNet" placeholder="Net" />
+          <button class="btn sm" (click)="archiverBulletin()">Archiver</button>
+        </div>
+      </section>
+    }
   `,
   styles: [`
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
@@ -123,6 +126,7 @@ import { ApiService } from '../../core/api.service';
 })
 export class CabinetComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly equipe = signal<any[]>([]);
   readonly echeances = signal<any[]>([]);
   readonly conges = signal<any[]>([]);
