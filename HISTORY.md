@@ -1231,3 +1231,15 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Implémentation** : 40 appels `PUT /api/acces/permissions` appliqués directement en production (authentifiés, chacun tracé dans `journal_audit` — même mécanisme que pour `associe_fondateur` la veille), reportés dans `schema.sql` pour qu'une base locale fraîche reste cohérente. Nouveau test de non-régression (`accesGarde.test.js`) : garantit dans le temps que `of_counsel` et `collaborateur` ont exactement le même ensemble d'actions autorisées, pour que cette dérive spécifique — la plus significative des 40 — ne se reproduise plus silencieusement.
 
 **Vérification** : suite étendue à **167/167** (schéma neuf, `docker compose down -v`). Aucun changement de code applicatif — correctif de données uniquement, aucun déploiement API/frontend nécessaire.
+
+## 2026-08-30 — Of Counsel : retour à un profil restreint (exception explicite)
+
+**Demande utilisateur** : « à titre exceptionnel : garder les autorisations initiales du Of Counsel car il a un statut spécifique et intervient plus à l'externe et périodiquement. De toute façon je pourrais augmenter ses autorisations plus tard dans la matrice des permissions ? »
+
+**Contexte** : la veille (29/08/2026), l'audit des 10 profils avait rétabli Of Counsel sur un miroir exact de Collaborateur (14 actions accordées), en application stricte de la décision du 18/08/2026 (« Of Counsel identique à Avocat collaborateur »). L'utilisateur revient sur cette décision spécifiquement pour ce rôle : son statut réel (intervention externe, périodique) justifie un profil plus étroit que celui d'un collaborateur intégré à temps plein.
+
+**Réponse à la question posée** : oui, confirmé — les 14 actions restent des cases normales de la Matrice des permissions, pas verrouillées ni retirées du catalogue. L'associé (ou l'administrateur IT) peut les réactiver au cas par cas à tout moment depuis l'écran, sans intervention de développeur.
+
+**Implémentation** : les 14 actions accordées la veille repassées à `FALSE` pour `of_counsel` via 14 appels `PUT /api/acces/permissions` (tracés dans `journal_audit`) : `audiences.ligne.creer`, `clients.modifier`, `courriers.consulter`, `courriers.creer`, `depenses.creer`, `depenses.vignettes.mouvement`, `dossiers.clients_additionnels.gerer`, `dossiers.instances.gerer`, `dossiers.modifier`, `dossiers.parties.gerer`, `echeancier.consulter`, `evenements.creer`, `taches.creer`, `taches.statut.modifier`. Reporté dans `schema.sql` en nouvelle section (« annule et remplace » la section du 29/08, qui n'est pas réécrite — convention déjà suivie tout au long de ce projet). Le test de non-régression du 29/08 (`Of Counsel = Collaborateur`) remplacé par son inverse (`Of Counsel — profil restreint, exception délibérée`) : vérifie désormais que ces 14 actions restent bien à l'écart, pour que ce choix délibéré ne soit pas silencieusement écrasé par un futur audit automatique.
+
+**Vérification** : suite étendue à **167/167** (schéma neuf, `docker compose down -v`). Aucun changement de code applicatif — donnée uniquement, aucun déploiement API/frontend nécessaire.

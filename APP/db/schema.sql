@@ -2337,3 +2337,34 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('admin_it','temps.creer',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
 -- =============== FIN AUDIT COMPLET DES 10 PROFILS RESTANTS ===============
+
+-- =====================================================================
+--  OF COUNSEL — EXCEPTION EXPLICITE : PROFIL RESTREINT CONSERVÉ (30/08/2026)
+--
+--  Annule et remplace, pour ce rôle précis, la décision du 18/08/2026
+--  (« Of Counsel identique à Avocat collaborateur ») rétablie la veille
+--  (29/08/2026, audit des 10 profils). Décision explicite de l'utilisateur :
+--  statut spécifique, Of Counsel intervient surtout à l'externe et
+--  périodiquement — garder son profil d'origine plus étroit, augmentable
+--  au cas par cas depuis la Matrice si un besoin réel se présente, plutôt
+--  qu'un miroir automatique de Collaborateur.
+--
+--  Revient exactement sur les 14 actions accordées la veille.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('of_counsel','audiences.ligne.creer',FALSE),
+ ('of_counsel','clients.modifier',FALSE),
+ ('of_counsel','courriers.consulter',FALSE),
+ ('of_counsel','courriers.creer',FALSE),
+ ('of_counsel','depenses.creer',FALSE),
+ ('of_counsel','depenses.vignettes.mouvement',FALSE),
+ ('of_counsel','dossiers.clients_additionnels.gerer',FALSE),
+ ('of_counsel','dossiers.instances.gerer',FALSE),
+ ('of_counsel','dossiers.modifier',FALSE),
+ ('of_counsel','dossiers.parties.gerer',FALSE),
+ ('of_counsel','echeancier.consulter',FALSE),
+ ('of_counsel','evenements.creer',FALSE),
+ ('of_counsel','taches.creer',FALSE),
+ ('of_counsel','taches.statut.modifier',FALSE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = FALSE;
+-- =============== FIN OF COUNSEL — PROFIL RESTREINT ===============

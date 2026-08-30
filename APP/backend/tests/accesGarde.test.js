@@ -172,24 +172,25 @@ describe("Archiviste — menu réduit à GED/Courrier/Bibliothèque (29/08/2026)
   });
 });
 
-// Audit complet des 10 profils restants (29/08/2026) : plusieurs écarts
-// entre l'intention documentée et l'état réel de permissions_role trouvés
-// et corrigés — le plus significatif, Of Counsel censé être identique à
-// Collaborateur depuis le 18/08/2026 mais ne l'étant pas en pratique
-// (27/62 actions au lieu d'un miroir exact). Ce test garde ce miroir dans
-// le temps plutôt que de laisser la dérive se reproduire silencieusement.
-describe("Of Counsel = Collaborateur (décision du 18/08/2026, garantie dans le temps)", () => {
-  test("les deux rôles ont exactement le même jeu d'actions autorisées", async () => {
+// Of Counsel — profil délibérément plus étroit que Collaborateur
+// (30/08/2026, exception explicite de l'utilisateur : statut spécifique,
+// intervient surtout à l'externe et périodiquement). Annule et remplace
+// la décision du 18/08/2026 (« identique à Avocat collaborateur ») pour
+// ce rôle précis — augmentable au cas par cas depuis la Matrice si besoin
+// se présente, plutôt qu'un miroir automatique de Collaborateur.
+describe("Of Counsel — profil restreint, exception délibérée (30/08/2026)", () => {
+  const ACTIONS_NON_ACCORDEES = [
+    "audiences.ligne.creer", "clients.modifier", "courriers.consulter", "courriers.creer",
+    "depenses.creer", "depenses.vignettes.mouvement", "dossiers.clients_additionnels.gerer",
+    "dossiers.instances.gerer", "dossiers.modifier", "dossiers.parties.gerer",
+    "echeancier.consulter", "evenements.creer", "taches.creer", "taches.statut.modifier",
+  ];
+
+  test("n'a pas les actions que Collaborateur a en plus — conservées à l'écart délibérément", async () => {
     const { rows } = await pool.query(
-      `SELECT role, action_code FROM permissions_role
-       WHERE role IN ('of_counsel','collaborateur') AND autorise = TRUE
-       ORDER BY action_code`
+      "SELECT action_code FROM permissions_role WHERE role = 'of_counsel' AND autorise = TRUE"
     );
-    const parRole = { of_counsel: new Set(), collaborateur: new Set() };
-    for (const r of rows) parRole[r.role].add(r.action_code);
-    const manquantes = [...parRole.collaborateur].filter((a) => !parRole.of_counsel.has(a));
-    const excedentaires = [...parRole.of_counsel].filter((a) => !parRole.collaborateur.has(a));
-    expect(manquantes).toEqual([]);
-    expect(excedentaires).toEqual([]);
+    const accordees = new Set(rows.map((r) => r.action_code));
+    for (const a of ACTIONS_NON_ACCORDEES) expect(accordees.has(a)).toBe(false);
   });
 });
