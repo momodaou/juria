@@ -1364,3 +1364,19 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 - Fiche client (atteinte par le même lien indirect) : **« Modifier » et « Statut KYC » absents** — confirme le 3ᵉ correctif de la veille sous un profil différent.
 
 **Conclusion** : les 3 correctifs trouvés hier via l'archiviste ne sont pas spécifiques à ce rôle — ils tiennent correctement pour toute combinaison de permissions. Aucun changement de code nécessaire dans cette passe. Compte de test désactivé après vérification.
+
+## 2026-08-30 — Vérification visuelle avec un troisième profil restreint (Stagiaire) : confirme aussi le sens « autorisé »
+
+**Demande utilisateur** : « on continue. »
+
+**Choix du profil** : Stagiaire (non-avocat), profil délibérément à contre-pied des deux précédents pour couvrir l'angle mort possible d'une vérification qui ne teste que le masquage — inverse `dossiers.modifier=faux` (contrairement aux deux profils précédents, tous deux à `vrai`) et surtout `ia.resume=vrai` **et** `ia.chronologie=vrai` (les deux à `faux` chez l'archiviste et l'assistant comptable) : seul moyen de vérifier que le panneau Assistant IA de la fiche dossier — corrigé la veille pour se masquer correctement — s'affiche aussi correctement, avec ses deux boutons actifs, quand les permissions sont accordées. Autre contraste utile : `clients.modifier=vrai` mais `clients.kyc_piece.ajouter=faux` (combinaison inverse de celle testée avec l'archiviste), `dossiers.creer=vrai` (onglet « Nouveau dossier » accessible, contrairement aux deux profils précédents).
+
+**Résultat : aucun gap, et confirmation du sens « autorisé »** :
+- Menu : Nouveau dossier, Clients & KYC, Rôle d'audience, Atelier d'actes, Bibliothèque, Plan d'action présents ; Échéancier, Registre du courrier, Cabinet (RH), Dépenses & caisse, Facturation, Rétrocessions absents — conforme.
+- Fiche dossier : **pas** de bouton « Modifier » (`dossiers.modifier=faux`) ; téléversement GED, ajout de temps, ajout de communication tous visibles ; **pas** de formulaire « Délais & audiences » ; **panneau Assistant IA affiché avec ses deux boutons « Résumer (IA) » et « Chronologie du dossier (IA)» actifs** — confirme que le correctif de la veille fonctionne dans les deux sens, pas seulement en masquage.
+- Fiche client (via le même lien indirect) : « Modifier » et « Mettre à jour le statut » **visibles** (`clients.modifier=vrai`) ; formulaire d'ajout de pièce KYC **absent** (`clients.kyc_piece.ajouter=faux`) — combinaison inverse de celle testée hier, comportement correct dans les deux cas.
+- Atelier d'actes : message « Vous n'êtes pas autorisé à générer un acte. » (`actes.generer=faux`).
+- Bibliothèque : « + Nouvelle ressource » visible (`biblio.creer=vrai`).
+- Nouveau dossier : écran atteignable et fonctionnel (formulaire de contrôle de conflit présent, `conflits.soumettre=vrai`).
+
+**Conclusion des 3 vérifications visuelles consécutives (archiviste, assistant comptable, stagiaire)** : le masquage des 41 actions et les 3 correctifs du 30/08 sont robustes dans les deux sens (masqué quand refusé, pleinement fonctionnel quand accordé) à travers des profils aux combinaisons de permissions très différentes. Aucun changement de code dans cette passe. Compte de test désactivé après vérification.
