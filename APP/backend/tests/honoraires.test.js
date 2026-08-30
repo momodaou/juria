@@ -70,8 +70,14 @@ async function creerDossier(tokenAppelant, payload) {
     });
 }
 
-describe("Déclaration pro bono — réservée aux avocats (associé, associé-fondateur, Of Counsel, collaborateur)", () => {
-  test("refusée (403) pour un rôle non-avocat (assistante)", async () => {
+// 30/08/2026 (précision de l'utilisateur) : un collaborateur peut SAISIR un
+// dossier pro bono, mais uniquement sur instruction d'un associé — seuls
+// les associés ont droit au pro bono (le quota est compté par
+// responsable). Le système ne vérifie pas l'instruction elle-même (pas
+// vérifiable), mais ce qui l'est : le responsable attribué doit être un
+// associé, quel que soit le rôle du compte qui soumet le formulaire.
+describe("Déclaration pro bono — dossiers.pro_bono.declarer (qui peut soumettre) + responsable obligatoirement associé (30/08/2026)", () => {
+  test("refusée (403) pour un rôle non-avocat (assistante) — n'a pas la permission de soumettre", async () => {
     const clientId = await creerClient();
     const assistante = await creerUtilisateurRole("assistante");
     const res = await creerDossier(assistante.token, {
@@ -89,8 +95,8 @@ describe("Déclaration pro bono — réservée aux avocats (associé, associé-f
     expect(res.status).toBe(403);
   });
 
-  test.each(["associe", "associe_fondateur", "of_counsel", "collaborateur"])(
-    "acceptée pour le rôle avocat %s",
+  test.each(["associe", "associe_fondateur"])(
+    "acceptée pour %s, responsable = soi-même",
     async (role) => {
       const clientId = await creerClient();
       const avocat = await creerUtilisateurRole(role);
@@ -101,6 +107,26 @@ describe("Déclaration pro bono — réservée aux avocats (associé, associé-f
       expect(res.body.pro_bono).toBe(true);
     }
   );
+
+  test("collaborateur peut soumettre (a la permission), mais le dossier doit être attribué à un associé (400 sinon)", async () => {
+    const clientId = await creerClient();
+    const collaborateur = await creerUtilisateurRole("collaborateur");
+    // Responsable = lui-même (collaborateur) -> refusé : seul un associé
+    // peut être responsable d'un dossier pro bono.
+    const refuse = await creerDossier(collaborateur.token, {
+      client_id: clientId, responsable_id: collaborateur.id, pro_bono: true,
+    });
+    expect(refuse.status).toBe(400);
+
+    // Responsable = un associé (instruction reçue de sa part) -> accepté,
+    // même si c'est le collaborateur qui soumet le formulaire.
+    const associe = await creerUtilisateurRole("associe");
+    const accepte = await creerDossier(collaborateur.token, {
+      client_id: clientId, responsable_id: associe.id, pro_bono: true,
+    });
+    expect(accepte.status).toBe(201);
+    expect(accepte.body.pro_bono).toBe(true);
+  });
 });
 
 describe("Quota pro bono — blocage réel à la création", () => {

@@ -224,6 +224,17 @@ router.get("/:id/documents", async (req, res) => {
 // bloqué au-delà du quota mensuel/responsable — sans ce blocage, marquer
 // n'importe quel dossier "pro bono" deviendrait une échappatoire triviale
 // au seuil d'honoraires classique.
+//
+// 30/08/2026 (précision de l'utilisateur) : un collaborateur peut SAISIR
+// un dossier pro bono, mais uniquement sur instruction d'un associé —
+// seuls les associés ont droit au pro bono (le quota est compté par
+// responsable). Le système ne peut pas vérifier une instruction verbale ;
+// la traduction retenue est de vérifier ce qui EST vérifiable : le
+// responsable attribué à un dossier pro bono doit être un associé
+// (associe/associe_fondateur), quel que soit le rôle de la personne qui
+// soumet le formulaire. dossiers.pro_bono.declarer reste un premier
+// filtre (qui a le droit de seulement tenter l'opération), la vérification
+// du responsable est la garde qui compte vraiment.
 router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
   const proBono = !!b.pro_bono;
@@ -231,6 +242,10 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     if (proBono) {
       if (!(await estAutorise(req.user.role, "dossiers.pro_bono.declarer"))) {
         return res.status(403).json({ error: "Non autorisé à déclarer un dossier pro bono" });
+      }
+      const { rows: [resp] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [b.responsable_id]);
+      if (!resp || !["associe", "associe_fondateur"].includes(resp.role)) {
+        return res.status(400).json({ error: "Un dossier pro bono doit être attribué à un avocat associé (seuls les associés ont droit au pro bono)." });
       }
       const { rows: [p] } = await pool.query(
         "SELECT quota_pro_bono_mensuel FROM parametres_cabinet WHERE id = 1"

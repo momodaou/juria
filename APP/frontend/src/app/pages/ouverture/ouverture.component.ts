@@ -242,17 +242,20 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             <label>Responsable</label>
             <select class="in" [(ngModel)]="dossier.responsable_id" name="responsableId">
               <option value="">— Sélectionner —</option>
-              @for (u of utilisateurs(); track u.id) {
+              @for (u of responsablesDisponibles(); track u.id) {
                 <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option>
               }
             </select>
+            @if (dossier.pro_bono) {
+              <span class="hint">Un dossier pro bono ne peut être attribué qu'à un avocat associé — liste filtrée.</span>
+            }
           </div>
         </div>
 
         @if (auth.peut('dossiers.pro_bono.declarer')) {
           <label class="pb">
-            <input type="checkbox" [(ngModel)]="dossier.pro_bono" name="proBono" />
-            Dossier pro bono (soumis au quota mensuel, frais de procédure minimum plutôt que le seuil d'honoraires classique)
+            <input type="checkbox" [(ngModel)]="dossier.pro_bono" (ngModelChange)="proBonoChange()" name="proBono" />
+            Dossier pro bono (soumis au quota mensuel, frais de procédure minimum plutôt que le seuil d'honoraires classique — réservé aux dossiers attribués à un associé, y compris sur saisie déléguée à un collaborateur)
           </label>
         }
 
@@ -363,6 +366,22 @@ export class OuvertureComponent implements OnInit {
 
   formValide(): boolean {
     return !!(this.dossier.client_id && this.dossier.responsable_id);
+  }
+
+  // Un dossier pro bono ne peut être attribué qu'à un associé (30/08/2026,
+  // précision de l'utilisateur) — un collaborateur peut saisir le
+  // dossier, mais uniquement sur instruction d'un associé, seul habilité
+  // au pro bono. Filtre indicatif côté écran ; la vraie garde est dans
+  // POST /api/dossiers.
+  responsablesDisponibles(): any[] {
+    if (!this.dossier.pro_bono) return this.utilisateurs();
+    return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+  }
+
+  proBonoChange(): void {
+    if (this.dossier.pro_bono && !this.responsablesDisponibles().some((u: any) => u.id === this.dossier.responsable_id)) {
+      this.dossier.responsable_id = '';
+    }
   }
 
   // Clients additionnels (18/08/2026) — un même dossier peut comporter

@@ -2368,3 +2368,31 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('of_counsel','taches.statut.modifier',FALSE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = FALSE;
 -- =============== FIN OF COUNSEL — PROFIL RESTREINT ===============
+
+-- =====================================================================
+--  PRO BONO ATTRIBUÉ À UN ASSOCIÉ, PAS SEULEMENT DÉCLARÉ PAR UN AVOCAT
+--  HABILITÉ (30/08/2026)
+--
+--  Précision de l'utilisateur, en poursuivant l'exercice « pour chaque
+--  profil » : un collaborateur peut SAISIR un dossier pro bono, mais
+--  uniquement sur instruction d'un associé — seuls les associés ont droit
+--  au pro bono (quota compté par responsable). Le système ne peut pas
+--  vérifier une instruction verbale ; traduit en vérifiant ce qui EST
+--  vérifiable — backend/src/routes/dossiers.js exige désormais que le
+--  responsable d'un dossier pro bono soit associe/associe_fondateur, quel
+--  que soit le rôle du compte qui soumet le formulaire. Frontend
+--  (ouverture.component.ts) : liste des responsables filtrée aux associés
+--  dès que la case pro bono est cochée (garde-fou indicatif, la vraie
+--  garde est côté serveur).
+--
+--  dossiers.pro_bono.declarer rétabli pour collaborateur, redevenu sûr
+--  grâce à cette nouvelle garde (contrairement à hier où le seul rempart
+--  était cette permission — désormais un second niveau de contrôle
+--  existe). Conforme à la décision du 18/08/2026 (« associé, associé-
+--  fondateur, Of Counsel, collaborateur » habilités) — trouvée fausse
+--  pour collaborateur en creusant ce point avec l'utilisateur.
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('collaborateur','dossiers.pro_bono.declarer',TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+-- =============== FIN PRO BONO ATTRIBUÉ À UN ASSOCIÉ ===============
