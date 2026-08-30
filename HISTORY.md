@@ -1345,3 +1345,22 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Vérification** : 177/177 tests backend (aucun changement backend), build Angular OK. **Vérifié visuellement en production, avant/après** : captures d'écran confirmant la disparition des 3 éléments après déploiement, sur le compte archiviste réel utilisé pour le test. Compte de test désactivé après vérification (restauré à son état antérieur).
 
 **Déploiement production — effectué et vérifié le 30/08/2026**. Frontend uniquement, révision `juria-web-00050-8dq` (précédente `juria-web-00049-klq`).
+
+## 2026-08-30 — Vérification visuelle avec un second profil restreint (Assistant comptable) : aucun gap supplémentaire
+
+**Demande utilisateur** : « Vérifie visuellement avec un autre profil restreint. »
+
+**Choix du profil** : Assistant comptable, délibérément différent de l'archiviste testé juste avant — combinaison de droits contrastée sur les mêmes actions (`depenses.creer=vrai` mais `depenses.decision/decaisser/vignettes/petite_caisse=faux`, `factures.paiement.ajouter=vrai` mais `factures.creer/annuler=faux`, `dossiers.modifier/documents.creer/temps.creer/communications.creer=vrai` mais `evenements.creer/ia.resume/ia.chronologie/clients.modifier/actes.generer=faux`) — pensé pour retester précisément les 3 correctifs de la vérification précédente (panneau IA, formulaire délais, boutons fiche client) sous un angle différent, plus large aussi que l'archiviste sur les onglets visibles (Facturation, Dépenses & caisse, Échéancier, Atelier d'actes, Clients & KYC, Plan d'action tous accessibles).
+
+**Méthode** : même outillage (Playwright headless via Docker), compte de test créé pour l'occasion (`test.assistant.comptable.verif@…`), validé, parcours : menu → Facturation → Dépenses & caisse → Échéancier → Atelier d'actes → fiche du même dossier réel (Cabinet CADET c/ ABFN) → fiche client via le lien.
+
+**Résultat : aucun gap trouvé.** Chaque écran correspond exactement à ce que le profil autorise :
+- Menu : Cabinet (RH), Registre du courrier, Rôle d'audience, Rétrocessions, Nouveau dossier absents (permissions de consultation/création correspondantes toutes à `faux`) ; Facturation, Dépenses & caisse, Clients & KYC, Échéancier, Atelier d'actes, Bibliothèque, Plan d'action présents.
+- Facturation : pas de bouton « Émettre » dans les deux formulaires de création (`factures.creer=faux`).
+- Dépenses & caisse : « + Nouvelle dépense » visible (`depenses.creer=vrai`) ; section « Petite caisse — dotation mensuelle » absente en entier ; « Vignettes de plaidoirie » affiché sans son formulaire de mouvement.
+- Échéancier : aucun formulaire d'ajout (délai ou tâche).
+- Atelier d'actes : pas de bouton « Générer l'acte », message explicite affiché à la place — confirme le patron ajouté la veille sur ce fichier.
+- Fiche dossier (même dossier réel que le test précédent) : « Modifier », téléversement GED, ajout de temps et de communication tous visibles (droits correspondants à `vrai`) ; **formulaire « Délais & audiences » absent et panneau « Assistant IA » absent** — confirme que les 2 correctifs de la veille sur ce fichier tiennent sous un profil différent.
+- Fiche client (atteinte par le même lien indirect) : **« Modifier » et « Statut KYC » absents** — confirme le 3ᵉ correctif de la veille sous un profil différent.
+
+**Conclusion** : les 3 correctifs trouvés hier via l'archiviste ne sont pas spécifiques à ce rôle — ils tiennent correctement pour toute combinaison de permissions. Aucun changement de code nécessaire dans cette passe. Compte de test désactivé après vérification.
