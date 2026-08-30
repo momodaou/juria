@@ -1283,3 +1283,7 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Vérification** : suite étendue à **177/177** (schéma neuf, `docker compose down -v`). Build Angular production sans erreur.
 
 **Non déployé à ce stade** — backend et frontend modifiés, en attente de confirmation.
+
+**Déploiement production — effectué et vérifié le 30/08/2026** (accord utilisateur, « oui, déploie »). API `juria-00052-5gr` (précédente `juria-00051-xtd`), frontend `juria-web-00048-llz` (précédente `juria-web-00047-cz5`). Aucune migration nécessaire (code pur).
+
+**Vérifié directement en production avec un vrai compte collaborateur** (créé, validé, testé, désactivé après vérification) : tentative de se désigner lui-même comme responsable → `403` avec le message attendu ; désignation d'un associé comme responsable → `201`. Dossier et client de test supprimés proprement après vérification (aucune activité réelle enregistrée, suppression acceptée sans blocage).
