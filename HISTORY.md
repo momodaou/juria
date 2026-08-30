@@ -1325,4 +1325,4 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 
 **Vérifié** : suite backend **177/177** verte (`docker compose down -v` puis conteneur `node:22`, aucun changement backend dans cette passe — vérification par prudence, conforme à la pratique établie), build Angular production sans erreur (mêmes avertissements CommonJS préexistants liés à `mammoth`, sans rapport).
 
-**Déploiement** : frontend uniquement (aucun changement backend/schéma dans cette passe).
+**Déploiement production — effectué le 30/08/2026** (accord utilisateur, « oui, déploie »). Frontend uniquement (aucun changement backend/schéma dans cette passe) — révision `juria-web-00049-klq` (précédente `juria-web-00048-llz`). `/` confirmé `200` après bascule. Pas de test de clic manuel en navigateur avec un rôle restreint (outillage non disponible, même limite déjà documentée pour d'autres changements de gabarit purs) — à confirmer visuellement par l'utilisateur à l'usage si besoin.
