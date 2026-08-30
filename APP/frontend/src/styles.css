@@ -26,6 +26,18 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 .dock-toggle:hover{background:rgba(255,255,255,.14);color:#fff}
 
 .side nav{margin-top:22px;flex:1;display:flex;flex-direction:column;gap:4px}
+/* En-têtes de groupe du menu (30/08/2026) — repris de la maquette de
+   regroupement discutée précédemment, jamais posée en CSS jusqu'ici. */
+.nav-groupe{
+  font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:rgba(207,214,227,.55);padding:14px 12px 4px;white-space:nowrap;
+}
+.side nav a:first-child,
+.nav-groupe:first-child{margin-top:0}
+.app.collapsed .nav-groupe{
+  height:1px;padding:0;margin:9px 8px;overflow:hidden;text-indent:-9999px;
+  background:rgba(255,255,255,.12);
+}
 .side nav a{display:flex;align-items:center;gap:10px;color:#cfd6e3;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:14px;white-space:nowrap}
 .side nav a:hover{background:rgba(255,255,255,.08);color:#fff}
 .side nav a.active{background:var(--gold);color:#1b2436;font-weight:600}

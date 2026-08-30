@@ -1380,3 +1380,22 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 - Nouveau dossier : écran atteignable et fonctionnel (formulaire de contrôle de conflit présent, `conflits.soumettre=vrai`).
 
 **Conclusion des 3 vérifications visuelles consécutives (archiviste, assistant comptable, stagiaire)** : le masquage des 41 actions et les 3 correctifs du 30/08 sont robustes dans les deux sens (masqué quand refusé, pleinement fonctionnel quand accordé) à travers des profils aux combinaisons de permissions très différentes. Aucun changement de code dans cette passe. Compte de test désactivé après vérification.
+
+## 2026-08-30 — Regroupement visuel du menu latéral (19 entrées → 4 groupes), enfin implémenté
+
+**Contexte** : un regroupement des 19 entrées de la sidebar avait été conçu lors d'un échange antérieur de cette même session, mais jamais implémenté ni consigné (« on continue » de l'utilisateur, qui ne se souvenait plus où ça en était). Confirmé par relecture du code (`app.component.ts` toujours une simple boucle `@for` plate) et par grep sur `HISTORY.md`/`CLAUDE.md` (aucune trace) que rien n'avait été fait. L'utilisateur a retrouvé et recollé la structure exacte précédemment proposée (probablement depuis une note/capture personnelle) — reprise telle quelle, sans nouvelle proposition :
+- *(sans étiquette, toujours en haut)* : Cockpit, Messagerie
+- **Dossiers & clients** : Dossiers, Nouveau dossier, Clients & KYC, Échéancier, Rôle d'audience, Registre du courrier
+- **Production** : Atelier d'actes, Bibliothèque, Plan d'action, Assistant IA
+- **Finance** : Facturation, Dépenses & caisse, Rétrocessions
+- **Cabinet** : Accès & permissions, Cabinet (RH), Portail client
+- *(sans étiquette, toujours en bas, déjà séparé de « Se déconnecter »)* : Mon compte
+
+**Avis donné avant déploiement** (l'utilisateur a explicitement demandé si c'était la meilleure proposition) : globalement solide — Dossiers & clients et Finance recoupent presque exactement les clusters de permissions `.consulter` déjà établis (18-29/08/2026), donc pas arbitraire. Seule réserve mineure signalée : « Portail client » sous Cabinet est un peu à contre-emploi (écran orienté client, au milieu de deux écrans d'administration interne) — n'a pas bloqué le déploiement, changement facile à ajuster après coup si l'usage le montre.
+
+**Implémentation** (`app.component.ts` + `styles.css`, frontend seul) :
+- `NavItem` gagne un champ optionnel `groupe?: string`. Nouvelle méthode `blocsNav()` qui regroupe `navItems` en blocs contigus par étiquette (un item sans `groupe` reste seul dans un bloc `groupe: null`, jamais affublé d'en-tête) — recalculée à chaque cycle de détection de changement (coût négligeable sur 19 entrées) plutôt qu'un `computed()` figé.
+- `blocVisible(bloc)` : un en-tête de groupe ne s'affiche que si au moins une entrée du bloc reste visible pour le rôle courant (`estVisible()`, factorisation de la logique de garde déjà existante) — sinon un rôle sans aucune permission `.consulter` financière verrait un intitulé « FINANCE » flottant sans rien dessous.
+- CSS (`.nav-groupe`) : petit intitulé majuscule discret en mode déplié ; en mode réduit (icônes seules), transformé en simple séparateur horizontal fin plutôt qu'un texte illisible tronqué.
+
+**Vérification** : build Angular OK. Pas de test local pré-déploiement possible cette fois (CORS de l'API bloque toute origine hors de la liste blanche — `localhost:4200` ou l'URL Cloud Run — un conteneur local sur un autre port/hôte reçoit un `Connexion impossible` silencieux ; tenté puis abandonné, pas assez de valeur ajoutée face à un simple changement de gabarit déjà validé par la compilation stricte du template Angular). **Vérifié directement en production après déploiement** (Playwright headless, capture de la sidebar complète dépliée + réduite) — groupes corrects, en-têtes bien positionnés, séparateurs en mode réduit propres, aucun bug de mise en page. Révision `juria-web-00051-sh4` (précédente `juria-web-00050-8dq`).

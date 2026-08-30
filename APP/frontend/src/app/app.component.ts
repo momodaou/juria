@@ -21,6 +21,16 @@ interface NavItem {
    * requireRole() codé en dur côté serveur (pas une action permissions_role
    * — ex. Accès & permissions) — absent = visible par tous (29/08/2026). */
   rolesAutorises?: string[];
+  /** Étiquette de regroupement visuel dans la sidebar (30/08/2026) — absent
+   * = entrée non regroupée (Cockpit/Messagerie en haut, Mon compte en bas),
+   * comme conçu lors de la discussion antérieure sur le regroupement des 19
+   * entrées, jamais implémentée jusqu'ici. */
+  groupe?: string;
+}
+
+interface NavBloc {
+  groupe: string | null;
+  items: NavItem[];
 }
 
 @Component({
@@ -54,15 +64,20 @@ interface NavItem {
           </div>
 
           <nav>
-            @for (item of navItems; track item.path) {
-              @if ((!item.requiert || auth.peut(item.requiert)) && peutVoirRole(item)) {
-                <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
-                  <span class="ico" [innerHTML]="item.icon"></span>
-                  <span class="lbl">{{ item.label }}</span>
-                  @if (item.path === '/messagerie' && messagerie.nonLus() > 0) {
-                    <span class="badge-nonlus">{{ messagerie.nonLus() }}</span>
-                  }
-                </a>
+            @for (bloc of blocsNav(); track $index) {
+              @if (bloc.groupe && blocVisible(bloc)) {
+                <span class="nav-groupe">{{ bloc.groupe }}</span>
+              }
+              @for (item of bloc.items; track item.path) {
+                @if (estVisible(item)) {
+                  <a [routerLink]="item.path" routerLinkActive="active" [title]="item.label">
+                    <span class="ico" [innerHTML]="item.icon"></span>
+                    <span class="lbl">{{ item.label }}</span>
+                    @if (item.path === '/messagerie' && messagerie.nonLus() > 0) {
+                      <span class="badge-nonlus">{{ messagerie.nonLus() }}</span>
+                    }
+                  </a>
+                }
               }
             }
           </nav>
@@ -92,6 +107,18 @@ export class AppComponent implements OnInit {
   peutVoirRole(item: NavItem): boolean {
     if (!item.rolesAutorises) return true;
     return item.rolesAutorises.includes(this.auth.utilisateur()?.role ?? '');
+  }
+
+  estVisible(item: NavItem): boolean {
+    return (!item.requiert || this.auth.peut(item.requiert)) && this.peutVoirRole(item);
+  }
+
+  // Un en-tête de groupe ne s'affiche que s'il reste au moins une entrée
+  // visible dans le bloc pour le rôle courant — sinon un groupe entièrement
+  // masqué (ex. Finance pour un rôle sans aucune permission .consulter
+  // financière) laisserait un intitulé de section flottant sans rien dessous.
+  blocVisible(bloc: NavBloc): boolean {
+    return bloc.items.some((item) => this.estVisible(item));
   }
 
   ngOnInit(): void {
@@ -169,39 +196,70 @@ export class AppComponent implements OnInit {
     ),
   };
 
+  // Regroupement visuel de la sidebar (30/08/2026) — structure reprise telle
+  // quelle de la discussion antérieure (jamais implémentée jusqu'ici, voir
+  // HISTORY.md) : Cockpit/Messagerie en tête et Mon compte en pied restent
+  // sans étiquette, les 15 autres entrées réparties en 4 groupes.
   readonly navItems: NavItem[] = [
     { path: '/cockpit', label: 'Cockpit', icon: this.icons.cockpit },
     { path: '/messagerie', label: 'Messagerie', icon: this.icons.messagerie },
-    { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers },
+
+    { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers, groupe: 'Dossiers & clients' },
     // Pas de nouvelle action .consulter : l'écran n'a aucune autre utilité
     // que créer un dossier — la garde dossiers.creer suffit (aucune raison
     // de le voir sans pouvoir créer).
-    { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture, requiert: 'dossiers.creer' },
+    { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture, requiert: 'dossiers.creer', groupe: 'Dossiers & clients' },
     // clients.consulter : masque uniquement le menu — GET /api/clients
     // reste volontairement non gardé côté serveur, partagé avec le
     // sélecteur de client (<app-client-picker>) utilisé sur les écrans
     // Dossiers, hors périmètre d'un blocage sûr sans le scinder en deux
     // routes distinctes (29/08/2026, pas fait dans cette passe).
-    { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients, requiert: 'clients.consulter' },
-    { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier, requiert: 'echeancier.consulter' },
-    { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience, requiert: 'audiences.consulter' },
-    { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier, requiert: 'courriers.consulter' },
-    { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes, requiert: 'actes.consulter' },
-    { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio },
-    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction, requiert: 'taches.consulter' },
-    { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter' },
-    { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter' },
+    { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients, requiert: 'clients.consulter', groupe: 'Dossiers & clients' },
+    { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier, requiert: 'echeancier.consulter', groupe: 'Dossiers & clients' },
+    { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience, requiert: 'audiences.consulter', groupe: 'Dossiers & clients' },
+    { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier, requiert: 'courriers.consulter', groupe: 'Dossiers & clients' },
+
+    { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes, requiert: 'actes.consulter', groupe: 'Production' },
+    { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio, groupe: 'Production' },
+    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction, requiert: 'taches.consulter', groupe: 'Production' },
+    { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa, requiert: 'ia.consulter', groupe: 'Production' },
+
+    { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter', groupe: 'Finance' },
+    { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter', groupe: 'Finance' },
+    { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter', groupe: 'Finance' },
+
     // rolesAutorises reflète exactement la garde requireRole() côté serveur
     // (backend/src/routes/acces.js) — associe_fondateur exclu depuis le
     // 29/08/2026 (correction explicite de l'utilisateur : le module entier,
     // pas seulement la matrice interne).
-    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'] },
-    { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet, requiert: 'cabinet.consulter' },
-    { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa, requiert: 'ia.consulter' },
-    { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient },
+    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'], groupe: 'Cabinet' },
+    { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet, requiert: 'cabinet.consulter', groupe: 'Cabinet' },
+    { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient, groupe: 'Cabinet' },
+
     { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },
-    { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter' },
   ];
+
+  // Regroupe navItems en blocs contigus par étiquette (groupe), en ne créant
+  // un nouveau bloc que là où le groupe change réellement entre deux entrées
+  // — les entrées sans groupe (Cockpit/Messagerie, Mon compte) restent seules
+  // dans des blocs sans étiquette (groupe: null), jamais affublées d'un
+  // en-tête. Recalculé à chaque exécution du template (Angular la relance à
+  // chaque cycle de détection de changement) plutôt qu'un computed() figé,
+  // pour rester trivialement correct si navItems changeait un jour de façon
+  // dynamique — coût négligeable (19 entrées).
+  blocsNav(): NavBloc[] {
+    const blocs: NavBloc[] = [];
+    for (const item of this.navItems) {
+      const groupe = item.groupe ?? null;
+      const dernier = blocs[blocs.length - 1];
+      if (dernier && dernier.groupe === groupe) {
+        dernier.items.push(item);
+      } else {
+        blocs.push({ groupe, items: [item] });
+      }
+    }
+    return blocs;
+  }
 
   readonly collapsed = signal(localStorage.getItem(SIDEBAR_KEY) === '1');
 
