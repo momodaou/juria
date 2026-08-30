@@ -36,7 +36,7 @@ import { MessagerieService, Conversation } from './messagerie.service';
               <span class="mw-titre">Messagerie</span>
             }
             <div class="mw-entete-actions">
-              @if (vue() === 'liste') {
+              @if (vue() === 'liste' && auth.peut('messagerie.creer_conversation')) {
                 <button type="button" class="mw-icon-btn" title="Nouvelle conversation" (click)="afficherNouvelle.set(!afficherNouvelle())">+</button>
               }
               <button type="button" class="mw-icon-btn" title="Ouvrir en plein écran" (click)="ouvrirPageComplete()">⤢</button>
@@ -77,10 +77,12 @@ import { MessagerieService, Conversation } from './messagerie.service';
                 </div>
               }
             </div>
-            <div class="mw-saisie">
-              <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…" (keydown.enter)="envoyer()" />
-              <button type="button" class="mw-btn" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
-            </div>
+            @if (auth.peut('messagerie.envoyer_message')) {
+              <div class="mw-saisie">
+                <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…" (keydown.enter)="envoyer()" />
+                <button type="button" class="mw-btn" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
+              </div>
+            }
           }
         </div>
       }
@@ -146,7 +148,7 @@ import { MessagerieService, Conversation } from './messagerie.service';
 })
 export class MessagerieWidgetComponent implements OnInit {
   private readonly api = inject(ApiService);
-  private readonly auth = inject(AuthService);
+  readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   readonly messagerie = inject(MessagerieService);
 

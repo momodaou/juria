@@ -14,9 +14,11 @@ import { AuthService } from '../../core/auth.service';
         <h1>Dépenses &amp; caisse</h1>
         <p>Charges du cabinet, petite caisse, vignettes de plaidoirie — circuit soumise → validée → décaissée.</p>
       </div>
-      <button class="btn" (click)="afficherForm.set(!afficherForm())">
-        {{ afficherForm() ? 'Annuler' : '+ Nouvelle dépense' }}
-      </button>
+      @if (auth.peut('depenses.creer')) {
+        <button class="btn" (click)="afficherForm.set(!afficherForm())">
+          {{ afficherForm() ? 'Annuler' : '+ Nouvelle dépense' }}
+        </button>
+      }
     </header>
 
     <div class="kpis">
@@ -144,14 +146,16 @@ import { AuthService } from '../../core/auth.service';
 
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
-      <div class="upload">
-        <select class="sel" [(ngModel)]="vignetteMouvement" name="vmouv">
-          <option value="achat">Achat</option>
-          <option value="utilisation">Utilisation</option>
-        </select>
-        <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" />
-        <button class="btn sm" (click)="mouvementVignette()">Enregistrer</button>
-      </div>
+      @if (auth.peut('depenses.vignettes.mouvement')) {
+        <div class="upload">
+          <select class="sel" [(ngModel)]="vignetteMouvement" name="vmouv">
+            <option value="achat">Achat</option>
+            <option value="utilisation">Utilisation</option>
+          </select>
+          <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" />
+          <button class="btn sm" (click)="mouvementVignette()">Enregistrer</button>
+        </div>
+      }
     </section>
   `,
   styles: [`

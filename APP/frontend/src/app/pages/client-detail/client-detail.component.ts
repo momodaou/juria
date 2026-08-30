@@ -101,21 +101,25 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <td>
                   <button class="lien" (click)="apercuPiece(p)">Aperçu</button>
                   <button class="lien" (click)="ouvrirPiece(p)">Ouvrir</button>
-                  <button class="lien" (click)="supprimerPiece(p.id)">Supprimer</button>
+                  @if (auth.peut('clients.kyc_piece.supprimer')) {
+                    <button class="lien" (click)="supprimerPiece(p.id)">Supprimer</button>
+                  }
                 </td>
               </tr>
             }
           </table>
         } @else { <p class="muted">Aucune pièce enregistrée.</p> }
 
-        <div class="upload">
-          <input class="sel" [(ngModel)]="nouvellePiece.libelle" name="libelle" placeholder="Ex. Passeport, RCCM…" />
-          <input class="sel" type="date" [(ngModel)]="nouvellePiece.date_expiration" name="expiration" />
-          <input type="file" (change)="onFichierChoisi($event)" />
-          <button class="btn" (click)="ajouterPiece()" [disabled]="!nouvellePiece.libelle || ajoutEnCours()">
-            {{ ajoutEnCours() ? 'Ajout…' : 'Ajouter la pièce' }}
-          </button>
-        </div>
+        @if (auth.peut('clients.kyc_piece.ajouter')) {
+          <div class="upload">
+            <input class="sel" [(ngModel)]="nouvellePiece.libelle" name="libelle" placeholder="Ex. Passeport, RCCM…" />
+            <input class="sel" type="date" [(ngModel)]="nouvellePiece.date_expiration" name="expiration" />
+            <input type="file" (change)="onFichierChoisi($event)" />
+            <button class="btn" (click)="ajouterPiece()" [disabled]="!nouvellePiece.libelle || ajoutEnCours()">
+              {{ ajoutEnCours() ? 'Ajout…' : 'Ajouter la pièce' }}
+            </button>
+          </div>
+        }
         @if (erreurPiece()) { <p class="err">{{ erreurPiece() }}</p> }
       </section>
 
@@ -184,22 +188,24 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   @else { <span class="tag">Conservé</span> }
                 </td>
                 <td>
-                  @if (!o.restitue) { <button class="lien" (click)="restituer(o.id)">Marquer restitué</button> }
+                  @if (!o.restitue && auth.peut('originaux.restituer')) { <button class="lien" (click)="restituer(o.id)">Marquer restitué</button> }
                 </td>
               </tr>
             }
           </table>
         } @else { <p class="muted">Aucun original confié enregistré.</p> }
 
-        <div class="upload">
-          <select class="sel" [(ngModel)]="nouvelOriginal.type_piece" name="typePiece">
-            <option value="">Type…</option>
-            @for (t of typesOriginal(); track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
-          </select>
-          <input class="sel" [(ngModel)]="nouvelOriginal.description" name="description" placeholder="Description" />
-          <input class="sel" [(ngModel)]="nouvelOriginal.emplacement" name="emplacement" placeholder="Emplacement (coffre, armoire…)" />
-          <button class="btn" (click)="ajouterOriginal()" [disabled]="!nouvelOriginal.description">Ajouter</button>
-        </div>
+        @if (auth.peut('originaux.creer')) {
+          <div class="upload">
+            <select class="sel" [(ngModel)]="nouvelOriginal.type_piece" name="typePiece">
+              <option value="">Type…</option>
+              @for (t of typesOriginal(); track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+            </select>
+            <input class="sel" [(ngModel)]="nouvelOriginal.description" name="description" placeholder="Description" />
+            <input class="sel" [(ngModel)]="nouvelOriginal.emplacement" name="emplacement" placeholder="Emplacement (coffre, armoire…)" />
+            <button class="btn" (click)="ajouterOriginal()" [disabled]="!nouvelOriginal.description">Ajouter</button>
+          </div>
+        }
       </section>
 
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }

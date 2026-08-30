@@ -50,11 +50,13 @@ import { AuthService } from '../../core/auth.service';
 
     <section class="panel">
       <h3>Mon pointage — {{ presences()?.total_heures ?? 0 }} h ce mois ({{ presences()?.jours_pointes ?? 0 }} jours)</h3>
-      <div class="upload">
-        <input class="sel" type="time" [(ngModel)]="pointageArrivee" name="arr" placeholder="Arrivée" />
-        <input class="sel" type="time" [(ngModel)]="pointageDepart" name="dep" placeholder="Départ" />
-        <button class="btn sm" (click)="enregistrerPointage()">Enregistrer</button>
-      </div>
+      @if (auth.peut('cabinet.presence.pointer')) {
+        <div class="upload">
+          <input class="sel" type="time" [(ngModel)]="pointageArrivee" name="arr" placeholder="Arrivée" />
+          <input class="sel" type="time" [(ngModel)]="pointageDepart" name="dep" placeholder="Départ" />
+          <button class="btn sm" (click)="enregistrerPointage()">Enregistrer</button>
+        </div>
+      }
       @if (presences()?.jours?.length) {
         <table>
           <tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Heures</th></tr>
@@ -67,16 +69,18 @@ import { AuthService } from '../../core/auth.service';
 
     <section class="panel">
       <h3>Congés</h3>
-      <div class="upload">
-        <select class="sel" [(ngModel)]="nouveauConge.type" name="typeConge">
-          <option value="annuel">Annuel</option><option value="maladie">Maladie</option>
-          <option value="maternite">Maternité</option><option value="paternite">Paternité</option>
-          <option value="sans_solde">Sans solde</option><option value="autre">Autre</option>
-        </select>
-        <input class="sel" type="date" [(ngModel)]="nouveauConge.date_debut" name="debut" />
-        <input class="sel" type="date" [(ngModel)]="nouveauConge.date_fin" name="fin" />
-        <button class="btn sm" (click)="demander()" [disabled]="!nouveauConge.date_debut || !nouveauConge.date_fin">Demander</button>
-      </div>
+      @if (auth.peut('cabinet.conge.demander')) {
+        <div class="upload">
+          <select class="sel" [(ngModel)]="nouveauConge.type" name="typeConge">
+            <option value="annuel">Annuel</option><option value="maladie">Maladie</option>
+            <option value="maternite">Maternité</option><option value="paternite">Paternité</option>
+            <option value="sans_solde">Sans solde</option><option value="autre">Autre</option>
+          </select>
+          <input class="sel" type="date" [(ngModel)]="nouveauConge.date_debut" name="debut" />
+          <input class="sel" type="date" [(ngModel)]="nouveauConge.date_fin" name="fin" />
+          <button class="btn sm" (click)="demander()" [disabled]="!nouveauConge.date_debut || !nouveauConge.date_fin">Demander</button>
+        </div>
+      }
       @if (conges().length) {
         <table>
           <tr><th>Membre</th><th>Type</th><th>Du</th><th>Au</th><th>Statut</th><th></th></tr>

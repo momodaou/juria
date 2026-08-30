@@ -63,7 +63,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <label>Mention (facultatif)
           <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
-        <button class="btn" (click)="creer()" [disabled]="!dossierId || !montantHt">Émettre</button>
+        @if (auth.peut('factures.creer')) {
+          <button class="btn" (click)="creer()" [disabled]="!dossierId || !montantHt">Émettre</button>
+        }
       </div>
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -135,7 +137,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <strong>Honoraires sélectionnés : {{ totalTempsSelectionnes() | number }} FCFA</strong>
           @if (deboursARefacturer().length) { <strong> — Débours sélectionnés : {{ totalDeboursSelectionnes() | number }} FCFA</strong> }
         </p>
-        <button class="btn" (click)="facturerTemps()" [disabled]="!tempsSelectionnes().size && !deboursSelectionnes().size">Émettre la facture</button>
+        @if (auth.peut('factures.creer')) {
+          <button class="btn" (click)="facturerTemps()" [disabled]="!tempsSelectionnes().size && !deboursSelectionnes().size">Émettre la facture</button>
+        }
       } @else if (dossierTempsId) {
         <p class="muted">Rien en attente de facturation pour ce dossier (ni temps facturable, ni débours décaissé refacturable).</p>
       }
@@ -151,7 +155,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ f.numero }}</td><td>{{ f.client }}</td>
               <td>{{ f.reste | number }} {{ f.devise }}</td>
               <td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td>
-              <td><button class="lien" (click)="encaisser(f)">Marquer payé</button></td>
+              <td>
+                @if (auth.peut('factures.paiement.ajouter')) {
+                  <button class="lien" (click)="encaisser(f)">Marquer payé</button>
+                }
+              </td>
             </tr>
           }
         </table>

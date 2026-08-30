@@ -1295,3 +1295,34 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Réponse de l'utilisateur** : « non, il reste exclu. »
 
 **Conséquence** : aucune action nécessaire — `of_counsel::dossiers.pro_bono.declarer` est déjà à `FALSE` en production (jamais touché par aucune correction précédente). Cohérent avec le profil restreint retenu pour ce rôle le 30/08/2026 (statut spécifique, intervention externe et périodique). Clôt ce point ouvert dans la documentation.
+
+## 2026-08-30 — Masquage complet des 41 actions restantes dépourvues de garde côté écran (frontend seul)
+
+**Contexte** : en confirmant à l'utilisateur qu'une permission décochée se traduit bien par un masquage total (bouton/panneau invisible, pas juste un rejet 403 au clic), un audit a révélé que ce n'était vrai que pour une partie du catalogue — 41 actions sur 71 avaient déjà leur route backend protégée par `requirePermission()` mais **aucune garde correspondante côté Angular** (`auth.peut('code')`) : le bouton restait visible pour tout le monde et échouait silencieusement en 403 au clic (« Level 4 », l'anti-motif identifié dans l'échange). Demande explicite de l'utilisateur : « Fais le balayage complet des 41 actions restantes dans ce cas si c'est ce que tu comptais faire. Le masquage du reste c'est bien ça ? »
+
+**Méthode** : script de recoupement (`grep` du catalogue `permissions.js` contre les occurrences littérales `auth.peut('<code>')` dans `APP/frontend/src/app`) pour lister systématiquement les actions sans garde, fichier par fichier, plutôt que de se fier à la mémoire de la session. Convention reprise des correctifs déjà en place plus tôt dans cette session (ex. `audiences.role.valider`, `depenses.decision`) : envelopper tout le bloc pertinent (`<div class="upload">`, section, ou bouton bascule « + Nouveau ») dans `@if (auth.peut('code')) { ... }`, pas seulement le bouton de soumission — pour que l'option disparaisse entièrement, pas seulement son déclencheur final.
+
+**41 actions traitées, par fichier** :
+- `dossier-detail.component.ts` : `dossiers.modifier`, `documents.creer`, `temps.creer`, `communications.creer`
+- `client-detail.component.ts` : `clients.kyc_piece.supprimer`, `clients.kyc_piece.ajouter`, `originaux.restituer`, `originaux.creer`
+- `ouverture.component.ts` : `conflits.soumettre`
+- `courrier.component.ts` : `courriers.creer`, `courriers.statut.modifier` (repli : statut affiché en texte simple, non modifiable)
+- `echeancier.component.ts` : `evenements.creer`, `taches.creer`, `taches.statut.modifier`
+- `role-audience.component.ts` : `audiences.ligne.creer`, `audiences.retour.saisir`
+- `biblio.component.ts` : `biblio.creer`, `biblio.supprimer`
+- `plan-action.component.ts` : `taches.creer`, `taches.statut.modifier` (les deux flèches de déplacement kanban)
+- `cabinet.component.ts` : `cabinet.presence.pointer`, `cabinet.conge.demander`
+- `depenses.component.ts` : `depenses.creer`, `depenses.vignettes.mouvement`
+- `actes.component.ts` : `actes.generer` (`AuthService` absent du fichier jusqu'ici, ajouté)
+- `facturation.component.ts` : `factures.creer` (les deux formulaires d'émission), `factures.paiement.ajouter`
+- `assistant-ia.component.ts` : les 6 actions `ia.resume/chronologie/extraction_faits/analyse_contrat/traduction/comparaison` (`AuthService` ajouté) — traitement particulier : la grille des 6 cartes de capacité se filtre désormais aux seules capacités autorisées (`capacitesAutorisees`, `computed`) plutôt que de n'en masquer que le bouton final, avec bascule automatique sur la première capacité permise si celle par défaut (« Résumé ») ne l'est pas pour le rôle courant
+- `messagerie.component.ts` + `core/messagerie-widget.component.ts` (bulle flottante) : `messagerie.creer_conversation`, `messagerie.envoyer_message` — traités dans les deux surfaces (écran dédié et widget persistant), `AuthService` rendu public dans les deux (`private` avant, inutilisable depuis le template)
+- `retrocessions.component.ts` : `retrocessions.creer`
+
+**2 actions du catalogue confirmées sans élément d'interface à masquer (déjà signalées avant le balayage, non retraitées)** : `evenements.jobs.declencher` (aucun bouton nulle part — déclenchement manuel par API/scheduler uniquement) et `cabinet.bulletins.consulter` (garde défensive côté serveur contre un contournement par `?utilisateur_id=`, aucun écran « voir les bulletins des autres » n'a jamais été construit pour porter ce masquage).
+
+**Vérification finale du recoupement** : après le balayage, seules restent en `MISSING` du script de recoupement les actions attendues — les 20 actions `.consulter`/`dossiers.creer` (gating au niveau menu via `NavItem.requiert`, dynamique donc invisible au grep littéral), les 6 `ia.*` (dynamiques via `actionCourante()`, même raison), et les 2 exceptions documentées ci-dessus — confirmant une couverture complète des 41 actions ciblées.
+
+**Vérifié** : suite backend **177/177** verte (`docker compose down -v` puis conteneur `node:22`, aucun changement backend dans cette passe — vérification par prudence, conforme à la pratique établie), build Angular production sans erreur (mêmes avertissements CommonJS préexistants liés à `mammoth`, sans rapport).
+
+**Déploiement** : frontend uniquement (aucun changement backend/schéma dans cette passe).

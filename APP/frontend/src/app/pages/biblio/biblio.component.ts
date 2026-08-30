@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-biblio',
@@ -14,9 +15,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <h1>Bibliothèque</h1>
         <p>Jurisprudence, textes OHADA/nationaux, veille législative, modèles, consultations, checklists.</p>
       </div>
-      <button class="btn" (click)="afficherForm.set(!afficherForm())">
-        {{ afficherForm() ? 'Annuler' : '+ Nouvelle ressource' }}
-      </button>
+      @if (auth.peut('biblio.creer')) {
+        <button class="btn" (click)="afficherForm.set(!afficherForm())">
+          {{ afficherForm() ? 'Annuler' : '+ Nouvelle ressource' }}
+        </button>
+      }
     </header>
 
     @if (afficherForm()) {
@@ -87,7 +90,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   <button class="lien" (click)="apercu(r)">Aperçu</button>
                   <button class="lien" (click)="telecharger(r.id)">Télécharger</button>
                 }
-                <button class="lien" (click)="supprimer(r.id)">Supprimer</button>
+                @if (auth.peut('biblio.supprimer')) {
+                  <button class="lien" (click)="supprimer(r.id)">Supprimer</button>
+                }
               </td>
             </tr>
           }
@@ -112,6 +117,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 })
 export class BiblioComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   private readonly preview = inject(DocumentPreviewService);
   readonly ressources = signal<any[]>([]);
   readonly afficherForm = signal(false);

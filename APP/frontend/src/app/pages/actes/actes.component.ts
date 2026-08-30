@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-actes',
@@ -48,9 +49,13 @@ import { ApiService, Dossier } from '../../core/api.service';
                   placeholder="Ex. Rédiger une demande de renvoi pour production de pièces…"></textarea>
       }
 
-      <button class="btn" (click)="generer()" [disabled]="!peutGenerer() || generation()">
-        {{ generation() ? 'Génération…' : 'Générer l\\'acte' }}
-      </button>
+      @if (auth.peut('actes.generer')) {
+        <button class="btn" (click)="generer()" [disabled]="!peutGenerer() || generation()">
+          {{ generation() ? 'Génération…' : 'Générer l\\'acte' }}
+        </button>
+      } @else {
+        <p class="err">Vous n'êtes pas autorisé à générer un acte.</p>
+      }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
 
@@ -80,6 +85,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class ActesComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly modeles = signal<{ code: string; nom: string; categorie: string }[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly resultat = signal<any | null>(null);

@@ -16,9 +16,11 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
       <section class="panel liste">
         <div class="liste-head">
           <h3>Conversations</h3>
-          <button class="lien" (click)="afficherNouvelle.set(!afficherNouvelle())">
-            {{ afficherNouvelle() ? 'Annuler' : '+ Nouvelle' }}
-          </button>
+          @if (auth.peut('messagerie.creer_conversation')) {
+            <button class="lien" (click)="afficherNouvelle.set(!afficherNouvelle())">
+              {{ afficherNouvelle() ? 'Annuler' : '+ Nouvelle' }}
+            </button>
+          }
         </div>
 
         @if (afficherNouvelle()) {
@@ -59,16 +61,18 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
               </div>
             }
           </div>
-          <div class="saisie">
-            <input
-              class="sel"
-              [(ngModel)]="brouillon"
-              name="brouillon"
-              placeholder="Écrire un message…"
-              (keydown.enter)="envoyer()"
-            />
-            <button class="btn sm" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
-          </div>
+          @if (auth.peut('messagerie.envoyer_message')) {
+            <div class="saisie">
+              <input
+                class="sel"
+                [(ngModel)]="brouillon"
+                name="brouillon"
+                placeholder="Écrire un message…"
+                (keydown.enter)="envoyer()"
+              />
+              <button class="btn sm" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
+            </div>
+          }
         } @else {
           <p class="muted">Sélectionnez une conversation, ou créez-en une nouvelle.</p>
         }
@@ -113,7 +117,7 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
 })
 export class MessagerieComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
-  private readonly auth = inject(AuthService);
+  readonly auth = inject(AuthService);
   readonly messagerie = inject(MessagerieService);
 
   readonly utilisateurs = signal<any[]>([]);

@@ -21,9 +21,11 @@ const COLONNES = [
         <h1>Plan d'action</h1>
         <p>Suivi des tâches du cabinet.</p>
       </div>
-      <button class="btn" (click)="afficherForm.set(!afficherForm())">
-        {{ afficherForm() ? 'Annuler' : '+ Nouvelle tâche' }}
-      </button>
+      @if (auth.peut('taches.creer')) {
+        <button class="btn" (click)="afficherForm.set(!afficherForm())">
+          {{ afficherForm() ? 'Annuler' : '+ Nouvelle tâche' }}
+        </button>
+      }
     </header>
 
     @if (afficherForm()) {
@@ -97,9 +99,9 @@ const COLONNES = [
               @if (t.responsable) { <div class="carte-info">{{ t.responsable }}</div> }
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
               <div class="carte-actions">
-                @if (col.statut !== 'a_faire') { <button class="lien" (click)="deplacer(t, -1)">←</button> }
+                @if (col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
                 @if (col.statut === 'a_valider' && auth.peut('taches.valider')) { <button class="lien" (click)="valider(t)">Valider</button> }
-                @if (col.statut !== 'termine') { <button class="lien" (click)="deplacer(t, 1)">→</button> }
+                @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
               </div>
             </div>
           } @empty {

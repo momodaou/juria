@@ -24,9 +24,13 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
       <label>Parties adverses / tiers liés (séparés par des virgules, facultatif)</label>
       <input class="in" [(ngModel)]="partiesAdverses" name="partiesAdverses" placeholder="Ex. SODIMA Sarl, M. Traoré" />
 
-      <button class="btn" (click)="verifier()" [disabled]="chargement() || !clientNom">
-        {{ chargement() ? 'Vérification…' : 'Lancer le contrôle' }}
-      </button>
+      @if (auth.peut('conflits.soumettre')) {
+        <button class="btn" (click)="verifier()" [disabled]="chargement() || !clientNom">
+          {{ chargement() ? 'Vérification…' : 'Lancer le contrôle' }}
+        </button>
+      } @else {
+        <p class="err">Vous n'êtes pas autorisé à soumettre un contrôle de conflit.</p>
+      }
 
       @if (resultat(); as r) {
         <div class="result" [class.ok]="r.resultat === 'absence'" [class.warn]="r.resultat === 'potentiel'">

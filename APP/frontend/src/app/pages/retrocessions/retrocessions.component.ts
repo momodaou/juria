@@ -14,9 +14,11 @@ import { AuthService } from '../../core/auth.service';
         <h1>Rétrocessions</h1>
         <p>Calcul et suivi des rétrocessions d'honoraires — règle « tout ou rien » (décaissable seulement après encaissement intégral).</p>
       </div>
-      <button class="btn" (click)="afficherForm.set(!afficherForm())">
-        {{ afficherForm() ? 'Annuler' : '+ Nouvelle rétrocession' }}
-      </button>
+      @if (auth.peut('retrocessions.creer')) {
+        <button class="btn" (click)="afficherForm.set(!afficherForm())">
+          {{ afficherForm() ? 'Annuler' : '+ Nouvelle rétrocession' }}
+        </button>
+      }
     </header>
 
     <section class="panel">

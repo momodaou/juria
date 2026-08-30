@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-courrier',
@@ -15,6 +16,7 @@ import { ApiService, Dossier } from '../../core/api.service';
       </div>
     </header>
 
+    @if (auth.peut('courriers.creer')) {
     <section class="panel">
       <h3>Nouveau courrier</h3>
       <div class="grid2">
@@ -89,6 +91,7 @@ import { ApiService, Dossier } from '../../core/api.service';
       }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
+    }
 
     <section class="panel">
       <div class="filtres">
@@ -113,13 +116,17 @@ import { ApiService, Dossier } from '../../core/api.service';
               <td>{{ c.objet || '—' }}</td>
               <td>{{ c.dossier_numero || '—' }}</td>
               <td>
-                <select class="statut-select" [ngModel]="c.statut" (ngModelChange)="changerStatut(c, $event)">
-                  <option value="recu">Reçu</option>
-                  <option value="impute">Imputé</option>
-                  <option value="en_traitement">En traitement</option>
-                  <option value="traite">Traité</option>
-                  <option value="expedie">Expédié</option>
-                </select>
+                @if (auth.peut('courriers.statut.modifier')) {
+                  <select class="statut-select" [ngModel]="c.statut" (ngModelChange)="changerStatut(c, $event)">
+                    <option value="recu">Reçu</option>
+                    <option value="impute">Imputé</option>
+                    <option value="en_traitement">En traitement</option>
+                    <option value="traite">Traité</option>
+                    <option value="expedie">Expédié</option>
+                  </select>
+                } @else {
+                  {{ c.statut }}
+                }
               </td>
             </tr>
           }
@@ -148,6 +155,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class CourrierComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly courriers = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly dernierDeclenchement = signal<any | null>(null);

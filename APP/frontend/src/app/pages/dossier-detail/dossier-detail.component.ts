@@ -30,9 +30,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </div>
           <div style="display:flex;gap:10px;align-items:center">
             <span class="tag" [class.haute]="d.urgence === 'haute'">Urgence {{ d.urgence }}</span>
-            <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(d)">
-              {{ modeEdition() ? 'Annuler' : 'Modifier' }}
-            </button>
+            @if (modeEdition() || auth.peut('dossiers.modifier')) {
+              <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(d)">
+                {{ modeEdition() ? 'Annuler' : 'Modifier' }}
+              </button>
+            }
             @if (auth.peut('dossiers.archiver') && d.statut !== 'archive') {
               <button class="btn ghost" (click)="archiverDossier()">Archiver</button>
             }
@@ -438,21 +440,23 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <section class="panel">
         <h3>Pièces (GED)</h3>
 
-        <div class="upload">
-          <input type="file" (change)="fichierChoisi($event)" />
-          <select [(ngModel)]="categorie" name="categorie">
-            <option value="piece_client">Pièce client</option>
-            <option value="correspondance">Correspondance</option>
-            <option value="contrat">Contrat</option>
-            <option value="conclusions">Conclusions</option>
-            <option value="decision">Décision</option>
-            <option value="note_interne">Note interne</option>
-            <option value="autre">Autre</option>
-          </select>
-          <button class="btn" (click)="televerser()" [disabled]="!fichier() || envoi()">
-            {{ envoi() ? 'Envoi…' : 'Téléverser' }}
-          </button>
-        </div>
+        @if (auth.peut('documents.creer')) {
+          <div class="upload">
+            <input type="file" (change)="fichierChoisi($event)" />
+            <select [(ngModel)]="categorie" name="categorie">
+              <option value="piece_client">Pièce client</option>
+              <option value="correspondance">Correspondance</option>
+              <option value="contrat">Contrat</option>
+              <option value="conclusions">Conclusions</option>
+              <option value="decision">Décision</option>
+              <option value="note_interne">Note interne</option>
+              <option value="autre">Autre</option>
+            </select>
+            <button class="btn" (click)="televerser()" [disabled]="!fichier() || envoi()">
+              {{ envoi() ? 'Envoi…' : 'Téléverser' }}
+            </button>
+          </div>
+        }
 
         @if (documents().length) {
           <table>
@@ -476,11 +480,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 
       <section class="panel">
         <h3>Temps passé</h3>
-        <div class="upload">
-          <input type="number" placeholder="Durée (min)" [(ngModel)]="dureeMin" name="duree" style="width:130px" />
-          <input type="text" placeholder="Description" [(ngModel)]="descTemps" name="desc" style="flex:1;min-width:180px" />
-          <button class="btn" (click)="ajouterTemps()" [disabled]="!dureeMin">Ajouter</button>
-        </div>
+        @if (auth.peut('temps.creer')) {
+          <div class="upload">
+            <input type="number" placeholder="Durée (min)" [(ngModel)]="dureeMin" name="duree" style="width:130px" />
+            <input type="text" placeholder="Description" [(ngModel)]="descTemps" name="desc" style="flex:1;min-width:180px" />
+            <button class="btn" (click)="ajouterTemps()" [disabled]="!dureeMin">Ajouter</button>
+          </div>
+        }
         @if (temps().length) {
           <table>
             <tr><th>Date</th><th>Durée</th><th>Facturable</th><th>Description</th></tr>
@@ -498,19 +504,21 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 
       <section class="panel">
         <h3>Fil du dossier — communications</h3>
-        <div class="upload">
-          <select [(ngModel)]="cType" name="ctype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-            <option value="email">E-mail</option>
-            <option value="courrier">Courrier</option>
-            <option value="appel">Appel</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="reunion">Réunion / CR d'audience</option>
-            <option value="note">Note</option>
-          </select>
-          <input [(ngModel)]="cSujet" name="csujet" placeholder="Sujet" style="min-width:150px">
-          <input [(ngModel)]="cResume" name="cresume" placeholder="Résumé" style="flex:1;min-width:180px">
-          <button class="btn" (click)="ajouterComm()" [disabled]="!cSujet">Enregistrer</button>
-        </div>
+        @if (auth.peut('communications.creer')) {
+          <div class="upload">
+            <select [(ngModel)]="cType" name="ctype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+              <option value="email">E-mail</option>
+              <option value="courrier">Courrier</option>
+              <option value="appel">Appel</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="reunion">Réunion / CR d'audience</option>
+              <option value="note">Note</option>
+            </select>
+            <input [(ngModel)]="cSujet" name="csujet" placeholder="Sujet" style="min-width:150px">
+            <input [(ngModel)]="cResume" name="cresume" placeholder="Résumé" style="flex:1;min-width:180px">
+            <button class="btn" (click)="ajouterComm()" [disabled]="!cSujet">Enregistrer</button>
+          </div>
+        }
         @if (communications().length) {
           <table>
             <tr><th>Date</th><th>Type</th><th>Sujet</th><th>Résumé</th></tr>

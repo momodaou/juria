@@ -49,7 +49,7 @@ import { AuthService } from '../../core/auth.service';
                   } @else { <span class="muted">à saisir</span> }
                 </td>
                 <td>
-                  @if (!l.resultat) { <button class="lien" (click)="ouvrirRetour(l)">Saisir le retour</button> }
+                  @if (!l.resultat && auth.peut('audiences.retour.saisir')) { <button class="lien" (click)="ouvrirRetour(l)">Saisir le retour</button> }
                 </td>
               </tr>
             }
@@ -98,6 +98,7 @@ import { AuthService } from '../../core/auth.service';
       }
     }
 
+    @if (auth.peut('audiences.ligne.creer')) {
     <section class="panel">
       <h3>Programmer une audience</h3>
       <div class="grid2">
@@ -134,6 +135,7 @@ import { AuthService } from '../../core/auth.service';
       <button class="btn" (click)="ajouter()" [disabled]="!nouvelleLigne.dossier_id || !nouvelleLigne.date_prevue">Ajouter au rôle</button>
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
+    }
   `,
   styles: [`
     .actions{display:flex;gap:8px}

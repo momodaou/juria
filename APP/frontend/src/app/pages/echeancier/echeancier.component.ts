@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-echeancier',
@@ -12,23 +13,25 @@ import { ApiService, Dossier } from '../../core/api.service';
 
     <section class="panel">
       <p class="muted" style="margin-bottom:12px">Filet de sécurité : chaque délai déclenche des alertes automatiques J-30, J-15, J-7, J-1 et jour J.</p>
-      <div class="add">
-        <select [(ngModel)]="nvDossier" name="d">
-          <option value="">Dossier…</option>
-          @for (d of dossiers(); track d.id) { <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option> }
-        </select>
-        <select [(ngModel)]="nvType" name="t">
-          <option value="audience">Audience</option>
-          <option value="delai_procedure">Délai de procédure</option>
-          <option value="delai_recours">Délai de recours</option>
-          <option value="depot">Dépôt</option>
-          <option value="prescription">Prescription</option>
-          <option value="echeance_contractuelle">Échéance contractuelle</option>
-        </select>
-        <input [(ngModel)]="nvTitre" name="ti" placeholder="Intitulé" />
-        <input type="date" [(ngModel)]="nvDate" name="da" />
-        <button class="btn" (click)="ajouter()" [disabled]="!nvDossier || !nvDate">Ajouter</button>
-      </div>
+      @if (auth.peut('evenements.creer')) {
+        <div class="add">
+          <select [(ngModel)]="nvDossier" name="d">
+            <option value="">Dossier…</option>
+            @for (d of dossiers(); track d.id) { <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option> }
+          </select>
+          <select [(ngModel)]="nvType" name="t">
+            <option value="audience">Audience</option>
+            <option value="delai_procedure">Délai de procédure</option>
+            <option value="delai_recours">Délai de recours</option>
+            <option value="depot">Dépôt</option>
+            <option value="prescription">Prescription</option>
+            <option value="echeance_contractuelle">Échéance contractuelle</option>
+          </select>
+          <input [(ngModel)]="nvTitre" name="ti" placeholder="Intitulé" />
+          <input type="date" [(ngModel)]="nvDate" name="da" />
+          <button class="btn" (click)="ajouter()" [disabled]="!nvDossier || !nvDate">Ajouter</button>
+        </div>
+      }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
 
@@ -53,11 +56,13 @@ import { ApiService, Dossier } from '../../core/api.service';
 
     <section class="panel">
       <h3>Plan d'action — tâches</h3>
-      <div class="add">
-        <input [(ngModel)]="ntTitre" name="nt" placeholder="Nouvelle tâche" style="flex:1;min-width:200px" />
-        <input type="date" [(ngModel)]="ntEch" name="ne" />
-        <button class="btn" (click)="ajouterTache()" [disabled]="!ntTitre">Ajouter</button>
-      </div>
+      @if (auth.peut('taches.creer')) {
+        <div class="add">
+          <input [(ngModel)]="ntTitre" name="nt" placeholder="Nouvelle tâche" style="flex:1;min-width:200px" />
+          <input type="date" [(ngModel)]="ntEch" name="ne" />
+          <button class="btn" (click)="ajouterTache()" [disabled]="!ntTitre">Ajouter</button>
+        </div>
+      }
       @if (taches().length) {
         <table>
           <tr><th>Tâche</th><th>Dossier</th><th>Échéance</th><th>Statut</th><th></th></tr>
@@ -67,7 +72,7 @@ import { ApiService, Dossier } from '../../core/api.service';
               <td>{{ t.dossier_numero || '—' }}</td>
               <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td><span class="tag" [class.done]="t.statut === 'termine'">{{ t.statut }}</span></td>
-              <td>@if (t.statut !== 'termine') { <button class="lien" (click)="terminer(t)">Marquer fait</button> }</td>
+              <td>@if (t.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="terminer(t)">Marquer fait</button> }</td>
             </tr>
           }
         </table>
@@ -86,6 +91,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class EcheancierComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
 
   readonly evenements = signal<any[]>([]);
   readonly taches = signal<any[]>([]);

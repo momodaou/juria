@@ -1,6 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 
 type Capacite = 'resume' | 'chronologie' | 'extraction' | 'contrat' | 'traduction' | 'comparaison';
 
@@ -8,15 +9,16 @@ interface CapaciteInfo {
   code: Capacite;
   titre: string;
   description: string;
+  action: string;
 }
 
 const CAPACITES: CapaciteInfo[] = [
-  { code: 'resume', titre: 'Résumé', description: 'Résume un texte ou une pièce de manière factuelle.' },
-  { code: 'chronologie', titre: 'Chronologie', description: 'Dresse la chronologie des faits datés d’un texte.' },
-  { code: 'extraction', titre: 'Extraction de faits', description: 'Extrait parties, montants, dates, engagements.' },
-  { code: 'contrat', titre: 'Analyse contractuelle', description: 'Identifie les clauses clés et points de vigilance.' },
-  { code: 'traduction', titre: 'Traduction', description: 'Traduit un texte juridique vers une autre langue.' },
-  { code: 'comparaison', titre: 'Comparaison', description: 'Compare deux versions d’un même texte/acte.' },
+  { code: 'resume', titre: 'Résumé', description: 'Résume un texte ou une pièce de manière factuelle.', action: 'ia.resume' },
+  { code: 'chronologie', titre: 'Chronologie', description: 'Dresse la chronologie des faits datés d’un texte.', action: 'ia.chronologie' },
+  { code: 'extraction', titre: 'Extraction de faits', description: 'Extrait parties, montants, dates, engagements.', action: 'ia.extraction_faits' },
+  { code: 'contrat', titre: 'Analyse contractuelle', description: 'Identifie les clauses clés et points de vigilance.', action: 'ia.analyse_contrat' },
+  { code: 'traduction', titre: 'Traduction', description: 'Traduit un texte juridique vers une autre langue.', action: 'ia.traduction' },
+  { code: 'comparaison', titre: 'Comparaison', description: 'Compare deux versions d’un même texte/acte.', action: 'ia.comparaison' },
 ];
 
 @Component({
@@ -32,13 +34,16 @@ const CAPACITES: CapaciteInfo[] = [
     </header>
 
     <div class="cardgrid">
-      @for (c of capacites; track c.code) {
+      @for (c of capacitesAutorisees(); track c.code) {
         <button type="button" class="cap" [class.active]="capacite() === c.code" (click)="capacite.set(c.code)">
           <h4>{{ c.titre }}</h4>
           <p>{{ c.description }}</p>
         </button>
       }
     </div>
+    @if (!capacitesAutorisees().length) {
+      <p class="err">Vous n'êtes autorisé à utiliser aucune capacité de l'Assistant IA.</p>
+    }
 
     <section class="panel">
       <h3>{{ titreCourant() }}</h3>
@@ -61,9 +66,13 @@ const CAPACITES: CapaciteInfo[] = [
         }
       }
 
-      <button class="btn" (click)="lancer()" [disabled]="enCours() || !peutLancer()">
-        {{ enCours() ? 'Génération…' : 'Lancer' }}
-      </button>
+      @if (auth.peut(actionCourante())) {
+        <button class="btn" (click)="lancer()" [disabled]="enCours() || !peutLancer()">
+          {{ enCours() ? 'Génération…' : 'Lancer' }}
+        </button>
+      } @else {
+        <p class="err">Vous n'êtes pas autorisé à utiliser cette capacité.</p>
+      }
 
       @if (resultat()) {
         <div class="result ok">
@@ -90,9 +99,11 @@ const CAPACITES: CapaciteInfo[] = [
     .result pre{white-space:pre-wrap;font-family:inherit;font-size:13.5px;margin-top:8px}
   `],
 })
-export class AssistantIaComponent {
+export class AssistantIaComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   readonly capacites = CAPACITES;
+  readonly capacitesAutorisees = computed(() => this.capacites.filter((c) => this.auth.peut(c.action)));
   readonly capacite = signal<Capacite>('resume');
   readonly resultat = signal('');
   readonly erreur = signal('');
@@ -103,8 +114,21 @@ export class AssistantIaComponent {
   texteB = '';
   langueCible = 'anglais';
 
+  ngOnInit(): void {
+    // Bascule sur la première capacité réellement autorisée pour ce rôle
+    // (le signal démarre sur 'resume', qui peut être hors permission).
+    const permises = this.capacitesAutorisees();
+    if (permises.length && !permises.some((c) => c.code === this.capacite())) {
+      this.capacite.set(permises[0].code);
+    }
+  }
+
   titreCourant(): string {
     return this.capacites.find((c) => c.code === this.capacite())?.titre ?? '';
+  }
+
+  actionCourante(): string {
+    return this.capacites.find((c) => c.code === this.capacite())?.action ?? '';
   }
 
   peutLancer(): boolean {
