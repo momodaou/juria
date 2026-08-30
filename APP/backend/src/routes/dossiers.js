@@ -4,6 +4,29 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
+// Imputation d'un dossier à un profil subordonné : réservée aux avocats
+// associés (30/08/2026, précision explicite de l'utilisateur — « seul
+// l'avocat associé peut imputer un dossier à un profil » — parmi Of
+// Counsel/collaborateur/avocat stagiaire/juriste/stagiaire, sur tout
+// dossier, classique ou pro bono). Un collaborateur peut toujours CRÉER un
+// dossier (dossiers.creer reste ouvert), mais ne peut pas se désigner —
+// ni désigner un autre profil subordonné — comme responsable : ce choix
+// doit venir d'un compte associé. Aucune restriction sur les profils hors
+// de cette liste (associé lui-même, administratif...).
+const PROFILS_SUBORDONNES = ["of_counsel", "collaborateur", "avocat_stagiaire", "juriste", "stagiaire"];
+
+// Vérifie l'imputation du responsable proposé ; renvoie un message d'erreur
+// (à répondre en 403) ou null si c'est autorisé. `poolOuClient` accepte
+// aussi bien le pool que le client d'une transaction en cours.
+async function verifierImputationResponsable(poolOuClient, responsableId, roleAppelant) {
+  if (!responsableId) return null;
+  const { rows: [resp] } = await poolOuClient.query("SELECT role FROM utilisateurs WHERE id = $1", [responsableId]);
+  if (resp && PROFILS_SUBORDONNES.includes(resp.role) && !["associe", "associe_fondateur"].includes(roleAppelant)) {
+    return "Seul un avocat associé peut attribuer un dossier à ce profil (Of Counsel, collaborateur, avocat stagiaire, juriste, stagiaire).";
+  }
+  return null;
+}
+
 // Statut honoraires — pro bono uniquement (ajout 18/08/2026, seuil
 // classique abandonné le même jour à la demande de l'utilisateur : plus
 // aucune contrainte d'honoraires sur un dossier non pro bono). Comparaison
@@ -239,6 +262,9 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
   const proBono = !!b.pro_bono;
   try {
+    const erreurImputation = await verifierImputationResponsable(pool, b.responsable_id, req.user.role);
+    if (erreurImputation) return res.status(403).json({ error: erreurImputation });
+
     if (proBono) {
       if (!(await estAutorise(req.user.role, "dossiers.pro_bono.declarer"))) {
         return res.status(403).json({ error: "Non autorisé à déclarer un dossier pro bono" });
@@ -350,6 +376,23 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // droit d'édition générale ne doit pas suffire à clore un dossier.
     if (b.statut === "archive" && !(await estAutorise(req.user.role, "dossiers.archiver"))) {
       return res.status(403).json({ error: "Non autorisé à archiver un dossier" });
+    }
+
+    // Réattribution du responsable — même garde qu'à la création
+    // (30/08/2026) : seul un associé peut imputer le dossier à un profil
+    // subordonné. Un dossier pro bono va plus loin : le responsable doit
+    // TOUJOURS être un associé, quel que soit l'appelant (règle déjà en
+    // place à la création, étendue ici à la réattribution).
+    if (b.responsable_id) {
+      const erreurImputation = await verifierImputationResponsable(pool, b.responsable_id, req.user.role);
+      if (erreurImputation) return res.status(403).json({ error: erreurImputation });
+      const { rows: [actuelProBono] } = await pool.query("SELECT pro_bono FROM dossiers WHERE id = $1", [req.params.id]);
+      if (actuelProBono?.pro_bono) {
+        const { rows: [resp] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [b.responsable_id]);
+        if (!resp || !["associe", "associe_fondateur"].includes(resp.role)) {
+          return res.status(400).json({ error: "Un dossier pro bono doit être attribué à un avocat associé (seuls les associés ont droit au pro bono)." });
+        }
+      }
     }
 
     // Requalification depuis IND (Guide de référencement §3) : seul cas où

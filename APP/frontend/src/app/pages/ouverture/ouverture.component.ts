@@ -248,6 +248,8 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             </select>
             @if (dossier.pro_bono) {
               <span class="hint">Un dossier pro bono ne peut être attribué qu'à un avocat associé — liste filtrée.</span>
+            } @else if (!estAssocie()) {
+              <span class="hint">Seul un avocat associé peut désigner un collaborateur/stagiaire/juriste comme responsable — liste filtrée aux associés.</span>
             }
           </div>
         </div>
@@ -368,14 +370,23 @@ export class OuvertureComponent implements OnInit {
     return !!(this.dossier.client_id && this.dossier.responsable_id);
   }
 
-  // Un dossier pro bono ne peut être attribué qu'à un associé (30/08/2026,
-  // précision de l'utilisateur) — un collaborateur peut saisir le
-  // dossier, mais uniquement sur instruction d'un associé, seul habilité
-  // au pro bono. Filtre indicatif côté écran ; la vraie garde est dans
-  // POST /api/dossiers.
+  // Deux règles, filtrées ensemble ici (30/08/2026, précisions de
+  // l'utilisateur) — indicatif côté écran, la vraie garde est dans
+  // POST/PUT /api/dossiers :
+  //  - un dossier pro bono ne peut être attribué qu'à un associé ;
+  //  - sur tout dossier, seul un associé peut imputer la responsabilité à
+  //    un profil subordonné (Of Counsel, collaborateur, avocat stagiaire,
+  //    juriste, stagiaire) — un compte non-associé ne peut donc désigner
+  //    qu'un associé comme responsable, jamais lui-même ni un collègue.
+  estAssocie(): boolean {
+    return ['associe', 'associe_fondateur'].includes(this.auth.utilisateur()?.role ?? '');
+  }
+
   responsablesDisponibles(): any[] {
-    if (!this.dossier.pro_bono) return this.utilisateurs();
-    return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+    if (this.dossier.pro_bono || !this.estAssocie()) {
+      return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+    }
+    return this.utilisateurs();
   }
 
   proBonoChange(): void {

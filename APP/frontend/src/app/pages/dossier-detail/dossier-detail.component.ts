@@ -186,8 +186,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <div>
               <label>Responsable</label>
               <select class="in" [(ngModel)]="edit.responsable_id" name="editResponsable">
-                @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                @for (u of responsablesDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
               </select>
+              @if (!estAssocie()) {
+                <span class="hint">Seul un avocat associé peut désigner un collaborateur/stagiaire/juriste comme responsable — liste filtrée aux associés.</span>
+              }
             </div>
           </div>
           <button class="btn" (click)="enregistrerDossier()" [disabled]="enregistrement()">
@@ -546,6 +549,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     }
   `,
   styles: [`
+    .hint{display:block;font-size:12px;color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
@@ -609,6 +613,20 @@ export class DossierDetailComponent implements OnInit {
   readonly erreurEdition = signal('');
   readonly utilisateurs = signal<any[]>([]);
   edit: any = {};
+
+  // Seul un associé peut imputer un dossier à un profil subordonné
+  // (30/08/2026, précision de l'utilisateur) — indicatif côté écran, la
+  // vraie garde est dans PUT /api/dossiers/:id.
+  estAssocie(): boolean {
+    return ['associe', 'associe_fondateur'].includes(this.auth.utilisateur()?.role ?? '');
+  }
+
+  responsablesDisponibles(): any[] {
+    if (!this.estAssocie()) {
+      return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+    }
+    return this.utilisateurs();
+  }
   readonly phases = ['consultation', 'ouverture', 'mise_en_etat', 'plaidoirie', 'decision', 'execution', 'recours', 'cloture'];
   // Statut procédure (19/08/2026) — liste_valeurs déjà utilisée à la
   // création (ouverture.component.ts), reprise ici pour l'édition.

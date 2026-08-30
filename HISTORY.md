@@ -1263,3 +1263,23 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Vérification** : suite étendue (une légère baisse du compte total, 167→166, un `test.each` à 4 rôles remplacé par une couverture plus précise à 3 scénarios) — **166/166** verts (schéma neuf, `docker compose down -v`). Build Angular OK.
 
 **Déploiement** : correction de permission déjà appliquée en production (`PUT /api/acces/permissions`, tracée dans `journal_audit`). Le changement de code (validation du responsable + filtre frontend) reste à déployer.
+
+## 2026-08-30 — Imputation du responsable d'un dossier réservée aux associés
+
+**Demande utilisateur** : « donner la possibilité à ce qu'on désigne les autres (seuls ou à plusieurs) comme responsables de dossiers (mais uniquement sous validation d'un avocat associé). Comment traiter cela ? »
+
+**Clarification obtenue** (via 2 questions à choix) :
+- Périmètre : **tous les dossiers**, pas seulement pro bono.
+- « Validation » : pas une vraie étape d'approbation (pas de statut « en attente », pas d'écran dédié) — « en un mot l'avocat associé seul peut imputer un dossier à un profil. Il s'agit uniquement de l'avocat Of Counsel, l'avocat collaborateur, l'avocat stagiaire, le collaborateur juriste, le stagiaire. Et il s'agit de tout dossier, aussi bien les dossiers classiques que les dossiers pro bono. »
+
+**Traduction retenue** : généralisation de la logique déjà posée pour le pro bono la veille — le système ne peut pas vérifier une instruction/validation verbale, mais peut vérifier **à qui le dossier est attribué**. Règle : le `responsable_id` d'un dossier ne peut être un profil « subordonné » (Of Counsel, collaborateur, avocat stagiaire, juriste, stagiaire) que si l'appelant est lui-même `associe`/`associe_fondateur`. Un collaborateur reste libre de **créer** un dossier (`dossiers.creer` inchangé, ouvert) — il ne peut simplement pas se désigner (ni désigner un collègue subordonné) comme responsable ; il doit désigner un associé, qui pourra ensuite réattribuer le dossier au bon collaborateur via `PUT`. Aucune restriction sur les profils hors de cette liste (un associé, ou un rôle administratif comme `admin_general`, peuvent toujours être désignés librement).
+
+**Implémentation** :
+- `backend/src/routes/dossiers.js` : nouvelle fonction partagée `verifierImputationResponsable(poolOuClient, responsableId, roleAppelant)` — résout le rôle du responsable proposé, refuse (`403`) si c'est un des 5 profils subordonnés et que l'appelant n'est pas associé. Appliquée sur `POST /` (avant même la logique pro bono existante) et sur `PUT /:id` (réattribution après création — jusqu'ici totalement libre, aucune garde).
+- **Gap comblé au passage** : la règle pro bono elle-même (« le responsable d'un dossier pro bono doit être un associé ») n'était vérifiée qu'à la création (`POST`) — un `PUT` pouvait donc réattribuer un dossier pro bono existant à n'importe qui sans contrôle. Ajoutée aussi sur `PUT` (relit `dossiers.pro_bono` du dossier ciblé avant d'accepter un changement de responsable).
+- Frontend : `ouverture.component.ts` (déjà doté d'un filtre pro-bono-only la veille, étendu) et `dossier-detail.component.ts` (panneau « Modifier la fiche », gap comblé — aucun filtre n'existait avant) : la liste déroulante des responsables se limite aux associés pour tout compte non-associé, avec un indice explicatif. Purement indicatif — la garde qui compte est côté serveur.
+- Nouveau fichier de tests `backend/tests/imputationResponsable.test.js` : les 5 profils subordonnés refusés en s'auto-désignant, un collaborateur refusé en désignant un autre collaborateur, accepté en désignant un associé, un associé accepté en désignant n'importe quel profil subordonné, aucune restriction hors de la liste (`admin_general` testé), et 2 tests sur `PUT` (réattribution à un subordonné refusée pour un non-associé ; réattribution d'un dossier pro bono à un subordonné refusée même pour un associé). `honoraires.test.js` ajusté (un cas passe de `400` à `403` : la garde générale intercepte désormais avant la garde spécifique au pro bono, résultat plus précis).
+
+**Vérification** : suite étendue à **177/177** (schéma neuf, `docker compose down -v`). Build Angular production sans erreur.
+
+**Non déployé à ce stade** — backend et frontend modifiés, en attente de confirmation.

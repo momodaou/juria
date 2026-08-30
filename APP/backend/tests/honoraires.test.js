@@ -108,15 +108,17 @@ describe("Déclaration pro bono — dossiers.pro_bono.declarer (qui peut soumett
     }
   );
 
-  test("collaborateur peut soumettre (a la permission), mais le dossier doit être attribué à un associé (400 sinon)", async () => {
+  test("collaborateur peut soumettre (a la permission), mais le dossier doit être attribué à un associé", async () => {
     const clientId = await creerClient();
     const collaborateur = await creerUtilisateurRole("collaborateur");
-    // Responsable = lui-même (collaborateur) -> refusé : seul un associé
-    // peut être responsable d'un dossier pro bono.
+    // Responsable = lui-même (collaborateur) -> refusé. Intercepté par la
+    // garde générale d'imputation (30/08/2026, un profil subordonné ne
+    // peut jamais être son propre responsable sans passer par un associé)
+    // avant même d'atteindre la vérification spécifique au pro bono.
     const refuse = await creerDossier(collaborateur.token, {
       client_id: clientId, responsable_id: collaborateur.id, pro_bono: true,
     });
-    expect(refuse.status).toBe(400);
+    expect(refuse.status).toBe(403);
 
     // Responsable = un associé (instruction reçue de sa part) -> accepté,
     // même si c'est le collaborateur qui soumet le formulaire.
