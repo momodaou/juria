@@ -411,18 +411,20 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 
       <section class="panel">
         <h3>Délais & audiences</h3>
-        <div class="upload">
-          <select [(ngModel)]="dType" name="dtype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-            <option value="audience">Audience</option>
-            <option value="delai_procedure">Délai de procédure</option>
-            <option value="delai_recours">Délai de recours</option>
-            <option value="depot">Dépôt</option>
-            <option value="prescription">Prescription</option>
-          </select>
-          <input [(ngModel)]="dTitre" name="dtitre" placeholder="Intitulé" style="flex:1;min-width:150px">
-          <input type="date" [(ngModel)]="dDate" name="ddate">
-          <button class="btn" (click)="ajouterDelai()" [disabled]="!dDate">Ajouter</button>
-        </div>
+        @if (auth.peut('evenements.creer')) {
+          <div class="upload">
+            <select [(ngModel)]="dType" name="dtype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+              <option value="audience">Audience</option>
+              <option value="delai_procedure">Délai de procédure</option>
+              <option value="delai_recours">Délai de recours</option>
+              <option value="depot">Dépôt</option>
+              <option value="prescription">Prescription</option>
+            </select>
+            <input [(ngModel)]="dTitre" name="dtitre" placeholder="Intitulé" style="flex:1;min-width:150px">
+            <input type="date" [(ngModel)]="dDate" name="ddate">
+            <button class="btn" (click)="ajouterDelai()" [disabled]="!dDate">Ajouter</button>
+          </div>
+        }
         @if (evenements().length) {
           <table>
             <tr><th>Type</th><th>Intitulé</th><th>Échéance</th><th>Jours</th></tr>
@@ -532,24 +534,30 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         } @else { <p class="muted">Aucune communication enregistrée.</p> }
       </section>
 
-      <section class="panel">
-        <h3>Assistant IA <span class="ia-tag">projet à valider</span></h3>
-        <p class="muted" style="margin-bottom:8px">Un appui, jamais une décision : toute production doit être validée par l'avocat.</p>
-        <textarea [(ngModel)]="iaTexte" name="iatexte" rows="4"
-          placeholder="Collez ici le texte d'une pièce à résumer…"
-          style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;font-family:inherit"></textarea>
-        <div class="upload" style="margin-top:8px">
-          <button class="btn" (click)="iaResumer()" [disabled]="iaEnCours() || !iaTexte">Résumer (IA)</button>
-          <button class="btn" style="background:#fff;border:1px solid var(--line);color:var(--slate)" (click)="iaChrono()" [disabled]="iaEnCours()">Chronologie du dossier (IA)</button>
-        </div>
-        @if (iaEnCours()) { <p class="muted" style="margin-top:10px">Génération en cours…</p> }
-        @if (iaOut()) {
-          <div style="margin-top:12px;background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px">
-            <b style="color:#8a6412">Assistant IA — projet à valider</b>
-            <p style="white-space:pre-wrap;font-size:13px;margin-top:6px">{{ iaOut() }}</p>
+      @if (auth.peut('ia.resume') || auth.peut('ia.chronologie')) {
+        <section class="panel">
+          <h3>Assistant IA <span class="ia-tag">projet à valider</span></h3>
+          <p class="muted" style="margin-bottom:8px">Un appui, jamais une décision : toute production doit être validée par l'avocat.</p>
+          <textarea [(ngModel)]="iaTexte" name="iatexte" rows="4"
+            placeholder="Collez ici le texte d'une pièce à résumer…"
+            style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;font-family:inherit"></textarea>
+          <div class="upload" style="margin-top:8px">
+            @if (auth.peut('ia.resume')) {
+              <button class="btn" (click)="iaResumer()" [disabled]="iaEnCours() || !iaTexte">Résumer (IA)</button>
+            }
+            @if (auth.peut('ia.chronologie')) {
+              <button class="btn" style="background:#fff;border:1px solid var(--line);color:var(--slate)" (click)="iaChrono()" [disabled]="iaEnCours()">Chronologie du dossier (IA)</button>
+            }
           </div>
-        }
-      </section>
+          @if (iaEnCours()) { <p class="muted" style="margin-top:10px">Génération en cours…</p> }
+          @if (iaOut()) {
+            <div style="margin-top:12px;background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px">
+              <b style="color:#8a6412">Assistant IA — projet à valider</b>
+              <p style="white-space:pre-wrap;font-size:13px;margin-top:6px">{{ iaOut() }}</p>
+            </div>
+          }
+        </section>
+      }
     } @else if (erreur()) {
       <p class="err">{{ erreur() }}</p>
     } @else {

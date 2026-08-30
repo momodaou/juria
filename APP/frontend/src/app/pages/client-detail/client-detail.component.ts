@@ -27,9 +27,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'" [class.ok]="c.kyc_statut === 'a_jour'">
               KYC : {{ libelleKyc(c.kyc_statut) }}
             </span>
-            <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(c)">
-              {{ modeEdition() ? 'Annuler' : 'Modifier' }}
-            </button>
+            @if (auth.peut('clients.modifier')) {
+              <button class="btn ghost" (click)="modeEdition() ? annulerEdition() : activerEdition(c)">
+                {{ modeEdition() ? 'Annuler' : 'Modifier' }}
+              </button>
+            }
             @if (auth.peut('clients.supprimer')) {
               <button class="btn ghost danger" (click)="supprimerClient()">Supprimer</button>
             }
@@ -72,19 +74,21 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </section>
       }
 
-      <section class="panel">
-        <h3>Statut KYC</h3>
-        <div class="upload">
-          <select class="sel" [(ngModel)]="nouveauStatutKyc" name="statutKyc">
-            <option value="a_faire">À faire</option>
-            <option value="incomplet">Incomplet</option>
-            <option value="piece_expiree">Pièce expirée</option>
-            <option value="a_jour">À jour</option>
-          </select>
-          <button class="btn" (click)="majStatutKyc()">Mettre à jour le statut</button>
-        </div>
-        @if (messageKyc()) { <p class="ok-msg">{{ messageKyc() }}</p> }
-      </section>
+      @if (auth.peut('clients.modifier')) {
+        <section class="panel">
+          <h3>Statut KYC</h3>
+          <div class="upload">
+            <select class="sel" [(ngModel)]="nouveauStatutKyc" name="statutKyc">
+              <option value="a_faire">À faire</option>
+              <option value="incomplet">Incomplet</option>
+              <option value="piece_expiree">Pièce expirée</option>
+              <option value="a_jour">À jour</option>
+            </select>
+            <button class="btn" (click)="majStatutKyc()">Mettre à jour le statut</button>
+          </div>
+          @if (messageKyc()) { <p class="ok-msg">{{ messageKyc() }}</p> }
+        </section>
+      }
 
       <section class="panel">
         <h3>Pièces KYC / LBC-FT</h3>
