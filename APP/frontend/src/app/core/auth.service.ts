@@ -57,6 +57,18 @@ export class AuthService {
       );
   }
 
+  // Réinitialisation de mot de passe en libre-service (31/08/2026).
+  demanderReinitialisation(email: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${environment.apiUrl}/auth/mot-de-passe-oublie`, { email });
+  }
+
+  reinitialiserMotDePasse(token: string, nouveauMotDePasse: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${environment.apiUrl}/auth/reinitialiser-mot-de-passe`, {
+      token,
+      nouveau_mot_de_passe: nouveauMotDePasse,
+    });
+  }
+
   get token(): string | null {
     return localStorage.getItem(this.tokenKey);
   }

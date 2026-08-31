@@ -2432,3 +2432,26 @@ ALTER TYPE sens_montant_litige ADD VALUE 'autre';
 
 ALTER TABLE dossiers ADD COLUMN montant_litige_sens_precision VARCHAR(120);
 -- =============== FIN LIBELLÉS RACCOURCIS + OPTION AUTRE ===============
+
+-- =====================================================================
+--  RÉINITIALISATION DE MOT DE PASSE EN LIBRE-SERVICE (31/08/2026)
+--
+--  Comble un gap documenté depuis le 17/08/2026 : un utilisateur qui
+--  oublie son mot de passe n'avait aucun moyen de le récupérer lui-même
+--  (devait demander à un associé/admin). Jeton à usage unique, courte
+--  durée de vie, seul le hash est stocké (jamais le jeton en clair,
+--  même principe que les mots de passe) — un jeton compromis en base ne
+--  permet pas de réinitialiser un compte.
+-- =====================================================================
+CREATE TABLE reinitialisations_mot_de_passe (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id UUID NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    jeton_hash     VARCHAR(64) NOT NULL,   -- sha256 hex du jeton envoyé par e-mail
+    expire_le      TIMESTAMPTZ NOT NULL,
+    utilise_le     TIMESTAMPTZ,
+    demande_ip     VARCHAR(64),
+    cree_le        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_reinit_mdp_utilisateur ON reinitialisations_mot_de_passe(utilisateur_id);
+CREATE UNIQUE INDEX idx_reinit_mdp_jeton ON reinitialisations_mot_de_passe(jeton_hash);
+-- =============== FIN RÉINITIALISATION DE MOT DE PASSE ===============

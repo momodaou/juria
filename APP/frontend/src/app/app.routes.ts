@@ -7,6 +7,18 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    path: 'mot-de-passe-oublie',
+    loadComponent: () =>
+      import('./pages/mot-de-passe-oublie/mot-de-passe-oublie.component').then((m) => m.MotDePasseOublieComponent),
+  },
+  {
+    path: 'reinitialiser-mot-de-passe',
+    loadComponent: () =>
+      import('./pages/reinitialiser-mot-de-passe/reinitialiser-mot-de-passe.component').then(
+        (m) => m.ReinitialiserMotDePasseComponent
+      ),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     children: [

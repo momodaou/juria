@@ -1,13 +1,13 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { MessagerieService } from '../../core/messagerie.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <div class="login-wrap">
       <form class="login-card" (ngSubmit)="soumettre()">
@@ -25,9 +25,15 @@ import { MessagerieService } from '../../core/messagerie.service';
         <button type="submit" [disabled]="chargement()">
           {{ chargement() ? 'Connexion…' : 'Se connecter' }}
         </button>
+
+        <a class="lien-oublie" routerLink="/mot-de-passe-oublie">Mot de passe oublié ?</a>
       </form>
     </div>
   `,
+  styles: [`
+    .lien-oublie{display:block;text-align:center;margin-top:14px;font-size:12.5px;color:var(--gold);text-decoration:none}
+    .lien-oublie:hover{text-decoration:underline}
+  `],
 })
 export class LoginComponent {
   private readonly auth = inject(AuthService);
