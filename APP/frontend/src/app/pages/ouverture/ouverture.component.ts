@@ -15,9 +15,6 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
     <section class="panel">
       <h3>Étape 1 — Contrôle des conflits d'intérêts (obligatoire)</h3>
 
-      <label>Intitulé du projet de dossier</label>
-      <input class="in" [(ngModel)]="intitule" name="intitule" placeholder="Ex. Bâtir-SA — recouvrement" />
-
       <label>Client</label>
       <input class="in" [(ngModel)]="clientNom" name="clientNom" placeholder="Ex. Bâtir-SA" />
 
@@ -84,6 +81,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
         <label>Client</label>
         <app-client-picker [valeur]="dossier.client_id" [nomInitial]="nomClientPreselectionne"
                             (valeurChange)="dossier.client_id = $event"
+                            (clientChoisi)="onClientPrincipalChoisi($event)"
                             placeholder="Rechercher le client (nom, RCCM, NIF, email…)"></app-client-picker>
         @if (!dossier.client_id && clientNom && creationClientCible() !== 'principal') {
           <p class="hint">
@@ -156,7 +154,15 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
         }
 
         <label>Parties adverses (séparées par des virgules, facultatif)</label>
-        <input class="in" [(ngModel)]="partiesAdversesEdit" name="partiesAdversesEdit" placeholder="Ex. SODIMA Sarl, M. Traoré" />
+        <input class="in" [(ngModel)]="partiesAdversesEdit" name="partiesAdversesEdit"
+               (ngModelChange)="suggererIntitule()" placeholder="Ex. SODIMA Sarl, M. Traoré" />
+
+        <label>Intitulé du dossier</label>
+        <input class="in" [(ngModel)]="intituleDossier" name="intituleDossier"
+               placeholder="Ex. Bâtir-SA c/ SODIMA Sarl" />
+        <p class="muted" style="margin:-8px 0 12px">
+          Suggéré automatiquement (« Client c/ Partie adverse » en contentieux, nom du client en conseil) — modifiable librement.
+        </p>
 
         <div class="grid2">
           <div>
@@ -312,7 +318,6 @@ export class OuvertureComponent implements OnInit {
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
 
-  intitule = '';
   clientNom = '';
   partiesAdverses = '';
   motif = '';
@@ -338,6 +343,49 @@ export class OuvertureComponent implements OnInit {
   partiesAdversesEdit = '';
   dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '' };
 
+  // Intitulé du dossier (30/08/2026, demande utilisateur) — suggéré
+  // automatiquement (« Client c/ Partie adverse » en contentieux, client
+  // seul en conseil) dès que client/pôle/parties adverses sont connus, mais
+  // reste un champ texte libre ordinaire : dernière valeur suggérée gardée
+  // en mémoire (intituleAutoGenere) pour ne re-suggérer que tant que
+  // l'utilisateur n'a pas lui-même modifié le champ — même garde
+  // anti-écrasement que <app-client-picker> (21/08/2026). Ne s'applique
+  // qu'à la création : une fois le dossier créé, `intitule` redevient un
+  // champ texte ordinaire, sans re-suggestion (voir dossier-detail).
+  intituleDossier = '';
+  private intituleAutoGenere: string | null = null;
+  nomClientPrincipal: string | null = null;
+
+  private joindre(items: string[]): string {
+    const liste = items.filter(Boolean);
+    if (liste.length <= 1) return liste[0] ?? '';
+    return `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}`;
+  }
+
+  private composerIntitule(): string {
+    const clients = this.joindre([this.nomClientPrincipal ?? '', ...this.clientsAdditionnels().map((c) => c.nom)]);
+    if (!clients) return '';
+    if (this.dossier.pole !== 'contentieux') return clients;
+    const parties = this.joindre(this.partiesAdversesEdit.split(',').map((s) => s.trim()));
+    return parties ? `${clients} c/ ${parties}` : clients;
+  }
+
+  suggererIntitule(): void {
+    const suggestion = this.composerIntitule();
+    if (!suggestion) return;
+    // Ne remplace le champ que s'il est vide ou encore égal à la dernière
+    // suggestion — jamais si l'utilisateur l'a personnalisé entre-temps.
+    if (!this.intituleDossier || this.intituleDossier === this.intituleAutoGenere) {
+      this.intituleDossier = suggestion;
+    }
+    this.intituleAutoGenere = suggestion;
+  }
+
+  onClientPrincipalChoisi(c: any): void {
+    this.nomClientPrincipal = c ? (c.denomination || `${c.prenom ?? ''} ${c.nom ?? ''}`.trim()) : null;
+    this.suggererIntitule();
+  }
+
   // Champs conditionnels par pôle (19/08/2026) — matière suit désormais le
   // Guide de référencement des dossiers (table codes_matiere, déjà en base
   // mais jamais branchée jusqu'ici — remplace le domaine listes_valeurs
@@ -357,6 +405,7 @@ export class OuvertureComponent implements OnInit {
     this.dossier.code_matiere = '';
     this.dossier.matiere = '';
     this.chargerMatieres();
+    this.suggererIntitule();
   }
 
   onMatiereChange(): void {
@@ -371,7 +420,7 @@ export class OuvertureComponent implements OnInit {
   }
 
   formValide(): boolean {
-    return !!(this.dossier.client_id && this.dossier.responsable_id);
+    return !!(this.dossier.client_id && this.dossier.responsable_id && this.intituleDossier.trim());
   }
 
   // Deux règles, filtrées ensemble ici (30/08/2026, précisions de
@@ -456,9 +505,11 @@ export class OuvertureComponent implements OnInit {
         if (cible === 'principal') {
           this.dossier.client_id = r.id;
           this.nomClientPreselectionne = nom;
+          this.nomClientPrincipal = nom;
         } else {
           this.clientsAdditionnels.update((liste) => [...liste, { id: r.id, nom }]);
         }
+        this.suggererIntitule();
         this.creationClientCible.set(null);
       },
       error: (e) => { this.creationClientEnCours.set(false); this.erreurNouveauClient.set(e?.error?.error ?? 'Création impossible.'); },
@@ -480,10 +531,12 @@ export class OuvertureComponent implements OnInit {
     if (!c) return;
     const nom = c.denomination || `${c.prenom ?? ''} ${c.nom ?? ''}`.trim();
     this.clientsAdditionnels.update((liste) => [...liste, { id: c.id, nom }]);
+    this.suggererIntitule();
   }
 
   retirerClientAdditionnel(id: string): void {
     this.clientsAdditionnels.update((liste) => liste.filter((x) => x.id !== id));
+    this.suggererIntitule();
   }
 
   peutCreer(): boolean {
@@ -516,6 +569,8 @@ export class OuvertureComponent implements OnInit {
         if (trouve) {
           this.dossier.client_id = trouve.id;
           this.nomClientPreselectionne = trouve.denomination || `${trouve.prenom} ${trouve.nom}`;
+          this.nomClientPrincipal = this.nomClientPreselectionne;
+          this.suggererIntitule();
         }
       },
     });
@@ -531,7 +586,7 @@ export class OuvertureComponent implements OnInit {
       ? { degre: this.dossier.instance_degre, juridiction: this.dossier.juridiction || null }
       : undefined;
     this.api.creerDossier({
-      intitule: this.intitule, ...this.dossier,
+      intitule: this.intituleDossier, ...this.dossier,
       parties_adverses: partiesAdverses,
       clients_additionnels: this.clientsAdditionnels().map((c) => c.id),
       instance_initiale: instanceInitiale,
@@ -547,7 +602,10 @@ export class OuvertureComponent implements OnInit {
     this.resultat.set(null);
     this.decisionPrise.set(null);
     const noms = [this.clientNom, ...this.partiesAdversesListe()].filter(Boolean).join(', ');
-    this.api.conflictCheck({ intitule_projet: this.intitule, noms }).subscribe({
+    // intitule_projet n'est qu'un repère archivé dans conflict_checks (audit,
+    // non utilisé par la recherche de conflit elle-même) — l'intitulé final
+    // du dossier est désormais composé à l'Étape 2 (voir suggererIntitule()).
+    this.api.conflictCheck({ intitule_projet: this.clientNom, noms }).subscribe({
       next: (r) => { this.resultat.set(r); this.chargement.set(false); this.preselectionnerClient(); },
       error: (e) => { this.chargement.set(false); this.erreur.set(e?.error?.error ?? 'Erreur lors du contrôle'); },
     });
