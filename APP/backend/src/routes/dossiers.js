@@ -136,7 +136,7 @@ router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.numero, d.intitule, d.statut, d.phase, d.urgence, d.pro_bono,
-              d.code_matiere, d.couleur_chemise,
+              d.code_matiere, d.couleur_chemise, d.date_ouverture,
               d.client_id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES}

@@ -46,7 +46,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <div class="meta">
           <div><span>Client</span><b>{{ d.client_nom }}</b></div>
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
-          <div><span>Montant</span><b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b></div>
+          <div><span>Ouvert le</span><b>{{ d.date_ouverture ? (d.date_ouverture | date:'dd/MM/yyyy') : '—' }}</b></div>
+          <div><span>Montant du litige</span><b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b></div>
           <div><span>Statut</span><b>{{ d.statut }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
           <div><span>Mode d'honoraires</span><b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b></div>

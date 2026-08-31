@@ -26,6 +26,7 @@ export interface Dossier {
   pro_bono: boolean;
   code_matiere: string | null;
   couleur_chemise: string | null;
+  date_ouverture: string;
   cumul_xof: number;
   // null pour un dossier non pro bono — le seuil classique a été abandonné
   // le 18/08/2026, seul le volet pro bono reste suivi.

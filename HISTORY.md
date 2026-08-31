@@ -1425,3 +1425,21 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Vérification** : build Angular OK. **Vérifié en production avec un parcours complet réel** (Playwright headless) : création d'un client réel à la volée → suggestion correcte (`Client c/ Partie`) ; bascule Conseil → suggestion réduite au client seul (perd le « c/ ») ; ajout d'une 2ᵉ partie adverse → jointure « et » correcte ; modification manuelle du champ puis bascule de pôle → valeur manuelle préservée (non écrasée) ; **dossier réellement créé** → en-tête de la fiche affichant exactement la formule composée (« Verif Intitule […] SARL c/ Concurrent Test SA et Second Concurrent SARL »). Dossier de test archivé après vérification (suppression refusée par le garde-fou anti-perte de données — `dossier_parties`/`instances` déjà peuplées — comportement voulu, archivage utilisé à la place comme pour les précédents nettoyages de ce projet) ; client de test non supprimable pour la même raison (dossier lié), laissé en l'état, clairement identifiable comme test.
 
 **Déploiement production — effectué et vérifié le 31/08/2026** (accord implicite de l'utilisateur, « on peut tester ce que tu proposes »). Frontend uniquement, révision `juria-web-00052-jtq` (précédente `juria-web-00051-sh4`).
+
+## 2026-08-31 — Date d'ouverture affichée + libellé « Montant du litige »
+
+**2 observations de l'utilisateur, toutes deux confirmées réelles** :
+1. « À moins de me tromper nulle part il n'est indiqué la date à laquelle un dossier a été créé ? » — confirmé : `dossiers.date_ouverture` existe en base depuis le tout premier schéma (défaut `current_date`), sélectionnée par `GET /api/dossiers/:id` (`SELECT d.*`) mais **jamais par `GET /api/dossiers`** (liste, colonnes explicites sans `date_ouverture`) et **jamais affichée** ni sur la fiche ni sur la liste — gap réel, pas une erreur de l'utilisateur.
+2. « Sur la fiche, la rubrique "Montant" ne précise pas le type de somme — il s'agit du montant du litige. » — confirmé : le libellé de l'en-tête de fiche disait juste « Montant » alors que le formulaire d'édition, lui, disait déjà correctement « Montant du litige (FCFA, facultatif) » — incohérence entre affichage et édition.
+
+**Corrigé** :
+- `backend/src/routes/dossiers.js` : `d.date_ouverture` ajoutée à la liste des colonnes sélectionnées par `GET /api/dossiers`.
+- `dossiers.component.ts` : nouvelle colonne « Ouvert le » dans le tableau des dossiers.
+- `dossier-detail.component.ts` : nouveau champ « Ouvert le » dans la grille d'en-tête de la fiche ; « Montant » renommé en « Montant du litige » (même libellé que le formulaire d'édition, désormais cohérent).
+- `api.service.ts` : `date_ouverture` ajouté à l'interface `Dossier`.
+
+**Nuance soulevée par l'utilisateur, non implémentée à ce stade (proposée, pas tranchée)** : « il peut s'agir de sommes réclamées par la partie adverse, ou réclamées par notre client (recouvrement de créance, droits, indemnités de travail, etc.) — l'idée est de comprendre la nature de la somme et qui la réclame. » Le schéma actuel n'a qu'un `montant_litige` neutre, sans polarité (qui réclame) ni nature stockée séparément — seul `objet` (texte libre) porte potentiellement cette information aujourd'hui. Une vraie réponse structurée nécessiterait une colonne supplémentaire (ex. `montant_litige_sens` : réclamé par le client / par la partie adverse / indéterminé) sur les écrans Ouverture + Modifier la fiche + affichage — changement de schéma, pas fait dans cette passe, proposé à l'utilisateur en réponse mais laissé à sa décision.
+
+**Vérification** : 177/177 tests backend (aucune régression, changement additif sur une requête déjà couverte), build Angular OK. **Vérifié en production** : `date_ouverture` confirmée présente dans la réponse `GET /api/dossiers`, « Ouvert le » et « Montant du litige » visibles sur la fiche réelle (Cabinet CADET c/ ABFN, 24/08/2026, 45 000 000 FCFA), colonne « Ouvert le » visible sur la liste des dossiers.
+
+**Déploiement production — effectué et vérifié le 31/08/2026**. API `juria-00053-zhd` (précédente `juria-00052-5gr`), frontend `juria-web-00053-kbw` (précédente `juria-web-00052-jtq`).

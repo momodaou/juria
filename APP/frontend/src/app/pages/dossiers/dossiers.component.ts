@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
@@ -8,7 +8,7 @@ import { AuthService } from '../../core/auth.service';
 @Component({
   selector: 'app-dossiers',
   standalone: true,
-  imports: [FormsModule, RouterLink, DecimalPipe],
+  imports: [FormsModule, RouterLink, DecimalPipe, DatePipe],
   template: `
     <header class="page-head">
       <h1>Dossiers</h1>
@@ -36,7 +36,7 @@ import { AuthService } from '../../core/auth.service';
 
       @if (dossiers().length) {
         <table>
-          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th></tr>
+          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
               <td class="clik" [routerLink]="['/dossiers', d.id]">
@@ -46,6 +46,7 @@ import { AuthService } from '../../core/auth.service';
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}</td>
               <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.date_ouverture | date:'dd/MM/yyyy' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.statut === 'archive'">{{ d.statut }}</span></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
