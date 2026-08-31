@@ -47,7 +47,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div><span>Client</span><b>{{ d.client_nom }}</b></div>
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
           <div><span>Ouvert le</span><b>{{ d.date_ouverture ? (d.date_ouverture | date:'dd/MM/yyyy') : '—' }}</b></div>
-          <div><span>Montant du litige</span><b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}{{ libelleSensMontant(d.montant_litige_sens) }}</b></div>
+          <div>
+            <span>Montant du litige</span>
+            <b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b>
+            @if (libelleSensMontant(d.montant_litige_sens); as sens) {
+              <div class="montant-sens">({{ sens }})</div>
+            }
+          </div>
           <div><span>Statut</span><b>{{ d.statut }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
           <div><span>Mode d'honoraires</span><b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b></div>
@@ -781,12 +787,13 @@ export class DossierDetailComponent implements OnInit {
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
 
   // Qui réclame le montant du litige (31/08/2026, demande utilisateur) —
-  // suffixe affiché à côté du montant en en-tête ; rien pour "indetermine"
-  // ou absent, pour ne pas alourdir l'affichage quand l'info n'est pas
-  // renseignée (comportement historique conservé par défaut).
+  // affiché entre parenthèses sous le montant, en petit et en italique
+  // (ajusté le même jour : accolé au montant, ça étirait la rangée d'en-
+  // tête) ; chaîne vide pour "indetermine" ou absent, pour ne pas alourdir
+  // l'affichage quand l'info n'est pas renseignée.
   libelleSensMontant(sens: string | null | undefined): string {
-    if (sens === 'reclame_par_client') return ' — réclamés par le client';
-    if (sens === 'reclame_par_partie_adverse') return ' — réclamés par la partie adverse';
+    if (sens === 'reclame_par_client') return 'réclamés par le client';
+    if (sens === 'reclame_par_partie_adverse') return 'réclamés par la partie adverse';
     return '';
   }
 

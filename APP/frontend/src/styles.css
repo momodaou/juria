@@ -100,6 +100,10 @@ tr:has(td.clik):hover{background:#f7f9fc}
 .dcard .meta{display:flex;gap:26px;flex-wrap:wrap;margin-top:14px}
 .dcard .meta span{display:block;font-size:11px;color:#c3cdde}
 .dcard .meta b{font-size:14px}
+/* Précision "qui réclame" sous le montant (31/08/2026) — en dessous plutôt
+   qu'accolée au montant, pour ne pas étirer la cellule flex et déséquilibrer
+   la rangée d'en-tête. */
+.dcard .meta .montant-sens{display:block;font-size:11px;font-style:italic;color:#9aa7bd;margin-top:2px}
 
 /* Connexion */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
