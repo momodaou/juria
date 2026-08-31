@@ -221,9 +221,13 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
               <label>Réclamé par (facultatif)</label>
               <select class="in" [(ngModel)]="dossier.montant_litige_sens" name="montantLitigeSens">
                 <option value="indetermine">Indéterminé</option>
-                <option value="reclame_par_client">Notre client</option>
-                <option value="reclame_par_partie_adverse">La partie adverse</option>
+                <option value="reclame_par_client">Réclamation client</option>
+                <option value="reclame_par_partie_adverse">Réclamation adverse</option>
+                <option value="autre">Autre</option>
               </select>
+              @if (dossier.montant_litige_sens === 'autre') {
+                <input class="in" [(ngModel)]="dossier.montant_litige_sens_precision" name="montantLitigeSensPrecision" placeholder="Préciser" />
+              }
             </div>
           } @else {
             <div class="col2">

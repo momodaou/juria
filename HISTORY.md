@@ -1469,3 +1469,22 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **Vérification** : build Angular OK (frontend seul, aucun changement backend/schéma). **Vérifié en production sur le même dossier réel utilisé pour le retour utilisateur** (Cabinet CADET c/ ABFN) — capture avant/après confirmant que la rangée d'en-tête garde son rythme normal, le texte tient sur une ligne discrète sous le montant. Valeur de test remise à « indéterminé » après vérification (comportement déjà suivi la fois précédente).
 
 **Déploiement production — effectué et vérifié le 31/08/2026**. Frontend uniquement, révision `juria-web-00055-fwg` (précédente `juria-web-00054-t7q`).
+
+## 2026-08-31 — Libellés « réclamé par » raccourcis + option « Autre »
+
+**2ᵉ retour utilisateur, même jour** : « juste "réclamation partie adverse" ou "réclamé par partie adverse" ou "réclamation adverse", etc. — la plus courte possible. En outre ajouter en modification dans la partie "réclamé par" sur la liste du déroulant, l'option "autre" au cas où il y aurait d'autres indications différentes en raison de la nature de la somme. »
+
+**Corrigé** :
+- Libellés raccourcis au maximum et symétriques : « Réclamation client » / « Réclamation adverse » (au lieu de « Notre client » / « La partie adverse » dans le menu, « réclamés par… » dans l'en-tête) — retenu parmi les formulations proposées par l'utilisateur, la plus courte des deux.
+- Nouvelle option **« Autre »** dans le sélecteur, avec un champ de précision libre qui apparaît seulement si elle est choisie — même patron déjà utilisé dans ce même écran pour `statut_procedure`/`statut_procedure_precision` (« Autre » + champ « Préciser »), repris à l'identique pour la cohérence.
+- En-tête de fiche : affiche la précision libre si « Autre » est choisi et renseigné, sinon juste « (autre) ».
+
+**Schéma** : `ALTER TYPE sens_montant_litige ADD VALUE 'autre'` + nouvelle colonne `dossiers.montant_litige_sens_precision VARCHAR(120)`. Migration volontairement séparée en son propre import (aucun INSERT/UPDATE ne référence `'autre'` dans le même script) — évite le piège déjà documenté (`ALTER TYPE ... ADD VALUE` utilisé dans la même transaction que sa création).
+
+**Backend** (`dossiers.js`) : `POST /` et `PUT /:id` acceptent `montant_litige_sens_precision`, insérée/mise à jour en `COALESCE` comme les autres champs texte de la route (limitation acceptée, cohérente avec le reste : passer d'« Autre » à un autre choix ne vide pas la précision déjà enregistrée, exactement comme `statut_procedure_precision`).
+
+**Piège de migration à nouveau rencontré et déjà connu** : `--user=juria_app` refusé sur `dossiers` (« must be owner »), résolu avec `--user=postgres` — 3ᵉ fois que ce projet rencontre exactement ce cas précis sur cette table dans la même journée.
+
+**Vérification** : 177/177 tests backend sur schéma neuf. **Smoke test fonctionnel** avant déploiement : dossier créé via API locale avec `montant_litige_sens=autre` + précision → confirmé au `GET`. Build Angular OK. **Vérifié en production sur le même dossier réel** (Cabinet CADET c/ ABFN) : « Réclamation client » affiché correctement en en-tête ; « Autre » avec précision « Sinistre couvert par assurance » affiché tel quel. Valeur de test remise à « indéterminé » après vérification (même pratique que les fois précédentes).
+
+**Déploiement production — effectué et vérifié le 31/08/2026**. Migration de schéma appliquée, API `juria-00055-bj2` (précédente `juria-00054-nvr`), frontend `juria-web-00056-5nb` (précédente `juria-web-00055-fwg`).

@@ -50,7 +50,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div>
             <span>Montant du litige</span>
             <b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b>
-            @if (libelleSensMontant(d.montant_litige_sens); as sens) {
+            @if (libelleSensMontant(d.montant_litige_sens, d.montant_litige_sens_precision); as sens) {
               <div class="montant-sens">({{ sens }})</div>
             }
           </div>
@@ -153,9 +153,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <label>Réclamé par (facultatif)</label>
                 <select class="in" [(ngModel)]="edit.montant_litige_sens" name="editMontantLitigeSens">
                   <option value="indetermine">Indéterminé</option>
-                  <option value="reclame_par_client">Notre client</option>
-                  <option value="reclame_par_partie_adverse">La partie adverse</option>
+                  <option value="reclame_par_client">Réclamation client</option>
+                  <option value="reclame_par_partie_adverse">Réclamation adverse</option>
+                  <option value="autre">Autre</option>
                 </select>
+                @if (edit.montant_litige_sens === 'autre') {
+                  <input class="in" [(ngModel)]="edit.montant_litige_sens_precision" name="editMontantLitigeSensPrecision" placeholder="Préciser" />
+                }
               </div>
             } @else {
               <div class="col2"><label>Cabinet ou avocat partenaire (intermédiaire, facultatif)</label><input class="in" [(ngModel)]="edit.intermediaire" name="editIntermediaire" /></div>
@@ -790,10 +794,13 @@ export class DossierDetailComponent implements OnInit {
   // affiché entre parenthèses sous le montant, en petit et en italique
   // (ajusté le même jour : accolé au montant, ça étirait la rangée d'en-
   // tête) ; chaîne vide pour "indetermine" ou absent, pour ne pas alourdir
-  // l'affichage quand l'info n'est pas renseignée.
-  libelleSensMontant(sens: string | null | undefined): string {
-    if (sens === 'reclame_par_client') return 'réclamés par le client';
-    if (sens === 'reclame_par_partie_adverse') return 'réclamés par la partie adverse';
+  // l'affichage quand l'info n'est pas renseignée. Libellés raccourcis au
+  // maximum (même jour, second retour utilisateur) ; "autre" affiche la
+  // précision libre si renseignée, sinon juste "autre".
+  libelleSensMontant(sens: string | null | undefined, precision?: string | null): string {
+    if (sens === 'reclame_par_client') return 'réclamation client';
+    if (sens === 'reclame_par_partie_adverse') return 'réclamation adverse';
+    if (sens === 'autre') return precision?.trim() ? precision.trim() : 'autre';
     return '';
   }
 
@@ -923,7 +930,8 @@ export class DossierDetailComponent implements OnInit {
   activerEdition(d: any): void {
     this.edit = {
       intitule: d.intitule, client_id: d.client_id, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
-      montant_litige: d.montant_litige, montant_litige_sens: d.montant_litige_sens || 'indetermine', mode_honoraires: d.mode_honoraires,
+      montant_litige: d.montant_litige, montant_litige_sens: d.montant_litige_sens || 'indetermine',
+      montant_litige_sens_precision: d.montant_litige_sens_precision, mode_honoraires: d.mode_honoraires,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
       intermediaire: d.intermediaire, code_matiere: d.code_matiere,

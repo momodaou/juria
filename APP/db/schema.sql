@@ -2412,3 +2412,23 @@ CREATE TYPE sens_montant_litige AS ENUM
 
 ALTER TABLE dossiers ADD COLUMN montant_litige_sens sens_montant_litige NOT NULL DEFAULT 'indetermine';
 -- =============== FIN QUI RÉCLAME LE MONTANT DU LITIGE ===============
+
+-- =====================================================================
+--  QUI RÉCLAME LE MONTANT DU LITIGE : LIBELLÉS RACCOURCIS + OPTION
+--  « AUTRE » (31/08/2026, même jour)
+--
+--  2 retours utilisateur sur la fonctionnalité précédente : libellés trop
+--  longs (demande explicitement le plus court possible) ; ajouter une
+--  option « autre » pour les cas où ni « client » ni « partie adverse » ne
+--  convient (nature de la somme différente) — avec une précision libre,
+--  même patron que statut_procedure/statut_procedure_precision déjà
+--  utilisé dans ce schéma.
+--
+--  Pas d'usage de 'autre' dans ce même script (aucun INSERT/UPDATE ne le
+--  référence ici) : l'ALTER TYPE ADD VALUE seul, sans utilisation dans la
+--  même transaction, ne bute pas sur le piège déjà rencontré le 17-18/08.
+-- =====================================================================
+ALTER TYPE sens_montant_litige ADD VALUE 'autre';
+
+ALTER TABLE dossiers ADD COLUMN montant_litige_sens_precision VARCHAR(120);
+-- =============== FIN LIBELLÉS RACCOURCIS + OPTION AUTRE ===============
