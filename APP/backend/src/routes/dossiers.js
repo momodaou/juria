@@ -301,13 +301,13 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
-          montant_litige, mode_honoraires, urgence, responsable_id, pro_bono,
+          montant_litige, montant_litige_sens, mode_honoraires, urgence, responsable_id, pro_bono,
           objet, statut_procedure, statut_procedure_precision, intermediaire,
           code_matiere, couleur_chemise)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::urgence_niveau,'moyenne'),$10,$11,$12,$13,$14,$15,$16,$17)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,COALESCE($10::urgence_niveau,'moyenne'),$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
-       b.montant_litige, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
+       b.montant_litige, b.montant_litige_sens || null, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
        b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
        codeMatiere, couleurChemise]
     );
@@ -415,13 +415,14 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     }
 
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $21::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $22::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
       b.statut_procedure, b.statut_procedure_precision, b.intermediaire,
       b.code_matiere ? b.code_matiere.toUpperCase() : null, couleurRegeneree, numeroRegenere,
       b.client_id || null,
+      b.montant_litige_sens || null,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -446,8 +447,9 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          couleur_chemise = COALESCE($17, couleur_chemise),
          numero = COALESCE($18, numero),
          client_id = COALESCE($19, client_id),
+         montant_litige_sens = COALESCE($20::sens_montant_litige, montant_litige_sens),
          maj_le = now()
-       WHERE id = $20 ${clauseConcurrence}
+       WHERE id = $21 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
       params
     );

@@ -2396,3 +2396,19 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('collaborateur','dossiers.pro_bono.declarer',TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
 -- =============== FIN PRO BONO ATTRIBUÉ À UN ASSOCIÉ ===============
+
+-- =====================================================================
+--  QUI RÉCLAME LE MONTANT DU LITIGE (31/08/2026)
+--
+--  Observation utilisateur : « le montant du litige s'affiche sans
+--  indication de qui le réclame — peut être une somme réclamée par la
+--  partie adverse, ou par notre client (recouvrement de créance, droits,
+--  indemnités de travail…) ». La nature de la demande reste portée par le
+--  champ objet (texte libre, déjà existant) — seule la polarité (qui
+--  réclame) manquait, sans équivalent structuré ailleurs dans le schéma.
+-- =====================================================================
+CREATE TYPE sens_montant_litige AS ENUM
+    ('reclame_par_client','reclame_par_partie_adverse','indetermine');
+
+ALTER TABLE dossiers ADD COLUMN montant_litige_sens sens_montant_litige NOT NULL DEFAULT 'indetermine';
+-- =============== FIN QUI RÉCLAME LE MONTANT DU LITIGE ===============

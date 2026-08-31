@@ -217,6 +217,14 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
               <label>Montant du litige (FCFA, facultatif)</label>
               <input class="in" type="number" [(ngModel)]="dossier.montant_litige" name="montantLitige" />
             </div>
+            <div>
+              <label>Réclamé par (facultatif)</label>
+              <select class="in" [(ngModel)]="dossier.montant_litige_sens" name="montantLitigeSens">
+                <option value="indetermine">Indéterminé</option>
+                <option value="reclame_par_client">Notre client</option>
+                <option value="reclame_par_partie_adverse">La partie adverse</option>
+              </select>
+            </div>
           } @else {
             <div class="col2">
               <label>Cabinet ou avocat partenaire (intermédiaire, facultatif)</label>
@@ -341,7 +349,7 @@ export class OuvertureComponent implements OnInit {
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
   partiesAdversesEdit = '';
-  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '' };
+  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '', montant_litige_sens: 'indetermine' };
 
   // Intitulé du dossier (30/08/2026, demande utilisateur) — suggéré
   // automatiquement (« Client c/ Partie adverse » en contentieux, client
