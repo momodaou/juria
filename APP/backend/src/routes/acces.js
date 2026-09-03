@@ -113,6 +113,38 @@ router.post("/utilisateurs/:id/reinitialiser-mot-de-passe", async (req, res) => 
   }
 });
 
+// PUT /api/acces/utilisateurs/:id  { code?, prenom?, nom?, email?, pole? }
+// Corrige la fiche d'un compte existant (ex. e-mail erroné à la création) —
+// jamais le rôle (route dédiée ci-dessous) ni le mot de passe (routes
+// dédiées plus haut). Un champ omis garde sa valeur actuelle (COALESCE,
+// même patron que dossiers.js/clients.js).
+router.put("/utilisateurs/:id", async (req, res) => {
+  const b = req.body || {};
+  if (!b.code && !b.prenom && !b.nom && !b.email && !b.pole) {
+    return res.status(400).json({ error: "Au moins un champ à modifier (code, prenom, nom, email, pole)" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs SET
+         code = COALESCE($1, code), prenom = COALESCE($2, prenom),
+         nom = COALESCE($3, nom), email = COALESCE($4, email),
+         pole = COALESCE($5::pole_cabinet, pole)
+       WHERE id = $6
+       RETURNING id, code, prenom, nom, email, role, pole`,
+      [b.code || null, b.prenom || null, b.nom || null, b.email || null, b.pole || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Compte introuvable" });
+    await logAudit({
+      utilisateurId: req.user.sub, action: "modifier_compte", entite: "utilisateurs",
+      entiteId: req.params.id, details: b, ip: req.ip,
+    });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // PUT /api/acces/utilisateurs/:id/role  { role }
 router.put("/utilisateurs/:id/role", async (req, res) => {
   const { role } = req.body || {};
