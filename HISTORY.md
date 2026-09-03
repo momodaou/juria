@@ -1545,3 +1545,13 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 - **Revérifié après correctif** (Playwright, même script) : capture d'écran confirmant l'aperçu de l'étiquette (QR + bandeau + référence) sur un dossier réel (`CX-FON-2026-0001`, bandeau gris cohérent avec la recoloration du jour), plus le bouton « Imprimer l'étiquette » (fenêtre popup capturée, contenu identique à l'aperçu). Aucune erreur JS dans les deux cas.
 
 **Déploiement du correctif — effectué et vérifié le 03/09/2026**. Frontend seul, révision `juria-web-00060-22n` (précédente `juria-web-00059-vv2`).
+
+## 2026-09-03 — Retour aux 7 couleurs de chemise d'origine
+
+**Demande utilisateur, même jour** : « ramener les code couleur à l'état initial (les 7) » — annule la consolidation à 6 couleurs faite plus tôt dans la journée.
+
+**Fait** : nouveau bloc `schema.sql` (« annule et remplace », historique du bloc précédent non réécrit — même convention que la marche arrière Of Counsel du 30/08/2026) : PEN reprend `rouge`, FON et IMM reprennent `orange`, ARB reprend `violet` — les 21 autres codes n'avaient pas changé lors de la consolidation, rien à faire dessus. `dossiers.couleur_chemise` recalculée une seconde fois pour tous les dossiers déjà enregistrés, avec la même requête `UPDATE ... FROM codes_matiere`.
+
+Aucun changement de code (front/back) nécessaire : les palettes CSS (`couleursCss` dans `dossiers.component.ts`/`dossier-detail.component.ts`) n'avaient jamais retiré `rouge`, laissé intentionnellement inutilisé le temps de la consolidation plutôt que supprimé.
+
+**Vérification** : rejoué sur schéma neuf (Docker) avant toute action en production — `PEN/FON/IMM/ARB` confirmés à `rouge/orange/orange/violet`. Migration appliquée en production (`gcloud sql import sql --user=postgres`, même piège connu sur `dossiers`). Vérifié via l'API : référentiel confirmé, et recoloration rétroactive confirmée sur les mêmes dossiers réels déjà utilisés pour vérifier la consolidation (`CX-FON-2026-0001` gris→orange, `CX-PEN-2026-0001` orange→rouge). Aucun redéploiement d'API ni de frontend nécessaire (donnée uniquement).

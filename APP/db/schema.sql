@@ -2483,3 +2483,23 @@ FROM codes_matiere cm
 WHERE cm.code = d.code_matiere AND cm.type = d.pole
   AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
 -- =============== FIN CONSOLIDATION COULEURS DE CHEMISE ===============
+
+-- =====================================================================
+--  RETOUR AUX 7 COULEURS DE CHEMISE D'ORIGINE (03/09/2026, même jour)
+--
+--  Annule et remplace le bloc précédent, à la demande explicite de
+--  l'utilisateur : PEN/FON/IMM/ARB reprennent leur couleur d'avant la
+--  consolidation (rouge/orange/orange/violet). L'historique ci-dessus
+--  n'est pas réécrit — même convention que la marche arrière Of Counsel
+--  du 30/08/2026.
+-- =====================================================================
+UPDATE codes_matiere SET couleur = 'rouge'  WHERE code = 'PEN' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'orange' WHERE code = 'FON' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'orange' WHERE code = 'IMM' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'violet' WHERE code = 'ARB' AND type = 'contentieux';
+
+UPDATE dossiers d SET couleur_chemise = cm.couleur
+FROM codes_matiere cm
+WHERE cm.code = d.code_matiere AND cm.type = d.pole
+  AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
+-- =============== FIN RETOUR AUX 7 COULEURS D'ORIGINE ===============
