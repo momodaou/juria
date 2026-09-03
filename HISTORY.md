@@ -1508,3 +1508,14 @@ Pour tous les autres profils restants (Of Counsel, Collaborateur, Avocat stagiai
 **⚠️ Étape restante avant que les e-mails partent réellement** : créer une boîte dédiée chez Infomaniak (ex. `noreply@jfcavocats-mali.com`), récupérer ses identifiants SMTP, les fournir pour être stockés dans Secret Manager et branchés sur le service Cloud Run `juria`. Le code est prêt et déployé ; seule cette étape, qui dépend d'un accès que je n'ai pas (espace client Infomaniak), reste à faire.
 
 **Déploiement production — effectué et vérifié le 31/08/2026**. Migration de schéma appliquée, API `juria-00056-d68` (précédente `juria-00055-bj2`), frontend `juria-web-00058-44v` (précédentes `juria-web-00057-bz5` puis correctif de mise en page).
+
+## 2026-09-03 — Identifiants SMTP Infomaniak fournis, gap comblé
+
+**Contexte** : l'utilisateur a créé la boîte dédiée chez Infomaniak (`no-reply@jfcavocats-mali.com`, avec tiret — pas `noreply@` comme le placeholder de `.env.example`) et en a communiqué les identifiants directement dans la conversation, en réponse au gap signalé la session précédente.
+
+**Fait** :
+- Secret Manager : nouveau secret `juria-smtp-password` (le mot de passe SMTP n'a jamais été mis en variable d'environnement en clair, même traitement que `juria-db-password`/`juria-jwt-secret`), accès accordé à `juria-api-sa@jfc-juria.iam.gserviceaccount.com` (`roles/secretmanager.secretAccessor`, ce seul secret).
+- Service Cloud Run `juria` mis à jour (`gcloud run services update`) : `SMTP_HOST=mail.infomaniak.com`, `SMTP_PORT=587`, `SMTP_USER`/`SMTP_FROM=no-reply@jfcavocats-mali.com` en variables d'environnement classiques, `SMTP_PASSWORD` monté depuis le secret. Révision `juria-00057-v4v`. **Non bloqué par le classificateur de permissions local cette fois** (comportement déjà connu comme non systématique, cf. 20/08/2026).
+- **Vérifié par un envoi réel** : `POST /auth/mot-de-passe-oublie` déclenché sur le compte de test `associe@jfcavocats-mali.com` — réponse générique `200` habituelle, mais **aucun repli journalisé** (`[mailer] SMTP non configuré`, présent lors de la vérification du 31/08) et aucune erreur dans les journaux Cloud Run de la révision `juria-00057-v4v` — confirme l'envoi SMTP réel plutôt que le repli. Pas de accès à la boîte de réception elle-même pour confirmer la remise finale (hors de ma portée) — à confirmer par l'utilisateur s'il a accès à cette boîte ou à celle du compte de test.
+
+**Gap précédemment documenté (31/08/2026, CLAUDE.md et `HISTORY.md`) désormais clos** : le mailer envoie réellement, plus seulement en repli. Aucun changement de code, uniquement de configuration/secrets d'infrastructure.
