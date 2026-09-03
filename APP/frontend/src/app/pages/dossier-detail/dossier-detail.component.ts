@@ -60,6 +60,32 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </div>
       </div>
 
+      <section class="panel">
+        <h3>Référencement & étiquette</h3>
+        <div class="etq-row">
+          <div class="etq-ref">Référence JURIA : <b class="ref">{{ d.numero }}</b></div>
+          <button class="btn ghost" (click)="genererEtiquette(d)">Générer l'étiquette</button>
+        </div>
+        @if (etiquette(); as etq) {
+          <div class="etiquette-apercu">
+            <div class="etiquette-bande" [style.background]="etq.couleurHex"></div>
+            <div class="etiquette-corps">
+              <img [src]="etq.qr" alt="QR code — ouvre la fiche du dossier" width="70" height="70" />
+              <div>
+                <div class="etiquette-num">{{ d.numero }}</div>
+                <div class="etiquette-intitule">{{ d.intitule }}</div>
+                <div class="etiquette-sub">{{ d.client_nom }}{{ d.responsable_nom ? ' · ' + d.responsable_nom : '' }}</div>
+                <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ d.couleur_chemise || '—' }}</b></div>
+              </div>
+            </div>
+          </div>
+          <div class="etq-row">
+            <button class="btn ghost" (click)="imprimerEtiquette(d, etq)">🖶 Imprimer l'étiquette</button>
+            <p class="hint" style="margin:0">Bandeau de la couleur de la matière + QR scannable vers la fiche du dossier.</p>
+          </div>
+        }
+      </section>
+
       @if (modeEdition()) {
         <section class="panel">
           <h3>Modifier la fiche</h3>
@@ -608,6 +634,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .doublon{background:#fff;border:1px solid #f0dcae;border-radius:8px;padding:12px 14px;margin-top:4px}
     .doublon p{margin:4px 0;font-size:13px}
     .doublon .lien{color:var(--gold);text-decoration:underline}
+    .etq-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+    .etq-ref{font-size:13px}
+    .etiquette-apercu{display:inline-flex;border:2px dashed var(--gold);border-radius:8px;overflow:hidden;background:#fff;margin-top:12px}
+    .etiquette-bande{width:14px}
+    .etiquette-corps{display:inline-flex;gap:14px;align-items:center;padding:12px 16px}
+    .etiquette-num{font-size:18px;font-weight:700;color:#1F2A44;letter-spacing:1px;font-family:ui-monospace,monospace}
+    .etiquette-intitule{font-size:13px;font-weight:600;margin-top:2px}
+    .etiquette-sub{font-size:12px;color:var(--slate);margin-top:1px}
+    .etiquette-chemise{font-size:11px;margin-top:4px}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -619,6 +654,13 @@ export class DossierDetailComponent implements OnInit {
 
   private id = '';
   readonly dossier = signal<any | null>(null);
+  // Référencement & étiquette (03/09/2026) — gap comblé : la démo HTML de
+  // spécification (référence) prévoyait une étiquette imprimable (bandeau
+  // couleur de la matière + QR scannable) jamais retranscrite dans
+  // l'application réelle jusqu'ici. Entièrement client (comme l'aperçu de
+  // document du 21/08/2026) : le QR encode l'URL de la fiche dossier,
+  // aucun appel serveur dédié.
+  readonly etiquette = signal<{ qr: string; couleurHex: string } | null>(null);
   readonly evenements = signal<any[]>([]);
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
@@ -675,6 +717,51 @@ export class DossierDetailComponent implements OnInit {
     orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6',
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
+
+  private urlDossier(d: any): string {
+    return `${window.location.origin}/dossiers/${d.id}`;
+  }
+
+  async genererEtiquette(d: any): Promise<void> {
+    const QRCode = await import('qrcode');
+    const qr = await QRCode.toDataURL(this.urlDossier(d), { width: 140, margin: 1 });
+    this.etiquette.set({ qr, couleurHex: this.couleurCss(d.couleur_chemise) });
+  }
+
+  private echapperHtml(texte: string): string {
+    return (texte ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  }
+
+  imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }): void {
+    const w = window.open('', '_print_etiquette', 'width=420,height=260');
+    if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
+    const sousTitre = [d.client_nom, d.responsable_nom].filter(Boolean).map((t) => this.echapperHtml(t)).join(' · ');
+    w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
+      @page { size: 90mm 40mm; margin: 4mm; }
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:6px;overflow:hidden;width:fit-content}
+      .bande{width:10px;background:${etq.couleurHex}}
+      .corps{display:flex;gap:10px;align-items:center;padding:8px 10px}
+      .qr{width:70px;height:70px}
+      .num{font-size:15px;font-weight:700;letter-spacing:.5px;color:#1F2A44;font-family:ui-monospace,monospace}
+      .intitule{font-size:11px;font-weight:600;margin-top:2px}
+      .sub{font-size:10px;color:#6B7280;margin-top:1px}
+      .chemise{font-size:9px;margin-top:3px}
+    </style></head><body>
+      <div class="etq"><div class="bande"></div><div class="corps">
+        <img class="qr" src="${etq.qr}" alt="QR" />
+        <div>
+          <div class="num">${this.echapperHtml(d.numero)}</div>
+          <div class="intitule">${this.echapperHtml(d.intitule)}</div>
+          <div class="sub">${sousTitre}</div>
+          <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(d.couleur_chemise || '—')}</b></div>
+        </div>
+      </div></div>
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  }
 
   chargerMatieres(pole: string): void {
     this.api.codesMatiere(pole).subscribe({ next: (l) => this.matieres.set(l) });
@@ -914,6 +1001,7 @@ export class DossierDetailComponent implements OnInit {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
     this.id = id;
+    this.etiquette.set(null);
     this.api.dossier(id).subscribe({
       next: (d) => this.dossier.set(d),
       error: () => this.erreur.set('Dossier introuvable.'),

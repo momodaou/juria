@@ -2455,3 +2455,31 @@ CREATE TABLE reinitialisations_mot_de_passe (
 CREATE INDEX idx_reinit_mdp_utilisateur ON reinitialisations_mot_de_passe(utilisateur_id);
 CREATE UNIQUE INDEX idx_reinit_mdp_jeton ON reinitialisations_mot_de_passe(jeton_hash);
 -- =============== FIN RÉINITIALISATION DE MOT DE PASSE ===============
+
+-- =====================================================================
+--  CONSOLIDATION DES COULEURS DE CHEMISE À 6 COULEURS (03/09/2026)
+--
+--  Demande utilisateur : Civil → jaune ; Commercial → bleu ; Pénal →
+--  orange ; Social → vert ; Administratif et fiscal → violet ; Conseil
+--  et divers → gris (couleur "rouge" retirée du référentiel).
+--
+--  Seuls 4 codes changent réellement de couleur — les 21 autres étaient
+--  déjà conformes à ce découpage : PEN (rouge→orange) et FON/IMM/ARB
+--  (orange/violet→gris, rejoignant le panier « divers » où toutes les
+--  matières de conseil étaient déjà). Mapping des codes non nommés
+--  explicitement par l'utilisateur (FON/IMM/ARB/NUM/AUT/IND → divers)
+--  déduit par Claude — à corriger via une nouvelle UPDATE si besoin.
+--
+--  couleur_chemise des dossiers déjà enregistrés (dénormalisée à la
+--  création, jamais mise à jour depuis) recalculée dans la foulée.
+-- =====================================================================
+UPDATE codes_matiere SET couleur = 'orange' WHERE code = 'PEN' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'gris'   WHERE code = 'FON' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'gris'   WHERE code = 'IMM' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'gris'   WHERE code = 'ARB' AND type = 'contentieux';
+
+UPDATE dossiers d SET couleur_chemise = cm.couleur
+FROM codes_matiere cm
+WHERE cm.code = d.code_matiere AND cm.type = d.pole
+  AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
+-- =============== FIN CONSOLIDATION COULEURS DE CHEMISE ===============
