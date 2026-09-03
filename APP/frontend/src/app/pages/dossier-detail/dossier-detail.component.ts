@@ -723,9 +723,18 @@ export class DossierDetailComponent implements OnInit {
   }
 
   async genererEtiquette(d: any): Promise<void> {
-    const QRCode = await import('qrcode');
-    const qr = await QRCode.toDataURL(this.urlDossier(d), { width: 140, margin: 1 });
-    this.etiquette.set({ qr, couleurHex: this.couleurCss(d.couleur_chemise) });
+    try {
+      // L'interop CommonJS/ESM du bundler expose les fonctions de 'qrcode'
+      // sous .default plutôt que directement sur le module importé — repli
+      // sur le module lui-même si .default est absent (robuste aux deux cas).
+      const mod: any = await import('qrcode');
+      const QRCode = mod.default?.toDataURL ? mod.default : mod;
+      const qr = await QRCode.toDataURL(this.urlDossier(d), { width: 140, margin: 1 });
+      this.etiquette.set({ qr, couleurHex: this.couleurCss(d.couleur_chemise) });
+    } catch (e) {
+      console.error('[étiquette] génération échouée', e);
+      alert("Impossible de générer l'étiquette (erreur technique). Réessayez ou signalez le problème.");
+    }
   }
 
   private echapperHtml(texte: string): string {
