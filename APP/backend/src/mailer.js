@@ -40,7 +40,7 @@ async function envoyerEmail({ to, subject, html, text, attachments }) {
     console.warn(`[mailer] SMTP non configuré — e-mail non envoyé (destinataire : ${to}, objet : ${subject})`);
     return { envoye: false, motif: "smtp_non_configure" };
   }
-  await t.sendMail({
+  const info = await t.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
     to,
     subject,
@@ -48,6 +48,10 @@ async function envoyerEmail({ to, subject, html, text, attachments }) {
     text: text || undefined,
     attachments,
   });
+  // Journalise la réponse du serveur SMTP (accusé d'acceptation, pas la
+  // remise finale en boîte) — utile pour confirmer un envoi sans avoir
+  // accès à la boîte de réception elle-même.
+  console.log(`[mailer] e-mail accepté par le serveur SMTP (destinataire : ${to}, messageId : ${info.messageId}, réponse : ${info.response})`);
   return { envoye: true };
 }
 
