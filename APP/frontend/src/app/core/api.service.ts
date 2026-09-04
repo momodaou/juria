@@ -7,7 +7,7 @@ export interface DashboardData {
   dossiers_actifs: number;
   dossiers_urgents: number;
   audiences_semaine: number;
-  impayes_ttc: number;
+  impayes_ttc: number | null; // null si le rôle n'a pas factures.consulter
   heures_mois: number;
   dossiers_sous_seuil_honoraires: number;
   delais_a_venir: any[];

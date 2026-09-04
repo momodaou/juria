@@ -17,7 +17,9 @@ import { ApiService, DashboardData } from '../../core/api.service';
         <div class="kpi"><span class="n">{{ d.dossiers_actifs }}</span><span class="l">Dossiers actifs</span></div>
         <div class="kpi red"><span class="n">{{ d.dossiers_urgents }}</span><span class="l">Dossiers urgents</span></div>
         <div class="kpi amber"><span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span></div>
-        <div class="kpi red"><span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span></div>
+        @if (d.impayes_ttc !== null) {
+          <div class="kpi red"><span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span></div>
+        }
         <div class="kpi green"><span class="n">{{ d.heures_mois | number:'1.0-0' }}</span><span class="l">Heures (mois)</span></div>
         <div class="kpi red"><span class="n">{{ d.dossiers_sous_seuil_honoraires }}</span><span class="l">Dossiers pro bono sous le seuil de frais</span></div>
       </div>

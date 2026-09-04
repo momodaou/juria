@@ -1,6 +1,7 @@
 // JURIA — route Cockpit (tableau de bord)
 const express = require("express");
 const { pool } = require("../db");
+const { estAutorise } = require("../permissions");
 const router = express.Router();
 
 // GET /api/dashboard  -> indicateurs agrégés
@@ -19,10 +20,20 @@ router.get("/", async (req, res) => {
        WHERE type IN ('audience') AND statut = 'a_venir'
          AND date_echeance >= now() AND date_echeance < now() + interval '7 days'`
     );
-    const impayes = await one(
-      `SELECT COALESCE(SUM(montant_ttc),0) AS total
-       FROM factures WHERE statut IN ('emise','partielle','impayee')`
-    );
+    // Impayés : donnée financière (factures), gardée par la même permission
+    // que la liste des factures elle-même (factures.consulter) — cette
+    // route n'avait jusqu'ici aucun contrôle de permission, contournant
+    // silencieusement le verrou déjà posé le 18/08/2026 sur l'écran
+    // Facturation (trouvé le 04/09/2026 en concevant une maquette de
+    // Cockpit interactif). Absente (null) plutôt qu'une erreur 403 sur
+    // toute la route — même principe que le menu qui disparaît en silence.
+    const voitFactures = await estAutorise(req.user.role, "factures.consulter");
+    const impayes = voitFactures
+      ? await one(
+          `SELECT COALESCE(SUM(montant_ttc),0) AS total
+           FROM factures WHERE statut IN ('emise','partielle','impayee')`
+        )
+      : null;
     const temps = await one(
       `SELECT COALESCE(SUM(duree_minutes),0) / 60.0 AS heures
        FROM temps WHERE date_saisie >= date_trunc('month', current_date)`
@@ -50,7 +61,7 @@ router.get("/", async (req, res) => {
       dossiers_actifs: Number(dossiers.actifs),
       dossiers_urgents: Number(dossiers.urgents),
       audiences_semaine: Number(audiences.n),
-      impayes_ttc: Number(impayes.total),
+      impayes_ttc: voitFactures ? Number(impayes.total) : null,
       heures_mois: Number(temps.heures),
       dossiers_sous_seuil_honoraires: Number(sousSeuil.n),
       delais_a_venir: delais.rows,
