@@ -144,7 +144,7 @@ const CONFIG: Record<string, TuileConfig> = {
   imports: [DecimalPipe, DatePipe, FormsModule],
   template: `
     <header class="page-head">
-      <h1>Cockpit</h1>
+      <h1>Tableau de bord</h1>
       <p>Vue d'ensemble du cabinet</p>
     </header>
 

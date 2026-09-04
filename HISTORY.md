@@ -1660,3 +1660,13 @@ Aucun changement de code (front/back) nécessaire : les palettes CSS (`couleursC
 **Vérification** : reproduit AVANT correctif avec Playwright (bouton figé sur « Désactiver » après clic sans autre action ; personne disparue après rechargement complet) — 2 preuves négatives sur les deux comptes de test. Après correctif, même scénario : mise à jour immédiate confirmée pour les deux personnes testées l'une après l'autre (« Réactiver » affiché sans qu'aucune autre action n'ait eu lieu entre les deux), et persistance correcte après rechargement complet (statut « Suspendu » retrouvé pour les deux). 184/184 tests backend (aucun changement backend dans cette passe).
 
 **Déploiement production — effectué le 04/09/2026** : frontend seul, `juria-web-00065-t6b` (précédente `juria-web-00064-khr`).
+
+## 2026-09-04 — Renommage « Cockpit » → « Tableau de bord »
+
+**Contexte** : l'utilisateur demande quel terme conviendrait le mieux pour ce menu, pour un cabinet d'avocats. Analyse faite avant de répondre : « Cockpit » vient de la démo HTML de spécification d'origine (`JURIA demo - MAJ 09.08.2026.html`, titre + sous-titre « Vue d'ensemble et pilotage »), pas d'un choix fait pendant le développement. Comparaison avec les logiciels de référence déjà étudiés pour le benchmark du 03/09/2026 : Secib/Septeo, Kleos et Jarvis Legal (les 3 solutions françaises du secteur) utilisent tous « Tableau de bord » ; les outils anglophones (Clio, MyCase, PracticePanther, Smokeball) utilisent « Dashboard ». Point de vigilance signalé : « Dossier 360 » (proposé par l'utilisateur comme piste) n'est pas une alternative valable — c'est déjà le nom d'un autre module de JURIA (liste des dossiers + fiche 360°), le confondre créerait une ambiguïté.
+
+**Recommandation faite et retenue** : « Tableau de bord » — cohérent avec le reste de la nomenclature 100% française de JURIA (pas d'anglicisme), et aligné sur les 3 logiciels français du métier plutôt que sur un vocabulaire de contrôle de gestion/BI moins immédiatement clair pour du personnel non-avocat (assistantes, comptables).
+
+**Fait** : renommage d'affichage uniquement — `app.component.ts` (libellé du menu latéral) et `cockpit.component.ts` (`<h1>` de l'écran). La route (`/cockpit`), le nom de fichier/dossier et la classe `CockpitComponent` restent inchangés (aucun bénéfice à renommer l'identifiant technique en plus du libellé visible — pratique courante de séparer nom d'UI et nom de code). Build Angular vérifié, aucun changement backend.
+
+**Déploiement production — effectué le 04/09/2026** : frontend seul.

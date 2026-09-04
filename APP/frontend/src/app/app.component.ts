@@ -201,7 +201,7 @@ export class AppComponent implements OnInit {
   // HISTORY.md) : Cockpit/Messagerie en tête et Mon compte en pied restent
   // sans étiquette, les 15 autres entrées réparties en 4 groupes.
   readonly navItems: NavItem[] = [
-    { path: '/cockpit', label: 'Cockpit', icon: this.icons.cockpit },
+    { path: '/cockpit', label: 'Tableau de bord', icon: this.icons.cockpit },
     { path: '/messagerie', label: 'Messagerie', icon: this.icons.messagerie },
 
     { path: '/dossiers', label: 'Dossiers', icon: this.icons.dossiers, groupe: 'Dossiers & clients' },
