@@ -202,7 +202,7 @@ const CONFIG: Record<string, TuileConfig> = {
           </div>
           <div class="controls">
             <label>Trier par
-              <select class="in" [(ngModel)]="triIndex" name="tri">
+              <select class="in" [ngModel]="triIndex()" (ngModelChange)="triIndex.set($event)" name="tri">
                 @for (s of CONFIG[o].sorts; track $index) { <option [value]="$index">{{ s.label }}</option> }
               </select>
             </label>
@@ -281,13 +281,17 @@ export class CockpitComponent implements OnInit {
   readonly ouvert = signal<string | null>(null);
   readonly lignesDetail = signal<any[]>([]);
   readonly chargementDetail = signal(false);
-  triIndex = 0;
+  // Doit être un signal (pas une propriété simple) : lignesTriees() est un
+  // computed() et ne se recalcule que si un signal qu'il lit change — une
+  // propriété normale mise à jour par [(ngModel)] ne le déclenche jamais.
+  // Bug trouvé le 04/09/2026 (« la table de tri ne semble pas fonctionner »).
+  readonly triIndex = signal(0);
 
   readonly lignesTriees = computed(() => {
     const o = this.ouvert();
     if (!o) return [];
     const cfg = CONFIG[o];
-    const sort = cfg.sorts[this.triIndex] ?? cfg.sorts[0];
+    const sort = cfg.sorts[this.triIndex()] ?? cfg.sorts[0];
     const col = cfg.cols.find((c) => c.key === sort.key);
     const rows = [...this.lignesDetail()];
     rows.sort((a, b) => {
@@ -319,7 +323,7 @@ export class CockpitComponent implements OnInit {
     if (!this.peutVoirDetail(type)) return;
     if (this.ouvert() === type) { this.fermer(); return; }
     this.ouvert.set(type);
-    this.triIndex = 0;
+    this.triIndex.set(0);
     this.chargementDetail.set(true);
     this.api.dashboardDetail(type).subscribe({
       next: (rows) => { this.lignesDetail.set(rows); this.chargementDetail.set(false); },
