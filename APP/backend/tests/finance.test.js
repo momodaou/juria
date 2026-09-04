@@ -106,7 +106,6 @@ describe("Rétrocessions — calcul par qualité et règle tout ou rien", () => 
   test.each([
     ["associe", 30],
     ["collaborateur", 25],
-    ["non_avocat", 10],
   ])("taux par défaut pour qualite=%s (%i%%)", async (qualite, tauxAttendu) => {
     const res = await request(app)
       .post("/api/retrocessions")
@@ -122,6 +121,34 @@ describe("Rétrocessions — calcul par qualité et règle tout ou rien", () => 
       .post("/api/retrocessions")
       .set("Authorization", `Bearer ${token}`)
       .send({ beneficiaire_id: beneficiaireId, qualite: "stagiaire_fantome", base_ht: 100000 });
+    expect(res.status).toBe(400);
+  });
+
+  // 04/09/2026 — les rétrocessions ne concernent plus que les avocats :
+  // la qualité "non_avocat" (10%) n'est plus utilisable pour une nouvelle
+  // rétrocession, et un bénéficiaire non-avocat (juriste, stagiaire) est
+  // refusé même si un "qualite" d'avocat était forcé dans la requête.
+  test("refuse la qualité non_avocat pour une nouvelle rétrocession", async () => {
+    const res = await request(app)
+      .post("/api/retrocessions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ beneficiaire_id: beneficiaireId, qualite: "non_avocat", base_ht: 1000000 });
+    expect(res.status).toBe(400);
+  });
+
+  test("refuse un bénéficiaire non-avocat (juriste), même avec qualite=collaborateur", async () => {
+    const hash = await require("bcryptjs").hash("TestJuriste123!", 10);
+    const { rows: [juriste] } = await pool.query(
+      `INSERT INTO utilisateurs (code, prenom, nom, email, mot_de_passe, role, actif, valide_le)
+       VALUES ('TJUR','Test','Juriste','test.juriste.retro@jfcavocats-mali.com',$1,'juriste',TRUE,now())
+       ON CONFLICT (email) DO UPDATE SET mot_de_passe = EXCLUDED.mot_de_passe
+       RETURNING id`,
+      [hash]
+    );
+    const res = await request(app)
+      .post("/api/retrocessions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ beneficiaire_id: juriste.id, qualite: "collaborateur", base_ht: 1000000 });
     expect(res.status).toBe(400);
   });
 

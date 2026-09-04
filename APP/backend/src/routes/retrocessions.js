@@ -9,6 +9,16 @@ const { requirePermission } = require("../permissions");
 const router = express.Router();
 
 const TAUX_DEFAUT = { associe: 30, collaborateur: 25, non_avocat: 10 };
+// Rétrocessions réservées aux avocats (04/09/2026, décision explicite de
+// l'utilisateur — « ne concerne plus les collaborateurs [non-avocats],
+// uniquement les avocats désormais ») : juriste/stagiaire (non-avocat)
+// sortent du dispositif. La qualité "non_avocat" (10 %) et son taux par
+// défaut restent définis ci-dessus et dans l'ENUM `qualite_retro` en base
+// pour les rétrocessions déjà enregistrées (jamais réécrites), mais aucune
+// nouvelle rétrocession ne peut plus être créée pour un bénéficiaire dont
+// le rôle n'est pas dans cette liste — vérifié sur le rôle réel du
+// bénéficiaire, pas seulement sur la qualité choisie dans le formulaire.
+const ROLES_AVOCATS = ["associe", "associe_fondateur", "of_counsel", "collaborateur", "avocat_stagiaire"];
 // Quota pro bono : anciennement une constante en dur (2/mois/associé) ;
 // devenu configurable (parametres_cabinet.quota_pro_bono_mensuel) le
 // 18/08/2026 pour que le seuil serve de vraie soupape réglable — c'est
@@ -16,11 +26,13 @@ const TAUX_DEFAUT = { associe: 30, collaborateur: 25, non_avocat: 10 };
 // au-delà du quota (dossiers.js), plus seulement affichée ici.
 
 // GET /api/retrocessions/qualites
+// "non_avocat" (10 %) retirée des qualités proposables (04/09/2026, voir
+// ROLES_AVOCATS ci-dessus) — la valeur reste dans TAUX_DEFAUT et l'ENUM en
+// base uniquement pour les rétrocessions déjà enregistrées avant ce jour.
 router.get("/qualites", (req, res) => {
   res.json([
     { code: "associe", libelle: "Associé", taux: 30 },
     { code: "collaborateur", libelle: "Collab. avocat / stagiaire / Of Counsel", taux: 25 },
-    { code: "non_avocat", libelle: "Collab. non-avocat", taux: 10 },
   ]);
 });
 
@@ -78,10 +90,18 @@ router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
   if (!b.beneficiaire_id || !b.qualite || b.base_ht == null) {
     return res.status(400).json({ error: "beneficiaire_id, qualite et base_ht requis" });
   }
+  if (b.qualite === "non_avocat") {
+    return res.status(400).json({ error: "La qualité « non-avocat » (10 %) n'est plus utilisable pour une nouvelle rétrocession — réservé aux avocats désormais." });
+  }
   const taux = b.taux != null ? Number(b.taux) : TAUX_DEFAUT[b.qualite];
   if (taux == null) return res.status(400).json({ error: "qualite invalide" });
   const montant = Math.round((Number(b.base_ht) * taux) / 100);
   try {
+    const { rows: [beneficiaire] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [b.beneficiaire_id]);
+    if (!beneficiaire) return res.status(404).json({ error: "Bénéficiaire introuvable" });
+    if (!ROLES_AVOCATS.includes(beneficiaire.role)) {
+      return res.status(400).json({ error: "Les rétrocessions concernent désormais uniquement les avocats (associé, associé fondateur, Of Counsel, collaborateur, avocat stagiaire)." });
+    }
     const { rows } = await pool.query(
       `INSERT INTO retrocessions (beneficiaire_id, qualite, taux, base_ht, montant, dossier_id, facture_id, cree_par)
        VALUES ($1,$2::qualite_retro,$3,$4,$5,$6,$7,$8)

@@ -45,7 +45,7 @@ import { AuthService } from '../../core/auth.service';
             <label>Bénéficiaire</label>
             <select class="in" [(ngModel)]="form.beneficiaire_id" name="beneficiaire" (ngModelChange)="onQualiteAuto()">
               <option value="">—</option>
-              @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+              @for (u of beneficiairesEligibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
             </select>
           </div>
           <div>
@@ -143,19 +143,29 @@ export class RetrocessionsComponent implements OnInit {
     this.api.retrocessions().subscribe({ next: (r) => this.retros.set(r) });
   }
 
+  // Rétrocessions réservées aux avocats (04/09/2026, décision explicite de
+  // l'utilisateur — les juristes/stagiaires non-avocats sortent du
+  // dispositif) : le bénéficiaire n'est plus choisi que parmi les avocats,
+  // donc plus besoin de retomber sur la qualité "non_avocat" (10%) ici —
+  // elle reste définie côté serveur uniquement pour l'historique déjà
+  // enregistré, jamais réutilisable depuis ce formulaire.
+  readonly ROLES_ASSOCIES = ['associe', 'associe_fondateur'];
+  readonly ROLES_AVOCATS_COLLABORATEURS = ['of_counsel', 'collaborateur', 'avocat_stagiaire'];
+
+  beneficiairesEligibles(): any[] {
+    const roles = [...this.ROLES_ASSOCIES, ...this.ROLES_AVOCATS_COLLABORATEURS];
+    return this.utilisateurs().filter((u) => roles.includes(u.role));
+  }
+
   // Suggestion automatique de la qualité de rétrocession à partir du rôle
   // d'accès du bénéficiaire (toujours modifiable ensuite à la main) :
   // associé/associé-fondateur -> 30% ; avocat collaborateur/Of Counsel/
-  // avocat stagiaire -> 25% (règle du cahier des charges) ; tout profil
-  // non-avocat, y compris le stagiaire simple -> 10%.
+  // avocat stagiaire -> 25% (règle du cahier des charges).
   onQualiteAuto(): void {
     const u = this.utilisateurs().find((x) => x.id === this.form.beneficiaire_id);
     if (!u) return;
-    const ROLES_ASSOCIES = ['associe', 'associe_fondateur'];
-    const ROLES_AVOCATS_COLLABORATEURS = ['of_counsel', 'collaborateur', 'avocat_stagiaire'];
-    if (ROLES_ASSOCIES.includes(u.role)) this.form.qualite = 'associe';
-    else if (ROLES_AVOCATS_COLLABORATEURS.includes(u.role)) this.form.qualite = 'collaborateur';
-    else this.form.qualite = 'non_avocat';
+    if (this.ROLES_ASSOCIES.includes(u.role)) this.form.qualite = 'associe';
+    else if (this.ROLES_AVOCATS_COLLABORATEURS.includes(u.role)) this.form.qualite = 'collaborateur';
   }
 
   rechercherDossiers(): void {
