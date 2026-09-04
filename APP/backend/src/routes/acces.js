@@ -41,7 +41,7 @@ function genererMotDePasseTemporaire() {
     .join("");
 }
 
-// POST /api/acces/utilisateurs  { code, prenom, nom, email, role, pole? }
+// POST /api/acces/utilisateurs  { code, prenom, nom, email, role, pole?, taux_horaire? }
 // Crée le compte INACTIF (en attente de validation) et renvoie un mot de
 // passe temporaire — affiché une seule fois dans cette réponse, jamais
 // journalisé ni récupérable ensuite. Le compte ne pourra se connecter
@@ -55,10 +55,10 @@ router.post("/utilisateurs", async (req, res) => {
   try {
     const hash = await bcrypt.hash(motDePasseTemporaire, 10);
     const { rows } = await pool.query(
-      `INSERT INTO utilisateurs (code, prenom, nom, email, mot_de_passe, role, pole, actif)
-       VALUES ($1,$2,$3,$4,$5,$6::role_utilisateur,$7,FALSE)
+      `INSERT INTO utilisateurs (code, prenom, nom, email, mot_de_passe, role, pole, actif, taux_horaire)
+       VALUES ($1,$2,$3,$4,$5,$6::role_utilisateur,$7,FALSE,COALESCE($8,0))
        RETURNING id, code, prenom, nom, email, role`,
-      [b.code, b.prenom, b.nom, b.email, hash, b.role, b.pole || null]
+      [b.code, b.prenom, b.nom, b.email, hash, b.role, b.pole || null, b.taux_horaire ?? null]
     );
     await logAudit({
       utilisateurId: req.user.sub, action: "creer_compte", entite: "utilisateurs",
@@ -113,25 +113,26 @@ router.post("/utilisateurs/:id/reinitialiser-mot-de-passe", async (req, res) => 
   }
 });
 
-// PUT /api/acces/utilisateurs/:id  { code?, prenom?, nom?, email?, pole? }
+// PUT /api/acces/utilisateurs/:id  { code?, prenom?, nom?, email?, pole?, taux_horaire? }
 // Corrige la fiche d'un compte existant (ex. e-mail erroné à la création) —
 // jamais le rôle (route dédiée ci-dessous) ni le mot de passe (routes
 // dédiées plus haut). Un champ omis garde sa valeur actuelle (COALESCE,
 // même patron que dossiers.js/clients.js).
 router.put("/utilisateurs/:id", async (req, res) => {
   const b = req.body || {};
-  if (!b.code && !b.prenom && !b.nom && !b.email && !b.pole) {
-    return res.status(400).json({ error: "Au moins un champ à modifier (code, prenom, nom, email, pole)" });
+  if (!b.code && !b.prenom && !b.nom && !b.email && !b.pole && b.taux_horaire === undefined) {
+    return res.status(400).json({ error: "Au moins un champ à modifier (code, prenom, nom, email, pole, taux_horaire)" });
   }
   try {
     const { rows } = await pool.query(
       `UPDATE utilisateurs SET
          code = COALESCE($1, code), prenom = COALESCE($2, prenom),
          nom = COALESCE($3, nom), email = COALESCE($4, email),
-         pole = COALESCE($5::pole_cabinet, pole)
-       WHERE id = $6
-       RETURNING id, code, prenom, nom, email, role, pole`,
-      [b.code || null, b.prenom || null, b.nom || null, b.email || null, b.pole || null, req.params.id]
+         pole = COALESCE($5::pole_cabinet, pole),
+         taux_horaire = COALESCE($6, taux_horaire)
+       WHERE id = $7
+       RETURNING id, code, prenom, nom, email, role, pole, taux_horaire`,
+      [b.code || null, b.prenom || null, b.nom || null, b.email || null, b.pole || null, b.taux_horaire ?? null, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Compte introuvable" });
     await logAudit({
