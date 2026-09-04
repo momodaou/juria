@@ -1670,3 +1670,22 @@ Aucun changement de code (front/back) nécessaire : les palettes CSS (`couleursC
 **Fait** : renommage d'affichage uniquement — `app.component.ts` (libellé du menu latéral) et `cockpit.component.ts` (`<h1>` de l'écran). La route (`/cockpit`), le nom de fichier/dossier et la classe `CockpitComponent` restent inchangés (aucun bénéfice à renommer l'identifiant technique en plus du libellé visible — pratique courante de séparer nom d'UI et nom de code). Build Angular vérifié, aucun changement backend.
 
 **Déploiement production — effectué le 04/09/2026** : frontend seul.
+
+## 2026-09-04 — 6 indicateurs de performance ajoutés au Tableau de bord
+
+**Contexte** : « quels autres éléments de performances peux-tu proposer et ajouter au tableau de bord ? ». Proposition faite (6 pistes, tableau avec justification et faisabilité) puis confirmée en totalité par l'utilisateur (2 questions à choix multiple) : CA du mois + tendance, ancienneté des impayés, taux de recouvrement, CA par pôle, top clients par facturation, productivité par collaborateur.
+
+**Backend (`dashboard.js`)** — tous gardés par `factures.consulter`, même patron que les tuiles financières existantes (`null`/`403` selon le contexte) :
+- **CA du mois + tendance** : `SUM(montant_ht)` du mois courant vs mois précédent (`statut NOT IN ('brouillon','annulee')`), pourcentage d'évolution (`null` si aucun CA le mois précédent, division par zéro évitée).
+- **Ancienneté des impayés** : agrégat = montant total en retard de plus de 60 jours (signal plus actionnable qu'un simple total) ; détail = répartition en 5 tranches (Non échu / 0-30 / 31-60 / 61-90 / +90 jours), classement via `CASE` sur `current_date - date_echeance`.
+- **Taux de recouvrement** : `SUM(paiements.montant)` du mois / `SUM(factures.montant_ttc)` émises le même mois — un « collection rate » classique de logiciel de gestion de cabinet.
+- **CA par pôle** : agrégat = pôle dominant du mois + sa part (ex. « 67 % Conseil ») ; détail = les 2 pôles avec CA et part exacte (fenêtrage `SUM(...) OVER()`).
+- **Top clients / concentration** : agrégat = part du CA (12 derniers mois) que représentent les 5 plus gros clients — un indicateur de risque de dépendance client, pas juste un classement ; détail = liste complète triée par CA.
+- **Productivité par collaborateur** : valeur du temps effectivement facturé (`duree_minutes/60 × taux_horaire`, filtré sur `temps.facture_id IS NOT NULL`) — distinct du « Taux de réalisation » déjà en place (celui-ci mesure une proportion d'heures, celui-là une valeur en FCFA).
+- Nouveau type de détail par indicateur (`ca_mois`, `impayes_aging`, `recouvrement`, `ca_pole`, `top_clients`, `productivite`) sur `GET /api/dashboard/detail/:type`, même mécanique que les 9 tuiles précédentes.
+
+**Frontend (`cockpit.component.ts`)** : 6 nouvelles tuiles avec leur `TuileConfig` (colonnes + tri), toutes conditionnées à `d.xxx !== null` (disparition silencieuse si `factures.consulter` absent). Tuile CA du mois affiche en plus une ligne de tendance (▲/▼ + pourcentage, couleur verte/rouge) quand disponible.
+
+**Vérification** : requêtes SQL testées une à une en local avec des données réelles créées pour l'occasion (2 dossiers de pôles différents, une facture partiellement encaissée, un temps facturé) avant tout câblage frontend — CA par pôle (67 %/33 % cohérent avec les montants saisis), taux de recouvrement (43 %), concentration (100 % avec seulement 2 clients de test), tout correct. Confidentialité vérifiée avec un compte collaborateur : les 8 nouveaux champs de l'agrégat à `null`, les 6 nouvelles routes de détail toutes en `403`. **Vérification visuelle Playwright** (stack locale complète) : les 15 tuiles s'affichent correctement, ouverture + tri testés sur « CA par pôle » et « Top clients », aucune erreur JS. Un défaut cosmétique trouvé et corrigé pendant cette vérification : le détail « CA par pôle » affichait `conseil`/`contentieux` en minuscules (valeur brute de l'ENUM) alors que la tuile affiche « Conseil » — harmonisé côté SQL. 184/184 tests backend (aucun test dédié ajouté — jugé disproportionné pour des requêtes de lecture pure, comme pour le reste du Tableau de bord interactif).
+
+**Déploiement production — effectué et vérifié le 04/09/2026** : API `juria-00064-xgc` (précédente `juria-00063-jzs`), frontend `juria-web-00067-bhr` (précédente `juria-web-00066-ld2`). Revérifié directement en production sur le compte associé réel : les 8 nouveaux champs de l'agrégat présents, les 6 nouvelles routes de détail répondent `200`.

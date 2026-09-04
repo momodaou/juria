@@ -13,6 +13,15 @@ export interface DashboardData {
   conges_attente: number | null; // null si le rôle n'a pas cabinet.consulter
   dossiers_dormants: number;
   taux_realisation: number | null; // null si le rôle n'a pas factures.consulter
+  // 6 indicateurs de performance (04/09/2026) — tous null si le rôle n'a pas factures.consulter
+  ca_mois: number | null;
+  ca_tendance_pct: number | null; // null aussi si pas de CA le mois précédent (division par zéro évitée)
+  impayes_60j_plus: number | null;
+  taux_recouvrement: number | null;
+  ca_pole_dominant_nom: string | null;
+  ca_pole_dominant_pct: number | null;
+  concentration_top5_pct: number | null;
+  productivite_mois: number | null;
   delais_a_venir: any[];
 }
 

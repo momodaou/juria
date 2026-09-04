@@ -29,6 +29,12 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   actifs: null, urgents: null, audiences: null, impayes: 'factures.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
+  // 6 indicateurs de performance (04/09/2026, demande explicite de
+  // l'utilisateur suite au benchmark du 03/09/2026) — tous financiers,
+  // tous gardés par factures.consulter comme le reste.
+  ca_mois: 'factures.consulter', impayes_aging: 'factures.consulter',
+  recouvrement: 'factures.consulter', ca_pole: 'factures.consulter',
+  top_clients: 'factures.consulter', productivite: 'factures.consulter',
 };
 
 const CONFIG: Record<string, TuileConfig> = {
@@ -136,6 +142,68 @@ const CONFIG: Record<string, TuileConfig> = {
       { label: 'Collaborateur (A → Z)', key: 'nom', dir: 'asc' },
     ],
   },
+  ca_mois: {
+    titre: 'CA du mois — détail des factures',
+    cols: [
+      { key: 'numero', label: 'Facture' }, { key: 'client', label: 'Client' },
+      { key: 'montant_ht', label: 'Montant HT', format: 'num' }, { key: 'date_emission', label: 'Émise le', format: 'date' },
+    ],
+    sorts: [
+      { label: 'Montant (décroissant)', key: 'montant_ht', dir: 'desc' },
+      { label: 'Émise le (plus récente)', key: 'date_emission', dir: 'desc' },
+      { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
+    ],
+  },
+  impayes_aging: {
+    titre: 'Ancienneté des impayés',
+    cols: [
+      { key: 'tranche', label: 'Tranche' }, { key: 'nb_factures', label: 'Nb. factures', format: 'num' },
+      { key: 'montant', label: 'Montant (FCFA)', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Montant (décroissant)', key: 'montant', dir: 'desc' },
+      { label: 'Nombre de factures (décroissant)', key: 'nb_factures', dir: 'desc' },
+    ],
+  },
+  recouvrement: {
+    titre: 'Recouvrement du mois — par client',
+    cols: [
+      { key: 'client', label: 'Client' }, { key: 'facture', label: 'Facturé', format: 'num' },
+      { key: 'encaisse', label: 'Encaissé', format: 'num' }, { key: 'ecart', label: 'Écart', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Facturé (décroissant)', key: 'facture', dir: 'desc' },
+      { label: 'Écart (le plus élevé)', key: 'ecart', dir: 'desc' },
+      { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
+    ],
+  },
+  ca_pole: {
+    titre: 'CA par pôle — ce mois',
+    cols: [
+      { key: 'pole', label: 'Pôle' }, { key: 'ca', label: 'CA (FCFA)', format: 'num' }, { key: 'pct', label: 'Part (%)', format: 'num' },
+    ],
+    sorts: [{ label: 'CA (décroissant)', key: 'ca', dir: 'desc' }],
+  },
+  top_clients: {
+    titre: 'Top clients par facturation (12 derniers mois)',
+    cols: [{ key: 'client', label: 'Client' }, { key: 'ca', label: 'CA (FCFA)', format: 'num' }],
+    sorts: [
+      { label: 'CA (décroissant)', key: 'ca', dir: 'desc' },
+      { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
+    ],
+  },
+  productivite: {
+    titre: 'Productivité — valeur du temps facturé, par collaborateur',
+    cols: [
+      { key: 'nom', label: 'Collaborateur' }, { key: 'heures_facturees', label: 'Heures facturées', format: 'num' },
+      { key: 'valeur', label: 'Valeur (FCFA)', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Valeur (décroissant)', key: 'valeur', dir: 'desc' },
+      { label: 'Heures facturées (décroissant)', key: 'heures_facturees', dir: 'desc' },
+      { label: 'Collaborateur (A → Z)', key: 'nom', dir: 'asc' },
+    ],
+  },
 };
 
 @Component({
@@ -189,6 +257,47 @@ const CONFIG: Record<string, TuileConfig> = {
         @if (d.taux_realisation !== null) {
           <button type="button" class="kpi amber" [class.active]="ouvert() === 'realisation'" (click)="clic('realisation')">
             <span class="n">{{ d.taux_realisation }} %</span><span class="l">Taux de réalisation</span>
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.ca_mois !== null) {
+          <button type="button" class="kpi green" [class.active]="ouvert() === 'ca_mois'" (click)="clic('ca_mois')">
+            <span class="n">{{ d.ca_mois | number }}</span><span class="l">CA du mois (FCFA)</span>
+            @if (d.ca_tendance_pct !== null) {
+              <span class="trend" [class.up]="d.ca_tendance_pct >= 0" [class.down]="d.ca_tendance_pct < 0">
+                {{ d.ca_tendance_pct >= 0 ? '▲' : '▼' }} {{ d.ca_tendance_pct }} % vs mois dernier
+              </span>
+            }
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.impayes_60j_plus !== null) {
+          <button type="button" class="kpi red" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
+            <span class="n">{{ d.impayes_60j_plus | number }}</span><span class="l">Impayés +60 jours (FCFA)</span>
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.taux_recouvrement !== null) {
+          <button type="button" class="kpi amber" [class.active]="ouvert() === 'recouvrement'" (click)="clic('recouvrement')">
+            <span class="n">{{ d.taux_recouvrement }} %</span><span class="l">Taux de recouvrement (mois)</span>
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.ca_pole_dominant_pct !== null) {
+          <button type="button" class="kpi" [class.active]="ouvert() === 'ca_pole'" (click)="clic('ca_pole')">
+            <span class="n">{{ d.ca_pole_dominant_pct }} % <span class="pole">{{ d.ca_pole_dominant_nom }}</span></span><span class="l">CA par pôle (mois)</span>
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.concentration_top5_pct !== null) {
+          <button type="button" class="kpi" [class.active]="ouvert() === 'top_clients'" (click)="clic('top_clients')">
+            <span class="n">{{ d.concentration_top5_pct }} %</span><span class="l">Concentration clients (top 5, 12 mois)</span>
+            <span class="hint">▸ voir le détail</span>
+          </button>
+        }
+        @if (d.productivite_mois !== null) {
+          <button type="button" class="kpi green" [class.active]="ouvert() === 'productivite'" (click)="clic('productivite')">
+            <span class="n">{{ d.productivite_mois | number }}</span><span class="l">Productivité — temps facturé (FCFA)</span>
             <span class="hint">▸ voir le détail</span>
           </button>
         }
@@ -261,6 +370,10 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi:hover{box-shadow:0 3px 10px rgba(31,42,68,.10)}
     .kpi.active{background:var(--light);box-shadow:inset 0 0 0 2px var(--gold)}
     .kpi .hint{font-size:10.5px;color:var(--gold);margin-top:6px;font-weight:600}
+    .kpi .trend{font-size:11px;font-weight:600;margin-top:3px}
+    .kpi .trend.up{color:var(--green)}
+    .kpi .trend.down{color:var(--red)}
+    .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
     .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .detail h3{margin:0}
     .lien{background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
