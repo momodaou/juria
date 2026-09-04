@@ -10,6 +10,9 @@ export interface DashboardData {
   impayes_ttc: number | null; // null si le rôle n'a pas factures.consulter
   heures_mois: number;
   dossiers_sous_seuil_honoraires: number;
+  conges_attente: number | null; // null si le rôle n'a pas cabinet.consulter
+  dossiers_dormants: number;
+  taux_realisation: number | null; // null si le rôle n'a pas factures.consulter
   delais_a_venir: any[];
 }
 
@@ -75,6 +78,10 @@ export class ApiService {
 
   dashboard(): Observable<DashboardData> {
     return this.http.get<DashboardData>(`${this.base}/api/dashboard`);
+  }
+
+  dashboardDetail(type: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dashboard/detail/${type}`);
   }
 
   // filtres.statut/responsable/masquer_archives (20/08/2026, diagnostic
