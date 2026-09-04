@@ -341,7 +341,7 @@ export class AccesComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.chargerDelegations();
     this.api.journalAudit().subscribe({
       next: (a) => this.audit.set(a),
@@ -446,15 +446,21 @@ export class AccesComponent implements OnInit {
         this.dernierMotDePasse.set({ nom: `${r.prenom} ${r.nom}`, mdp: r.mot_de_passe_temporaire, creation: true });
         this.afficherFormCompte.set(false);
         this.nouveauCompte = { role: 'collaborateur' };
-        this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
+        this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
       },
       error: (e) => this.erreurCompte.set(e?.error?.error ?? 'Création impossible.'),
     });
   }
 
+  // Met à jour un membre dans le signal `utilisateurs` (jamais par mutation
+  // directe d'un objet déjà rendu — voir explication ci-dessous).
+  private majUtilisateurLocal(id: string, patch: Record<string, any>): void {
+    this.utilisateurs.update((liste) => liste.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+
   valider(u: any): void {
     this.api.validerCompte(u.id).subscribe({
-      next: () => { u.actif = true; u.valide_le = new Date().toISOString(); },
+      next: () => this.majUtilisateurLocal(u.id, { actif: true, valide_le: new Date().toISOString() }),
       error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Validation impossible.'),
     });
   }
@@ -467,11 +473,20 @@ export class AccesComponent implements OnInit {
   }
 
   changerRole(u: any, role: string): void {
-    this.api.majRoleUtilisateur(u.id, role).subscribe({ next: () => { u.role = role; } });
+    this.api.majRoleUtilisateur(u.id, role).subscribe({ next: () => this.majUtilisateurLocal(u.id, { role }) });
   }
 
+  // 🐛 Bug trouvé le 04/09/2026 (« désactiver/réactiver a du mal à
+  // fonctionner ») : `u.actif = !u.actif` mutait directement l'objet déjà
+  // affiché, sans jamais réécrire le signal `utilisateurs` — l'appli
+  // n'ayant pas zone.js (aucun polyfill, voir angular.json), rien ne
+  // déclenche de nouveau rendu après la résolution asynchrone de l'appel
+  // HTTP : le libellé du bouton restait figé sur l'ancien état tant qu'un
+  // événement sans rapport (ou un rechargement complet) ne forçait pas un
+  // nouveau passage de détection de changements. Corrigé en passant par
+  // `majUtilisateurLocal()` (écrit réellement dans le signal via `.update()`).
   basculerActif(u: any): void {
-    this.api.majActifUtilisateur(u.id, !u.actif).subscribe({ next: () => { u.actif = !u.actif; } });
+    this.api.majActifUtilisateur(u.id, !u.actif).subscribe({ next: () => this.majUtilisateurLocal(u.id, { actif: !u.actif }) });
   }
 
   accorderDelegation(): void {

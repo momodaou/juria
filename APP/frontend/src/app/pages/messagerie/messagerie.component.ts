@@ -131,7 +131,7 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.messagerie.rafraichirConversations();
   }
 

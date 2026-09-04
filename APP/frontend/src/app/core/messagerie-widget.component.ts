@@ -171,7 +171,7 @@ export class MessagerieWidgetComponent implements OnInit {
         if (!this.visible()) this.ouvert.set(false);
       }
     });
-    this.api.utilisateurs(undefined).subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
   moi(): string | undefined {

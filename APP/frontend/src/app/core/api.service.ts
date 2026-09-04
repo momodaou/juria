@@ -332,9 +332,20 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/taches/${id}/valider`, {});
   }
 
-  // Annuaire interne — par défaut, comptes actifs seulement ; passer explicitement `undefined` pour tous les comptes.
-  utilisateurs(actifsSeuls: boolean | undefined = true): Observable<any[]> {
-    const q = actifsSeuls === undefined ? '' : `?actif=${actifsSeuls}`;
+  // Annuaire interne — par défaut, comptes actifs seulement ; passer
+  // explicitement `null` pour tous les comptes (y compris désactivés).
+  // ⚠️ Piège corrigé le 04/09/2026 : un paramètre optionnel valant
+  // `undefined` déclenche TOUJOURS sa valeur par défaut en JS/TS, même si
+  // l'appelant passe `undefined` explicitement — impossible de distinguer
+  // « argument omis » de « undefined explicite » avec ce mécanisme. `null`
+  // est un sentinel distinct qui ne peut jamais être confondu avec une
+  // omission. Bug réel qui en résultait : dans l'écran Accès & permissions,
+  // un compte désactivé disparaissait purement et simplement de la liste au
+  // moindre rechargement (la liste rechargeait avec le filtre "actifs
+  // seulement" au lieu d'aucun filtre), rendant impossible sa réactivation
+  // sans passer par l'API directement.
+  utilisateurs(actifsSeuls: boolean | null = true): Observable<any[]> {
+    const q = actifsSeuls === null ? '' : `?actif=${actifsSeuls}`;
     return this.http.get<any[]>(`${this.base}/api/utilisateurs${q}`);
   }
 
