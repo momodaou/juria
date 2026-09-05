@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { ClientPickerComponent } from '../../core/client-picker.component';
 
 @Component({
   selector: 'app-facturation',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule],
+  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent],
   template: `
     <header class="page-head"><h1>Facturation</h1></header>
 
@@ -16,13 +17,19 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <h3>Nouvelle facture</h3>
       <div class="form">
         <label>Dossier
-          <select [(ngModel)]="dossierId" name="dossier">
+          <select [(ngModel)]="dossierId" name="dossier" (ngModelChange)="onDossierChange()">
             <option value="">— choisir —</option>
+            <option value="__autre__">Autre (facturer un client sans dossier)</option>
             @for (d of dossiers(); track d.id) {
               <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option>
             }
           </select>
         </label>
+        @if (dossierId === '__autre__') {
+          <label style="min-width:260px">Client
+            <app-client-picker [valeur]="factureClientId" (valeurChange)="factureClientId = $event" />
+          </label>
+        }
         <label>Mode
           <select [(ngModel)]="mode" name="mode">
             <option value="temps_passe">Temps passé</option>
@@ -34,6 +41,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </label>
         <label>Montant HT
           <input type="number" [(ngModel)]="montantHt" name="ht" />
+        </label>
+        <label>Objet (facultatif)
+          <input [(ngModel)]="objet" name="objet" placeholder="Pré-rempli depuis l'objet du dossier — modifiable" style="min-width:260px" />
         </label>
         <label>Devise
           <select [(ngModel)]="devise" name="devise">
@@ -64,7 +74,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
         @if (auth.peut('factures.creer')) {
-          <button class="btn" (click)="creer()" [disabled]="!dossierId || !montantHt">Émettre</button>
+          <button class="btn" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt">Émettre</button>
         }
       </div>
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
@@ -182,10 +192,37 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <button class="lien" (click)="apercuPdf(f)">Aperçu</button>
                 <button class="lien" (click)="ouvrirPdf(f)">Télécharger</button>
                 @if (auth.peut('factures.annuler') && f.statut === 'emise') {
+                  <button class="lien" (click)="commencerEdition(f)">Modifier</button>
                   <button class="lien" (click)="annuler(f)">Annuler</button>
                 }
               </td>
             </tr>
+            @if (editionId() === f.id) {
+              <tr class="edition">
+                <td colspan="8">
+                  <div class="form">
+                    <label>Objet
+                      <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" style="min-width:220px" />
+                    </label>
+                    <label>Montant HT
+                      <input type="number" [(ngModel)]="edit.montant_ht" [name]="'edHt' + f.id" />
+                    </label>
+                    <label>Frais
+                      <input type="number" [(ngModel)]="edit.montant_frais" [name]="'edFrais' + f.id" />
+                    </label>
+                    <label>Échéance
+                      <input type="date" [(ngModel)]="edit.date_echeance" [name]="'edEch' + f.id" />
+                    </label>
+                    <label>Mention
+                      <input [(ngModel)]="edit.mention" [name]="'edMention' + f.id" style="min-width:220px" />
+                    </label>
+                  </div>
+                  <p class="hint">Correction possible tant qu'aucun paiement n'est encore enregistré sur cette facture.</p>
+                  <button class="lien" (click)="enregistrerEdition(f)">Enregistrer</button>
+                  <button class="lien" (click)="annulerEdition()">Annuler</button>
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else { <p class="muted">Aucune facture.</p> }
@@ -202,6 +239,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .desc{font-size:12px;color:var(--slate);max-width:640px;margin:0 0 10px}
     h4{margin:14px 0 6px;font-size:13px}
     .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .edition td{background:var(--light);padding:12px 14px}
   `],
 })
 export class FacturationComponent implements OnInit {
@@ -217,8 +255,15 @@ export class FacturationComponent implements OnInit {
   readonly erreur = signal('');
 
   dossierId = '';
+  // Choisi quand dossierId === '__autre__' (facturer un client sans dossier,
+  // 05/09/2026 — POST /api/factures acceptait déjà client_id seul, cette
+  // option manquait côté écran).
+  factureClientId: string | null = null;
   mode = 'temps_passe';
   montantHt: number | null = null;
+  // Objet propre à la facture (05/09/2026, diagnostic Facturation) — distinct
+  // de l'objet du dossier lié, pré-rempli à sa sélection mais éditable.
+  objet = '';
   devise = 'XOF';
   tauxApplique: number | null = null;
   // Laissé vide par défaut : le backend applique alors 18% (client Mali) ou
@@ -238,6 +283,10 @@ export class FacturationComponent implements OnInit {
   readonly deboursSelectionnes = signal<Set<string>>(new Set());
   dossierTempsId = '';
   modeTemps = 'temps_passe';
+
+  // Correction d'une facture émise avant tout règlement (05/09/2026).
+  readonly editionId = signal<string | null>(null);
+  edit: any = {};
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
@@ -321,6 +370,38 @@ export class FacturationComponent implements OnInit {
     });
   }
 
+  // Pré-remplit l'objet de la nouvelle facture depuis celui du dossier
+  // choisi — reste un champ libre ensuite (jamais recalculé après ce choix).
+  onDossierChange(): void {
+    if (this.dossierId === '__autre__') { this.objet = ''; this.factureClientId = null; return; }
+    const d = this.dossiers().find((x) => x.id === this.dossierId);
+    this.objet = d?.objet || '';
+  }
+
+  commencerEdition(f: any): void {
+    this.erreur.set('');
+    this.editionId.set(f.id);
+    this.edit = {
+      objet: f.objet || '',
+      montant_ht: f.montant_ht,
+      montant_frais: f.montant_frais,
+      date_echeance: f.date_echeance ? String(f.date_echeance).slice(0, 10) : '',
+      mention: f.mention || '',
+    };
+  }
+
+  annulerEdition(): void {
+    this.editionId.set(null);
+  }
+
+  enregistrerEdition(f: any): void {
+    this.erreur.set('');
+    this.api.modifierFacture(f.id, this.edit).subscribe({
+      next: () => { this.editionId.set(null); this.rafraichir(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible (facture déjà réglée ou annulée ?)'),
+    });
+  }
+
   // Support « papier numérique » (25/08/2026) — même patron que l'aperçu de
   // fichier du 21/08 : réutilise le même téléchargement authentifié pour
   // l'aperçu et le téléchargement direct.
@@ -342,16 +423,22 @@ export class FacturationComponent implements OnInit {
   creer(): void {
     this.message.set(''); this.erreur.set('');
     const payload: any = {
-      dossier_id: this.dossierId,
       mode: this.mode,
       montant_ht: this.montantHt,
       devise: this.devise,
     };
+    if (this.dossierId === '__autre__') payload.client_id = this.factureClientId;
+    else payload.dossier_id = this.dossierId;
+    if (this.objet) payload.objet = this.objet;
     if (this.tva !== null) payload.taux_tva = this.tva;
     if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
     this.ajouterInfosReglement(payload);
     this.api.creerFacture(payload).subscribe({
-      next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.montantHt = null; this.tauxApplique = null; this.rafraichir(); },
+      next: (f) => {
+        this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`);
+        this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null;
+        this.rafraichir();
+      },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
     });
   }

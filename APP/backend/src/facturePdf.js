@@ -237,7 +237,7 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
     doc.font("Helvetica-Bold").fontSize(9).text("Dossier suivi par : ", xLabel, doc.y, { continued: true });
     doc.font("Helvetica").text(equipe.map(nomComplet).join(" – "));
   }
-  const objet = fac.dossier_objet || fac.dossier_intitule;
+  const objet = fac.objet || fac.dossier_objet || fac.dossier_intitule;
   if (objet) {
     doc.font("Helvetica-Bold").fontSize(9).text("Objet : ", xLabel, doc.y, { continued: true });
     doc.font("Helvetica-Oblique").text(objet);

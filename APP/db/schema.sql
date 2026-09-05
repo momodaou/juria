@@ -2503,3 +2503,34 @@ FROM codes_matiere cm
 WHERE cm.code = d.code_matiere AND cm.type = d.pole
   AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
 -- =============== FIN RETOUR AUX 7 COULEURS D'ORIGINE ===============
+
+-- =====================================================================
+--  DIAGNOSTIC FACTURATION, 3 GAPS COMBLÉS (05/09/2026)
+--
+--  1) Objet dédié à la facture : jusqu'ici l'objet imprimé sur la note
+--     d'honoraires n'était QUE celui du dossier lié (dossiers.objet), sans
+--     override possible facture par facture (ex. facture couvrant une
+--     phase précise de la procédure, ou un dossier sans objet renseigné).
+--     Optionnel, pré-rempli côté écran depuis l'objet du dossier choisi
+--     mais éditable, jamais recalculé après création.
+--  2) « Autre » (facturer un client sans dossier) : POST /api/factures
+--     acceptait déjà client_id seul (aucun dossier requis), mais le
+--     formulaire de saisie manuelle de facturation.component.ts n'offrait
+--     qu'un choix de dossier — le cas légitime de note d'honoraires hors
+--     dossier (consultation ponctuelle, abonnement) n'avait nulle part où
+--     s'accrocher côté UI. Aucun changement de schéma : câblage frontend
+--     uniquement (voir HISTORY.md).
+--  3) Correction d'une facture émise avant tout règlement (PUT
+--     /api/factures/:id, factures.js) : évite d'avoir à annuler/recréer
+--     pour une simple faute de frappe sur le montant/l'objet/l'échéance
+--     tant qu'aucun paiement n'est encore enregistré (le statut passe à
+--     partielle/payee au premier paiement, hors de la portée de cette
+--     route). Décision actée avec l'utilisateur : pas de cycle de vie
+--     brouillon complet (numérotation différée, etc.) — jugé disproportionné
+--     par rapport au gain, l'édition directe d'une facture non réglée
+--     suffit. Réutilise le palier de permission de factures.annuler (même
+--     sensibilité : corriger un montant déjà officiel n'est pas moins
+--     engageant que l'annuler).
+-- =====================================================================
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS objet VARCHAR(240);
+-- ============ FIN DIAGNOSTIC FACTURATION (05/09/2026) ============

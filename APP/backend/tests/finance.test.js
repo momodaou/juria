@@ -696,3 +696,104 @@ describe("GET /api/factures/:id/pdf — support « papier numérique » (25/08/2
     expect(texte).toContain("Frais de greffe unique");
   });
 });
+
+describe("Facturation — objet dédié à la facture (diagnostic 05/09/2026)", () => {
+  test("objet fourni à la création est renvoyé et prime sur celui du dossier au PDF", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId, { objet: "Objet du dossier" });
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "forfait", montant_ht: 100000, objet: "Objet propre à la facture" });
+    expect(facture.status).toBe(201);
+    expect(facture.body.objet).toBe("Objet propre à la facture");
+  });
+
+  test("sans objet fourni, la facture n'en a pas (le PDF se rabat sur l'objet du dossier)", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    expect(facture.status).toBe(201);
+    expect(facture.body.objet).toBeNull();
+  });
+});
+
+describe("PUT /api/factures/:id — correction avant tout règlement (diagnostic 05/09/2026)", () => {
+  test("corrige montant_ht/objet/frais tant qu'aucun paiement n'existe", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    expect(facture.status).toBe(201);
+
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 150000, objet: "Correction d'une faute de frappe", montant_frais: 5000 });
+    expect(maj.status).toBe(200);
+    expect(Number(maj.body.montant_ht)).toBe(150000);
+    expect(maj.body.objet).toBe("Correction d'une faute de frappe");
+    // TVA 18% (client Mali par défaut) recalculée sur le nouveau HT + frais.
+    expect(Number(maj.body.montant_ttc)).toBe(150000 + 27000 + 5000);
+  });
+
+  test("refuse la correction dès qu'un paiement (même partiel) a été enregistré", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app)
+      .post(`/api/factures/${facture.body.id}/paiements`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant: 10000, mode: "virement" });
+
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 200000 });
+    expect(maj.status).toBe(409);
+  });
+
+  test("refuse la correction d'une facture déjà annulée", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app)
+      .post(`/api/factures/${facture.body.id}/annuler`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 200000 });
+    expect(maj.status).toBe(409);
+  });
+
+  test("404 pour une facture inexistante", async () => {
+    const maj = await request(app)
+      .put("/api/factures/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 100000 });
+    expect(maj.status).toBe(404);
+  });
+
+  test("montant_ht invalide (0) refusé", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 0 });
+    expect(maj.status).toBe(400);
+  });
+});

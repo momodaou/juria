@@ -29,6 +29,9 @@ export interface Dossier {
   id: string;
   numero: string;
   intitule: string;
+  // Ajouté à la liste le 05/09/2026 (diagnostic Facturation) — sert à
+  // pré-remplir l'objet d'une facture depuis le dossier choisi.
+  objet: string | null;
   statut: string;
   phase: string;
   urgence: string;
@@ -312,6 +315,11 @@ export class ApiService {
   }
   annulerFacture(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/${id}/annuler`, {});
+  }
+  // Correction d'une facture émise avant tout règlement (05/09/2026,
+  // diagnostic Facturation) — voir PUT /api/factures/:id.
+  modifierFacture(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/factures/${id}`, payload);
   }
   // Support « papier numérique » de la facture (25/08/2026) — généré à la
   // volée, pas stocké en GED (voir facturePdf.js).

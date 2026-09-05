@@ -88,8 +88,8 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.numero, f.mode, f.montant_ht, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
-              f.taux_applique, f.montant_ttc_xof, f.statut,
+      `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
+              f.taux_applique, f.montant_ttc_xof, f.statut, f.mention,
               f.date_emission, f.date_echeance,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero
@@ -138,6 +138,10 @@ function verifierDossierUnique(rows, dossierIdConnu) {
 // schéma (17/08/2026) mais n'étaient acceptés par aucune route — câblés le
 // 28/08/2026 (facture PDF enrichie) pour imprimer les coordonnées
 // bancaires du cabinet et une instruction libre sur la facture.
+// objet? : distinct de l'objet du dossier lié (dossiers.objet, toujours
+// affiché en repli sur le PDF si absent) — permet de préciser/écraser sur
+// UNE facture donnée sans toucher à la fiche dossier (diagnostic
+// Facturation, 05/09/2026).
 router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
@@ -288,14 +292,14 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
           libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance,
-          mode_reglement, compte_reglement_id, mention)
+          mode_reglement, compte_reglement_id, mention, objet)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,current_date,TRUE,$12,
-               $13,$14,$15,'emise',current_date,$16,$17,$18,$19)
-       RETURNING id, numero, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
+               $13,$14,$15,'emise',current_date,$16,$17,$18,$19,$20)
+       RETURNING id, numero, objet, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
                  montant_frais, montant_debours, statut`,
       [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
        devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null,
-       b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null]
+       b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null, b.objet || null]
     );
 
     if (tempsFactures.length) {
@@ -357,6 +361,63 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
     res.status(400).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// PUT /api/factures/:id  { objet?, montant_ht?, taux_tva?, montant_frais?,
+//   date_echeance?, mode_reglement?, compte_reglement_id?, mention? }
+// Corrige une facture émise avant tout règlement — refusée dès qu'un
+// paiement (même partiel) existe (le statut n'est alors plus 'emise', voir
+// majStatut ci-dessus) ou qu'elle est déjà annulée. Pas de cycle de vie
+// brouillon distinct : décision actée avec l'utilisateur le 05/09/2026 (une
+// simple faute de frappe sur une facture non réglée ne justifie pas de
+// différer la numérotation). Réutilise le taux de change et le montant de
+// débours déjà figés à l'émission (ni l'un ni l'autre ne se corrigent ici —
+// annuler/recréer si la devise ou les débours rattachés doivent changer) ;
+// même palier de permission que l'annulation (factures.annuler).
+router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const cur = await pool.query(
+      "SELECT statut, montant_ht, taux_tva, montant_frais, montant_debours, taux_applique FROM factures WHERE id = $1",
+      [req.params.id]
+    );
+    if (!cur.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
+    if (cur.rows[0].statut !== "emise") {
+      return res.status(409).json({
+        error: "Cette facture ne peut plus être modifiée (déjà réglée au moins partiellement, ou annulée) — annulez-la et recréez-la si nécessaire.",
+      });
+    }
+
+    const ht = b.montant_ht !== undefined ? Math.round(Number(b.montant_ht)) : Number(cur.rows[0].montant_ht);
+    if (!Number.isFinite(ht) || ht <= 0) return res.status(400).json({ error: "montant_ht invalide (nombre positif requis)" });
+    const tauxTva = b.taux_tva !== undefined ? Number(b.taux_tva) : Number(cur.rows[0].taux_tva);
+    if (!Number.isFinite(tauxTva) || tauxTva < 0) return res.status(400).json({ error: "taux_tva invalide" });
+    const frais = b.montant_frais !== undefined ? Math.round(Number(b.montant_frais)) : Number(cur.rows[0].montant_frais);
+    if (!Number.isFinite(frais) || frais < 0) return res.status(400).json({ error: "montant_frais invalide" });
+    const debours = Number(cur.rows[0].montant_debours);
+    const tauxApplique = Number(cur.rows[0].taux_applique);
+
+    const tva = Math.round((ht * tauxTva) / 100);
+    const ttc = ht + tva + frais + debours;
+    const ttcXof = Math.round(ttc * tauxApplique);
+
+    const { rows } = await pool.query(
+      `UPDATE factures SET
+         objet = COALESCE($1, objet), montant_ht = $2, taux_tva = $3, montant_tva = $4,
+         montant_frais = $5, montant_ttc = $6, montant_ttc_xof = $7,
+         date_echeance = COALESCE($8, date_echeance), mode_reglement = COALESCE($9::mode_paiement, mode_reglement),
+         compte_reglement_id = COALESCE($10::uuid, compte_reglement_id), mention = COALESCE($11, mention)
+       WHERE id = $12
+       RETURNING id, numero, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut`,
+      [b.objet ?? null, ht, tauxTva, tva, frais, ttc, ttcXof,
+       b.date_echeance || null, b.mode_reglement || null, b.compte_reglement_id || null, b.mention ?? null,
+       req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 
