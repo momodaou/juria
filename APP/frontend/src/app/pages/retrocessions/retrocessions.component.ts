@@ -111,7 +111,6 @@ import { AuthService } from '../../core/auth.service';
     .btn:disabled{opacity:.6}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
     .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0}
     .lien:disabled{opacity:.4;cursor:not-allowed}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}

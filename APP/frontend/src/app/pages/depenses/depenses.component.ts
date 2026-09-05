@@ -171,7 +171,6 @@ import { AuthService } from '../../core/auth.service';
     .btn:disabled{opacity:.6}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0;margin-right:10px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}

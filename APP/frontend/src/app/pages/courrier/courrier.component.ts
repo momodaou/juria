@@ -145,7 +145,6 @@ import { AuthService } from '../../core/auth.service';
     .btn:disabled{opacity:.6}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
     .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12px;padding:0;margin-left:6px}
     .ok-msg{color:var(--green);font-size:13px;margin-top:10px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}

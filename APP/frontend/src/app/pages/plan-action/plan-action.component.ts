@@ -130,7 +130,6 @@ const COLONNES = [
     .carte-meta{display:flex;gap:5px;margin-bottom:5px;flex-wrap:wrap}
     .carte-info{color:var(--grey);font-size:11.5px;margin-top:2px}
     .carte-actions{display:flex;gap:10px;margin-top:8px}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0;font-weight:600}
     .vide{font-size:12px}
     .tag.haute{background:#fbe6e5;color:#b13a36}
   `],

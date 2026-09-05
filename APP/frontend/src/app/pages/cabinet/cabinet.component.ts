@@ -122,7 +122,6 @@ import { AuthService } from '../../core/auth.service';
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:13px}
     .btn.sm:disabled{opacity:.6}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0;margin-right:8px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .panel.alerte{border-left:4px solid var(--amber)}

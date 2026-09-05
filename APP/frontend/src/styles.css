@@ -91,6 +91,24 @@ tr.clik:hover{background:#f7f9fc}
 td.clik{cursor:pointer}
 tr:has(td.clik):hover{background:#f7f9fc}
 
+/* Actions inline (Modifier, Retirer, Désactiver…) — style unique pour toute
+   l'application (05/09/2026). Jusqu'ici, 17 écrans redéfinissaient chacun
+   leur propre ".lien" en local, presque identique mais jamais tout à fait,
+   et surtout sans aucun espacement entre deux actions adjacentes dans une
+   même cellule : Angular retire les espaces blancs du template en
+   production (preserveWhitespaces:false par défaut), donc deux boutons
+   ".lien" collés dans le code s'affichaient collés à l'écran aussi —
+   "DésactiverRéinit. mot de passe" au lieu de deux actions distinctes.
+   Centralisé ici une fois pour toutes : un ton légèrement plus affirmé
+   (gras + soulignement au survol, cohérent avec un lien cliquable) et un
+   séparateur discret entre deux actions qui se suivent, sans avoir à
+   toucher la structure HTML de chaque écran. */
+.lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;font-weight:600;padding:0;text-decoration:none}
+.lien:hover{text-decoration:underline}
+.lien:disabled{opacity:.5;cursor:not-allowed;text-decoration:none}
+.lien + .lien{margin-left:14px;position:relative}
+.lien + .lien::before{content:'';position:absolute;left:-8px;top:50%;width:1px;height:11px;background:var(--line);transform:translateY(-50%)}
+
 /* Fiche dossier */
 .back{display:inline-block;margin-bottom:14px;color:var(--gold);text-decoration:none;font-size:13px}
 .dcard{background:linear-gradient(120deg,var(--navy),#26324f);color:#fff;border-radius:12px;padding:20px 22px;margin-bottom:18px}

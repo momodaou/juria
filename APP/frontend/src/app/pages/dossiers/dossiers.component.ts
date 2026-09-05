@@ -74,7 +74,6 @@ import { AuthService } from '../../core/auth.service';
   styles: [`
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
-    .lien{color:var(--gold);text-decoration:none;font-size:13px}
     .lien:hover{text-decoration:underline}
     .pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}

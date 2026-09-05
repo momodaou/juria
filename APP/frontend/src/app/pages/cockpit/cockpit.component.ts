@@ -307,7 +307,7 @@ const CONFIG: Record<string, TuileConfig> = {
         <section class="panel detail">
           <div class="detail-head">
             <h3>{{ CONFIG[o].titre }}</h3>
-            <button type="button" class="lien" (click)="fermer()">✕ Fermer</button>
+            <button type="button" class="fermer" (click)="fermer()">✕ Fermer</button>
           </div>
           <div class="controls">
             <label>Trier par
@@ -376,7 +376,8 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
     .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .detail h3{margin:0}
-    .lien{background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+    .fermer{background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+    .fermer:hover{border-color:var(--grey)}
     .lien:hover{border-color:var(--grey)}
     .controls{margin:14px 0;padding-top:12px;border-top:1px solid var(--line)}
     .controls label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--grey);font-weight:600;text-transform:uppercase;letter-spacing:.03em;max-width:280px}

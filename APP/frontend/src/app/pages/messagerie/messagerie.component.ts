@@ -84,7 +84,6 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .liste{padding:16px;max-height:78vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
     .liste-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
     .liste-head h3{margin:0}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .nouvelle{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;width:100%}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}

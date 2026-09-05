@@ -617,7 +617,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
     .btn:disabled{opacity:.6}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}

@@ -147,7 +147,6 @@ import { ApiService } from '../../core/api.service';
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:4px}
     .doublon p{margin:4px 0;font-size:13px}
     .doublon .btns{display:flex;gap:8px;margin-top:10px}
-    .lien{color:var(--gold);text-decoration:underline}
   `],
 })
 export class ClientsComponent implements OnInit {

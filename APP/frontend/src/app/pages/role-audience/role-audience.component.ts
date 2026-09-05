@@ -152,7 +152,6 @@ import { AuthService } from '../../core/auth.service';
     .col2{grid-column:1 / -1}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
     .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
   `],
 })
 export class RoleAudienceComponent implements OnInit {

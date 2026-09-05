@@ -197,7 +197,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;min-width:150px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .ok-msg{color:var(--green);font-size:13px;margin-top:10px}
     .hint{font-weight:400;color:var(--slate);font-size:11px;white-space:normal;max-width:220px}
     .desc{font-size:12px;color:var(--slate);max-width:640px;margin:0 0 10px}

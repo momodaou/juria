@@ -223,7 +223,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn:disabled{opacity:.6}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.expiree td{background:#fff5f4}
     .ok-msg{color:var(--green);font-size:13px;margin-top:8px}

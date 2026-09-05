@@ -84,7 +84,6 @@ import { AuthService } from '../../core/auth.service';
     .add select,.add input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:0}
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
   `],

@@ -265,7 +265,6 @@ import { AuthService } from '../../core/auth.service';
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
     .btn.sm{padding:9px 14px;font-size:13px}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .tag.attente{background:#fbf1dc;color:#9a6c12}

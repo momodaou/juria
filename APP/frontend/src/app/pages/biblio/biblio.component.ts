@@ -112,7 +112,6 @@ import { AuthService } from '../../core/auth.service';
     .btn:disabled{opacity:.6}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:200px}
-    .lien{background:none;border:none;color:var(--gold);cursor:pointer;font-size:12.5px;padding:0;margin-right:10px;text-decoration:none}
   `],
 })
 export class BiblioComponent implements OnInit {
