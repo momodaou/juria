@@ -92,8 +92,10 @@ import { AuthService } from '../../core/auth.service';
               <input class="in" [(ngModel)]="retourForm.observations" name="obs" />
             </div>
           </div>
-          <button class="btn" (click)="enregistrerRetour(l.audience_id)">Enregistrer le retour</button>
-          <button class="btn ghost" (click)="ligneRetour.set(null)">Annuler</button>
+          <div class="actions">
+            <button class="btn" (click)="enregistrerRetour(l.audience_id)">Enregistrer le retour</button>
+            <button class="btn ghost" (click)="ligneRetour.set(null)">Annuler</button>
+          </div>
         </section>
       }
     }
