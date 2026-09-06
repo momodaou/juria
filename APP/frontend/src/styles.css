@@ -2,6 +2,11 @@
 :root{
   --navy:#1F2A44; --gold:#B08D57; --slate:#3C4A5A; --light:#EEF1F5;
   --grey:#6B7280; --red:#d9534f; --green:#1e9e6a; --amber:#e0a02c; --line:#e2e7ee;
+  /* Bleu-ardoise analogue au navy (06/09/2026) — sert aux indicateurs
+     purement descriptifs du Tableau de bord (ni alerte, ni signal positif),
+     voir tier-info dans cockpit.component.ts. */
+  --info:#4f7396;
+  --critique-bg:#fbeceb; --vigilance-bg:#fdf3e3; --positif-bg:#e8f7f0; --info-bg:#eaf1f6;
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6F9;color:#22303f}
@@ -75,6 +80,30 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 .kpi .n{font-size:26px;font-weight:700;color:var(--navy)}
 .kpi .l{font-size:12px;color:var(--grey);margin-top:4px}
 .kpi.red{border-left-color:var(--red)} .kpi.green{border-left-color:var(--green)} .kpi.amber{border-left-color:var(--amber)}
+
+/* Tuiles à icône + niveau de sens (06/09/2026, Tableau de bord uniquement —
+   classes additives, n'affectent pas .kpi.red/.green/.amber utilisées telles
+   quelles par l'écran Dépenses & caisse). 4 niveaux : critique (bloquant),
+   vigilance (à surveiller), positif (indicateur sain), info (descriptif,
+   sans alerte) — remplace la réutilisation ad hoc des 3 couleurs d'origine
+   sur des significations différentes (ex. rouge pour "urgent" ET "pro bono
+   sous le seuil", qui n'ont pas la même gravité). */
+.kpi.tier-critique{border-left-color:var(--red)}
+.kpi.tier-vigilance{border-left-color:var(--amber)}
+.kpi.tier-positif{border-left-color:var(--green)}
+.kpi.tier-info{border-left-color:var(--info)}
+.kpi .tico{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.kpi .tico svg{width:17px;height:17px}
+.kpi.tier-critique .tico{color:var(--red);background:var(--critique-bg)}
+.kpi.tier-vigilance .tico{color:var(--amber);background:var(--vigilance-bg)}
+.kpi.tier-positif .tico{color:var(--green);background:var(--positif-bg)}
+.kpi.tier-info .tico{color:var(--info);background:var(--info-bg)}
+.kpi .voir{display:flex;align-items:center;gap:4px}
+.kpi .voir svg{width:11px;height:11px}
+.tier-legende{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 14px}
+.tier-legende .chip{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--slate);
+  background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px 6px 9px}
+.tier-legende .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
 
 /* Panneaux & tables */
 .panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px}

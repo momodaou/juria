@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ApiService, DashboardData } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
@@ -25,6 +26,16 @@ interface TuileConfig { titre: string; cols: Colonne[]; sorts: TriSpec[]; }
 // Les tuiles elles-mêmes disparaissent (via @if sur la valeur null renvoyée
 // par le serveur) et, pour "Heures (mois)" dont le total reste public mais
 // pas le détail par personne, seul le clic est désactivé (peutVoirDetail()).
+// Niveau de sens par tuile (06/09/2026, suite à une maquette de comparaison
+// validée par l'utilisateur — voir HISTORY.md) : remplace la réutilisation
+// ad hoc de rouge/ambre/vert sur des tuiles de gravité différente (ex.
+// rouge servait à la fois à "urgent" et à "pro bono sous le seuil"). 4
+// niveaux fixes (critique/vigilance/positif/info, classes .kpi.tier-* dans
+// styles.css), indépendants des couleurs déjà prises par .kpi.red/.green/
+// .amber ailleurs dans l'appli (Dépenses & caisse) — assignés directement
+// en classe sur chaque bouton du template ci-dessous, pas via une table de
+// correspondance séparée (la seule vraie source, c'est le markup).
+
 const PERMISSION_TUILE: Record<string, string | null> = {
   actifs: null, urgents: null, audiences: null, impayes: 'factures.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
@@ -217,88 +228,109 @@ const CONFIG: Record<string, TuileConfig> = {
     </header>
 
     @if (data(); as d) {
+      <div class="tier-legende">
+        <span class="chip"><span class="dot" style="background:var(--red)"></span>Critique — bloquant</span>
+        <span class="chip"><span class="dot" style="background:var(--amber)"></span>Vigilance — à surveiller</span>
+        <span class="chip"><span class="dot" style="background:var(--green)"></span>Positif — indicateur sain</span>
+        <span class="chip"><span class="dot" style="background:var(--info)"></span>Informatif — pas d'alerte</span>
+      </div>
       <div class="kpis">
-        <button type="button" class="kpi" [class.active]="ouvert() === 'actifs'" (click)="clic('actifs')">
+        <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'actifs'" (click)="clic('actifs')">
+          <span class="tico" [innerHTML]="icons['actifs']"></span>
           <span class="n">{{ d.dossiers_actifs }}</span><span class="l">Dossiers actifs</span>
-          @if (peutVoirDetail('actifs')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('actifs')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
-        <button type="button" class="kpi red" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
+        <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
+          <span class="tico" [innerHTML]="icons['urgents']"></span>
           <span class="n">{{ d.dossiers_urgents }}</span><span class="l">Dossiers urgents</span>
-          @if (peutVoirDetail('urgents')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('urgents')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
-        <button type="button" class="kpi amber" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
+        <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
+          <span class="tico" [innerHTML]="icons['audiences']"></span>
           <span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span>
-          @if (peutVoirDetail('audiences')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
         @if (d.impayes_ttc !== null) {
-          <button type="button" class="kpi red" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
+          <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
+            <span class="tico" [innerHTML]="icons['impayes']"></span>
             <span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
-        <button type="button" class="kpi green" [class.active]="ouvert() === 'heures'" (click)="clic('heures')">
+        <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'heures'" (click)="clic('heures')">
+          <span class="tico" [innerHTML]="icons['heures']"></span>
           <span class="n">{{ d.heures_mois | number:'1.0-0' }}</span><span class="l">Heures (mois)</span>
-          @if (peutVoirDetail('heures')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('heures')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
-        <button type="button" class="kpi red" [class.active]="ouvert() === 'probono'" (click)="clic('probono')">
+        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'probono'" (click)="clic('probono')">
+          <span class="tico" [innerHTML]="icons['probono']"></span>
           <span class="n">{{ d.dossiers_sous_seuil_honoraires }}</span><span class="l">Dossiers pro bono sous le seuil de frais</span>
-          @if (peutVoirDetail('probono')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('probono')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
         @if (d.conges_attente !== null) {
-          <button type="button" class="kpi" [class.active]="ouvert() === 'conges'" (click)="clic('conges')">
+          <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'conges'" (click)="clic('conges')">
+            <span class="tico" [innerHTML]="icons['conges']"></span>
             <span class="n">{{ d.conges_attente }}</span><span class="l">Congés en attente</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
-        <button type="button" class="kpi" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
+        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
+          <span class="tico" [innerHTML]="icons['dormants']"></span>
           <span class="n">{{ d.dossiers_dormants }}</span><span class="l">Dossiers dormants</span>
-          @if (peutVoirDetail('dormants')) { <span class="hint">▸ voir le détail</span> }
+          @if (peutVoirDetail('dormants')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
         @if (d.taux_realisation !== null) {
-          <button type="button" class="kpi amber" [class.active]="ouvert() === 'realisation'" (click)="clic('realisation')">
+          <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'realisation'" (click)="clic('realisation')">
+            <span class="tico" [innerHTML]="icons['realisation']"></span>
             <span class="n">{{ d.taux_realisation }} %</span><span class="l">Taux de réalisation</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.ca_mois !== null) {
-          <button type="button" class="kpi green" [class.active]="ouvert() === 'ca_mois'" (click)="clic('ca_mois')">
+          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'ca_mois'" (click)="clic('ca_mois')">
+            <span class="tico" [innerHTML]="icons['ca_mois']"></span>
             <span class="n">{{ d.ca_mois | number }}</span><span class="l">CA du mois (FCFA)</span>
             @if (d.ca_tendance_pct !== null) {
               <span class="trend" [class.up]="d.ca_tendance_pct >= 0" [class.down]="d.ca_tendance_pct < 0">
                 {{ d.ca_tendance_pct >= 0 ? '▲' : '▼' }} {{ d.ca_tendance_pct }} % vs mois dernier
               </span>
             }
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.impayes_60j_plus !== null) {
-          <button type="button" class="kpi red" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
+          <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
+            <span class="tico" [innerHTML]="icons['impayes_aging']"></span>
             <span class="n">{{ d.impayes_60j_plus | number }}</span><span class="l">Impayés +60 jours (FCFA)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.taux_recouvrement !== null) {
-          <button type="button" class="kpi amber" [class.active]="ouvert() === 'recouvrement'" (click)="clic('recouvrement')">
+          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'recouvrement'" (click)="clic('recouvrement')">
+            <span class="tico" [innerHTML]="icons['recouvrement']"></span>
             <span class="n">{{ d.taux_recouvrement }} %</span><span class="l">Taux de recouvrement (mois)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.ca_pole_dominant_pct !== null) {
-          <button type="button" class="kpi" [class.active]="ouvert() === 'ca_pole'" (click)="clic('ca_pole')">
+          <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'ca_pole'" (click)="clic('ca_pole')">
+            <span class="tico" [innerHTML]="icons['ca_pole']"></span>
             <span class="n">{{ d.ca_pole_dominant_pct }} % <span class="pole">{{ d.ca_pole_dominant_nom }}</span></span><span class="l">CA par pôle (mois)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.concentration_top5_pct !== null) {
-          <button type="button" class="kpi" [class.active]="ouvert() === 'top_clients'" (click)="clic('top_clients')">
+          <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'top_clients'" (click)="clic('top_clients')">
+            <span class="tico" [innerHTML]="icons['top_clients']"></span>
             <span class="n">{{ d.concentration_top5_pct }} %</span><span class="l">Concentration clients (top 5, 12 mois)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
         @if (d.productivite_mois !== null) {
-          <button type="button" class="kpi green" [class.active]="ouvert() === 'productivite'" (click)="clic('productivite')">
+          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'productivite'" (click)="clic('productivite')">
+            <span class="tico" [innerHTML]="icons['productivite']"></span>
             <span class="n">{{ d.productivite_mois | number }}</span><span class="l">Productivité — temps facturé (FCFA)</span>
-            <span class="hint">▸ voir le détail</span>
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
       </div>
@@ -307,7 +339,7 @@ const CONFIG: Record<string, TuileConfig> = {
         <section class="panel detail">
           <div class="detail-head">
             <h3>{{ CONFIG[o].titre }}</h3>
-            <button type="button" class="fermer" (click)="fermer()">✕ Fermer</button>
+            <button type="button" class="fermer" (click)="fermer()"><span [innerHTML]="icons['close']"></span>Fermer</button>
           </div>
           <div class="controls">
             <label>Trier par
@@ -369,14 +401,15 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi{cursor:pointer;font-family:inherit;text-align:left;transition:box-shadow .15s}
     .kpi:hover{box-shadow:0 3px 10px rgba(31,42,68,.10)}
     .kpi.active{background:var(--light);box-shadow:inset 0 0 0 2px var(--gold)}
-    .kpi .hint{font-size:10.5px;color:var(--gold);margin-top:6px;font-weight:600}
+    .kpi .hint{font-size:10.5px;color:var(--gold);margin-top:8px;font-weight:600}
+    .kpi .hint.voir{display:flex;align-items:center;gap:4px}
     .kpi .trend{font-size:11px;font-weight:600;margin-top:3px}
     .kpi .trend.up{color:var(--green)}
     .kpi .trend.down{color:var(--red)}
     .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
     .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .detail h3{margin:0}
-    .fermer{background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+    .fermer{display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
     .fermer:hover{border-color:var(--grey)}
     .lien:hover{border-color:var(--grey)}
     .controls{margin:14px 0;padding-top:12px;border-top:1px solid var(--line)}
@@ -388,8 +421,71 @@ const CONFIG: Record<string, TuileConfig> = {
 export class CockpitComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly sanitizer = inject(DomSanitizer);
   readonly data = signal<DashboardData | null>(null);
   readonly erreur = signal('');
+
+  private icon(svg: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(svg);
+  }
+
+  // Une icône par tuile, même alphabet graphique que le menu latéral
+  // (viewBox 24x24, trait 1.8 sans remplissage) — 4 réutilisent tel quel le
+  // SVG du menu (dossiers/facturation/rôle d'audience/clients) pour que le
+  // lien visuel avec le module correspondant soit explicite.
+  readonly icons: Record<string, SafeHtml> = {
+    actifs: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
+    ),
+    urgents: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7"/><line x1="12" y1="13" x2="12" y2="9"/><line x1="12" y1="13" x2="15" y2="15"/><line x1="8" y1="4" x2="6" y2="6"/><line x1="16" y1="4" x2="18" y2="6"/></svg>',
+    ),
+    audiences: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c4-2.4 7-5.2 7-9.5V5.5L12 3 5 5.5v6c0 4.3 3 7.1 7 9.5Z"/><path d="M9 12l2 2 4-4"/></svg>',
+    ),
+    impayes: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h9l3 3V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="16" x2="12.5" y2="16"/></svg>',
+    ),
+    heures: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><line x1="12" y1="12" x2="12" y2="7"/><line x1="12" y1="12" x2="15.5" y2="13.5"/></svg>',
+    ),
+    probono: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20C6 15.5 3 12 3 8.3 3 5.6 5.1 3.5 7.7 3.5c1.7 0 3.2.9 4.3 2.4 1.1-1.5 2.6-2.4 4.3-2.4 2.6 0 4.7 2.1 4.7 4.8 0 3.7-3 7.2-9 11.7Z"/></svg>',
+    ),
+    conges: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="7.5" y1="2.5" x2="7.5" y2="6.5"/><line x1="16.5" y1="2.5" x2="16.5" y2="6.5"/><path d="M8.5 15l2 2 4.5-4.5"/></svg>',
+    ),
+    dormants: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 1 0 10.5 10.5Z"/></svg>',
+    ),
+    realisation: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 0 1 16 0"/><line x1="12" y1="16" x2="16.2" y2="10.4"/></svg>',
+    ),
+    ca_mois: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,17 9,11 13,14 20,6"/><polyline points="14.5,6 20,6 20,11.5"/></svg>',
+    ),
+    impayes_aging: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="18" y2="3"/><line x1="6" y1="21" x2="18" y2="21"/><path d="M7 3c0 5 4 6 5 6s5-1 5-6"/><path d="M7 21c0-5 4-6 5-6s5 1 5 6"/></svg>',
+    ),
+    recouvrement: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5.2"/><polyline points="17.5,3.3 17.5,6.8 14,6.8"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5.2"/><polyline points="6.5,20.7 6.5,17.2 10,17.2"/></svg>',
+    ),
+    ca_pole: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="3" x2="12" y2="12"/><line x1="12" y1="12" x2="19.3" y2="7.5"/></svg>',
+    ),
+    top_clients: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10.5" r="2.25"/><path d="M5.5 17c.6-2.1 2.2-3.2 3.5-3.2s2.9 1.1 3.5 3.2"/><line x1="14.5" y1="9" x2="18.5" y2="9"/><line x1="14.5" y1="12.5" x2="18.5" y2="12.5"/></svg>',
+    ),
+    productivite: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v4c0 1.7 3.1 3 7 3s7-1.3 7-3V7"/><path d="M5 11v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4"/></svg>',
+    ),
+    chevron: this.icon(
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9,5 16,12 9,19"/></svg>',
+    ),
+    close: this.icon(
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
+    ),
+  };
 
   readonly CONFIG = CONFIG;
   readonly ouvert = signal<string | null>(null);
