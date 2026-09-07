@@ -247,20 +247,41 @@ const CONFIG: Record<string, TuileConfig> = {
           <span class="n">{{ d.dossiers_actifs }}</span><span class="l">Dossiers actifs</span>
           @if (peutVoirDetail('actifs')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
-        <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
+        <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
           <span class="tico" [innerHTML]="icons['urgents']"></span>
           <span class="n">{{ d.dossiers_urgents }}</span><span class="l">Dossiers urgents</span>
-          @if (peutVoirDetail('urgents')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
+          @if (d.urgents_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.urgents_apercu; track l.dossier_id) {
+                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="secondaire">{{ joursLabel(l.jours_restants) }}</span></div>
+              }
+            </div>
+          }
+          @if (peutVoirDetail('urgents')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_urgents }}</span> }
         </button>
-        <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
+        <button type="button" class="kpi tier-info apercu" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
           <span class="tico" [innerHTML]="icons['audiences']"></span>
           <span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span>
-          @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
+          @if (d.audiences_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.audiences_apercu; track l.dossier_id + l.date_echeance) {
+                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.titre }}</span><span class="secondaire">{{ l.date_echeance | date:'dd/MM' }}</span></div>
+              }
+            </div>
+          }
+          @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.audiences_semaine }}</span> }
         </button>
         @if (d.impayes_ttc !== null) {
-          <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
+          <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
             <span class="tico" [innerHTML]="icons['impayes']"></span>
             <span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span>
+            @if (d.impayes_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.impayes_apercu; track l.client_id) {
+                  <div class="mini-ligne"><span class="principal">{{ l.client }}</span><span class="valeur">{{ l.montant_ttc | number }}</span></div>
+                }
+              </div>
+            }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
@@ -302,6 +323,13 @@ const CONFIG: Record<string, TuileConfig> = {
                 {{ d.ca_tendance_pct >= 0 ? '▲' : '▼' }} {{ d.ca_tendance_pct }} % vs mois dernier
               </span>
             }
+            @if (sparklinePath(d.ca_historique); as sp) {
+              <div class="sparkline"><svg viewBox="0 0 130 30" preserveAspectRatio="none">
+                <path [attr.d]="sp.aire" fill="var(--green)" opacity="0.12"/>
+                <path [attr.d]="sp.ligne" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                <circle [attr.cx]="sp.finX" [attr.cy]="sp.finY" r="2.4" fill="var(--green)"/>
+              </svg></div>
+            }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
@@ -309,6 +337,20 @@ const CONFIG: Record<string, TuileConfig> = {
           <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
             <span class="tico" [innerHTML]="icons['impayes_aging']"></span>
             <span class="n">{{ d.impayes_60j_plus | number }}</span><span class="l">Impayés +60 jours (FCFA)</span>
+            @if (d.impayes_tranches; as t) {
+              @if (t.j61_90 + t.jPlus90 > 0) {
+                <div class="barre-tranches">
+                  <div class="barre">
+                    <span class="segment" [style.width.%]="100 * t.j61_90 / (t.j61_90 + t.jPlus90)" style="background:var(--amber)"></span>
+                    <span class="segment" [style.width.%]="100 * t.jPlus90 / (t.j61_90 + t.jPlus90)" style="background:var(--red)"></span>
+                  </div>
+                  <div class="legende-tranches">
+                    <span><i style="background:var(--amber)"></i>61-90 j</span>
+                    <span><i style="background:var(--red)"></i>+90 j</span>
+                  </div>
+                </div>
+              }
+            }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
@@ -414,6 +456,21 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi .trend.up{color:var(--green)}
     .kpi .trend.down{color:var(--red)}
     .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
+    /* Aperçus & tendances (07/09/2026) */
+    .kpi.apercu{grid-column:span 2}
+    .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px}
+    .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+    .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .kpi .mini-ligne .secondaire{color:var(--grey);font-size:11px;white-space:nowrap}
+    .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .kpi .sparkline{margin-top:8px}
+    .kpi .sparkline svg{display:block;width:100%;height:30px;overflow:visible}
+    .kpi .barre-tranches{margin-top:9px}
+    .kpi .barre-tranches .barre{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line)}
+    .kpi .barre-tranches .segment{height:100%}
+    .kpi .barre-tranches .legende-tranches{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;font-size:10px;color:var(--grey)}
+    .kpi .barre-tranches .legende-tranches span{display:inline-flex;align-items:center;gap:3px}
+    .kpi .barre-tranches .legende-tranches i{width:7px;height:7px;border-radius:2px;display:inline-block}
     .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .detail h3{margin:0}
     .fermer{display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
@@ -435,6 +492,35 @@ export class CockpitComponent implements OnInit {
   // Formatte une cellule du tableau de détail — extrait du template (06/09/2026)
   // pour pouvoir afficher la même valeur formatée à l'intérieur d'un <a> quand
   // la colonne porte un `lien` (voir Colonne), sans dupliquer le formatage.
+  // Aperçus & tendances (07/09/2026) — voir HISTORY.md pour la maquette
+  // validée. Libellé compact "J-N"/"dépassé"/"jour J", même logique que le
+  // badge() d'echeancier.component.ts, dupliquée ici volontairement (2
+  // lignes, pas de service à créer pour ça).
+  joursLabel(j: number | null): string {
+    if (j === null || j === undefined) return '—';
+    if (j < 0) return 'dépassé';
+    if (j === 0) return 'jour J';
+    return 'J-' + j;
+  }
+
+  // Sparkline SVG (aire + ligne + point final) à partir de l'historique 6
+  // mois du CA — écrit à la main, pas de librairie de graphiques (même
+  // principe que les icônes des tuiles).
+  sparklinePath(valeurs: number[] | null): { ligne: string; aire: string; finX: number; finY: number } | null {
+    if (!valeurs || valeurs.length < 2) return null;
+    const w = 130, h = 30, pad = 3;
+    const min = Math.min(...valeurs), max = Math.max(...valeurs);
+    const span = max - min || 1;
+    const pts = valeurs.map((v, i) => [
+      pad + (i / (valeurs.length - 1)) * (w - 2 * pad),
+      h - pad - ((v - min) / span) * (h - 2 * pad),
+    ]);
+    const ligne = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const aire = ligne + ` L${pts[pts.length - 1][0].toFixed(1)},${h} L${pts[0][0].toFixed(1)},${h} Z`;
+    const fin = pts[pts.length - 1];
+    return { ligne, aire, finX: fin[0], finY: fin[1] };
+  }
+
   celluleTexte(r: any, c: Colonne): string {
     const v = r[c.key];
     if (v === null || v === undefined || v === '') return '—';

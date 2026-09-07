@@ -187,6 +187,65 @@ router.get("/", async (req, res) => {
       productiviteMois = Number(productivite.valeur);
     }
 
+    // Aperçus & tendances (07/09/2026, suite à une maquette de comparaison
+    // validée par l'utilisateur — voir HISTORY.md) : 3 tuiles listant du
+    // concret actionnable (urgents/audiences/impayés) gagnent un aperçu des
+    // 2 premiers éléments directement dans l'agrégat, pour éviter un aller-
+    // retour réseau supplémentaire au chargement ; CA du mois gagne un
+    // historique 6 mois (sparkline) ; Impayés +60 jours gagne la répartition
+    // exacte du même seuil (61-90 j / +90 j — pas les tranches plus jeunes,
+    // qui ne font pas partie de cet agrégat).
+    const urgentsApercu = await pool.query(
+      `SELECT d.id AS dossier_id, d.numero, d.intitule, ev.jours_restants
+       FROM dossiers d
+       LEFT JOIN LATERAL (
+         SELECT (e.date_echeance::date - current_date) AS jours_restants
+         FROM evenements e WHERE e.dossier_id = d.id AND e.statut = 'a_venir' AND e.date_echeance >= now()
+         ORDER BY e.date_echeance LIMIT 1
+       ) ev ON true
+       WHERE d.urgence = 'haute' AND d.statut <> 'clos'
+       ORDER BY ev.jours_restants ASC NULLS LAST LIMIT 2`
+    );
+    const audiencesApercu = await pool.query(
+      `SELECT d.id AS dossier_id, d.numero, e.titre, e.date_echeance
+       FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
+       WHERE e.type = 'audience' AND e.statut = 'a_venir'
+         AND e.date_echeance >= now() AND e.date_echeance < now() + interval '7 days'
+       ORDER BY e.date_echeance LIMIT 2`
+    );
+    let impayesApercu = [];
+    let caHistorique = null;
+    let impayesTranches = null;
+    if (voitFactures) {
+      const ia = await pool.query(
+        `SELECT f.client_id, ${NOM_CLIENT} AS client, f.montant_ttc
+         FROM factures f JOIN clients c ON c.id = f.client_id
+         WHERE f.statut IN ('emise','partielle','impayee')
+         ORDER BY f.montant_ttc DESC LIMIT 2`
+      );
+      impayesApercu = ia.rows;
+
+      const hist = await pool.query(
+        `SELECT to_char(m, 'YYYY-MM') AS mois,
+                COALESCE((SELECT SUM(montant_ht) FROM factures f
+                          WHERE f.statut NOT IN ('brouillon','annulee')
+                            AND date_trunc('month', f.date_emission) = m), 0) AS ca
+         FROM generate_series(date_trunc('month', current_date) - interval '5 months',
+                               date_trunc('month', current_date), interval '1 month') AS m
+         ORDER BY m`
+      );
+      caHistorique = hist.rows.map((r) => Number(r.ca));
+
+      const tranches = await one(
+        `SELECT
+           COALESCE(SUM(montant_ttc) FILTER (
+             WHERE (current_date - date_echeance) > 60 AND (current_date - date_echeance) <= 90), 0) AS t_61_90,
+           COALESCE(SUM(montant_ttc) FILTER (WHERE (current_date - date_echeance) > 90), 0) AS t_plus90
+         FROM factures WHERE statut IN ('emise','partielle','impayee') AND date_echeance IS NOT NULL`
+      );
+      impayesTranches = { j61_90: Number(tranches.t_61_90), jPlus90: Number(tranches.t_plus90) };
+    }
+
     res.json({
       dossiers_actifs: Number(dossiers.actifs),
       dossiers_urgents: Number(dossiers.urgents),
@@ -206,6 +265,11 @@ router.get("/", async (req, res) => {
       concentration_top5_pct: concentrationPct,
       productivite_mois: productiviteMois,
       delais_a_venir: delais.rows,
+      urgents_apercu: urgentsApercu.rows,
+      audiences_apercu: audiencesApercu.rows,
+      impayes_apercu: impayesApercu,
+      ca_historique: caHistorique,
+      impayes_tranches: impayesTranches,
     });
   } catch (e) {
     console.error(e);

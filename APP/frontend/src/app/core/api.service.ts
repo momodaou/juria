@@ -23,6 +23,15 @@ export interface DashboardData {
   concentration_top5_pct: number | null;
   productivite_mois: number | null;
   delais_a_venir: any[];
+  // Aperçus & tendances (07/09/2026) — voir dashboard.js pour le détail des
+  // requêtes ; urgents_apercu/audiences_apercu toujours présents (mêmes
+  // tuiles publiques), impayes_apercu/ca_historique/impayes_tranches à []/
+  // null si factures.consulter absent.
+  urgents_apercu: { dossier_id: string; numero: string; intitule: string; jours_restants: number | null }[];
+  audiences_apercu: { dossier_id: string; numero: string; titre: string; date_echeance: string }[];
+  impayes_apercu: { client_id: string; client: string; montant_ttc: number }[];
+  ca_historique: number[] | null;
+  impayes_tranches: { j61_90: number; jPlus90: number } | null;
 }
 
 export interface Dossier {
