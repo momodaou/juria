@@ -282,6 +282,15 @@ const CONFIG: Record<string, TuileConfig> = {
         <span class="chip"><span class="dot" style="background:var(--green)"></span>Positif — indicateur sain</span>
         <span class="chip"><span class="dot" style="background:var(--info)"></span>Informatif — pas d'alerte</span>
       </div>
+      <!-- Regroupement en sections (07/09/2026) — même principe que le
+           30/08/2026 sur le menu latéral (19 entrées devenues illisibles à
+           plat) : 18 tuiles, désormais réparties en 3 groupes avec en-tête,
+           plutôt qu'une seule grille plate. "Facturation & rentabilité" est
+           le seul groupe conditionné (toutes ses tuiles sont gardées par
+           factures.consulter) — les 2 autres n'ont pas besoin d'un @if sur
+           le groupe entier, au moins une tuile de chacun reste toujours
+           visible quel que soit le rôle. -->
+      <h3 class="groupe-titre">Dossiers &amp; procédure</h3>
       <div class="kpis">
         <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'actifs'" (click)="clic('actifs')">
           <span class="tico" [innerHTML]="icons['actifs']"></span>
@@ -300,6 +309,32 @@ const CONFIG: Record<string, TuileConfig> = {
           }
           @if (peutVoirDetail('urgents')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_urgents }}</span> }
         </button>
+        <button type="button" class="kpi tier-info apercu" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
+          <span class="tico" [innerHTML]="icons['audiences']"></span>
+          <span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span>
+          @if (d.audiences_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.audiences_apercu; track l.dossier_id + l.date_echeance) {
+                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.titre }}</span><span class="secondaire">{{ l.date_echeance | date:'dd/MM' }}</span></div>
+              }
+            </div>
+          }
+          @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.audiences_semaine }}</span> }
+        </button>
+        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
+          <span class="tico" [innerHTML]="icons['dormants']"></span>
+          <span class="n">{{ d.dossiers_dormants }}</span><span class="l">Dossiers dormants</span>
+          @if (peutVoirDetail('dormants')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
+        </button>
+        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'probono'" (click)="clic('probono')">
+          <span class="tico" [innerHTML]="icons['probono']"></span>
+          <span class="n">{{ d.dossiers_sous_seuil_honoraires }}</span><span class="l">Dossiers pro bono sous le seuil de frais</span>
+          @if (peutVoirDetail('probono')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
+        </button>
+      </div>
+
+      <h3 class="groupe-titre">Tâches &amp; équipe</h3>
+      <div class="kpis">
         <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
           <span class="tico" [innerHTML]="icons['mesTaches']"></span>
           <span class="n">{{ d.mes_taches_n }}</span><span class="l">Mes tâches</span>
@@ -326,41 +361,10 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.taches_urgentes_n }}</span>
           </button>
         }
-        <button type="button" class="kpi tier-info apercu" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
-          <span class="tico" [innerHTML]="icons['audiences']"></span>
-          <span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span>
-          @if (d.audiences_apercu.length) {
-            <div class="mini-liste">
-              @for (l of d.audiences_apercu; track l.dossier_id + l.date_echeance) {
-                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.titre }}</span><span class="secondaire">{{ l.date_echeance | date:'dd/MM' }}</span></div>
-              }
-            </div>
-          }
-          @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.audiences_semaine }}</span> }
-        </button>
-        @if (d.impayes_ttc !== null) {
-          <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
-            <span class="tico" [innerHTML]="icons['impayes']"></span>
-            <span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span>
-            @if (d.impayes_apercu.length) {
-              <div class="mini-liste">
-                @for (l of d.impayes_apercu; track l.client_id) {
-                  <div class="mini-ligne"><span class="principal">{{ l.client }}</span><span class="valeur">{{ l.montant_ttc | number }}</span></div>
-                }
-              </div>
-            }
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
         <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'heures'" (click)="clic('heures')">
           <span class="tico" [innerHTML]="icons['heures']"></span>
           <span class="n">{{ d.heures_mois | number:'1.0-0' }}</span><span class="l">Heures (mois)</span>
           @if (peutVoirDetail('heures')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
-        </button>
-        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'probono'" (click)="clic('probono')">
-          <span class="tico" [innerHTML]="icons['probono']"></span>
-          <span class="n">{{ d.dossiers_sous_seuil_honoraires }}</span><span class="l">Dossiers pro bono sous le seuil de frais</span>
-          @if (peutVoirDetail('probono')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
         @if (d.conges_attente !== null) {
           <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'conges'" (click)="clic('conges')">
@@ -369,11 +373,6 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
-        <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
-          <span class="tico" [innerHTML]="icons['dormants']"></span>
-          <span class="n">{{ d.dossiers_dormants }}</span><span class="l">Dossiers dormants</span>
-          @if (peutVoirDetail('dormants')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
-        </button>
         @if (d.taux_realisation !== null) {
           <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'realisation'" (click)="clic('realisation')">
             <span class="tico" [innerHTML]="icons['realisation']"></span>
@@ -381,89 +380,109 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
-        @if (d.ca_mois !== null) {
-          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'ca_mois'" (click)="clic('ca_mois')">
-            <span class="tico" [innerHTML]="icons['ca_mois']"></span>
-            <span class="n">{{ d.ca_mois | number }}</span><span class="l">CA du mois (FCFA)</span>
-            @if (d.ca_tendance_pct !== null) {
-              <span class="trend" [class.up]="d.ca_tendance_pct >= 0" [class.down]="d.ca_tendance_pct < 0">
-                {{ d.ca_tendance_pct >= 0 ? '▲' : '▼' }} {{ d.ca_tendance_pct }} % vs mois dernier
-              </span>
-            }
-            @if (sparklinePath(d.ca_historique); as sp) {
-              <div class="sparkline"><svg viewBox="0 0 130 30" preserveAspectRatio="none">
-                <path [attr.d]="sp.aire" fill="var(--green)" opacity="0.12"/>
-                <path [attr.d]="sp.ligne" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-                <circle [attr.cx]="sp.finX" [attr.cy]="sp.finY" r="2.4" fill="var(--green)"/>
-              </svg></div>
-            }
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-        @if (d.dossiers_non_rentables !== null) {
-          <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'non_rentables'" (click)="clic('non_rentables')">
-            <span class="tico" [innerHTML]="icons['non_rentables']"></span>
-            <span class="n">{{ d.dossiers_non_rentables }}</span><span class="l">Dossiers facturés à perte</span>
-            @if (d.non_rentables_apercu.length) {
-              <div class="mini-liste">
-                @for (l of d.non_rentables_apercu; track l.dossier_id) {
-                  <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="valeur">{{ l.marge_ht | number }}</span></div>
-                }
-              </div>
-            }
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_non_rentables }}</span>
-          </button>
-        }
-        @if (d.impayes_60j_plus !== null) {
-          <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
-            <span class="tico" [innerHTML]="icons['impayes_aging']"></span>
-            <span class="n">{{ d.impayes_60j_plus | number }}</span><span class="l">Impayés +60 jours (FCFA)</span>
-            @if (d.impayes_tranches; as t) {
-              @if (t.j61_90 + t.jPlus90 > 0) {
-                <div class="barre-tranches">
-                  <div class="barre">
-                    <span class="segment" [style.width.%]="100 * t.j61_90 / (t.j61_90 + t.jPlus90)" style="background:var(--amber)"></span>
-                    <span class="segment" [style.width.%]="100 * t.jPlus90 / (t.j61_90 + t.jPlus90)" style="background:var(--red)"></span>
-                  </div>
-                  <div class="legende-tranches">
-                    <span><i style="background:var(--amber)"></i>61-90 j</span>
-                    <span><i style="background:var(--red)"></i>+90 j</span>
-                  </div>
+      </div>
+
+      @if (auth.peut('factures.consulter')) {
+        <h3 class="groupe-titre">Facturation &amp; rentabilité</h3>
+        <div class="kpis">
+          @if (d.impayes_ttc !== null) {
+            <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
+              <span class="tico" [innerHTML]="icons['impayes']"></span>
+              <span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span>
+              @if (d.impayes_apercu.length) {
+                <div class="mini-liste">
+                  @for (l of d.impayes_apercu; track l.client_id) {
+                    <div class="mini-ligne"><span class="principal">{{ l.client }}</span><span class="valeur">{{ l.montant_ttc | number }}</span></div>
+                  }
                 </div>
               }
-            }
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-        @if (d.taux_recouvrement !== null) {
-          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'recouvrement'" (click)="clic('recouvrement')">
-            <span class="tico" [innerHTML]="icons['recouvrement']"></span>
-            <span class="n">{{ d.taux_recouvrement }} %</span><span class="l">Taux de recouvrement (mois)</span>
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-        @if (d.ca_pole_dominant_pct !== null) {
-          <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'ca_pole'" (click)="clic('ca_pole')">
-            <span class="tico" [innerHTML]="icons['ca_pole']"></span>
-            <span class="n">{{ d.ca_pole_dominant_pct }} % <span class="pole">{{ d.ca_pole_dominant_nom }}</span></span><span class="l">CA par pôle (mois)</span>
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-        @if (d.concentration_top5_pct !== null) {
-          <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'top_clients'" (click)="clic('top_clients')">
-            <span class="tico" [innerHTML]="icons['top_clients']"></span>
-            <span class="n">{{ d.concentration_top5_pct }} %</span><span class="l">Concentration clients (top 5, 12 mois)</span>
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-        @if (d.productivite_mois !== null) {
-          <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'productivite'" (click)="clic('productivite')">
-            <span class="tico" [innerHTML]="icons['productivite']"></span>
-            <span class="n">{{ d.productivite_mois | number }}</span><span class="l">Productivité — temps facturé (FCFA)</span>
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
-          </button>
-        }
-      </div>
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.ca_mois !== null) {
+            <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'ca_mois'" (click)="clic('ca_mois')">
+              <span class="tico" [innerHTML]="icons['ca_mois']"></span>
+              <span class="n">{{ d.ca_mois | number }}</span><span class="l">CA du mois (FCFA)</span>
+              @if (d.ca_tendance_pct !== null) {
+                <span class="trend" [class.up]="d.ca_tendance_pct >= 0" [class.down]="d.ca_tendance_pct < 0">
+                  {{ d.ca_tendance_pct >= 0 ? '▲' : '▼' }} {{ d.ca_tendance_pct }} % vs mois dernier
+                </span>
+              }
+              @if (sparklinePath(d.ca_historique); as sp) {
+                <div class="sparkline"><svg viewBox="0 0 130 30" preserveAspectRatio="none">
+                  <path [attr.d]="sp.aire" fill="var(--green)" opacity="0.12"/>
+                  <path [attr.d]="sp.ligne" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                  <circle [attr.cx]="sp.finX" [attr.cy]="sp.finY" r="2.4" fill="var(--green)"/>
+                </svg></div>
+              }
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.dossiers_non_rentables !== null) {
+            <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'non_rentables'" (click)="clic('non_rentables')">
+              <span class="tico" [innerHTML]="icons['non_rentables']"></span>
+              <span class="n">{{ d.dossiers_non_rentables }}</span><span class="l">Dossiers facturés à perte</span>
+              @if (d.non_rentables_apercu.length) {
+                <div class="mini-liste">
+                  @for (l of d.non_rentables_apercu; track l.dossier_id) {
+                    <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="valeur">{{ l.marge_ht | number }}</span></div>
+                  }
+                </div>
+              }
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_non_rentables }}</span>
+            </button>
+          }
+          @if (d.impayes_60j_plus !== null) {
+            <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
+              <span class="tico" [innerHTML]="icons['impayes_aging']"></span>
+              <span class="n">{{ d.impayes_60j_plus | number }}</span><span class="l">Impayés +60 jours (FCFA)</span>
+              @if (d.impayes_tranches; as t) {
+                @if (t.j61_90 + t.jPlus90 > 0) {
+                  <div class="barre-tranches">
+                    <div class="barre">
+                      <span class="segment" [style.width.%]="100 * t.j61_90 / (t.j61_90 + t.jPlus90)" style="background:var(--amber)"></span>
+                      <span class="segment" [style.width.%]="100 * t.jPlus90 / (t.j61_90 + t.jPlus90)" style="background:var(--red)"></span>
+                    </div>
+                    <div class="legende-tranches">
+                      <span><i style="background:var(--amber)"></i>61-90 j</span>
+                      <span><i style="background:var(--red)"></i>+90 j</span>
+                    </div>
+                  </div>
+                }
+              }
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.taux_recouvrement !== null) {
+            <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'recouvrement'" (click)="clic('recouvrement')">
+              <span class="tico" [innerHTML]="icons['recouvrement']"></span>
+              <span class="n">{{ d.taux_recouvrement }} %</span><span class="l">Taux de recouvrement (mois)</span>
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.ca_pole_dominant_pct !== null) {
+            <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'ca_pole'" (click)="clic('ca_pole')">
+              <span class="tico" [innerHTML]="icons['ca_pole']"></span>
+              <span class="n">{{ d.ca_pole_dominant_pct }} % <span class="pole">{{ d.ca_pole_dominant_nom }}</span></span><span class="l">CA par pôle (mois)</span>
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.concentration_top5_pct !== null) {
+            <button type="button" class="kpi tier-info" [class.active]="ouvert() === 'top_clients'" (click)="clic('top_clients')">
+              <span class="tico" [innerHTML]="icons['top_clients']"></span>
+              <span class="n">{{ d.concentration_top5_pct }} %</span><span class="l">Concentration clients (top 5, 12 mois)</span>
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.productivite_mois !== null) {
+            <button type="button" class="kpi tier-positif" [class.active]="ouvert() === 'productivite'" (click)="clic('productivite')">
+              <span class="tico" [innerHTML]="icons['productivite']"></span>
+              <span class="n">{{ d.productivite_mois | number }}</span><span class="l">Productivité — temps facturé (FCFA)</span>
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+        </div>
+      }
 
       @if (ouvert(); as o) {
         <section class="panel detail">
@@ -537,6 +556,11 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi .trend.up{color:var(--green)}
     .kpi .trend.down{color:var(--red)}
     .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
+    /* En-têtes de section (07/09/2026) — même esprit que .nav-groupe du menu
+       latéral (30/08/2026), adapté au fond clair de la page plutôt qu'au
+       navy de la sidebar. */
+    .groupe-titre{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--grey);margin:26px 0 12px}
+    h3.groupe-titre:first-of-type{margin-top:0}
     /* Aperçus & tendances (07/09/2026) */
     .kpi.apercu{grid-column:span 2}
     .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px}
