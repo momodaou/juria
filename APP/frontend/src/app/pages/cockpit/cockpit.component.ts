@@ -50,7 +50,7 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // confidentialité) ; "Tâches urgentes" est cabinet entier — même
   // permission que le reste des tuiles de charge de travail (cabinet.consulter,
   // resserrée direction/finance le 29/08/2026) plutôt qu'un nouveau concept.
-  mes_taches: null, taches_urgentes: 'cabinet.consulter',
+  mes_taches: null, taches_urgentes: 'cabinet.consulter', non_rentables: 'factures.consulter',
   // 6 indicateurs de performance (04/09/2026, demande explicite de
   // l'utilisateur suite au benchmark du 03/09/2026) — tous financiers,
   // tous gardés par factures.consulter comme le reste.
@@ -197,6 +197,19 @@ const CONFIG: Record<string, TuileConfig> = {
       { label: 'Montant (décroissant)', key: 'montant_ht', dir: 'desc' },
       { label: 'Émise le (plus récente)', key: 'date_emission', dir: 'desc' },
       { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
+    ],
+  },
+  non_rentables: {
+    titre: 'Rentabilité par dossier (facturé HT − dépenses − rétrocessions)',
+    cols: [
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'intitule', label: 'Intitulé' },
+      { key: 'responsable', label: 'Responsable' }, { key: 'mode_honoraires', label: 'Mode' },
+      { key: 'marge_ht', label: 'Marge (FCFA)', format: 'num' }, { key: 'marge_pct', label: 'Marge (%)', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Marge (la plus faible)', key: 'marge_ht', dir: 'asc' },
+      { label: 'Marge (la plus élevée)', key: 'marge_ht', dir: 'desc' },
+      { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
     ],
   },
   impayes_aging: {
@@ -387,6 +400,20 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
           </button>
         }
+        @if (d.dossiers_non_rentables !== null) {
+          <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'non_rentables'" (click)="clic('non_rentables')">
+            <span class="tico" [innerHTML]="icons['non_rentables']"></span>
+            <span class="n">{{ d.dossiers_non_rentables }}</span><span class="l">Dossiers facturés à perte</span>
+            @if (d.non_rentables_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.non_rentables_apercu; track l.dossier_id) {
+                  <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="valeur">{{ l.marge_ht | number }}</span></div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_non_rentables }}</span>
+          </button>
+        }
         @if (d.impayes_60j_plus !== null) {
           <button type="button" class="kpi tier-critique" [class.active]="ouvert() === 'impayes_aging'" (click)="clic('impayes_aging')">
             <span class="tico" [innerHTML]="icons['impayes_aging']"></span>
@@ -514,9 +541,14 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi.apercu{grid-column:span 2}
     .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px}
     .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
-    .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .kpi .mini-ligne .secondaire{color:var(--grey);font-size:11px;white-space:nowrap}
-    .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+    /* min-width:0 nécessaire pour que l'ellipsis s'applique réellement dans
+       un conteneur flex — sans ça, un enfant flex ne rétrécit jamais sous sa
+       largeur naturelle (largeur mini par défaut "auto", pas 0). Bug trouvé
+       le 07/09/2026 : un montant long ("-150 000 FCFA") débordait du cadre
+       de la tuile au lieu de forcer l'intitulé à tronquer. */
+    .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+    .kpi .mini-ligne .secondaire{color:var(--grey);font-size:11px;white-space:nowrap;flex:0 0 auto}
+    .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
     .kpi .sparkline{margin-top:8px}
     .kpi .sparkline svg{display:block;width:100%;height:30px;overflow:visible}
     .kpi .barre-tranches{margin-top:9px}
@@ -633,6 +665,10 @@ export class CockpitComponent implements OnInit {
     ),
     ca_mois: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,17 9,11 13,14 20,6"/><polyline points="14.5,6 20,6 20,11.5"/></svg>',
+    ),
+    // Miroir de ca_mois (tendance vers le bas) — dossiers facturés à perte.
+    non_rentables: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,7 9,13 13,10 20,18"/><polyline points="14.5,18 20,18 20,12.5"/></svg>',
     ),
     impayes_aging: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="18" y2="3"/><line x1="6" y1="21" x2="18" y2="21"/><path d="M7 3c0 5 4 6 5 6s5-1 5-6"/><path d="M7 21c0-5 4-6 5-6s5 1 5 6"/></svg>',

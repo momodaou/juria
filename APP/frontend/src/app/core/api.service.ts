@@ -40,6 +40,12 @@ export interface DashboardData {
   mes_taches_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string }[];
   taches_urgentes_n: number | null;
   taches_urgentes_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string; responsable: string }[];
+  // "Dossiers non rentables" (07/09/2026) — marge = facturé HT − dépenses
+  // décaissées − rétrocessions liées, voir dashboard.js pour la limitation
+  // assumée (pas de coût horaire distinct du taux de facturation). `null`
+  // si factures.consulter absent.
+  dossiers_non_rentables: number | null;
+  non_rentables_apercu: { dossier_id: string; numero: string; intitule: string; marge_ht: number; marge_pct: number }[];
 }
 
 export interface Dossier {

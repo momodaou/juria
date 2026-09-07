@@ -34,6 +34,37 @@ const ORDRE_URGENCE_TACHES = `
   t.echeance ASC NULLS LAST
 `;
 
+// Rentabilité par dossier (07/09/2026, 2e gap trouvé le même jour dans la
+// démo HTML de spécification d'origine — panneau "Rentabilité par dossier",
+// jamais construit non plus). Marge = facturé HT − dépenses réellement
+// décaissées − rétrocessions liées au dossier. ⚠️ Approximation assumée et
+// documentée, pas un vrai coût complet : JURIA n'a pas de taux horaire de
+// revient distinct du taux de facturation (temps.taux_horaire sert aux
+// deux), donc le temps des collaborateurs n'est pas déduit ici — seuls les
+// coûts monétaires réels déjà enregistrés (dépenses, rétrocessions) le
+// sont. `statut_retro` n'a aucune valeur de refus (attente/a_decaisser/
+// decaissee) : toute rétrocession créée est un engagement de coût, comptée
+// sans filtre de statut ; les dépenses ne comptent qu'une fois `decaissee`
+// (une dépense simplement soumise n'est pas encore un coût réel).
+const COUTS_DOSSIER_CTE = `
+  WITH couts AS (
+    SELECT d.id AS dossier_id, d.numero, d.intitule, d.mode_honoraires::text AS mode_honoraires,
+           u.prenom || ' ' || u.nom AS responsable,
+           COALESCE((SELECT SUM(f.montant_ht) FROM factures f
+                     WHERE f.dossier_id = d.id AND f.statut NOT IN ('brouillon','annulee')), 0) AS facture_ht,
+           COALESCE((SELECT SUM(dep.montant) FROM depenses dep
+                     WHERE dep.dossier_id = d.id AND dep.statut = 'decaissee'), 0) AS depenses,
+           COALESCE((SELECT SUM(r.montant) FROM retrocessions r WHERE r.dossier_id = d.id), 0) AS retro
+    FROM dossiers d
+    JOIN utilisateurs u ON u.id = d.responsable_id
+  )
+`;
+const MARGE_DOSSIER_SELECT = `
+  dossier_id, numero, intitule, mode_honoraires, responsable, facture_ht,
+  (facture_ht - depenses - retro) AS marge_ht,
+  ROUND(100.0 * (facture_ht - depenses - retro) / facture_ht) AS marge_pct
+`;
+
 // GET /api/dashboard  -> indicateurs agrégés (les nombres affichés sur les tuiles)
 router.get("/", async (req, res) => {
   try {
@@ -293,6 +324,26 @@ router.get("/", async (req, res) => {
       tachesUrgentesApercu = tua.rows;
     }
 
+    // "Dossiers non rentables" — même famille que les autres tuiles CA/
+    // marge, gardée par factures.consulter. Compte + aperçu des 2 pires
+    // marges (dossiers facturés à perte), pas la liste complète (voir le
+    // détail au clic pour la vue d'ensemble triable, meilleure comme pire).
+    let dossiersNonRentablesN = null, nonRentablesApercu = [];
+    if (voitFactures) {
+      const nr = await one(
+        `${COUTS_DOSSIER_CTE}
+         SELECT count(*) AS n FROM couts WHERE facture_ht > 0 AND (facture_ht - depenses - retro) < 0`
+      );
+      dossiersNonRentablesN = Number(nr.n);
+      const nra = await pool.query(
+        `${COUTS_DOSSIER_CTE}
+         SELECT ${MARGE_DOSSIER_SELECT} FROM couts
+         WHERE facture_ht > 0 AND (facture_ht - depenses - retro) < 0
+         ORDER BY marge_ht ASC LIMIT 2`
+      );
+      nonRentablesApercu = nra.rows;
+    }
+
     res.json({
       dossiers_actifs: Number(dossiers.actifs),
       dossiers_urgents: Number(dossiers.urgents),
@@ -321,6 +372,8 @@ router.get("/", async (req, res) => {
       mes_taches_apercu: mesTachesApercu.rows,
       taches_urgentes_n: tachesUrgentesN,
       taches_urgentes_apercu: tachesUrgentesApercu,
+      dossiers_non_rentables: dossiersNonRentablesN,
+      non_rentables_apercu: nonRentablesApercu,
     });
   } catch (e) {
     console.error(e);
@@ -607,6 +660,21 @@ router.get("/detail/:type", async (req, res) => {
            WHERE t.statut NOT IN ('termine','annule')
              AND (t.priorite = 'urgente' OR (t.echeance IS NOT NULL AND t.echeance < current_date))
            ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`
+        );
+        return res.json(rows);
+      }
+      case "non_rentables": {
+        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        // Vue complète des dossiers facturés (meilleure comme pire marge),
+        // pas seulement les non rentables — l'aperçu de la tuile se limite
+        // aux pires, mais "voir le détail" doit permettre le classement
+        // inverse (`Marge (décroissante)`) sans changer de tuile.
+        const { rows } = await pool.query(
+          `${COUTS_DOSSIER_CTE}
+           SELECT ${MARGE_DOSSIER_SELECT} FROM couts WHERE facture_ht > 0
+           ORDER BY marge_ht ASC LIMIT 200`
         );
         return res.json(rows);
       }
