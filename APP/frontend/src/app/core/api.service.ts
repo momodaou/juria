@@ -32,6 +32,14 @@ export interface DashboardData {
   impayes_apercu: { client_id: string; client: string; montant_ttc: number }[];
   ca_historique: number[] | null;
   impayes_tranches: { j61_90: number; jPlus90: number } | null;
+  // "Mes tâches"/"Tâches urgentes" (07/09/2026) — comble le gap "Mes
+  // tâches" de la démo HTML de spécification d'origine, jamais construit.
+  // mes_taches_* toujours présents (personnel, aucune permission requise) ;
+  // taches_urgentes_n reste `null` si le rôle n'a pas cabinet.consulter.
+  mes_taches_n: number;
+  mes_taches_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string }[];
+  taches_urgentes_n: number | null;
+  taches_urgentes_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string; responsable: string }[];
 }
 
 export interface Dossier {

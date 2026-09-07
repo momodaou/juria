@@ -46,6 +46,11 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   actifs: null, urgents: null, audiences: null, impayes: 'factures.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
+  // "Mes tâches" est personnel (déjà filtré sur l'appelant, aucun risque de
+  // confidentialité) ; "Tâches urgentes" est cabinet entier — même
+  // permission que le reste des tuiles de charge de travail (cabinet.consulter,
+  // resserrée direction/finance le 29/08/2026) plutôt qu'un nouveau concept.
+  mes_taches: null, taches_urgentes: 'cabinet.consulter',
   // 6 indicateurs de performance (04/09/2026, demande explicite de
   // l'utilisateur suite au benchmark du 03/09/2026) — tous financiers,
   // tous gardés par factures.consulter comme le reste.
@@ -79,6 +84,29 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours restants (le plus urgent)', key: 'jours_restants', dir: 'asc' },
       { label: 'Échéance', key: 'date_echeance', dir: 'asc' },
+      { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
+    ],
+  },
+  mes_taches: {
+    titre: 'Mes tâches',
+    cols: [
+      { key: 'titre', label: 'Tâche' }, { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'echeance', label: 'Échéance', format: 'date' }, { key: 'priorite', label: 'Priorité' },
+    ],
+    sorts: [
+      { label: 'Échéance (la plus proche)', key: 'echeance', dir: 'asc' },
+      { label: 'Priorité (Z → A, urgente en tête)', key: 'priorite', dir: 'asc' },
+    ],
+  },
+  taches_urgentes: {
+    titre: 'Tâches urgentes (cabinet)',
+    cols: [
+      { key: 'titre', label: 'Tâche' }, { key: 'responsable', label: 'Responsable' },
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'echeance', label: 'Échéance', format: 'date' }, { key: 'priorite', label: 'Priorité' },
+    ],
+    sorts: [
+      { label: 'Échéance (la plus proche)', key: 'echeance', dir: 'asc' },
       { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
     ],
   },
@@ -259,6 +287,32 @@ const CONFIG: Record<string, TuileConfig> = {
           }
           @if (peutVoirDetail('urgents')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.dossiers_urgents }}</span> }
         </button>
+        <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
+          <span class="tico" [innerHTML]="icons['mesTaches']"></span>
+          <span class="n">{{ d.mes_taches_n }}</span><span class="l">Mes tâches</span>
+          @if (d.mes_taches_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.mes_taches_apercu; track l.id) {
+                <div class="mini-ligne"><span class="principal">{{ l.titre }}</span><span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span></div>
+              }
+            </div>
+          }
+          <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.mes_taches_n }}</span>
+        </button>
+        @if (d.taches_urgentes_n !== null) {
+          <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'taches_urgentes'" (click)="clic('taches_urgentes')">
+            <span class="tico" [innerHTML]="icons['tachesUrgentes']"></span>
+            <span class="n">{{ d.taches_urgentes_n }}</span><span class="l">Tâches urgentes (cabinet)</span>
+            @if (d.taches_urgentes_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.taches_urgentes_apercu; track l.id) {
+                  <div class="mini-ligne"><span class="principal">{{ l.titre }} — {{ l.responsable }}</span><span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span></div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.taches_urgentes_n }}</span>
+          </button>
+        }
         <button type="button" class="kpi tier-info apercu" [class.active]="ouvert() === 'audiences'" (click)="clic('audiences')">
           <span class="tico" [innerHTML]="icons['audiences']"></span>
           <span class="n">{{ d.audiences_semaine }}</span><span class="l">Audiences (7 j)</span>
@@ -548,6 +602,16 @@ export class CockpitComponent implements OnInit {
     ),
     audiences: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c4-2.4 7-5.2 7-9.5V5.5L12 3 5 5.5v6c0 4.3 3 7.1 7 9.5Z"/><path d="M9 12l2 2 4-4"/></svg>',
+    ),
+    // Clipboard commun aux 2 tuiles tâches (07/09/2026) — coche pour "Mes
+    // tâches" (personnel, non alarmant), point d'exclamation pour "Tâches
+    // urgentes" (cabinet, signal d'alerte) : même silhouette de base, le
+    // symbole à l'intérieur porte la distinction, pas une forme différente.
+    mesTaches: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.3" width="6" height="3" rx="1"/><line x1="9" y1="11" x2="15" y2="11"/><path d="M9 15.5l1.3 1.3L15 14"/></svg>',
+    ),
+    tachesUrgentes: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.3" width="6" height="3" rx="1"/><line x1="12" y1="10.5" x2="12" y2="14.5"/><circle cx="12" cy="17.3" r="0.55" fill="currentColor" stroke="none"/></svg>',
     ),
     impayes: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h9l3 3V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="16" x2="12.5" y2="16"/></svg>',

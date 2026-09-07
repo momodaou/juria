@@ -23,6 +23,17 @@ const router = express.Router();
 
 const NOM_CLIENT = `COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom)`;
 
+// Ordre d'urgence des tâches (07/09/2026, tuiles "Mes tâches"/"Tâches
+// urgentes" — gap signalé par l'utilisateur : rien sur le Tableau de bord
+// ne reflétait le Plan d'action, alors que la démo HTML de spécification
+// d'origine avait un panneau "Mes tâches" jamais construit) : en retard
+// d'abord, puis par priorité, puis par échéance la plus proche.
+const ORDRE_URGENCE_TACHES = `
+  (t.echeance IS NOT NULL AND t.echeance < current_date) DESC,
+  CASE t.priorite WHEN 'urgente' THEN 0 WHEN 'haute' THEN 1 WHEN 'normale' THEN 2 ELSE 3 END,
+  t.echeance ASC NULLS LAST
+`;
+
 // GET /api/dashboard  -> indicateurs agrégés (les nombres affichés sur les tuiles)
 router.get("/", async (req, res) => {
   try {
@@ -246,6 +257,42 @@ router.get("/", async (req, res) => {
       impayesTranches = { j61_90: Number(tranches.t_61_90), jPlus90: Number(tranches.t_plus90) };
     }
 
+    // "Mes tâches" (personnel, toujours visible — ce sont mes propres
+    // tâches) et "Tâches urgentes" (cabinet entier, gardée par
+    // cabinet.consulter comme le reste des tuiles de charge de travail).
+    const mesTaches = await one(
+      `SELECT count(*) AS n FROM taches t
+       WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')`,
+      [req.user.sub]
+    );
+    const mesTachesApercu = await pool.query(
+      `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite
+       FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id
+       WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')
+       ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 2`,
+      [req.user.sub]
+    );
+    let tachesUrgentesN = null, tachesUrgentesApercu = [];
+    if (voitCabinet) {
+      const tu = await one(
+        `SELECT count(*) AS n FROM taches t
+         WHERE t.statut NOT IN ('termine','annule')
+           AND (t.priorite = 'urgente' OR (t.echeance IS NOT NULL AND t.echeance < current_date))`
+      );
+      tachesUrgentesN = Number(tu.n);
+      const tua = await pool.query(
+        `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite,
+                u.prenom || ' ' || u.nom AS responsable
+         FROM taches t
+         LEFT JOIN dossiers d ON d.id = t.dossier_id
+         LEFT JOIN utilisateurs u ON u.id = t.responsable_id
+         WHERE t.statut NOT IN ('termine','annule')
+           AND (t.priorite = 'urgente' OR (t.echeance IS NOT NULL AND t.echeance < current_date))
+         ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 2`
+      );
+      tachesUrgentesApercu = tua.rows;
+    }
+
     res.json({
       dossiers_actifs: Number(dossiers.actifs),
       dossiers_urgents: Number(dossiers.urgents),
@@ -270,6 +317,10 @@ router.get("/", async (req, res) => {
       impayes_apercu: impayesApercu,
       ca_historique: caHistorique,
       impayes_tranches: impayesTranches,
+      mes_taches_n: Number(mesTaches.n),
+      mes_taches_apercu: mesTachesApercu.rows,
+      taches_urgentes_n: tachesUrgentesN,
+      taches_urgentes_apercu: tachesUrgentesApercu,
     });
   } catch (e) {
     console.error(e);
@@ -530,6 +581,32 @@ router.get("/detail/:type", async (req, res) => {
            GROUP BY u.id, u.prenom, u.nom
            HAVING SUM(t.duree_minutes) FILTER (WHERE t.facture_id IS NOT NULL) > 0
            ORDER BY valeur DESC LIMIT 100`
+        );
+        return res.json(rows);
+      }
+      case "mes_taches": {
+        const { rows } = await pool.query(
+          `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite, t.statut::text AS statut
+           FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id
+           WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')
+           ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`,
+          [req.user.sub]
+        );
+        return res.json(rows);
+      }
+      case "taches_urgentes": {
+        if (!(await estAutorise(req.user.role, "cabinet.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(
+          `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite,
+                  u.prenom || ' ' || u.nom AS responsable
+           FROM taches t
+           LEFT JOIN dossiers d ON d.id = t.dossier_id
+           LEFT JOIN utilisateurs u ON u.id = t.responsable_id
+           WHERE t.statut NOT IN ('termine','annule')
+             AND (t.priorite = 'urgente' OR (t.echeance IS NOT NULL AND t.echeance < current_date))
+           ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`
         );
         return res.json(rows);
       }
