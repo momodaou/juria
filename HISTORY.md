@@ -1820,3 +1820,18 @@ Trois questions concrètes en ont découlé, toutes approuvées ensemble (« Oui
 **Vérification** : 191/191 tests backend, build Angular production sans erreur (deux fois — avant et après les 2 correctifs visuels). **Vérification visuelle réelle** (Playwright, dossier de test facturé 100 000 HT avec une dépense décaissée de 250 000 sur le même dossier, marge -150 000/-150 %) : tuile, aperçu et panneau de détail trié (par défaut sur la marge la plus faible) tous corrects après correctif, aucune erreur console.
 
 **Déployé en production le 07/09/2026** — API `juria-00069-gvz` (précédente `juria-00068-7xz`), frontend `juria-web-00075-w8c` (précédente `juria-web-00074-nbp`). Vérifié : `/health` des deux services en `200`. Non revérifié sur un compte réel de production, même choix délibéré que les entrées précédentes du jour.
+
+## 2026-09-07 — Regroupement en sections du Tableau de bord (18 tuiles)
+
+**Contexte** : question finale de l'utilisateur, après toute la série de tuiles ajoutées dans la journée — faut-il garder le format tuiles, et que conseillent les cabinets internationaux ? Réponse donnée avant de coder : **garder les tuiles** (format quasi universel confirmé par la recherche du 06-07/09/2026 — Clio, Kleos, Secib, MyCase, Litify/Salesforce), mais **regrouper** — les 18 tuiles accumulées dans une seule grille plate au fil de la journée dépassaient ce qui se balaie d'un coup d'œil sans effort, le même problème déjà rencontré et réglé sur le menu latéral le 30/08/2026 (19 entrées réparties en 4 groupes avec en-tête).
+
+**Fait** : 3 sections, chacune sa propre grille CSS, reprenant l'esprit de `.nav-groupe` du menu :
+- **Dossiers & procédure** (5) : actifs, urgents, audiences, dormants, pro bono — jamais masquée en totalité (aucune permission commune à toutes ses tuiles).
+- **Tâches & équipe** (5) : mes tâches, tâches urgentes (cabinet), heures, congés, taux de réalisation — pas davantage masquée en totalité (mes tâches et heures restent visibles sans permission particulière).
+- **Facturation & rentabilité** (8) : impayés, CA du mois, dossiers facturés à perte, impayés +60j, recouvrement, CA par pôle, concentration clients, productivité — **seule section entièrement masquée** (en-tête compris, via `@if (auth.peut('factures.consulter'))`) puisque ses 8 tuiles l'exigeaient déjà chacune individuellement.
+
+Pur réagencement du template (déplacement de blocs déjà existants dans le fichier, aucune tuile ni logique de calcul modifiée) — aucun changement backend.
+
+**Vérification** : build Angular production sans erreur. **Vérification visuelle réelle** (Playwright, 2 comptes — associé et un rôle `stagiaire` sans `factures.consulter`/`cabinet.consulter`) : les 3 sections s'affichent correctement pour l'associé ; pour le rôle restreint, la section Facturation disparaît intégralement (en-tête inclus) et Tâches & équipe se réduit à ses 2 tuiles non gardées (Mes tâches, Heures) — comportement de masquage conditionnel confirmé fonctionnel au niveau du groupe, pas seulement de la tuile individuelle. Aucune erreur console.
+
+**Déployé en production le 07/09/2026** — frontend seul, révision `juria-web-00076-vrt` (précédente `juria-web-00075-w8c`). Vérifié : `/health` en `200`.
