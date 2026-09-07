@@ -223,7 +223,7 @@ router.get("/detail/:type", async (req, res) => {
     switch (type) {
       case "actifs": {
         const { rows } = await pool.query(
-          `SELECT d.numero, d.intitule, ${NOM_CLIENT} AS client, d.pole::text AS pole, d.date_ouverture
+          `SELECT d.id AS dossier_id, d.numero, d.intitule, ${NOM_CLIENT} AS client, d.pole::text AS pole, d.date_ouverture
            FROM dossiers d JOIN clients c ON c.id = d.client_id
            WHERE d.statut IN ('ouvert','en_cours')
            ORDER BY d.date_ouverture DESC LIMIT 200`
@@ -232,7 +232,7 @@ router.get("/detail/:type", async (req, res) => {
       }
       case "urgents": {
         const { rows } = await pool.query(
-          `SELECT d.numero, d.intitule, ${NOM_CLIENT} AS client, u.prenom || ' ' || u.nom AS responsable,
+          `SELECT d.id AS dossier_id, d.numero, d.intitule, ${NOM_CLIENT} AS client, u.prenom || ' ' || u.nom AS responsable,
                   ev.date_echeance, ev.jours_restants
            FROM dossiers d
            JOIN clients c ON c.id = d.client_id
@@ -249,7 +249,7 @@ router.get("/detail/:type", async (req, res) => {
       }
       case "audiences": {
         const { rows } = await pool.query(
-          `SELECT d.numero AS dossier, e.titre, e.date_echeance
+          `SELECT d.id AS dossier_id, d.numero AS dossier, e.titre, e.date_echeance
            FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
            WHERE e.type = 'audience' AND e.statut = 'a_venir'
              AND e.date_echeance >= now() AND e.date_echeance < now() + interval '7 days'
@@ -262,7 +262,7 @@ router.get("/detail/:type", async (req, res) => {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
-          `SELECT f.numero, ${NOM_CLIENT} AS client, f.montant_ttc, f.date_echeance,
+          `SELECT f.dossier_id, f.client_id, f.numero, ${NOM_CLIENT} AS client, f.montant_ttc, f.date_echeance,
                   CASE WHEN f.date_echeance IS NULL THEN NULL
                        ELSE GREATEST(0, current_date - f.date_echeance) END AS jours_retard
            FROM factures f JOIN clients c ON c.id = f.client_id
@@ -286,7 +286,7 @@ router.get("/detail/:type", async (req, res) => {
       }
       case "probono": {
         const { rows } = await pool.query(
-          `SELECT d.numero, ${NOM_CLIENT} AS client, u.prenom || ' ' || u.nom AS responsable, fh.cumul_xof AS frais
+          `SELECT d.id AS dossier_id, d.numero, ${NOM_CLIENT} AS client, u.prenom || ' ' || u.nom AS responsable, fh.cumul_xof AS frais
            FROM dossiers d
            JOIN clients c ON c.id = d.client_id
            JOIN utilisateurs u ON u.id = d.responsable_id
@@ -316,7 +316,7 @@ router.get("/detail/:type", async (req, res) => {
       }
       case "dormants": {
         const { rows } = await pool.query(
-          `SELECT d.numero, d.intitule, u.prenom || ' ' || u.nom AS responsable,
+          `SELECT d.id AS dossier_id, d.numero, d.intitule, u.prenom || ' ' || u.nom AS responsable,
                   act.dernier::date AS dernier_mouvement,
                   (current_date - act.dernier::date) AS jours_inactivite
            FROM dossiers d
@@ -358,7 +358,7 @@ router.get("/detail/:type", async (req, res) => {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
-          `SELECT f.numero, ${NOM_CLIENT} AS client, f.montant_ht, f.date_emission
+          `SELECT f.dossier_id, f.client_id, f.numero, ${NOM_CLIENT} AS client, f.montant_ht, f.date_emission
            FROM factures f JOIN clients c ON c.id = f.client_id
            WHERE f.statut NOT IN ('brouillon','annulee')
              AND f.date_emission >= date_trunc('month', current_date)
@@ -415,7 +415,7 @@ router.get("/detail/:type", async (req, res) => {
                AND p.date_paiement < date_trunc('month', current_date) + interval '1 month'
              GROUP BY f.client_id
            )
-           SELECT ${NOM_CLIENT} AS client, COALESCE(fact.facture, 0) AS facture, COALESCE(enc.encaisse, 0) AS encaisse,
+           SELECT c.id AS client_id, ${NOM_CLIENT} AS client, COALESCE(fact.facture, 0) AS facture, COALESCE(enc.encaisse, 0) AS encaisse,
                   COALESCE(fact.facture, 0) - COALESCE(enc.encaisse, 0) AS ecart
            FROM clients c
            LEFT JOIN fact ON fact.client_id = c.id
@@ -446,7 +446,7 @@ router.get("/detail/:type", async (req, res) => {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
-          `SELECT ${NOM_CLIENT} AS client, SUM(f.montant_ht) AS ca
+          `SELECT c.id AS client_id, ${NOM_CLIENT} AS client, SUM(f.montant_ht) AS ca
            FROM factures f JOIN clients c ON c.id = f.client_id
            WHERE f.statut NOT IN ('brouillon','annulee') AND f.date_emission >= current_date - interval '12 months'
            GROUP BY c.id ORDER BY ca DESC LIMIT 20`

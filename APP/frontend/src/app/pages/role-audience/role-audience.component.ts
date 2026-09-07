@@ -1,13 +1,14 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-role-audience',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <div>
@@ -38,7 +39,7 @@ import { AuthService } from '../../core/auth.service';
               <tr [class.urgent]="l.urgente">
                 <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
                 <td>{{ l.heure || '—' }}</td>
-                <td>{{ l.dossier_numero }} — {{ l.dossier_intitule }}</td>
+                <td><a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a></td>
                 <td>{{ l.juridiction || '—' }}</td>
                 <td>{{ l.type }}</td>
                 <td>{{ l.avocat_nom || '—' }}</td>

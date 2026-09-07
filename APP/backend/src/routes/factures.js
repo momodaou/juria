@@ -64,7 +64,7 @@ async function resoudreTauxChange(devise, tauxFourni, userId) {
 router.get("/impayees", requirePermission("factures.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.numero, f.montant_ttc, f.devise, f.statut, f.date_echeance,
+      `SELECT f.id, f.numero, f.client_id, f.montant_ttc, f.devise, f.statut, f.date_echeance,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               f.montant_ttc - COALESCE((SELECT SUM(montant) FROM paiements p WHERE p.facture_id = f.id),0) AS reste
        FROM factures f JOIN clients c ON c.id = f.client_id
@@ -90,7 +90,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut, f.mention,
-              f.date_emission, f.date_echeance,
+              f.date_emission, f.date_echeance, f.dossier_id, f.client_id,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero
        FROM factures f

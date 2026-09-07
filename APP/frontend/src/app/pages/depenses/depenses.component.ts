@@ -1,13 +1,14 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-depenses',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <div>
@@ -20,6 +21,10 @@ import { AuthService } from '../../core/auth.service';
         </button>
       }
     </header>
+
+    @if (filtreDossierNumero()) {
+      <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir toutes les dépenses</a></p>
+    }
 
     <div class="kpis">
       <div class="kpi">
@@ -118,7 +123,7 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }</td>
               <td>{{ d.categorie }}</td>
               <td>{{ d.montant | number }} FCFA</td>
-              <td>{{ d.dossier_numero || '—' }}</td>
+              <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { — }</td>
               <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ d.statut }}</span></td>
               <td>
                 @if (d.statut === 'soumise' && auth.peut('depenses.decision')) {
@@ -174,17 +179,23 @@ import { AuthService } from '../../core/auth.service';
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class DepensesComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
   readonly depenses = signal<any[]>([]);
   readonly comptes = signal<any[]>([]);
   readonly caisse = signal<any | null>(null);
   readonly stockVignettes = signal(0);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
+
+  // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
 
   filtreStatut = '';
   filtreType = '';
@@ -196,6 +207,9 @@ export class DepensesComponent implements OnInit {
   vignetteQuantite: number | null = null;
 
   ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.chargerCaisse();
@@ -203,7 +217,8 @@ export class DepensesComponent implements OnInit {
   }
 
   charger(): void {
-    this.api.depenses({ statut: this.filtreStatut, type: this.filtreType }).subscribe({ next: (d) => this.depenses.set(d) });
+    const dossierId = this.filtreDossierId();
+    this.api.depenses({ statut: this.filtreStatut, type: this.filtreType, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (d) => this.depenses.set(d) });
   }
 
   chargerCaisse(): void {

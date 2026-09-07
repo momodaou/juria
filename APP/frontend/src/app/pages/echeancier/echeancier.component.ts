@@ -1,15 +1,20 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-echeancier',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <header class="page-head"><h1>Échéancier &amp; délais</h1></header>
+
+    @if (filtreDossierNumero()) {
+      <p class="filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tout l'échéancier</a></p>
+    }
 
     <section class="panel">
       <p class="muted" style="margin-bottom:12px">Filet de sécurité : chaque délai déclenche des alertes automatiques J-30, J-15, J-7, J-1 et jour J.</p>
@@ -43,7 +48,7 @@ import { AuthService } from '../../core/auth.service';
           @for (e of evenements(); track e.id) {
             <tr>
               <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
-              <td>{{ e.dossier_numero }}</td>
+              <td><a class="lien" [routerLink]="['/dossiers', e.dossier_id]">{{ e.dossier_numero }}</a></td>
               <td>{{ e.type }}</td>
               <td>{{ e.titre || '—' }}</td>
               <td>{{ e.responsable || '—' }}</td>
@@ -69,7 +74,7 @@ import { AuthService } from '../../core/auth.service';
           @for (t of taches(); track t.id) {
             <tr>
               <td>{{ t.titre }}</td>
-              <td>{{ t.dossier_numero || '—' }}</td>
+              <td>@if (t.dossier_id) { <a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a> } @else { — }</td>
               <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td><span class="tag" [class.done]="t.statut === 'termine'">{{ t.statut }}</span></td>
               <td>@if (t.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="terminer(t)">Marquer fait</button> }</td>
@@ -86,28 +91,38 @@ import { AuthService } from '../../core/auth.service';
     .btn:disabled{opacity:.6}
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
+    .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class EcheancierComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
 
   readonly evenements = signal<any[]>([]);
   readonly taches = signal<any[]>([]);
   readonly dossiers = signal<Dossier[]>([]);
   readonly erreur = signal('');
 
+  // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
+
   nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = '';
   ntTitre = ''; ntEch = '';
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
   }
 
   charger(): void {
-    this.api.evenements().subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
-    this.api.taches().subscribe({ next: (t) => this.taches.set(t), error: () => {} });
+    const dossierId = this.filtreDossierId();
+    this.api.evenements(dossierId ?? undefined).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
+    this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
   }
 
   badge(e: any): string {

@@ -1,13 +1,14 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-courrier',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <div>
@@ -15,6 +16,10 @@ import { AuthService } from '../../core/auth.service';
         <p>Arrivée / départ, référencement automatique, déclenchement d'événements.</p>
       </div>
     </header>
+
+    @if (filtreDossierNumero()) {
+      <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tout le courrier</a></p>
+    }
 
     @if (auth.peut('courriers.creer')) {
     <section class="panel">
@@ -114,7 +119,7 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ c.date_courrier | date:'dd/MM/yyyy' }}</td>
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
-              <td>{{ c.dossier_numero || '—' }}</td>
+              <td>@if (c.dossier_id) { <a class="lien" [routerLink]="['/dossiers', c.dossier_id]">{{ c.dossier_numero }}</a> } @else { — }</td>
               <td>
                 @if (auth.peut('courriers.statut.modifier')) {
                   <select class="statut-select" [ngModel]="c.statut" (ngModelChange)="changerStatut(c, $event)">
@@ -150,16 +155,22 @@ import { AuthService } from '../../core/auth.service';
     .filtre{width:auto;margin:0;max-width:180px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .statut-select{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class CourrierComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
   readonly courriers = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly dernierDeclenchement = signal<any | null>(null);
   readonly erreur = signal('');
   readonly creation = signal(false);
+
+  // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
 
   recherche = '';
   filtreSens = '';
@@ -168,11 +179,15 @@ export class CourrierComponent implements OnInit {
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
 
   ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
   }
 
   charger(): void {
-    this.api.courriers({ sens: this.filtreSens, q: this.recherche }).subscribe({ next: (c) => this.courriers.set(c) });
+    const dossierId = this.filtreDossierId();
+    this.api.courriers({ sens: this.filtreSens, q: this.recherche, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (c) => this.courriers.set(c) });
   }
 
   rechercherDossiers(): void {

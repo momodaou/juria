@@ -1,6 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -9,9 +10,13 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
 @Component({
   selector: 'app-facturation',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent],
+  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink],
   template: `
     <header class="page-head"><h1>Facturation</h1></header>
+
+    @if (filtreDossierNumero()) {
+      <p class="filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir toutes les factures</a></p>
+    }
 
     <section class="panel">
       <h3>Nouvelle facture</h3>
@@ -162,7 +167,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
           <tr><th>N°</th><th>Client</th><th>Reste dû</th><th>Échéance</th><th>Encaisser</th></tr>
           @for (f of impayees(); track f.id) {
             <tr>
-              <td>{{ f.numero }}</td><td>{{ f.client }}</td>
+              <td>{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td>{{ f.reste | number }} {{ f.devise }}</td>
               <td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td>
@@ -180,10 +185,12 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
       <h3>Toutes les factures</h3>
       @if (factures().length) {
         <table>
-          <tr><th>N°</th><th>Client</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
+          <tr><th>N°</th><th>Client</th><th>Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
-              <td>{{ f.numero }}</td><td>{{ f.client }}</td><td>{{ f.mode }}</td>
+              <td>{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
+              <td>@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
+              <td>{{ f.mode }}</td>
               <td>{{ f.montant_ht | number }} {{ f.devise }}</td>
               <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
               <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
@@ -199,7 +206,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             </tr>
             @if (editionId() === f.id) {
               <tr class="edition">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="form">
                     <label>Objet
                       <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" style="min-width:220px" />
@@ -229,6 +236,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
     </section>
   `,
   styles: [`
+    .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
     .form{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
     .form label{display:flex;flex-direction:column;font-size:12px;color:var(--slate);font-weight:600;gap:4px}
     .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;min-width:150px}
@@ -246,6 +254,15 @@ export class FacturationComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly preview = inject(DocumentPreviewService);
+  private readonly route = inject(ActivatedRoute);
+
+  // Navigation inter-modules (06/09/2026) : arrivée depuis "Voir les
+  // factures" sur la fiche dossier (?dossier=<id>&dossierLabel=<numero>) —
+  // filtre la liste "Toutes les factures" sur ce dossier. Les 2 paramètres
+  // sont fournis ensemble par le lien d'origine pour éviter un aller-retour
+  // réseau supplémentaire juste pour résoudre le numéro à afficher.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
 
   readonly dossiers = signal<Dossier[]>([]);
   readonly factures = signal<any[]>([]);
@@ -291,11 +308,15 @@ export class FacturationComponent implements OnInit {
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.rafraichir();
   }
 
   rafraichir(): void {
-    this.api.factures().subscribe({ next: (f) => this.factures.set(f), error: () => {} });
+    const dossierId = this.filtreDossierId();
+    this.api.factures('', dossierId ? { dossier_id: dossierId } : {}).subscribe({ next: (f) => this.factures.set(f), error: () => {} });
     this.api.facturesImpayees().subscribe({ next: (f) => this.impayees.set(f), error: () => {} });
     if (this.dossierTempsId) this.chargerTempsNonFactures();
   }

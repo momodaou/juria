@@ -125,13 +125,19 @@ router.get("/meta/codes-matiere", async (req, res) => {
 // combinables avec `responsable` (dont "mes dossiers" n'est qu'un cas
 // particulier — le responsable connecté).
 router.get("/", async (req, res) => {
-  const { statut, responsable, q, masquer_archives } = req.query;
+  const { statut, responsable, q, masquer_archives, client_id } = req.query;
   const cond = [];
   const params = [];
   if (statut) { params.push(statut); cond.push(`d.statut = $${params.length}`); }
   else if (masquer_archives === "true") { cond.push(`d.statut <> 'archive'`); }
   if (responsable) { params.push(responsable); cond.push(`d.responsable_id = $${params.length}`); }
   if (q) { params.push(`%${q}%`); cond.push(`(d.intitule ILIKE $${params.length} OR d.numero ILIKE $${params.length})`); }
+  // Filtre client_id ajouté le 06/09/2026 pour le lien "Voir tous les
+  // dossiers de ce client" depuis la fiche client (navigation inter-modules).
+  // ⚠️ Limitation connue : ne couvre que le client principal (dossiers.client_id),
+  // pas les clients additionnels (dossier_clients_additionnels) — cohérent
+  // avec le principal usage (fiche client → ses dossiers).
+  if (client_id) { params.push(client_id); cond.push(`d.client_id = $${params.length}`); }
   const where = cond.length ? `WHERE ${cond.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(

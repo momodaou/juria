@@ -22,6 +22,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               {{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}
               · {{ c.rccm || c.nif || 'Identifiant non renseigné' }} · {{ c.pays }}
             </div>
+            @if (nbDossiers() !== null) {
+              <a class="lien" [routerLink]="['/dossiers']" [queryParams]="{ client: clientId, clientLabel: c.denomination || (c.prenom + ' ' + c.nom) }">
+                Voir {{ nbDossiers() }} dossier{{ nbDossiers()! > 1 ? 's' : '' }}
+              </a>
+            }
           </div>
           <div style="display:flex;gap:10px;align-items:center">
             <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'" [class.ok]="c.kyc_statut === 'a_jour'">
@@ -242,6 +247,9 @@ export class ClientDetailComponent implements OnInit {
 
   readonly client = signal<any | null>(null);
   readonly erreur = signal('');
+  // Navigation inter-modules (06/09/2026) — nombre de dossiers de ce client,
+  // pour le lien "Voir les dossiers" (évite de cliquer dans le vide).
+  readonly nbDossiers = signal<number | null>(null);
   readonly erreurPiece = signal('');
   readonly messageKyc = signal('');
   readonly ajoutEnCours = signal(false);
@@ -313,6 +321,10 @@ export class ClientDetailComponent implements OnInit {
     this.api.client(this.clientId).subscribe({
       next: (c) => { this.client.set(c); this.nouveauStatutKyc = c.kyc_statut; },
       error: () => this.erreur.set('Impossible de charger ce client.'),
+    });
+    this.api.dossiers('', { client_id: this.clientId }).subscribe({
+      next: (d) => this.nbDossiers.set(d.length),
+      error: () => this.nbDossiers.set(null),
     });
   }
 

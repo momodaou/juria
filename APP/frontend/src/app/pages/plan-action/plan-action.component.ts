@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
@@ -14,7 +15,7 @@ const COLONNES = [
 @Component({
   selector: 'app-plan-action',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <div>
@@ -27,6 +28,10 @@ const COLONNES = [
         </button>
       }
     </header>
+
+    @if (filtreDossierNumero()) {
+      <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tout le plan d'action</a></p>
+    }
 
     @if (afficherForm()) {
       <section class="panel">
@@ -95,7 +100,7 @@ const COLONNES = [
                 <span class="tag">{{ t.type }}</span>
                 @if (t.priorite !== 'normale') { <span class="tag" [class.haute]="t.priorite === 'haute' || t.priorite === 'urgente'">{{ t.priorite }}</span> }
               </div>
-              @if (t.dossier_numero) { <div class="carte-info">{{ t.dossier_numero }}</div> }
+              @if (t.dossier_id) { <div class="carte-info"><a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a></div> }
               @if (t.responsable) { <div class="carte-info">{{ t.responsable }}</div> }
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
               <div class="carte-actions">
@@ -132,17 +137,23 @@ const COLONNES = [
     .carte-actions{display:flex;gap:10px;margin-top:8px}
     .vide{font-size:12px}
     .tag.haute{background:#fbe6e5;color:#b13a36}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class PlanActionComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
   readonly colonnes = COLONNES;
   readonly taches = signal<any[]>([]);
   readonly utilisateurs = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
+
+  // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
 
   dossierRecherche = '';
   dossierLabel = '';
@@ -153,12 +164,16 @@ export class PlanActionComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
   charger(): void {
-    this.api.taches().subscribe({ next: (t) => this.taches.set(t) });
+    const dossierId = this.filtreDossierId();
+    this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t) });
   }
 
   rechercherDossiers(): void {

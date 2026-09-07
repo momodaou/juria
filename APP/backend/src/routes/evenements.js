@@ -16,8 +16,14 @@ function niveauAlerte(jours) {
   return "—";
 }
 
-// GET /api/evenements  (à venir, tous dossiers) — avec jours restants + niveau d'alerte
+// GET /api/evenements?dossier_id=  (à venir, tous dossiers sauf filtre) — avec
+// jours restants + niveau d'alerte. Filtre ajouté le 06/09/2026 pour le lien
+// "Voir dans l'Échéancier" depuis la fiche dossier (navigation inter-modules).
 router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
+  const { dossier_id } = req.query;
+  const params = [];
+  let clause = "e.statut = 'a_venir'";
+  if (dossier_id) { params.push(dossier_id); clause += ` AND e.dossier_id = $${params.length}`; }
   try {
     const { rows } = await pool.query(
       `SELECT e.id, e.type, e.titre, e.date_echeance, e.statut, e.dossier_id,
@@ -27,8 +33,9 @@ router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
        FROM evenements e
        JOIN dossiers d ON d.id = e.dossier_id
        LEFT JOIN utilisateurs u ON u.id = e.responsable_id
-       WHERE e.statut = 'a_venir'
-       ORDER BY e.date_echeance`
+       WHERE ${clause}
+       ORDER BY e.date_echeance`,
+      params
     );
     res.json(rows.map((r) => ({ ...r, alerte: niveauAlerte(Number(r.jours_restants)) })));
   } catch (e) {

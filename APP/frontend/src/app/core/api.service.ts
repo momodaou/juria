@@ -98,12 +98,14 @@ export class ApiService {
 
   // filtres.statut/responsable/masquer_archives (20/08/2026, diagnostic
   // utilisateur) — le backend les acceptait déjà, jamais exposés à l'écran.
-  dossiers(recherche = '', filtres: { statut?: string; responsable?: string; masquer_archives?: boolean } = {}): Observable<Dossier[]> {
+  // filtres.client_id (06/09/2026, navigation inter-modules) — idem.
+  dossiers(recherche = '', filtres: { statut?: string; responsable?: string; masquer_archives?: boolean; client_id?: string } = {}): Observable<Dossier[]> {
     const params = new URLSearchParams();
     if (recherche) params.set('q', recherche);
     if (filtres.statut) params.set('statut', filtres.statut);
     if (filtres.responsable) params.set('responsable', filtres.responsable);
     if (filtres.masquer_archives) params.set('masquer_archives', 'true');
+    if (filtres.client_id) params.set('client_id', filtres.client_id);
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<Dossier[]>(`${this.base}/api/dossiers${q}`);
   }
@@ -327,9 +329,10 @@ export class ApiService {
     return this.http.get(`${this.base}/api/factures/${id}/pdf`, { responseType: 'blob' });
   }
 
-  // Échéancier / délais
-  evenements(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/api/evenements`);
+  // Échéancier / délais — dossierId (06/09/2026, navigation inter-modules).
+  evenements(dossierId?: string): Observable<any[]> {
+    const q = dossierId ? `?dossier_id=${dossierId}` : '';
+    return this.http.get<any[]>(`${this.base}/api/evenements${q}`);
   }
   creerEvenement(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/evenements`, payload);
@@ -482,7 +485,7 @@ export class ApiService {
   qualitesRetro(): Observable<{ code: string; libelle: string; taux: number }[]> {
     return this.http.get<{ code: string; libelle: string; taux: number }[]>(`${this.base}/api/retrocessions/qualites`);
   }
-  retrocessions(filtres: { beneficiaire_id?: string; statut?: string } = {}): Observable<any[]> {
+  retrocessions(filtres: { beneficiaire_id?: string; statut?: string; dossier_id?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';

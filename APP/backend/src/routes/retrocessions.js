@@ -43,7 +43,7 @@ router.get("/qualites", (req, res) => {
 // individuelle, donnée sensible). Le paramètre n'est plus une simple
 // commodité d'affichage : c'est la frontière de sécurité elle-même.
 router.get("/", async (req, res) => {
-  const { beneficiaire_id, statut } = req.query;
+  const { beneficiaire_id, statut, dossier_id } = req.query;
   const consulteSesPropres = beneficiaire_id && beneficiaire_id === req.user.sub;
   if (!consulteSesPropres) {
     const { rows } = await pool.query(
@@ -58,11 +58,14 @@ router.get("/", async (req, res) => {
   const clauses = [];
   if (beneficiaire_id) { params.push(beneficiaire_id); clauses.push(`r.beneficiaire_id = $${params.length}`); }
   if (statut) { params.push(statut); clauses.push(`r.statut = $${params.length}::statut_retro`); }
+  // Filtre dossier_id ajouté le 06/09/2026 pour le lien "Voir les
+  // rétrocessions" depuis la fiche dossier (navigation inter-modules).
+  if (dossier_id) { params.push(dossier_id); clauses.push(`r.dossier_id = $${params.length}`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT r.id, r.qualite, r.taux, r.base_ht, r.montant, r.statut, r.decaisse_le,
-              u.prenom || ' ' || u.nom AS beneficiaire,
+              u.prenom || ' ' || u.nom AS beneficiaire, r.dossier_id,
               d.numero AS dossier_numero, f.numero AS facture_numero,
               f.montant_ttc, COALESCE(pv.encaisse, 0) AS encaisse,
               (f.id IS NULL OR COALESCE(pv.encaisse, 0) >= f.montant_ttc) AS honoraires_encaisses

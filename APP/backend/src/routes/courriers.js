@@ -73,7 +73,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.date_courrier, c.correspondant, c.objet,
-              c.support, c.statut, c.a_numeriser, c.numerise,
+              c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id,
               d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id

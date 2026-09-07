@@ -1,13 +1,19 @@
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ApiService, DashboardData } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 // Colonne d'un tableau de détail — 'format' pilote à la fois l'affichage
 // (alignement, pipe) et le comparateur de tri (voir lignesTriees()).
-interface Colonne { key: string; label: string; format?: 'num' | 'date'; }
+// `lien` (06/09/2026, navigation inter-modules) : quand présent et que la
+// ligne porte un id sous `lien.idKey`, la cellule devient un lien vers
+// `lien.route`/id plutôt qu'un texte mort — seules les colonnes qui
+// identifient sans ambiguïté un dossier ou un client en sont dotées (pas
+// les agrégats par collaborateur/pôle/tranche, qui n'ont pas de fiche).
+interface Colonne { key: string; label: string; format?: 'num' | 'date'; lien?: { route: string; idKey: string } }
 interface TriSpec { label: string; key: string; dir: 'asc' | 'desc'; }
 interface TuileConfig { titre: string; cols: Colonne[]; sorts: TriSpec[]; }
 
@@ -52,7 +58,7 @@ const CONFIG: Record<string, TuileConfig> = {
   actifs: {
     titre: 'Dossiers actifs',
     cols: [
-      { key: 'numero', label: 'Référence' }, { key: 'intitule', label: 'Intitulé' },
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'intitule', label: 'Intitulé' },
       { key: 'client', label: 'Client' }, { key: 'pole', label: 'Pôle' },
       { key: 'date_ouverture', label: 'Ouvert le', format: 'date' },
     ],
@@ -65,7 +71,7 @@ const CONFIG: Record<string, TuileConfig> = {
   urgents: {
     titre: 'Dossiers urgents',
     cols: [
-      { key: 'numero', label: 'Référence' }, { key: 'client', label: 'Client' },
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'client', label: 'Client' },
       { key: 'responsable', label: 'Responsable' },
       { key: 'date_echeance', label: 'Échéance', format: 'date' },
       { key: 'jours_restants', label: 'Jours restants', format: 'num' },
@@ -79,7 +85,7 @@ const CONFIG: Record<string, TuileConfig> = {
   audiences: {
     titre: 'Audiences (7 jours)',
     cols: [
-      { key: 'dossier', label: 'Dossier' }, { key: 'titre', label: 'Nature' },
+      { key: 'dossier', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'titre', label: 'Nature' },
       { key: 'date_echeance', label: 'Date', format: 'date' },
     ],
     sorts: [{ label: 'Date (la plus proche)', key: 'date_echeance', dir: 'asc' }],
@@ -87,7 +93,7 @@ const CONFIG: Record<string, TuileConfig> = {
   impayes: {
     titre: 'Impayés',
     cols: [
-      { key: 'numero', label: 'Facture' }, { key: 'client', label: 'Client' },
+      { key: 'numero', label: 'Facture' }, { key: 'client', label: 'Client', lien: { route: '/clients', idKey: 'client_id' } },
       { key: 'montant_ttc', label: 'Montant TTC', format: 'num' },
       { key: 'jours_retard', label: 'Jours de retard', format: 'num' },
     ],
@@ -108,7 +114,7 @@ const CONFIG: Record<string, TuileConfig> = {
   probono: {
     titre: 'Pro bono sous le seuil',
     cols: [
-      { key: 'numero', label: 'Référence' }, { key: 'client', label: 'Client' },
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'client', label: 'Client' },
       { key: 'responsable', label: 'Responsable' }, { key: 'frais', label: 'Frais engagés', format: 'num' },
     ],
     sorts: [
@@ -131,7 +137,7 @@ const CONFIG: Record<string, TuileConfig> = {
   dormants: {
     titre: 'Dossiers dormants (30 j sans mouvement)',
     cols: [
-      { key: 'numero', label: 'Référence' }, { key: 'intitule', label: 'Intitulé' },
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'intitule', label: 'Intitulé' },
       { key: 'responsable', label: 'Responsable' },
       { key: 'dernier_mouvement', label: 'Dernier mouvement', format: 'date' },
       { key: 'jours_inactivite', label: "Jours d'inactivité", format: 'num' },
@@ -156,7 +162,7 @@ const CONFIG: Record<string, TuileConfig> = {
   ca_mois: {
     titre: 'CA du mois — détail des factures',
     cols: [
-      { key: 'numero', label: 'Facture' }, { key: 'client', label: 'Client' },
+      { key: 'numero', label: 'Facture' }, { key: 'client', label: 'Client', lien: { route: '/clients', idKey: 'client_id' } },
       { key: 'montant_ht', label: 'Montant HT', format: 'num' }, { key: 'date_emission', label: 'Émise le', format: 'date' },
     ],
     sorts: [
@@ -179,7 +185,7 @@ const CONFIG: Record<string, TuileConfig> = {
   recouvrement: {
     titre: 'Recouvrement du mois — par client',
     cols: [
-      { key: 'client', label: 'Client' }, { key: 'facture', label: 'Facturé', format: 'num' },
+      { key: 'client', label: 'Client', lien: { route: '/clients', idKey: 'client_id' } }, { key: 'facture', label: 'Facturé', format: 'num' },
       { key: 'encaisse', label: 'Encaissé', format: 'num' }, { key: 'ecart', label: 'Écart', format: 'num' },
     ],
     sorts: [
@@ -197,7 +203,7 @@ const CONFIG: Record<string, TuileConfig> = {
   },
   top_clients: {
     titre: 'Top clients par facturation (12 derniers mois)',
-    cols: [{ key: 'client', label: 'Client' }, { key: 'ca', label: 'CA (FCFA)', format: 'num' }],
+    cols: [{ key: 'client', label: 'Client', lien: { route: '/clients', idKey: 'client_id' } }, { key: 'ca', label: 'CA (FCFA)', format: 'num' }],
     sorts: [
       { label: 'CA (décroissant)', key: 'ca', dir: 'desc' },
       { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
@@ -220,7 +226,8 @@ const CONFIG: Record<string, TuileConfig> = {
 @Component({
   selector: 'app-cockpit',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule],
+  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink],
+  providers: [DatePipe, DecimalPipe],
   template: `
     <header class="page-head">
       <h1>Tableau de bord</h1>
@@ -357,10 +364,10 @@ const CONFIG: Record<string, TuileConfig> = {
                 <tr>
                   @for (c of CONFIG[o].cols; track c.key) {
                     <td [class.num]="c.format === 'num'">
-                      @switch (c.format) {
-                        @case ('date') { {{ r[c.key] ? (r[c.key] | date:'dd/MM/yyyy') : '—' }} }
-                        @case ('num') { {{ (r[c.key] !== null && r[c.key] !== undefined) ? (r[c.key] | number) : '—' }} }
-                        @default { {{ r[c.key] ?? '—' }} }
+                      @if (c.lien && r[c.lien.idKey]) {
+                        <a class="lien" [routerLink]="[c.lien.route, r[c.lien.idKey]]">{{ celluleTexte(r, c) }}</a>
+                      } @else {
+                        {{ celluleTexte(r, c) }}
                       }
                     </td>
                   }
@@ -422,6 +429,19 @@ export class CockpitComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly datePipe = inject(DatePipe);
+  private readonly decimalPipe = inject(DecimalPipe);
+
+  // Formatte une cellule du tableau de détail — extrait du template (06/09/2026)
+  // pour pouvoir afficher la même valeur formatée à l'intérieur d'un <a> quand
+  // la colonne porte un `lien` (voir Colonne), sans dupliquer le formatage.
+  celluleTexte(r: any, c: Colonne): string {
+    const v = r[c.key];
+    if (v === null || v === undefined || v === '') return '—';
+    if (c.format === 'date') return this.datePipe.transform(v, 'dd/MM/yyyy') ?? '—';
+    if (c.format === 'num') return this.decimalPipe.transform(v) ?? '—';
+    return String(v);
+  }
   readonly data = signal<DashboardData | null>(null);
   readonly erreur = signal('');
 

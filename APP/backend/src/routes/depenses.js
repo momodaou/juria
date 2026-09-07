@@ -34,7 +34,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              d.facture_id, c.intitule AS compte, dos.numero AS dossier_numero,
+              d.facture_id, d.dossier_id, c.intitule AS compte, dos.numero AS dossier_numero,
               u.prenom || ' ' || u.nom AS soumis_par
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id

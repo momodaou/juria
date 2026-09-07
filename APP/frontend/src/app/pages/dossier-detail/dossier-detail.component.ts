@@ -60,6 +60,24 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </div>
       </div>
 
+      <div class="liens-rapides">
+        @if (compteursLiens().factures !== null) {
+          <a class="lien" [routerLink]="['/facturation']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Factures ({{ compteursLiens().factures }})</a>
+        }
+        @if (compteursLiens().depenses !== null) {
+          <a class="lien" [routerLink]="['/depenses']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Dépenses ({{ compteursLiens().depenses }})</a>
+        }
+        @if (compteursLiens().retrocessions !== null) {
+          <a class="lien" [routerLink]="['/retrocessions']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Rétrocessions ({{ compteursLiens().retrocessions }})</a>
+        }
+        @if (compteursLiens().courriers !== null) {
+          <a class="lien" [routerLink]="['/courrier']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Courrier ({{ compteursLiens().courriers }})</a>
+        }
+        @if (compteursLiens().taches !== null) {
+          <a class="lien" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Tâches ({{ compteursLiens().taches }})</a>
+        }
+      </div>
+
       <section class="panel">
         <h3>Référencement & étiquette</h3>
         <div class="etq-row">
@@ -627,6 +645,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .ref{font-family:ui-monospace,monospace;letter-spacing:.02em}
     .hint-ind{font-size:12px;color:#9a6c12;margin-top:4px}
     .nature{color:#c3cdde;font-size:13px;margin:2px 0 0}
+    .liens-rapides{display:flex;flex-wrap:wrap;margin:-6px 0 18px;font-size:13px}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
     .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0 14px}
@@ -663,6 +682,49 @@ export class DossierDetailComponent implements OnInit {
   readonly evenements = signal<any[]>([]);
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
+
+  // Liens rapides inter-modules (06/09/2026) — la fiche dossier n'affichait
+  // jusqu'ici aucune visibilité sur sa Facturation/Dépenses/Rétrocessions/
+  // Courrier/Plan d'action, malgré ces 5 modules déjà filtrables par
+  // dossier_id côté serveur. `null` tant que non chargé (ou permission
+  // absente) : le lien ne s'affiche pas plutôt que d'afficher "0" à tort.
+  readonly compteursLiens = signal<{
+    factures: number | null; depenses: number | null; retrocessions: number | null;
+    courriers: number | null; taches: number | null;
+  }>({ factures: null, depenses: null, retrocessions: null, courriers: null, taches: null });
+
+  private chargerLiensRapides(dossierId: string): void {
+    if (this.auth.peut('factures.consulter')) {
+      this.api.factures('', { dossier_id: dossierId }).subscribe({
+        next: (f) => this.compteursLiens.update((c) => ({ ...c, factures: f.length })),
+        error: () => {},
+      });
+    }
+    if (this.auth.peut('depenses.consulter')) {
+      this.api.depenses({ dossier_id: dossierId }).subscribe({
+        next: (d) => this.compteursLiens.update((c) => ({ ...c, depenses: d.length })),
+        error: () => {},
+      });
+    }
+    if (this.auth.peut('retrocessions.consulter')) {
+      this.api.retrocessions({ dossier_id: dossierId }).subscribe({
+        next: (r) => this.compteursLiens.update((c) => ({ ...c, retrocessions: r.length })),
+        error: () => {},
+      });
+    }
+    if (this.auth.peut('courriers.consulter')) {
+      this.api.courriers({ dossier_id: dossierId }).subscribe({
+        next: (c2) => this.compteursLiens.update((c) => ({ ...c, courriers: c2.length })),
+        error: () => {},
+      });
+    }
+    if (this.auth.peut('taches.consulter')) {
+      this.api.taches(`?dossier_id=${dossierId}`).subscribe({
+        next: (t) => this.compteursLiens.update((c) => ({ ...c, taches: t.length })),
+        error: () => {},
+      });
+    }
+  }
 
   readonly fichier = signal<File | null>(null);
   readonly envoi = signal(false);
@@ -1014,6 +1076,7 @@ export class DossierDetailComponent implements OnInit {
       next: (d) => this.dossier.set(d),
       error: () => this.erreur.set('Dossier introuvable.'),
     });
+    this.chargerLiensRapides(id);
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });

@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
@@ -15,6 +15,10 @@ import { AuthService } from '../../core/auth.service';
       <input class="search" placeholder="Rechercher un dossier…"
              [(ngModel)]="recherche" (ngModelChange)="charger()" />
     </header>
+
+    @if (filtreClientNom()) {
+      <p class="bandeau-filtre">Filtré sur le client <b>{{ filtreClientNom() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tous les dossiers</a></p>
+    }
 
     <section class="panel">
       <div class="filtres">
@@ -78,11 +82,13 @@ import { AuthService } from '../../core/auth.service';
     .pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;max-width:220px}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class DossiersComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
   readonly dossiers = signal<Dossier[]>([]);
   readonly utilisateurs = signal<any[]>([]);
   readonly erreur = signal('');
@@ -93,18 +99,27 @@ export class DossiersComponent implements OnInit {
   // sans moyen de se limiter à ses propres dossiers.
   filtreStatut = '';
   filtreResponsable = '';
+  // Navigation inter-modules (06/09/2026) : arrivée depuis "Voir tous les
+  // dossiers" sur la fiche client (?client=<id>&clientLabel=<nom>).
+  readonly filtreClientId = signal<string | null>(null);
+  readonly filtreClientNom = signal<string | null>(null);
 
   ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreClientId.set(params.get('client'));
+    this.filtreClientNom.set(params.get('clientLabel'));
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
   charger(): void {
-    const filtres: { statut?: string; responsable?: string; masquer_archives?: boolean } = {};
+    const filtres: { statut?: string; responsable?: string; masquer_archives?: boolean; client_id?: string } = {};
     if (this.filtreStatut === '__actifs__') filtres.masquer_archives = true;
     else if (this.filtreStatut) filtres.statut = this.filtreStatut;
     if (this.filtreResponsable === '__moi__') filtres.responsable = this.auth.utilisateur()?.id;
     else if (this.filtreResponsable) filtres.responsable = this.filtreResponsable;
+    const clientId = this.filtreClientId();
+    if (clientId) filtres.client_id = clientId;
 
     this.api.dossiers(this.recherche, filtres).subscribe({
       next: (d) => this.dossiers.set(d),

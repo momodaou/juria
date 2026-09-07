@@ -1,13 +1,14 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
 @Component({
   selector: 'app-retrocessions',
   standalone: true,
-  imports: [DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule, RouterLink],
   template: `
     <header class="page-head">
       <div>
@@ -20,6 +21,10 @@ import { AuthService } from '../../core/auth.service';
         </button>
       }
     </header>
+
+    @if (filtreDossierNumero()) {
+      <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir toutes les rétrocessions</a></p>
+    }
 
     <section class="panel">
       <h3>Pro Bono — quota mensuel (2 dossiers / associé, non reportable)</h3>
@@ -86,7 +91,7 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ r.base_ht | number }} FCFA</td>
               <td>{{ r.taux }} %</td>
               <td><b>{{ r.montant | number }} FCFA</b></td>
-              <td>{{ r.dossier_numero || '—' }}</td>
+              <td>@if (r.dossier_id) { <a class="lien" [routerLink]="['/dossiers', r.dossier_id]">{{ r.dossier_numero }}</a> } @else { — }</td>
               <td>
                 <span class="tag" [class.ok]="r.statut==='decaissee'">{{ r.statut }}</span>
                 @if (r.facture_numero && !r.honoraires_encaisses) { <span class="tag haute">non encaissée</span> }
@@ -114,11 +119,13 @@ import { AuthService } from '../../core/auth.service';
     .lien:disabled{opacity:.4;cursor:not-allowed}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
   `],
 })
 export class RetrocessionsComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
   readonly retros = signal<any[]>([]);
   readonly qualites = signal<{ code: string; libelle: string; taux: number }[]>([]);
   readonly utilisateurs = signal<any[]>([]);
@@ -127,11 +134,18 @@ export class RetrocessionsComponent implements OnInit {
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
 
+  // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
+  readonly filtreDossierId = signal<string | null>(null);
+  readonly filtreDossierNumero = signal<string | null>(null);
+
   dossierRecherche = '';
   dossierLabel = '';
   form: any = { qualite: 'associe' };
 
   ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.filtreDossierId.set(params.get('dossier'));
+    this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
     this.api.qualitesRetro().subscribe({ next: (q) => this.qualites.set(q) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
@@ -139,7 +153,8 @@ export class RetrocessionsComponent implements OnInit {
   }
 
   charger(): void {
-    this.api.retrocessions().subscribe({ next: (r) => this.retros.set(r) });
+    const dossierId = this.filtreDossierId();
+    this.api.retrocessions(dossierId ? { dossier_id: dossierId } : {}).subscribe({ next: (r) => this.retros.set(r) });
   }
 
   // Rétrocessions réservées aux avocats (04/09/2026, décision explicite de

@@ -14,7 +14,7 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.titre, t.type, t.priorite, t.statut, t.echeance, t.validation_requise,
-              d.numero AS dossier_numero,
+              t.dossier_id, d.numero AS dossier_numero,
               u.prenom || ' ' || u.nom AS responsable
        FROM taches t
        LEFT JOIN dossiers d ON d.id = t.dossier_id
