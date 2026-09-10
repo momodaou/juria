@@ -65,6 +65,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </div>
       </div>
 
+      @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
+
       <div class="liens-rapides">
         @if (compteursLiens().factures !== null) {
           <a class="lien" [routerLink]="['/facturation']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Factures ({{ compteursLiens().factures }})</a>
@@ -874,6 +876,7 @@ export class DossierDetailComponent implements OnInit {
 
   ajouterClient(c: any): void {
     if (!c) return;
+    this.erreur.set('');
     this.api.ajouterClientDossier(this.id, c.id).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
@@ -986,6 +989,7 @@ export class DossierDetailComponent implements OnInit {
 
   retirerClient(clientId: string): void {
     if (!window.confirm('Retirer ce client du dossier ?')) return;
+    this.erreur.set('');
     this.api.retirerClientDossier(this.id, clientId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
@@ -1063,6 +1067,7 @@ export class DossierDetailComponent implements OnInit {
 
   archiverDossier(): void {
     if (!window.confirm('Archiver ce dossier ?')) return;
+    this.erreur.set('');
     this.api.majDossier(this.id, { statut: 'archive', maj_le_attendu: this.dossier()?.maj_le }).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Archivage impossible.'),
@@ -1071,6 +1076,7 @@ export class DossierDetailComponent implements OnInit {
 
   supprimerDossier(): void {
     if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
+    this.erreur.set('');
     this.api.supprimerDossier(this.id).subscribe({
       next: () => this.router.navigate(['/dossiers']),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
@@ -1152,6 +1158,7 @@ export class DossierDetailComponent implements OnInit {
   }
   ajouterDelai(): void {
     if (!this.dDate) return;
+    this.erreur.set('');
     this.api.creerEvenement({ dossier_id: this.id, type: this.dType, titre: this.dTitre, date_echeance: this.dDate }).subscribe({
       next: () => { this.dTitre = ''; this.dDate = ''; this.rafraichirDelais(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
@@ -1163,6 +1170,7 @@ export class DossierDetailComponent implements OnInit {
   }
   ajouterComm(): void {
     if (!this.cSujet) return;
+    this.erreur.set('');
     this.api.creerCommunication({ dossier_id: this.id, type: this.cType, sujet: this.cSujet, resume: this.cResume }).subscribe({
       next: () => { this.cSujet = ''; this.cResume = ''; this.rafraichirComms(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Enregistrement impossible'),
@@ -1193,6 +1201,7 @@ export class DossierDetailComponent implements OnInit {
 
   ajouterTemps(): void {
     if (!this.dureeMin) return;
+    this.erreur.set('');
     this.api.creerTemps({ dossier_id: this.id, duree_minutes: this.dureeMin, description: this.descTemps }).subscribe({
       next: () => { this.dureeMin = null; this.descTemps = ''; this.rafraichirTemps(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Saisie impossible'),
@@ -1212,6 +1221,7 @@ export class DossierDetailComponent implements OnInit {
     const f = this.fichier();
     if (!f) return;
     this.envoi.set(true);
+    this.erreur.set('');
     this.api.televerserDocument(this.id, f, { categorie: this.categorie }).subscribe({
       next: () => { this.envoi.set(false); this.fichier.set(null); this.rafraichirDocuments(); },
       error: (e) => { this.envoi.set(false); this.erreur.set(e?.error?.error ?? 'Téléversement impossible'); },
@@ -1226,6 +1236,7 @@ export class DossierDetailComponent implements OnInit {
   }
 
   ouvrir(doc: any): void {
+    this.erreur.set('');
     this.api.telechargerDocument(doc.id).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
@@ -1244,6 +1255,7 @@ export class DossierDetailComponent implements OnInit {
   // un document GED (constat utilisateur).
   supprimerDocument(doc: any): void {
     if (!window.confirm(`Supprimer définitivement « ${doc.nom} » ?`)) return;
+    this.erreur.set('');
     this.api.supprimerDocument(doc.id).subscribe({
       next: () => this.rafraichirDocuments(),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),

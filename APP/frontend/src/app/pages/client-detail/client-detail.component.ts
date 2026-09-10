@@ -50,6 +50,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </div>
       </div>
 
+      @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
+
       @if (modeEdition()) {
         <section class="panel">
           <h3>Modifier la fiche</h3>
@@ -216,8 +218,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </div>
         }
       </section>
-
-      @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     } @else if (erreur()) {
       <p class="err">{{ erreur() }}</p>
     }
@@ -362,6 +362,7 @@ export class ClientDetailComponent implements OnInit {
 
   supprimerClient(): void {
     if (!window.confirm('Supprimer définitivement ce client ? Impossible si une activité (dossier, facture, pièce KYC…) est déjà enregistrée.')) return;
+    this.erreur.set('');
     this.api.supprimerClient(this.clientId).subscribe({
       next: () => this.router.navigate(['/clients']),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
@@ -370,6 +371,7 @@ export class ClientDetailComponent implements OnInit {
 
   majStatutKyc(): void {
     this.messageKyc.set('');
+    this.erreur.set('');
     this.api.majClient(this.clientId, {
       kyc_statut: this.nouveauStatutKyc,
       maj_le_attendu: this.client()?.maj_le,
@@ -436,6 +438,7 @@ export class ClientDetailComponent implements OnInit {
   }
 
   ajouterOriginal(): void {
+    this.erreur.set('');
     this.api.creerOriginal({ client_id: this.clientId, ...this.nouvelOriginal }).subscribe({
       next: () => { this.nouvelOriginal = { type_piece: '', description: '', emplacement: '' }; this.charger(); },
       error: () => this.erreur.set('Ajout de l’original impossible.'),
@@ -445,6 +448,10 @@ export class ClientDetailComponent implements OnInit {
   restituer(id: string): void {
     const a = window.prompt('Remis à (nom de la personne) :');
     if (!a) return;
-    this.api.restituerOriginal(id, a).subscribe({ next: () => this.charger() });
+    this.erreur.set('');
+    this.api.restituerOriginal(id, a).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Opération impossible.'),
+    });
   }
 }
