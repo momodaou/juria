@@ -1835,3 +1835,19 @@ Pur réagencement du template (déplacement de blocs déjà existants dans le fi
 **Vérification** : build Angular production sans erreur. **Vérification visuelle réelle** (Playwright, 2 comptes — associé et un rôle `stagiaire` sans `factures.consulter`/`cabinet.consulter`) : les 3 sections s'affichent correctement pour l'associé ; pour le rôle restreint, la section Facturation disparaît intégralement (en-tête inclus) et Tâches & équipe se réduit à ses 2 tuiles non gardées (Mes tâches, Heures) — comportement de masquage conditionnel confirmé fonctionnel au niveau du groupe, pas seulement de la tuile individuelle. Aucune erreur console.
 
 **Déployé en production le 07/09/2026** — frontend seul, révision `juria-web-00076-vrt` (précédente `juria-web-00075-w8c`). Vérifié : `/health` en `200`.
+
+## 2026-09-10 — Date d'ouverture d'origine (dossiers antérieurs à JURIA)
+
+**Contexte** : question de l'utilisateur — des dossiers déjà ouverts au cabinet avant JURIA (non clôturés) doivent pouvoir être repris pour leur suivi. Fallait-il permettre de corriger `date_ouverture` (par défaut toujours la date du jour, `POST`/`PUT /api/dossiers` ne l'exposaient nulle part) pour refléter la vraie date d'ouverture ?
+
+**Discussion** (plusieurs allers-retours, résumée) : `date_ouverture` alimente 2 calculs réels — le job d'alertes honoraires (`jours = current_date - date_ouverture`, escalade J+3/J+7/J+15) et le quota pro bono mensuel (`date_trunc('month', date_ouverture)`). La backdater aurait déclenché immédiatement l'alerte la plus grave pour tout dossier ancien sous le seuil — signal réel mais risque de salve d'alertes au moment de la migration. `numero` pose un problème voisin : toujours généré selon l'année **en cours**, jamais celle de `date_ouverture` — un dossier réellement ouvert en 2019 mais saisi en 2026 recevrait une référence 2026 sans rapport avec une éventuelle chemise physique déjà numérotée 2019 selon le Guide de référencement.
+
+Proposition initiale (référence + date entièrement backdatées, à titre optionnel) écartée par l'utilisateur au profit d'une version simplifiée : **`numero` et `date_ouverture` restent toujours générés normalement, exactement comme pour un dossier neuf** (aucune exception, aucune complexité ajoutée au processus standard) — seule une **date d'ouverture d'origine, purement informative**, est conservée pour la traçabilité. Une « référence antérieure » a été envisagée en parallèle (utile seulement si des pièces déjà échangées citent une référence physique existante) puis écartée : aucun des dossiers concernés n'en a.
+
+**Implémenté** :
+- `dossiers.date_ouverture_origine` (DATE, nullable) — n'entre dans **aucun** calcul (ni numérotation, ni alertes honoraires, ni quota pro bono), affichée uniquement sur la fiche dossier.
+- `POST /api/dossiers` l'accepte en création ; `PUT /api/dossiers/:id` permet de la corriger (même mécanique `COALESCE` que les autres champs de la fiche — ne peut pas être remise à NULL une fois posée, cohérent avec le reste de la route).
+- Écran d'ouverture (Étape 2) : case à cocher « Dossier déjà ouvert au cabinet avant JURIA » qui révèle un champ date facultatif, sans toucher au reste du formulaire.
+- Fiche dossier : affichée sous « Ouvert le » si renseignée (« dossier antérieur — ouvert au cabinet le … ») ; corrigeable depuis le panneau « Modifier la fiche ».
+
+**Vérification** : suite de tests étendue à **194/194** (3 nouveaux dans `gestion-dossiers.test.js` — persistance à la création, absence par défaut sur un dossier neuf, correction via `PUT`, et confirmation explicite que `numero`/`date_ouverture` suivent le comportement standard même avec `date_ouverture_origine` renseignée), build Angular production sans erreur. Pas encore déployé — migration de schéma (`ALTER TABLE dossiers ADD COLUMN date_ouverture_origine`) à appliquer sur Cloud SQL avec confirmation explicite avant tout déploiement.

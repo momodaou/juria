@@ -164,6 +164,18 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
           Suggéré automatiquement (« Client c/ Partie adverse » en contentieux, nom du client en conseil) — modifiable librement.
         </p>
 
+        <label class="pb">
+          <input type="checkbox" [(ngModel)]="dossierAnterieur" name="dossierAnterieur" (ngModelChange)="onDossierAnterieurChange($event)" />
+          Dossier déjà ouvert au cabinet avant JURIA (repris ici pour son suivi)
+        </label>
+        @if (dossierAnterieur) {
+          <label>Date d'ouverture d'origine (au cabinet, avant sa saisie dans JURIA)</label>
+          <input class="in" type="date" [(ngModel)]="dossier.date_ouverture_origine" name="dateOuvertureOrigine" />
+          <p class="muted" style="margin:-8px 0 12px">
+            Purement informatif (affiché sur la fiche) — la référence et la date d'ouverture JURIA restent générées normalement, comme pour tout nouveau dossier.
+          </p>
+        }
+
         <div class="grid2">
           <div>
             <label>Pôle</label>
@@ -368,6 +380,12 @@ export class OuvertureComponent implements OnInit {
   private intituleAutoGenere: string | null = null;
   nomClientPrincipal: string | null = null;
 
+  // Dossier antérieur à JURIA (10/09/2026, idée de l'utilisateur) — la
+  // référence et date_ouverture restent générées normalement (comme un
+  // dossier neuf, décision actée pour ne pas alourdir le processus) ;
+  // seule date_ouverture_origine (purement informative) est saisissable ici.
+  dossierAnterieur = false;
+
   private joindre(items: string[]): string {
     const liste = items.filter(Boolean);
     if (liste.length <= 1) return liste[0] ?? '';
@@ -411,6 +429,10 @@ export class OuvertureComponent implements OnInit {
 
   chargerMatieres(): void {
     this.api.codesMatiere(this.dossier.pole).subscribe({ next: (l) => this.matieres.set(l) });
+  }
+
+  onDossierAnterieurChange(coche: boolean): void {
+    if (!coche) this.dossier.date_ouverture_origine = null;
   }
 
   onPoleChange(): void {

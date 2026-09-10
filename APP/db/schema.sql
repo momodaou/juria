@@ -175,6 +175,15 @@ CREATE TABLE dossiers (
     urgence         urgence_niveau NOT NULL DEFAULT 'moyenne',
     responsable_id  UUID NOT NULL REFERENCES utilisateurs(id),
     date_ouverture  DATE NOT NULL DEFAULT current_date,
+    -- Date d'ouverture réelle au cabinet AVANT sa saisie dans JURIA, pour un
+    -- dossier antérieur repris pour suivi (10/09/2026) — purement informatif,
+    -- affiché sur la fiche mais n'entre dans AUCUN calcul (numérotation,
+    -- alertes honoraires, quota pro bono) : ceux-ci restent basés sur
+    -- date_ouverture (toujours la date de saisie) et numero (toujours généré
+    -- selon l'année en cours), exactement comme un dossier neuf — décision
+    -- explicite de l'utilisateur pour ne pas alourdir le processus. Voir
+    -- CLAUDE.md/HISTORY.md.
+    date_ouverture_origine DATE,
     date_cloture    DATE,
     cree_le         TIMESTAMPTZ NOT NULL DEFAULT now(),
     maj_le          TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -2534,3 +2543,24 @@ WHERE cm.code = d.code_matiere AND cm.type = d.pole
 -- =====================================================================
 ALTER TABLE factures ADD COLUMN IF NOT EXISTS objet VARCHAR(240);
 -- ============ FIN DIAGNOSTIC FACTURATION (05/09/2026) ============
+
+-- =====================================================================
+--  DATE D'OUVERTURE D'ORIGINE — DOSSIERS ANTÉRIEURS À JURIA (10/09/2026)
+--
+--  Répond à une question de l'utilisateur : comment reprendre dans JURIA
+--  un dossier déjà ouvert au cabinet avant sa mise en service, sans fausser
+--  les calculs qui se basent sur date_ouverture (job d'alertes honoraires
+--  J+3/J+7/J+15, quota pro bono mensuel) ni la numérotation (toujours selon
+--  l'année en cours) ? Décision actée après plusieurs allers-retours :
+--  - date_ouverture et numero restent TOUJOURS générés comme pour un
+--    dossier neuf (date du jour, référence de l'année en cours) — pas
+--    d'exception, pas de complexité ajoutée au processus standard.
+--  - date_ouverture_origine (nouvelle colonne, nullable) porte la date
+--    réelle d'ouverture au cabinet quand elle diffère — purement informatif,
+--    affiché sur la fiche dossier, n'entre dans AUCUN calcul métier.
+--  Une référence antérieure (numéro papier déjà utilisé) a été envisagée en
+--  parallèle puis écartée par l'utilisateur : aucun des dossiers concernés
+--  n'a de référence formelle citée dans des pièces déjà échangées.
+-- =====================================================================
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS date_ouverture_origine DATE;
+-- ============ FIN DATE D'OUVERTURE D'ORIGINE ============

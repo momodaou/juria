@@ -309,13 +309,13 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, montant_litige_sens, montant_litige_sens_precision, mode_honoraires, urgence, responsable_id, pro_bono,
           objet, statut_procedure, statut_procedure_precision, intermediaire,
-          code_matiere, couleur_chemise)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19)
+          code_matiere, couleur_chemise, date_ouverture_origine)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.montant_litige_sens || null, b.montant_litige_sens_precision || null, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
        b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
-       codeMatiere, couleurChemise]
+       codeMatiere, couleurChemise, b.date_ouverture_origine || null]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du
@@ -421,7 +421,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     }
 
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $23::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $24::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
@@ -430,6 +430,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       b.client_id || null,
       b.montant_litige_sens || null,
       b.montant_litige_sens_precision || null,
+      b.date_ouverture_origine || null,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -456,8 +457,9 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          client_id = COALESCE($19, client_id),
          montant_litige_sens = COALESCE($20::sens_montant_litige, montant_litige_sens),
          montant_litige_sens_precision = COALESCE($21, montant_litige_sens_precision),
+         date_ouverture_origine = COALESCE($22::date, date_ouverture_origine),
          maj_le = now()
-       WHERE id = $22 ${clauseConcurrence}
+       WHERE id = $23 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
       params
     );

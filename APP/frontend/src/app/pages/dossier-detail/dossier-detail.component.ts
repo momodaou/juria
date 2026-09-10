@@ -46,7 +46,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <div class="meta">
           <div><span>Client</span><b>{{ d.client_nom }}</b></div>
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
-          <div><span>Ouvert le</span><b>{{ d.date_ouverture ? (d.date_ouverture | date:'dd/MM/yyyy') : '—' }}</b></div>
+          <div>
+            <span>Ouvert le</span><b>{{ d.date_ouverture ? (d.date_ouverture | date:'dd/MM/yyyy') : '—' }}</b>
+            @if (d.date_ouverture_origine) {
+              <div class="montant-sens">(dossier antérieur — ouvert au cabinet le {{ d.date_ouverture_origine | date:'dd/MM/yyyy' }})</div>
+            }
+          </div>
           <div>
             <span>Montant du litige</span>
             <b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b>
@@ -212,6 +217,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <div class="col2">
               <label>Nature / objet du dossier</label>
               <textarea class="in" [(ngModel)]="edit.objet" name="editObjet" rows="2"></textarea>
+            </div>
+            <div>
+              <label>Date d'ouverture d'origine (dossier antérieur à JURIA, facultatif)</label>
+              <input class="in" type="date" [(ngModel)]="edit.date_ouverture_origine" name="editDateOuvertureOrigine" />
+              <p class="muted" style="margin:-6px 0 12px">Purement informatif — sans effet sur la référence ni les alertes.</p>
             </div>
 
             <div>
@@ -1094,6 +1104,9 @@ export class DossierDetailComponent implements OnInit {
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
       intermediaire: d.intermediaire, code_matiere: d.code_matiere,
+      // Normalisation "YYYY-MM-DD" attendue par <input type="date"> — même
+      // patron que edit.date_echeance en Facturation.
+      date_ouverture_origine: d.date_ouverture_origine ? String(d.date_ouverture_origine).slice(0, 10) : '',
     };
     this.chargerMatieres(d.pole);
     this.erreurEdition.set('');

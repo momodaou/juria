@@ -170,6 +170,41 @@ describe("Champs objet/statut_procedure/intermediaire — persistés à la créa
   });
 });
 
+describe("date_ouverture_origine — dossier antérieur à JURIA (10/09/2026, purement informatif)", () => {
+  test("POST /api/dossiers l'enregistre sans toucher à numero/date_ouverture (générés normalement)", async () => {
+    const clientId = await creerClient();
+    // numero: undefined force le passage par genererNumero() (le helper
+    // fournit par défaut un numero explicite "GES-...") — vérifie que
+    // date_ouverture_origine ne perturbe pas la génération automatique.
+    const dossierId = await creerDossier(clientId, { numero: undefined, date_ouverture_origine: "2019-03-14" });
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.date_ouverture_origine.slice(0, 10)).toBe("2019-03-14");
+    // numero et date_ouverture suivent le comportement standard d'un
+    // dossier neuf — pas de bascule/exception liée à date_ouverture_origine.
+    expect(relu.body.numero).toMatch(/^CX-IND-\d{4}-\d{4}$/);
+    expect(new Date(relu.body.date_ouverture).toDateString()).toBe(new Date().toDateString());
+  });
+
+  test("absente à la création (nouveau dossier) : reste NULL", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.date_ouverture_origine).toBeNull();
+  });
+
+  test("PUT /api/dossiers/:id la corrige", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const res = await request(app)
+      .put(`/api/dossiers/${dossierId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ date_ouverture_origine: "2020-11-02" });
+    expect(res.status).toBe(200);
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.date_ouverture_origine.slice(0, 10)).toBe("2020-11-02");
+  });
+});
+
 describe("Instances (1re instance / appel / cassation) — table déjà en base, branchée pour la première fois", () => {
   test("instance_initiale à la création crée bien une ligne instances", async () => {
     const clientId = await creerClient();
