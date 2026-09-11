@@ -2656,3 +2656,70 @@ FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 CROSS JOIN unnest(ARRAY['audiences.diligence.gerer']) AS a
 ON CONFLICT (role, action_code) DO NOTHING;
 -- ============ FIN INTERCONNEXION AUDIENCE/COURRIER/DOSSIERS ============
+
+-- =====================================================================
+--  ÉCHÉANCES ADMINISTRATIVES : FORMULE AUTO-CALCULÉE + LIEN DÉPENSES
+--  (11/09/2026)
+--
+--  Suite de la question de l'utilisateur sur l'automatisation des
+--  échéances administratives récurrentes et le lien avec Dépenses &
+--  caisse.
+--
+--  1) Jusqu'ici, `prochaine_date` était une valeur stockée qu'il fallait
+--     avancer manuellement à chaque « Marquer traité » (+1 intervalle) —
+--     si personne ne cliquait, la date restait figée dans le passé sans
+--     refléter la réalité du calendrier. Remplacé par un calcul dynamique
+--     (backend/src/routes/echeances-administratives.js) à partir d'une
+--     formule fixée une fois : périodicité + jour du mois + mois d'ancrage
+--     (nouvelle colonne mois_echeance, utile pour les échéances
+--     annuelles) + dernière période effectivement traitée (nouvelle
+--     colonne dernier_traite_le, remplace la mutation de prochaine_date).
+--     `prochaine_date` reste en base (NOT NULL) mais devient un simple
+--     repère historique/de secours pour les échéances récurrentes — la
+--     valeur réellement affichée est recalculée à la volée à chaque
+--     lecture, toujours exacte, sans dérive possible.
+--  2) L'IS (Acomptes provisionnels) avait 3 échéances par an à dates
+--     fixes inégales (31 mars / 31 juillet / 30 novembre) — pas un vrai
+--     rythme "tous les 3 mois". Modélisé en 3 lignes annuelles distinctes
+--     plutôt que de forcer un rythme trimestriel qui aurait dérivé.
+--  3) Nouvelle colonne echeances_administratives.depense_id : au moment
+--     de « Marquer traité » une échéance qui implique un vrai paiement,
+--     possibilité de créer/lier la dépense réellement décaissée dans
+--     Dépenses & caisse (montant réel, pas l'estimation) plutôt que deux
+--     mondes disjoints comme aujourd'hui. Nouvelle catégorie de dépense
+--     dédiée (aucune des catégories existantes ne correspond à un impôt/
+--     une charge sociale — tout aurait été noyé dans "Autre").
+-- =====================================================================
+ALTER TABLE echeances_administratives ADD COLUMN mois_echeance INT;      -- 1-12, ancrage pour periodicite='annuelle'
+ALTER TABLE echeances_administratives ADD COLUMN dernier_traite_le DATE; -- dernière période effectivement traitée
+ALTER TABLE echeances_administratives ADD COLUMN depense_id UUID REFERENCES depenses(id) ON DELETE SET NULL;
+
+-- Rétro-calcule jour_echeance/mois_echeance des échéances annuelles déjà
+-- en base (patente, Ordre, assurance) à partir de leur prochaine_date
+-- actuelle — exact quelle que soit la date à laquelle le schéma a été
+-- chargé la première fois, pas une valeur devinée.
+UPDATE echeances_administratives
+SET jour_echeance = EXTRACT(DAY FROM prochaine_date)::int,
+    mois_echeance = EXTRACT(MONTH FROM prochaine_date)::int
+WHERE periodicite = 'annuelle' AND jour_echeance IS NULL;
+
+-- IS : scinde l'unique ligne trimestrielle en 3 lignes annuelles à dates
+-- fixes (31/03, 31/07, 30/11), conformément à la réalité fiscale déjà
+-- documentée dans les observations de cette échéance.
+UPDATE echeances_administratives
+SET periodicite = 'annuelle', jour_echeance = 31, mois_echeance = 3
+WHERE libelle = 'Acomptes provisionnels Impôt sur les Sociétés (IS)' AND periodicite = 'trimestrielle';
+
+INSERT INTO echeances_administratives (categorie, libelle, periodicite, jour_echeance, mois_echeance, prochaine_date, statut, observations)
+SELECT categorie, libelle, 'annuelle', 31, 7,
+       make_date(EXTRACT(YEAR FROM prochaine_date)::int, 7, 31), statut, observations
+FROM echeances_administratives
+WHERE libelle = 'Acomptes provisionnels Impôt sur les Sociétés (IS)' AND jour_echeance = 31 AND mois_echeance = 3
+UNION ALL
+SELECT categorie, libelle, 'annuelle', 30, 11,
+       make_date(EXTRACT(YEAR FROM prochaine_date)::int, 11, 30), statut, observations
+FROM echeances_administratives
+WHERE libelle = 'Acomptes provisionnels Impôt sur les Sociétés (IS)' AND jour_echeance = 31 AND mois_echeance = 3;
+
+ALTER TYPE categorie_depense ADD VALUE 'charges_fiscales_sociales';
+-- ============ FIN ÉCHÉANCES ADMINISTRATIVES : FORMULE + LIEN DÉPENSES ============

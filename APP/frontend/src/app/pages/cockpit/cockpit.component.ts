@@ -481,6 +481,20 @@ const CONFIG: Record<string, TuileConfig> = {
               <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
             </button>
           }
+          @if (d.resultat_mois !== null) {
+            <!-- Pas de détail par transaction (juste 3 chiffres) — décision
+                 prise avec l'utilisateur le 11/09/2026, cohérent avec le
+                 reste : recettes = encaissé du mois (pas facturé), même
+                 valeur que celle utilisée pour le taux de recouvrement. -->
+            <div class="kpi" [class.tier-positif]="d.resultat_mois >= 0" [class.tier-critique]="d.resultat_mois < 0">
+              <span class="tico" [innerHTML]="icons['resultat_mois']"></span>
+              <span class="n">{{ d.resultat_mois | number }}</span><span class="l">Résultat du mois (FCFA)</span>
+              <div class="mini-liste">
+                <div class="mini-ligne"><span class="principal">Recettes (encaissé)</span><span class="valeur">{{ d.recettes_mois | number }}</span></div>
+                <div class="mini-ligne"><span class="principal">Dépenses décaissées</span><span class="valeur">{{ d.depenses_mois | number }}</span></div>
+              </div>
+            </div>
+          }
         </div>
       }
 
@@ -696,6 +710,11 @@ export class CockpitComponent implements OnInit {
     ),
     impayes_aging: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="18" y2="3"/><line x1="6" y1="21" x2="18" y2="21"/><path d="M7 3c0 5 4 6 5 6s5-1 5-6"/><path d="M7 21c0-5 4-6 5-6s5 1 5 6"/></svg>',
+    ),
+    // Balance — résultat du mois (11/09/2026, recettes encaissées moins
+    // dépenses décaissées, cabinet entier).
+    resultat_mois: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="19"/><line x1="4" y1="7" x2="20" y2="7"/><path d="M4 7l-2.5 6a2.5 2.5 0 0 0 5 0Z"/><path d="M20 7l-2.5 6a2.5 2.5 0 0 0 5 0Z"/><line x1="8" y1="21" x2="16" y2="21"/></svg>',
     ),
     recouvrement: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5.2"/><polyline points="17.5,3.3 17.5,6.8 14,6.8"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5.2"/><polyline points="6.5,20.7 6.5,17.2 10,17.2"/></svg>',

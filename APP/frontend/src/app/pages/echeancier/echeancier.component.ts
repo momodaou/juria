@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
@@ -8,7 +8,7 @@ import { AuthService } from '../../core/auth.service';
 @Component({
   selector: 'app-echeancier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink],
   template: `
     <header class="page-head"><h1>Échéancier &amp; délais</h1></header>
 
@@ -75,7 +75,7 @@ import { AuthService } from '../../core/auth.service';
       }
       @if (echeancesAdmin().length) {
         <table>
-          <tr><th>Échéance</th><th>Catégorie</th><th>Libellé</th><th>Périodicité</th><th>Responsable</th><th>Alerte</th><th></th></tr>
+          <tr><th>Échéance</th><th>Catégorie</th><th>Libellé</th><th>Périodicité</th><th>Responsable</th><th>Payé</th><th>Alerte</th><th></th></tr>
           @for (e of echeancesAdmin(); track e.id) {
             <tr>
               <td>{{ e.prochaine_date | date:'dd/MM/yyyy' }}</td>
@@ -83,8 +83,14 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ e.libelle }}</td>
               <td>{{ libellePeriodiciteEcheanceAdmin(e.periodicite) }}</td>
               <td>{{ e.responsable || '—' }}</td>
+              <td>@if (e.depense_montant) { {{ e.depense_montant | number }} FCFA } @else { — }</td>
               <td><span class="tag" [class.haute]="e.jours_restants <= 7" [class.moy]="e.jours_restants > 7 && e.jours_restants <= 15">{{ badge(e) }}</span></td>
-              <td>@if (auth.peut('echeances_admin.gerer')) { <button class="lien" (click)="traiterEcheanceAdmin(e)">Marquer traité</button> }</td>
+              <td>
+                @if (auth.peut('echeances_admin.gerer')) {
+                  <input type="number" class="montant-decaisse" [(ngModel)]="montantsDecaisses[e.id]" name="md-{{e.id}}" placeholder="Montant décaissé" title="Montant réellement décaissé (FCFA) — optionnel, crée la dépense correspondante dans Dépenses &amp; caisse" />
+                  <button class="lien" (click)="traiterEcheanceAdmin(e)">Marquer traité</button>
+                }
+              </td>
             </tr>
           }
         </table>
@@ -124,6 +130,7 @@ import { AuthService } from '../../core/auth.service';
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
+    .montant-decaisse{width:110px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:var(--fs-xs);margin-right:6px}
   `],
 })
 export class EcheancierComponent implements OnInit {
@@ -167,6 +174,9 @@ export class EcheancierComponent implements OnInit {
   readonly categoriesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
   readonly periodicitesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
   eaCategorie = 'fiscale'; eaLibelle = ''; eaPeriodicite = 'ponctuelle'; eaDate = '';
+  // Montant décaissé saisi par ligne avant de cliquer « Marquer traité »
+  // (optionnel — voir traiterEcheanceAdmin ci-dessous).
+  montantsDecaisses: Record<string, number | null> = {};
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
@@ -225,8 +235,9 @@ export class EcheancierComponent implements OnInit {
   }
 
   traiterEcheanceAdmin(e: any): void {
-    this.api.traiterEcheanceAdmin(e.id).subscribe({
-      next: () => this.charger(),
+    this.erreur.set('');
+    this.api.traiterEcheanceAdmin(e.id, this.montantsDecaisses[e.id]).subscribe({
+      next: () => { delete this.montantsDecaisses[e.id]; this.charger(); },
       error: (err) => this.erreur.set(err?.error?.error ?? 'Action impossible'),
     });
   }

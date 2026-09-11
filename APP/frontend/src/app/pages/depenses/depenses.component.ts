@@ -66,7 +66,8 @@ import { AuthService } from '../../core/auth.service';
               <option value="fournitures">Fournitures</option><option value="deplacement">Déplacement</option>
               <option value="hebergement">Hébergement</option><option value="restauration">Restauration</option>
               <option value="entretien">Entretien</option><option value="vignette_plaidoirie">Vignette de plaidoirie</option>
-              <option value="frais_procedure">Frais de procédure</option><option value="autre">Autre</option>
+              <option value="frais_procedure">Frais de procédure</option><option value="charges_fiscales_sociales">Charges fiscales et sociales</option>
+              <option value="autre">Autre</option>
             </select>
           </div>
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="form.libelle" name="libelle" /></div>

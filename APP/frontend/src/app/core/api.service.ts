@@ -22,6 +22,9 @@ export interface DashboardData {
   ca_pole_dominant_pct: number | null;
   concentration_top5_pct: number | null;
   productivite_mois: number | null;
+  recettes_mois: number | null;
+  depenses_mois: number | null;
+  resultat_mois: number | null;
   delais_a_venir: any[];
   // Aperçus & tendances (07/09/2026) — voir dashboard.js pour le détail des
   // requêtes ; urgents_apercu/audiences_apercu toujours présents (mêmes
@@ -374,8 +377,10 @@ export class ApiService {
   creerEcheanceAdmin(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/echeances-administratives`, payload);
   }
-  traiterEcheanceAdmin(id: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/echeances-administratives/${id}/traiter`, {});
+  // montantDecaisse (11/09/2026, optionnel) : si fourni, crée la dépense
+  // réellement payée dans Dépenses & caisse et la lie à cette échéance.
+  traiterEcheanceAdmin(id: string, montantDecaisse?: number | null): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/echeances-administratives/${id}/traiter`, montantDecaisse ? { montant_decaisse: montantDecaisse } : {});
   }
 
   // Tâches

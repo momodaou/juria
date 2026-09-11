@@ -6,6 +6,7 @@ const request = require("supertest");
 const app = require("../server");
 const { SECRET } = require("../src/auth");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
+const { calculerProchaineEcheance } = require("../src/routes/echeances-administratives");
 
 let token; // compte "associe"
 let userId;
@@ -71,9 +72,11 @@ describe("Échéances administratives du cabinet — permissions", () => {
     const res = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
-    // Les 7 échéances pré-seedées (TVA, INPS, ITS, IS, patente, Ordre, assurance)
-    // doivent apparaître dès l'installation du schéma.
-    expect(res.body.length).toBeGreaterThanOrEqual(7);
+    // Les 7 échéances pré-seedées (TVA, INPS, ITS, IS, patente, Ordre,
+    // assurance) doivent apparaître dès l'installation du schéma — l'IS
+    // est scindé en 3 lignes annuelles depuis le 11/09/2026 (voir plus
+    // bas), donc 9 lignes au total (7 - 1 + 3).
+    expect(res.body.length).toBeGreaterThanOrEqual(9);
   });
 
   test("création refusée (403) à un collaborateur, autorisée (201) à un associé", async () => {
@@ -89,28 +92,133 @@ describe("Échéances administratives du cabinet — permissions", () => {
   });
 });
 
-describe("Échéances administratives du cabinet — traitement (avance ou clôture)", () => {
-  test("périodique : 'traiter' avance à la prochaine occurrence (mensuelle -> +1 mois) et repasse 'a_faire'", async () => {
+// Formule auto-calculée (11/09/2026, suite de la conversation avec
+// l'utilisateur) — tests unitaires sur des dates FIGÉES (pas la date
+// d'exécution réelle des tests), pour un résultat déterministe et stable
+// dans le temps. Remplace l'ancien comportement ("traiter" avançait une
+// date stockée de +1 intervalle à l'aveugle, source de dérive si personne
+// ne cliquait pendant plusieurs mois).
+describe("calculerProchaineEcheance — formule pure (dates figées)", () => {
+  test("mensuelle, jamais traitée, avant le jour du mois -> ce mois-ci", () => {
+    const r = calculerProchaineEcheance({ periodicite: "mensuelle", jour_echeance: 15, mois_echeance: null, dernier_traite_le: null }, "2026-09-11");
+    expect(r).toBe("2026-09-15");
+  });
+
+  test("mensuelle, jamais traitée, après le jour du mois -> reste sur ce mois-ci (en retard, pas masqué)", () => {
+    // Volontaire : une échéance jamais traitée et déjà passée ce mois-ci
+    // doit apparaître EN RETARD, pas silencieusement sautée au mois
+    // suivant comme si de rien n'était (compliance fiscale/sociale — un
+    // mois de TVA manqué reste un problème réel tant que non traité).
+    const r = calculerProchaineEcheance({ periodicite: "mensuelle", jour_echeance: 15, mois_echeance: null, dernier_traite_le: null }, "2026-09-20");
+    expect(r).toBe("2026-09-15");
+  });
+
+  test("mensuelle, dernier_traite_le = ce mois-ci -> avance au mois suivant", () => {
+    const r = calculerProchaineEcheance({ periodicite: "mensuelle", jour_echeance: 15, mois_echeance: null, dernier_traite_le: "2026-09-15" }, "2026-09-20");
+    expect(r).toBe("2026-10-15");
+  });
+
+  test("mensuelle, jour_echeance=31 un mois de 30 jours -> clampé au dernier jour, pas de débordement", () => {
+    const r = calculerProchaineEcheance({ periodicite: "mensuelle", jour_echeance: 31, mois_echeance: null, dernier_traite_le: null }, "2026-04-05");
+    expect(r).toBe("2026-04-30");
+  });
+
+  test("annuelle, ancrée sur un mois précis, jamais traitée et déjà passée cette année -> reste sur cette année (en retard, pas masquée)", () => {
+    const r = calculerProchaineEcheance({ periodicite: "annuelle", jour_echeance: 30, mois_echeance: 4, dernier_traite_le: null }, "2026-09-11");
+    expect(r).toBe("2026-04-30");
+  });
+
+  test("annuelle, dernier_traite_le de l'an dernier, l'échéance de cette année n'est pas encore passée -> reste sur cette année", () => {
+    const r = calculerProchaineEcheance({ periodicite: "annuelle", jour_echeance: 1, mois_echeance: 1, dernier_traite_le: "2025-01-01" }, "2026-09-11");
+    expect(r).toBe("2026-01-01");
+  });
+
+  test("ponctuelle -> pas de formule (null), l'appelant retombe sur la date stockée", () => {
+    const r = calculerProchaineEcheance({ periodicite: "ponctuelle", jour_echeance: 15, mois_echeance: null, dernier_traite_le: null }, "2026-09-11");
+    expect(r).toBeNull();
+  });
+});
+
+describe("Échéances administratives du cabinet — création : jour/mois déduits automatiquement de la date", () => {
+  test("periodicite='annuelle' : jour_echeance/mois_echeance déduits de prochaine_date, pas des champs séparés à saisir", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ categorie: "assurance", libelle: "Test formule annuelle", periodicite: "annuelle", prochaine_date: "2026-04-30" });
+    expect(creation.status).toBe(201);
+    // GET renvoie la date calculée (formule), pas nécessairement la date
+    // brute saisie — mais avant tout traitement, jamais traitée, la
+    // formule doit retomber exactement sur la même date que celle saisie
+    // (avril n'est pas encore passé début septembre... si si passé, donc
+    // on attend l'an prochain) : on vérifie juste que jour/mois collent en
+    // relisant via une échéance non encore dépassée.
+    const liste = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${token}`);
+    const ligne = liste.body.find((e) => e.id === creation.body.id);
+    expect(new Date(ligne.prochaine_date).getUTCDate()).toBe(30);
+    expect(new Date(ligne.prochaine_date).getUTCMonth() + 1).toBe(4);
+  });
+});
+
+describe("Échéances administratives du cabinet — traitement + lien Dépenses & caisse", () => {
+  test("périodique : 'traiter' enregistre dernier_traite_le et repasse 'a_faire' (plus d'avance à l'aveugle)", async () => {
     const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
       .send({ categorie: "fiscale", libelle: "Test mensuel", periodicite: "mensuelle", prochaine_date: "2026-01-15" });
     const traite = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`);
     expect(traite.status).toBe(200);
     expect(traite.body.statut).toBe("a_faire");
-    expect(traite.body.prochaine_date.slice(0, 10)).toBe("2026-02-15");
+    // prochaine_date renvoyée = la PROCHAINE occurrence après clôture,
+    // toujours dans le futur par construction (calculée depuis aujourd'hui).
+    expect(new Date(traite.body.prochaine_date) > new Date()).toBe(true);
   });
 
-  test("ponctuelle : 'traiter' passe directement à 'paye', pas d'avance de date", async () => {
+  test("ponctuelle : 'traiter' passe directement à 'paye', prochaine_date = null (pas de formule)", async () => {
     const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
       .send({ libelle: "Test ponctuel", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
     const traite = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`);
     expect(traite.status).toBe(200);
     expect(traite.body.statut).toBe("paye");
-    expect(traite.body.prochaine_date.slice(0, 10)).toBe("2026-01-15");
+    expect(traite.body.prochaine_date).toBeNull();
+  });
+
+  test("traiter avec montant_decaisse crée la dépense (catégorie dédiée, déjà décaissée) et la lie", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test lien dépense", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
+    const traite = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`)
+      .send({ montant_decaisse: 123456 });
+    expect(traite.status).toBe(200);
+    expect(traite.body.depense_id).toBeTruthy();
+
+    const depense = await request(app).get("/api/depenses").set("Authorization", `Bearer ${token}`);
+    const ligne = depense.body.find((d) => d.id === traite.body.depense_id);
+    expect(ligne.montant).toBe("123456");
+    expect(ligne.categorie).toBe("charges_fiscales_sociales");
+    expect(ligne.statut).toBe("decaissee");
+
+    const liste = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${token}`);
+    const echeance = liste.body.find((e) => e.id === creation.body.id);
+    expect(echeance.depense_id).toBe(traite.body.depense_id);
+    expect(Number(echeance.depense_montant)).toBe(123456);
+  });
+
+  test("traiter sans montant_decaisse ne crée aucune dépense", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test sans montant", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
+    const traite = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`);
+    expect(traite.body.depense_id).toBeNull();
   });
 
   test("traiter sur une échéance inexistante -> 404", async () => {
     const res = await request(app).post("/api/echeances-administratives/00000000-0000-0000-0000-000000000000/traiter")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("IS scindé en 3 échéances annuelles (migration du 11/09/2026)", () => {
+  test("3 lignes IS distinctes présentes, aucune 'trimestrielle' restante", async () => {
+    const liste = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${token}`);
+    const isLignes = liste.body.filter((e) => e.libelle === "Acomptes provisionnels Impôt sur les Sociétés (IS)");
+    expect(isLignes.length).toBe(3);
+    expect(isLignes.every((e) => e.periodicite === "annuelle")).toBe(true);
+    const joursMois = isLignes.map((e) => `${e.mois_echeance}-${e.jour_echeance}`).sort();
+    expect(joursMois).toEqual(["11-30", "3-31", "7-31"]);
   });
 });

@@ -157,6 +157,12 @@ router.get("/", async (req, res) => {
     // tous gardés par factures.consulter comme le reste.
     let caMois = null, tendancePct = null, impayes60 = null, recouvrement = null;
     let poleDominantNom = null, poleDominantPct = null, concentrationPct = null, productiviteMois = null;
+    // Résultat du mois (11/09/2026, suite à une question de l'utilisateur
+    // sur la convergence recettes/dépenses — aucune vue cabinet entier de
+    // ce type n'existait, seulement une marge par dossier). recettesMois
+    // réutilise le même "encaissé du mois" déjà calculé pour le taux de
+    // recouvrement ci-dessous (rec.encaisse) — pas une 2e requête.
+    let recettesMois = null, depensesMois = null, resultatMois = null;
     if (voitFactures) {
       const ca = await one(
         `SELECT
@@ -191,6 +197,22 @@ router.get("/", async (req, res) => {
                AND date_paiement < date_trunc('month', current_date) + interval '1 month'), 0) AS encaisse`
       );
       recouvrement = Number(rec.facture) > 0 ? Math.round((100 * Number(rec.encaisse)) / Number(rec.facture)) : null;
+      recettesMois = Number(rec.encaisse);
+
+      // montant (pas montant_xof) : cette dernière colonne, prévue pour le
+      // multi-devises, n'est en réalité jamais renseignée par
+      // depenses.js (vérifié — aucune route n'écrit dedans), contrairement
+      // à factures.montant_ttc_xof qui, lui, l'est. montant est toujours en
+      // XOF en pratique pour les dépenses du cabinet.
+      const dep = await one(
+        `SELECT COALESCE(SUM(montant), 0) AS montant
+         FROM depenses
+         WHERE statut = 'decaissee'
+           AND date_depense >= date_trunc('month', current_date)
+           AND date_depense < date_trunc('month', current_date) + interval '1 month'`
+      );
+      depensesMois = Number(dep.montant);
+      resultatMois = recettesMois - depensesMois;
 
       const parPole = await pool.query(
         `SELECT d.pole::text AS pole, SUM(f.montant_ht) AS ca
@@ -374,6 +396,9 @@ router.get("/", async (req, res) => {
       taches_urgentes_apercu: tachesUrgentesApercu,
       dossiers_non_rentables: dossiersNonRentablesN,
       non_rentables_apercu: nonRentablesApercu,
+      recettes_mois: recettesMois,
+      depenses_mois: depensesMois,
+      resultat_mois: resultatMois,
     });
   } catch (e) {
     console.error(e);
