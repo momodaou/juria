@@ -214,12 +214,15 @@ import { AuthService } from '../../core/auth.service';
               <thead>
                 <tr>
                   <th class="col-action">Action</th>
-                  @for (r of roles; track r.code) { <th class="col-role">{{ r.court }}</th> }
+                  @for (r of roles; track r.code) { <th class="col-role" [title]="r.libelle">{{ r.court }}</th> }
                 </tr>
               </thead>
               <tbody>
                 @for (m of modulesMatrice(); track m) {
-                  <tr class="ligne-module"><td [attr.colspan]="roles.length + 1">{{ m }}</td></tr>
+                  <tr class="ligne-module">
+                    <td class="col-action">{{ m }}</td>
+                    <td [attr.colspan]="roles.length"></td>
+                  </tr>
                   @for (a of actionsDuModule(m); track a.code) {
                     <tr>
                       <td class="col-action">{{ a.label }} @if (a.restreinte) { <span class="pastille" title="Réservée à la direction avant l'introduction de cette matrice">★</span> }</td>
@@ -270,13 +273,47 @@ import { AuthService } from '../../core/auth.service';
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .panel.alerte{border-left:4px solid var(--amber)}
     .mdp{background:#f7f9fc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:var(--fs-md);font-weight:700;letter-spacing:.5px}
+    /* Matrice des permissions (11/09/2026) — 13 colonnes de rôle ne
+       tiennent pas sur un écran standard avec des intitulés sur une seule
+       ligne (ex. « Assist. comptable ») : plutôt que de réduire encore la
+       police (déjà au palier le plus petit de l'échelle, --fs-xs/--fs-sm),
+       les colonnes de rôle sont maintenant à largeur fixe avec un intitulé
+       sur 2 lignes, et la colonne Action reste visible (position sticky)
+       pendant le défilement horizontal pour ne pas perdre le contexte de
+       la ligne en cours en regardant les colonnes de droite (ex. Admin.
+       IT, Archiviste). Le défilement reste nécessaire sur les petits
+       écrans, mais tient désormais en un minimum de distance.
+       ⚠️ position:sticky sur une cellule de table exige border-collapse
+       (déjà en place) et un fond opaque explicite sur les cellules
+       collantes, sinon le contenu défilant transparaît en dessous. */
     .matrice-scroll{overflow-x:auto}
-    table.matrice{border-collapse:collapse;font-size:var(--fs-sm);min-width:900px}
-    table.matrice th, table.matrice td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
-    table.matrice .col-action{text-align:left;min-width:220px;white-space:normal}
-    table.matrice .col-role{min-width:56px}
+    /* border-collapse:separate (pas collapse) — avec collapse, la colonne
+       sticky laissait passer une fine tranche de la colonne suivante en
+       défilement (artefact connu de position:sticky combiné à
+       border-collapse:collapse sur une table). border-spacing:0 conserve
+       un rendu visuellement identique à collapse en dehors de ce cas. */
+    table.matrice{border-collapse:separate;border-spacing:0;font-size:var(--fs-sm);
+      border-top:1px solid var(--line);border-left:1px solid var(--line)}
+    table.matrice th, table.matrice td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
+    table.matrice .col-action{text-align:left;width:220px;white-space:normal;
+      position:sticky;left:0;background:#fff;box-shadow:2px 0 4px -2px rgba(0,0,0,.15);}
+    /* 82px : assez pour qu'un intitulé d'un seul mot (Assistante,
+       Comptable, Archiviste, Stagiaire) tienne sur une ligne sans coupure
+       au milieu d'un mot ; les intitulés à 2 mots (Assoc. fondateur, Of
+       Counsel…) se répartissent naturellement sur 2 lignes à l'espace. */
+    table.matrice .col-role{width:82px;white-space:normal}
     table.matrice thead th{background:var(--light);font-weight:700;font-size:var(--fs-xs)}
-    tr.ligne-module td{background:var(--navy);color:#fff;font-weight:700;text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em}
+    table.matrice thead .col-action{z-index:2}
+    /* Le libellé de section (ex. « ATELIER D'ACTES ») est sa propre
+       cellule .col-action (1 seule colonne, pas de colspan) pour hériter
+       du même comportement sticky que les libellés d'action ci-dessous —
+       découvert en testant : position:sticky ne s'applique pas de façon
+       fiable à une cellule avec colspan sur plusieurs colonnes (le texte
+       défilait hors champ alors que le fond navy, lui, restait visible
+       puisqu'il couvre toute la largeur de la ligne). La 2de cellule
+       (colspan sur les rôles restants) complète juste le bandeau visuel. */
+    tr.ligne-module td{background:var(--navy);color:#fff;font-weight:700;text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em;border-color:var(--navy)}
+    tr.ligne-module td.col-action{background:var(--navy);z-index:1}
     .pastille{color:var(--gold);margin-left:3px}
   `],
 })
