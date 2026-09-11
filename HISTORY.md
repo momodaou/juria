@@ -1878,4 +1878,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Non traité, signalé comme un sujet distinct** : aucune taille n'est en `rem` — tout reste en `px` absolu, donc le réglage d'accessibilité "taille de police" du navigateur n'a aucun effet sur JURIA. Indépendant de l'uniformisation demandée ici, à reprendre séparément si souhaité.
 
-**Déploiement** : pas encore fait à ce stade — à confirmer avec l'utilisateur avant `gcloud builds submit`/`gcloud run deploy juria-web` (frontend seul, aucun changement backend/schéma).
+**Déploiement production — effectué et vérifié le 11/09/2026** (accord utilisateur, « oui, vas-y déploie »). Frontend seul (aucun changement backend/schéma) — `gcloud builds submit --tag europe-west1-docker.pkg.dev/jfc-juria/juria/web:latest APP/frontend` puis `gcloud run deploy juria-web`, révision `juria-web-00079-g59` (précédente `juria-web-00078-9qj`). Vérifié : page d'accueil en `200`, et les 12 variables `--fs-*` bien présentes dans le CSS servi en production (pas seulement bâti en local).
