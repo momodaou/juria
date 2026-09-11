@@ -140,6 +140,11 @@ export class ApiService {
   dossierEvenements(id: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/evenements`);
   }
+  // Historique des audiences du dossier (11/09/2026, gap comblé — voir
+  // CLAUDE.md/HISTORY.md).
+  dossierAudiences(id: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/audiences`);
+  }
 
   dossierDocuments(id: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/documents`);
@@ -433,6 +438,21 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/retour`, payload);
   }
 
+  // Diligences (11/09/2026) — planning des rendez-vous/démarches de
+  // terrain, distinct du rôle hebdomadaire d'audience.
+  diligences(filtres: { dossier_id?: string; statut?: string } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any[]>(`${this.base}/api/diligences${q}`);
+  }
+  creerDiligence(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/diligences`, payload);
+  }
+  majStatutDiligence(id: string, statut: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/diligences/${id}/statut`, { statut });
+  }
+
   // Registre du courrier
   courriers(filtres: { sens?: string; dossier_id?: string; statut?: string; q?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
@@ -448,6 +468,13 @@ export class ApiService {
   }
   majStatutCourrier(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/courriers/${id}/statut`, payload);
+  }
+  // Joindre le scan du courrier à la GED (11/09/2026, gap comblé — le
+  // courrier doit déjà être rattaché à un dossier, voir courriers.js).
+  joindreDocumentCourrier(id: string, fichier: File): Observable<any> {
+    const fd = new FormData();
+    fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/document`, fd);
   }
 
   // Atelier d'actes

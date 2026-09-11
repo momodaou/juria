@@ -53,6 +53,7 @@ app.use("/api/communications", authenticate, require("./src/routes/communication
 app.use("/api/originaux", authenticate, require("./src/routes/originaux"));
 app.use("/api/listes-valeurs", authenticate, require("./src/routes/listes"));
 app.use("/api/roles-audience", authenticate, require("./src/routes/audiences"));
+app.use("/api/diligences", authenticate, require("./src/routes/diligences"));
 app.use("/api/courriers", authenticate, require("./src/routes/courriers"));
 app.use("/api/actes", authenticate, require("./src/routes/actes"));
 app.use("/api/biblio", authenticate, require("./src/routes/biblio"));

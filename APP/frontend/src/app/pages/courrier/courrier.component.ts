@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-courrier',
@@ -36,6 +37,8 @@ import { AuthService } from '../../core/auth.service';
           <label>Type</label>
           <select class="in" [(ngModel)]="form.type" name="type">
             <option value="lettre">Lettre</option>
+            <option value="assignation">Assignation</option>
+            <option value="convocation">Convocation</option>
             <option value="acte_huissier">Acte d'huissier</option>
             <option value="acte_notaire">Acte de notaire</option>
             <option value="decision_justice">Décision de justice</option>
@@ -87,6 +90,11 @@ import { AuthService } from '../../core/auth.service';
             <option value="mixte">Mixte</option>
           </select>
         </div>
+        <div class="col2">
+          <label>Scan / pièce jointe (GED)</label>
+          <input class="in" type="file" (change)="fichierChoisi($event)" [disabled]="!form.dossier_id" />
+          @if (!form.dossier_id) { <p class="muted" style="margin:-6px 0 12px">Sélectionnez d'abord un dossier ci-dessus pour pouvoir y joindre le scan.</p> }
+        </div>
       </div>
       <button class="btn" (click)="creer()" [disabled]="!form.correspondant || creation()">
         {{ creation() ? 'Enregistrement…' : 'Enregistrer le courrier' }}
@@ -110,7 +118,7 @@ import { AuthService } from '../../core/auth.service';
       </div>
       @if (courriers().length) {
         <table>
-          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Statut</th></tr>
+          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Pièce</th><th>Statut</th></tr>
           @for (c of courriers(); track c.id) {
             <tr>
               <td>{{ c.reference }}</td>
@@ -120,6 +128,13 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
               <td>@if (c.dossier_id) { <a class="lien" [routerLink]="['/dossiers', c.dossier_id]">{{ c.dossier_numero }}</a> } @else { — }</td>
+              <td>
+                @if (c.document_id) {
+                  <button class="lien" (click)="apercuPiece(c)">Aperçu</button>
+                } @else if (c.dossier_id && auth.peut('courriers.creer')) {
+                  <input type="file" class="mini-file" (change)="joindrePiece(c, $event)" title="Joindre le scan de ce courrier" />
+                } @else { — }
+              </td>
               <td>
                 @if (auth.peut('courriers.statut.modifier')) {
                   <select class="statut-select" [ngModel]="c.statut" (ngModelChange)="changerStatut(c, $event)">
@@ -156,12 +171,14 @@ import { AuthService } from '../../core/auth.service';
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .statut-select{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:var(--fs-sm)}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
+    .mini-file{max-width:110px;font-size:var(--fs-xs)}
   `],
 })
 export class CourrierComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly preview = inject(DocumentPreviewService);
   readonly courriers = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly dernierDeclenchement = signal<any | null>(null);
@@ -177,6 +194,7 @@ export class CourrierComponent implements OnInit {
   dossierRecherche = '';
   dossierLabel = '';
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
+  fichierNouveauCourrier: File | null = null;
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
@@ -219,16 +237,49 @@ export class CourrierComponent implements OnInit {
     this.creation.set(true);
     this.erreur.set('');
     this.dernierDeclenchement.set(null);
+    const fichier = this.fichierNouveauCourrier;
     this.api.creerCourrier(this.form).subscribe({
       next: (c) => {
         this.creation.set(false);
         if (c.declenchement) this.dernierDeclenchement.set(c.declenchement);
         this.form = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
         this.dossierLabel = '';
-        this.charger();
+        this.fichierNouveauCourrier = null;
+        // Le scan n'est joint qu'une fois le courrier créé (il faut son id) —
+        // n'échoue jamais la création elle-même si le téléversement rate.
+        if (fichier) {
+          this.api.joindreDocumentCourrier(c.id, fichier).subscribe({
+            next: () => this.charger(),
+            error: (e) => { this.erreur.set(e?.error?.error ?? 'Courrier enregistré, mais le téléversement de la pièce a échoué.'); this.charger(); },
+          });
+        } else {
+          this.charger();
+        }
       },
       error: (e) => { this.creation.set(false); this.erreur.set(e?.error?.error ?? 'Enregistrement impossible.'); },
     });
+  }
+
+  fichierChoisi(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.fichierNouveauCourrier = input.files?.[0] ?? null;
+  }
+
+  // Joindre le scan sur un courrier déjà enregistré (rattaché entre-temps
+  // à un dossier, ou simplement pas scanné au moment de la saisie).
+  joindrePiece(c: any, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const fichier = input.files?.[0];
+    if (!fichier) return;
+    this.erreur.set('');
+    this.api.joindreDocumentCourrier(c.id, fichier).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Téléversement impossible.'),
+    });
+  }
+
+  apercuPiece(c: any): void {
+    this.preview.ouvrir(c.reference, this.api.telechargerDocument(c.document_id));
   }
 
   changerStatut(c: any, statut: string): void {

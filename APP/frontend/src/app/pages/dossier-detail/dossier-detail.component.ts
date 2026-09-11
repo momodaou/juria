@@ -514,6 +514,30 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
 
       <section class="panel">
+        <h3>Audiences</h3>
+        <p class="muted" style="margin-bottom:12px">Historique en lecture seule — la saisie se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier).</p>
+        @if (audiences().length) {
+          <table>
+            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Avocat</th><th>Résultat</th></tr>
+            @for (a of audiences(); track a.id) {
+              <tr [class.urgent]="a.urgente">
+                <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
+                <td>{{ a.type }}</td>
+                <td>{{ a.juridiction || '—' }}</td>
+                <td>{{ a.avocat_nom || '—' }}</td>
+                <td>
+                  @if (a.resultat) {
+                    {{ a.resultat }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
+                    @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }} }
+                  } @else { <span class="muted">à venir</span> }
+                </td>
+              </tr>
+            }
+          </table>
+        } @else { <p class="muted">Aucune audience enregistrée pour ce dossier.</p> }
+      </section>
+
+      <section class="panel">
         <h3>Pièces (GED)</h3>
 
         @if (auth.peut('documents.creer')) {
@@ -672,6 +696,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .etiquette-intitule{font-size:var(--fs-base);font-weight:600;margin-top:2px}
     .etiquette-sub{font-size:var(--fs-sm);color:var(--slate);margin-top:1px}
     .etiquette-chemise{font-size:var(--fs-xs);margin-top:4px}
+    tr.urgent td{background:#fff5f4}
   `],
 })
 export class DossierDetailComponent implements OnInit {
@@ -691,6 +716,8 @@ export class DossierDetailComponent implements OnInit {
   // aucun appel serveur dédié.
   readonly etiquette = signal<{ qr: string; couleurHex: string } | null>(null);
   readonly evenements = signal<any[]>([]);
+  // Historique des audiences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
+  readonly audiences = signal<any[]>([]);
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
 
@@ -1111,6 +1138,7 @@ export class DossierDetailComponent implements OnInit {
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
     this.rafraichirDelais();
+    this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();

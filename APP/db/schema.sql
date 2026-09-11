@@ -2607,3 +2607,52 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('admin_it','echeances_admin.gerer',TRUE),
  ('comptable','echeances_admin.gerer',TRUE);
 -- ============ FIN ÉCHÉANCIER : DILIGENCE/AUTRE + ÉCHÉANCES ADMIN ============
+
+-- =====================================================================
+--  INTERCONNEXION RÔLE D'AUDIENCE / REGISTRE DU COURRIER / DOSSIERS
+--  (11/09/2026)
+--
+--  Répond à une question de l'utilisateur : « Rôle d'audience » et
+--  « Registre du courrier » ont-ils un renvoi vers le dossier, et le
+--  courrier peut-il être versé dans la GED ? Diagnostic avant correction
+--  (pas de nouvelle donnée à créer, juste du code manquant) :
+--  - courriers.document_id existait déjà (« pièce numérisée (GED) ») mais
+--    n'était jamais renseigné par aucune route — aucun moyen de joindre le
+--    scan d'un courrier à son enregistrement.
+--  - La table `diligences` (planning des diligences, promis par le
+--    commentaire d'origine de audiences.js) et son catalogue
+--    listes_valeurs('type_diligence') existaient déjà, pré-remplis, mais
+--    seul le déclencheur automatique de courriers.js y écrivait — aucune
+--    route pour les consulter, créer à la main ou les faire évoluer.
+--  - `audiences` (table du Rôle d'audience) n'avait aucune visibilité
+--    depuis la fiche dossier (contrairement à documents/factures/temps/
+--    taches/courriers) — gap comblé par un nouveau panneau en lecture
+--    seule sur la fiche dossier plutôt qu'un lien vers Rôle d'audience
+--    (modèle hebdomadaire, ne peut pas être filtré par dossier — même
+--    limite déjà actée le 06-07/09/2026).
+--  - Trouvé au passage en construisant ce panneau : `audiences` a un
+--    `ON DELETE CASCADE` sur dossier_id comme documents/temps/evenements/
+--    taches (déjà protégés contre une suppression silencieuse de dossier)
+--    mais audiences en était absent — ajouté à TABLES_ACTIVITE_DOSSIER
+--    (dossiers.js), pas de changement de schéma pour ce point précis.
+--  - Bug préexistant trouvé en écrivant un test honnête (pas supposé) sur
+--    le déclencheur automatique : la table `declencheurs` seedée dès le
+--    premier schéma prévoit 2 règles ('assignation'->audience,
+--    'convocation'->diligence) dont le `source_code` ne correspond à
+--    AUCUNE valeur réelle de l'ENUM `type_courrier` (seulement lettre/
+--    acte_huissier/acte_notaire/decision_justice/conclusions/
+--    courrier_officiel/administratif/autre) — impossible de créer un
+--    courrier de ce type, donc ces 2 règles n'ont jamais pu se déclencher
+--    depuis le 16/08/2026. Corrigé en ajoutant les 2 valeurs manquantes à
+--    l'ENUM plutôt qu'en réécrivant les règles (matérialise ce que les
+--    déclencheurs prévoyaient déjà).
+-- =====================================================================
+ALTER TYPE type_courrier ADD VALUE 'assignation';
+ALTER TYPE type_courrier ADD VALUE 'convocation';
+
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY['audiences.diligence.gerer']) AS a
+ON CONFLICT (role, action_code) DO NOTHING;
+-- ============ FIN INTERCONNEXION AUDIENCE/COURRIER/DOSSIERS ============

@@ -63,9 +63,15 @@ const JOIN_HONORAIRES = `
 // supprimé sans avertissement, perdant silencieusement ces informations —
 // pas de la même nature que documents/factures/etc., mais un travail de
 // saisie réel tout de même.
+// "audiences" ajoutée le 11/09/2026 : même ON DELETE CASCADE que
+// documents/temps/evenements/taches (trouvé en construisant le panneau
+// audiences de la fiche dossier ci-dessous), mais absente de cette liste
+// jusqu'ici — un dossier avec de vraies audiences déjà tenues pouvait être
+// supprimé sans avertissement, les perdant silencieusement comme les
+// autres tables de cette liste étaient déjà protégées de le faire.
 const TABLES_ACTIVITE_DOSSIER = [
   "documents", "temps", "factures", "communications", "retrocessions", "evenements", "taches",
-  "dossier_parties", "instances", "dossier_clients_additionnels",
+  "dossier_parties", "instances", "dossier_clients_additionnels", "audiences",
 ];
 
 // Référencement des dossiers (ajout 19/08/2026) — Guide de référencement
@@ -223,6 +229,33 @@ router.get("/:id/evenements", async (req, res) => {
       `SELECT id, type, precision, titre, date_echeance, statut,
               (date_echeance::date - current_date) AS jours_restants
        FROM evenements WHERE dossier_id = $1 ORDER BY date_echeance`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/dossiers/:id/audiences  -> historique des audiences du dossier
+// (11/09/2026, gap comblé : la fiche dossier n'avait jusqu'ici aucune
+// visibilité sur ses propres audiences, contrairement à documents/
+// factures/temps/tâches/courriers — Rôle d'audience étant un agenda
+// hebdomadaire, il ne peut pas être filtré par dossier comme les autres
+// modules ; ce panneau en lecture seule sur la fiche dossier comble ce
+// manque autrement).
+router.get("/:id/audiences", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.date_audience, a.type, a.juridiction, a.heure,
+              a.resultat, a.urgente, a.prochaine_date, a.observations,
+              mr.libelle AS motif_renvoi, u.prenom || ' ' || u.nom AS avocat_nom
+       FROM audiences a
+       LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
+       LEFT JOIN utilisateurs u ON u.id = a.avocat_id
+       WHERE a.dossier_id = $1
+       ORDER BY a.date_audience DESC`,
       [req.params.id]
     );
     res.json(rows);

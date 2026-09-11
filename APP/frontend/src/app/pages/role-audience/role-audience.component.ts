@@ -101,6 +101,74 @@ import { AuthService } from '../../core/auth.service';
       }
     }
 
+    <section class="panel">
+      <h3>Diligences</h3>
+      <p class="muted" style="margin-bottom:12px">Rendez-vous et démarches de terrain (audition en juridiction, enquête, formalité, expertise…) — distinct du rôle hebdomadaire ci-dessus. Peut aussi être créée automatiquement par le Registre du courrier (ex. convocation reçue sur un dossier).</p>
+      @if (diligences().length) {
+        <table>
+          <tr><th>Date</th><th>Heure</th><th>Type</th><th>Dossier</th><th>Membre</th><th>Lieu</th><th>Objet</th><th></th></tr>
+          @for (dl of diligences(); track dl.id) {
+            <tr>
+              <td>{{ dl.date_diligence | date:'dd/MM/yyyy' }}</td>
+              <td>{{ dl.heure || '—' }}</td>
+              <td>{{ libelleTypeDiligence(dl.type_diligence) }}@if (dl.type_diligence === 'autre' && dl.type_precision) { : {{ dl.type_precision }} }</td>
+              <td>@if (dl.dossier_id) { <a class="lien" [routerLink]="['/dossiers', dl.dossier_id]">{{ dl.dossier_numero }}</a> } @else { — }</td>
+              <td>{{ dl.membre_nom || '—' }}</td>
+              <td>{{ dl.lieu || '—' }}</td>
+              <td>{{ dl.objet || '—' }}</td>
+              <td>
+                @if (auth.peut('audiences.diligence.gerer')) {
+                  <button class="lien" (click)="majDiligence(dl, 'fait')">Fait</button>
+                  <button class="lien" (click)="majDiligence(dl, 'reporte')">Reporter</button>
+                  <button class="lien" (click)="majDiligence(dl, 'annule')">Annuler</button>
+                }
+              </td>
+            </tr>
+          }
+        </table>
+      } @else { <p class="muted">Aucune diligence à faire.</p> }
+
+      @if (auth.peut('audiences.diligence.gerer')) {
+        <h4 style="margin:18px 0 8px">Nouvelle diligence</h4>
+        <div class="grid2">
+          <div>
+            <label>Type</label>
+            <select class="in" [(ngModel)]="nouvelleDiligence.type_diligence" name="dltype">
+              @for (t of typesDiligence(); track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+            </select>
+          </div>
+          @if (nouvelleDiligence.type_diligence === 'autre') {
+            <div><label>Préciser</label><input class="in" [(ngModel)]="nouvelleDiligence.type_precision" name="dlprecision" /></div>
+          }
+          <div class="col2">
+            <label>Dossier (optionnel)</label>
+            <input class="in" [(ngModel)]="dlDossierRecherche" name="dlDossierRecherche"
+                   (ngModelChange)="rechercherDossiersDiligence()" placeholder="Rechercher un dossier par numéro ou intitulé…" />
+            @if (dlDossierResultats().length) {
+              <div class="suggestions">
+                @for (d of dlDossierResultats(); track d.id) {
+                  <button type="button" class="chip" (click)="choisirDossierDiligence(d)">{{ d.numero }} — {{ d.intitule }}</button>
+                }
+              </div>
+            }
+            @if (nouvelleDiligence.dossier_id) { <p class="muted">Sélectionné : {{ dlDossierLabel }} <button class="lien" (click)="viderDossierDiligence()">retirer</button></p> }
+          </div>
+          <div>
+            <label>Membre assigné</label>
+            <select class="in" [(ngModel)]="nouvelleDiligence.membre_id" name="dlmembre">
+              <option value="">—</option>
+              @for (u of membres(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+            </select>
+          </div>
+          <div><label>Date</label><input class="in" type="date" [(ngModel)]="nouvelleDiligence.date_diligence" name="dldate" /></div>
+          <div><label>Heure</label><input class="in" type="time" [(ngModel)]="nouvelleDiligence.heure" name="dlheure" /></div>
+          <div><label>Lieu</label><input class="in" [(ngModel)]="nouvelleDiligence.lieu" name="dllieu" /></div>
+          <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="nouvelleDiligence.objet" name="dlobjet" /></div>
+        </div>
+        <button class="btn" (click)="ajouterDiligence()" [disabled]="!nouvelleDiligence.date_diligence">Ajouter</button>
+      }
+    </section>
+
     @if (auth.peut('audiences.ligne.creer')) {
     <section class="panel">
       <h3>Programmer une audience</h3>
@@ -166,6 +234,15 @@ export class RoleAudienceComponent implements OnInit {
   readonly ligneRetour = signal<any | null>(null);
   readonly erreur = signal('');
 
+  // Diligences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
+  readonly diligences = signal<any[]>([]);
+  readonly typesDiligence = signal<{ code: string; libelle: string }[]>([]);
+  readonly membres = signal<any[]>([]);
+  readonly dlDossierResultats = signal<Dossier[]>([]);
+  dlDossierRecherche = '';
+  dlDossierLabel = '';
+  nouvelleDiligence: any = { type_diligence: 'diligence' };
+
   semaine = new Date().toISOString().slice(0, 10);
   dossierRecherche = '';
   dossierLabel = '';
@@ -176,13 +253,58 @@ export class RoleAudienceComponent implements OnInit {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
   }
 
+  libelleTypeDiligence(code: string): string {
+    return this.typesDiligence().find((t) => t.code === code)?.libelle ?? code;
+  }
+
   ngOnInit(): void {
     this.charger();
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifs.set(m) });
+    this.api.listesValeurs('type_diligence').subscribe({ next: (v) => this.typesDiligence.set(v) });
+    this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u) });
+    this.chargerDiligences();
   }
 
   charger(): void {
     this.api.roleAudience(this.semaine).subscribe({ next: (r) => this.role.set(r) });
+  }
+
+  chargerDiligences(): void {
+    this.api.diligences({ statut: 'a_faire' }).subscribe({ next: (d) => this.diligences.set(d) });
+  }
+
+  rechercherDossiersDiligence(): void {
+    this.nouvelleDiligence.dossier_id = null;
+    if (this.dlDossierRecherche.length < 2) { this.dlDossierResultats.set([]); return; }
+    this.api.dossiers(this.dlDossierRecherche).subscribe({ next: (d) => this.dlDossierResultats.set(d) });
+  }
+
+  choisirDossierDiligence(d: Dossier): void {
+    this.nouvelleDiligence.dossier_id = d.id;
+    this.dlDossierLabel = `${d.numero} — ${d.intitule}`;
+    this.dlDossierResultats.set([]);
+    this.dlDossierRecherche = '';
+  }
+
+  viderDossierDiligence(): void {
+    this.nouvelleDiligence.dossier_id = null;
+    this.dlDossierLabel = '';
+  }
+
+  ajouterDiligence(): void {
+    this.erreur.set('');
+    this.api.creerDiligence(this.nouvelleDiligence).subscribe({
+      next: () => {
+        this.nouvelleDiligence = { type_diligence: 'diligence' };
+        this.dlDossierLabel = '';
+        this.chargerDiligences();
+      },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+    });
+  }
+
+  majDiligence(dl: any, statut: string): void {
+    this.api.majStatutDiligence(dl.id, statut).subscribe({ next: () => this.chargerDiligences() });
   }
 
   semaineDecalage(jours: number): void {

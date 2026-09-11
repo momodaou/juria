@@ -1,9 +1,18 @@
 // JURIA — Registre du courrier (arrivée/départ), référencement automatique,
 // et déclenchement d'événements/diligences/tâches à partir de la nature du courrier.
 const express = require("express");
+const multer = require("multer");
 const { pool } = require("../db");
+const { saveObject } = require("../storage");
+const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 Mo, même limite que documents.js
+  fileFilter: filtreTypeFichier,
+});
 
 // Génère la référence ARR-2026-000123 / DEP-2026-000045 (par sens + année).
 async function genererReference(client, sens, dateCourrier) {
@@ -73,7 +82,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.date_courrier, c.correspondant, c.objet,
-              c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id,
+              c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
               d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id
@@ -140,6 +149,43 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
     res.status(400).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// POST /api/courriers/:id/document  (multipart/form-data, champ "fichier")
+// Joint le scan du courrier à la GED du dossier — gap comblé le
+// 11/09/2026 : courriers.document_id existait déjà mais n'était jamais
+// renseigné. Comme documents.dossier_id est NOT NULL (voir documents.js),
+// un courrier doit déjà être rattaché à un dossier avant d'y joindre une
+// pièce ; message explicite sinon plutôt qu'une erreur SQL brute.
+router.post("/:id/document", requirePermission("courriers.creer"), upload.single("fichier"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
+  try {
+    const { rows } = await pool.query("SELECT dossier_id FROM courriers WHERE id = $1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
+    const dossierId = rows[0].dossier_id;
+    if (!dossierId) {
+      return res.status(400).json({ error: "Ce courrier doit d'abord être rattaché à un dossier avant d'y joindre une pièce (la GED est organisée par dossier)." });
+    }
+    const nom = req.file.originalname;
+    const v = await pool.query(
+      "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM documents WHERE dossier_id = $1 AND nom = $2",
+      [dossierId, nom]
+    );
+    const dest = `${dossierId}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
+    const chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
+    const doc = await pool.query(
+      `INSERT INTO documents
+         (dossier_id, nom, categorie, version, statut, confidentialite, chemin_storage, type_mime, taille_octets, auteur_id)
+       VALUES ($1,$2,'correspondance',$3,'brouillon','dossier',$4,$5,$6,$7)
+       RETURNING id, nom`,
+      [dossierId, nom, v.rows[0].v, chemin, req.file.mimetype, req.file.size, req.user.sub]
+    );
+    await pool.query("UPDATE courriers SET document_id = $1 WHERE id = $2", [doc.rows[0].id, req.params.id]);
+    res.status(201).json({ document_id: doc.rows[0].id, nom: doc.rows[0].nom });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 

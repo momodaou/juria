@@ -69,6 +69,12 @@ const CATALOGUE = [
   { code: "audiences.role.valider", module: "Rôle d'audience", label: "Valider le rôle de la semaine", restreinte: true },
   { code: "audiences.role.diffuser", module: "Rôle d'audience", label: "Diffuser le rôle", restreinte: true },
   { code: "audiences.retour.saisir", module: "Rôle d'audience", label: "Saisir un retour d'audience" },
+  // Diligences (11/09/2026) — table déjà prévue (planning des diligences,
+  // promis par le commentaire d'origine de ce module) mais jamais reliée à
+  // aucune route ni écran ; comblé en répondant à une question de
+  // l'utilisateur sur l'interconnexion des modules. Ouvert par défaut,
+  // même périmètre que les 2 actions ci-dessus.
+  { code: "audiences.diligence.gerer", module: "Rôle d'audience", label: "Créer/mettre à jour une diligence" },
 
   { code: "courriers.consulter", module: "Registre du courrier", label: "Consulter le registre du courrier", restreinte: true },
   { code: "courriers.creer", module: "Registre du courrier", label: "Enregistrer un courrier" },
