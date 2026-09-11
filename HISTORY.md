@@ -1982,4 +1982,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 ⚠️ **Point laissé en suspens, volontairement non tranché** : la correction réelle de l'INPS (mensuelle → trimestrielle) dépend de l'effectif du cabinet (seuil à 10 salariés) — donnée que je n'ai pas et n'ai pas supposée. Le moyen de la corriger existe désormais ; à faire par l'utilisateur une fois l'effectif confirmé.
 
-**Déploiement** : pas encore fait à ce stade — aucune migration de schéma nécessaire cette fois (code seul) — à confirmer avec l'utilisateur avant tout déploiement production.
+**Déploiement production — effectué et vérifié le 11/09/2026** (accord utilisateur, « oui déploie »). Aucune migration de schéma cette fois — code seul (`gcloud builds submit` + `gcloud run deploy` sur les deux services). API `juria-00075-7h5` (précédente `juria-00074-dxq`), frontend `juria-web-00084-9mr` (précédente `juria-web-00083-4vr`). Vérifié : `/health` de l'API et page d'accueil du frontend en `200`.
