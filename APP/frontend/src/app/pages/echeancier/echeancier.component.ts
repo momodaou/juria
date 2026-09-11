@@ -25,13 +25,11 @@ import { AuthService } from '../../core/auth.service';
             @for (d of dossiers(); track d.id) { <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option> }
           </select>
           <select [(ngModel)]="nvType" name="t">
-            <option value="audience">Audience</option>
-            <option value="delai_procedure">Délai de procédure</option>
-            <option value="delai_recours">Délai de recours</option>
-            <option value="depot">Dépôt</option>
-            <option value="prescription">Prescription</option>
-            <option value="echeance_contractuelle">Échéance contractuelle</option>
+            @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
           </select>
+          @if (nvType === 'autre') {
+            <input [(ngModel)]="nvPrecision" name="tp" placeholder="Préciser…" />
+          }
           <input [(ngModel)]="nvTitre" name="ti" placeholder="Intitulé" />
           <input type="date" [(ngModel)]="nvDate" name="da" />
           <button class="btn" (click)="ajouter()" [disabled]="!nvDossier || !nvDate">Ajouter</button>
@@ -49,7 +47,7 @@ import { AuthService } from '../../core/auth.service';
             <tr>
               <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
               <td><a class="lien" [routerLink]="['/dossiers', e.dossier_id]">{{ e.dossier_numero }}</a></td>
-              <td>{{ e.type }}</td>
+              <td>{{ libelleType(e.type) }}@if (e.type === 'autre' && e.precision) { : {{ e.precision }} }</td>
               <td>{{ e.titre || '—' }}</td>
               <td>{{ e.responsable || '—' }}</td>
               <td><span class="tag" [class.haute]="e.jours_restants <= 7" [class.moy]="e.jours_restants > 7 && e.jours_restants <= 15">{{ badge(e) }}</span></td>
@@ -57,6 +55,40 @@ import { AuthService } from '../../core/auth.service';
           }
         </table>
       } @else { <p class="muted">Aucune échéance enregistrée.</p> }
+    </section>
+
+    <section class="panel">
+      <h3>Échéances administratives du cabinet</h3>
+      <p class="muted" style="margin-bottom:12px">Obligations récurrentes du cabinet (fiscal, social, ordinal…), sans rattachement à un dossier ni un client.</p>
+      @if (auth.peut('echeances_admin.gerer')) {
+        <div class="add">
+          <select [(ngModel)]="eaCategorie" name="eac">
+            @for (c of categoriesEcheanceAdmin(); track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }
+          </select>
+          <input [(ngModel)]="eaLibelle" name="eal" placeholder="Libellé (ex. Renouvellement assurance RC pro)" style="flex:1;min-width:200px" />
+          <select [(ngModel)]="eaPeriodicite" name="eap">
+            @for (p of periodicitesEcheanceAdmin(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+          </select>
+          <input type="date" [(ngModel)]="eaDate" name="ead" />
+          <button class="btn" (click)="ajouterEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate">Ajouter</button>
+        </div>
+      }
+      @if (echeancesAdmin().length) {
+        <table>
+          <tr><th>Échéance</th><th>Catégorie</th><th>Libellé</th><th>Périodicité</th><th>Responsable</th><th>Alerte</th><th></th></tr>
+          @for (e of echeancesAdmin(); track e.id) {
+            <tr>
+              <td>{{ e.prochaine_date | date:'dd/MM/yyyy' }}</td>
+              <td>{{ libelleCategorieEcheanceAdmin(e.categorie) }}</td>
+              <td>{{ e.libelle }}</td>
+              <td>{{ libellePeriodiciteEcheanceAdmin(e.periodicite) }}</td>
+              <td>{{ e.responsable || '—' }}</td>
+              <td><span class="tag" [class.haute]="e.jours_restants <= 7" [class.moy]="e.jours_restants > 7 && e.jours_restants <= 15">{{ badge(e) }}</span></td>
+              <td>@if (auth.peut('echeances_admin.gerer')) { <button class="lien" (click)="traiterEcheanceAdmin(e)">Marquer traité</button> }</td>
+            </tr>
+          }
+        </table>
+      } @else { <p class="muted">Aucune échéance administrative enregistrée.</p> }
     </section>
 
     <section class="panel">
@@ -108,11 +140,38 @@ export class EcheancierComponent implements OnInit {
   readonly filtreDossierId = signal<string | null>(null);
   readonly filtreDossierNumero = signal<string | null>(null);
 
-  nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = '';
+  // 10 types (11/09/2026) — les 8 déjà prévus par l'ENUM type_evenement
+  // (dont Rendez-vous/Relance client, jusque-là absents de ce menu) plus
+  // « Diligence / démarche » (générique, tout ce qui ne rentre pas déjà
+  // dans un type précis) et « Autre » (avec précision libre).
+  readonly typesEvenement = [
+    { code: 'audience', libelle: 'Audience' },
+    { code: 'rendez_vous', libelle: 'Rendez-vous' },
+    { code: 'delai_procedure', libelle: 'Délai de procédure' },
+    { code: 'delai_recours', libelle: 'Délai de recours' },
+    { code: 'echeance_contractuelle', libelle: 'Échéance contractuelle' },
+    { code: 'depot', libelle: 'Dépôt' },
+    { code: 'relance_client', libelle: 'Relance client' },
+    { code: 'prescription', libelle: 'Prescription' },
+    { code: 'diligence', libelle: 'Diligence / démarche' },
+    { code: 'autre', libelle: 'Autre' },
+  ];
+
+  nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = ''; nvPrecision = '';
   ntTitre = ''; ntEch = '';
+
+  // Échéances administratives du cabinet (11/09/2026) — gap comblé, voir
+  // CLAUDE.md/HISTORY.md : la table et ses catalogues existaient depuis le
+  // tout premier schéma, jamais reliés à aucun écran.
+  readonly echeancesAdmin = signal<any[]>([]);
+  readonly categoriesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
+  readonly periodicitesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
+  eaCategorie = 'fiscale'; eaLibelle = ''; eaPeriodicite = 'ponctuelle'; eaDate = '';
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
+    this.api.listesValeurs('categorie_echeance').subscribe({ next: (v) => this.categoriesEcheanceAdmin.set(v), error: () => {} });
+    this.api.listesValeurs('periodicite').subscribe({ next: (v) => this.periodicitesEcheanceAdmin.set(v), error: () => {} });
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
@@ -123,6 +182,19 @@ export class EcheancierComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.evenements(dossierId ?? undefined).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
     this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
+    this.api.echeancesAdministratives().subscribe({ next: (e) => this.echeancesAdmin.set(e), error: () => {} });
+  }
+
+  libelleType(code: string): string {
+    return this.typesEvenement.find((t) => t.code === code)?.libelle ?? code;
+  }
+
+  libelleCategorieEcheanceAdmin(code: string): string {
+    return this.categoriesEcheanceAdmin().find((c) => c.code === code)?.libelle ?? code;
+  }
+
+  libellePeriodiciteEcheanceAdmin(code: string): string {
+    return this.periodicitesEcheanceAdmin().find((p) => p.code === code)?.libelle ?? code;
   }
 
   badge(e: any): string {
@@ -133,9 +205,29 @@ export class EcheancierComponent implements OnInit {
   }
 
   ajouter(): void {
-    this.api.creerEvenement({ dossier_id: this.nvDossier, type: this.nvType, titre: this.nvTitre, date_echeance: this.nvDate }).subscribe({
-      next: () => { this.nvTitre = ''; this.nvDate = ''; this.charger(); },
+    this.api.creerEvenement({
+      dossier_id: this.nvDossier, type: this.nvType, titre: this.nvTitre,
+      date_echeance: this.nvDate, precision: this.nvType === 'autre' ? this.nvPrecision : null,
+    }).subscribe({
+      next: () => { this.nvTitre = ''; this.nvDate = ''; this.nvPrecision = ''; this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
+    });
+  }
+
+  ajouterEcheanceAdmin(): void {
+    this.api.creerEcheanceAdmin({
+      categorie: this.eaCategorie, libelle: this.eaLibelle,
+      periodicite: this.eaPeriodicite, prochaine_date: this.eaDate,
+    }).subscribe({
+      next: () => { this.eaLibelle = ''; this.eaDate = ''; this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
+    });
+  }
+
+  traiterEcheanceAdmin(e: any): void {
+    this.api.traiterEcheanceAdmin(e.id).subscribe({
+      next: () => this.charger(),
+      error: (err) => this.erreur.set(err?.error?.error ?? 'Action impossible'),
     });
   }
 

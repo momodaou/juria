@@ -26,7 +26,7 @@ router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
   if (dossier_id) { params.push(dossier_id); clause += ` AND e.dossier_id = $${params.length}`; }
   try {
     const { rows } = await pool.query(
-      `SELECT e.id, e.type, e.titre, e.date_echeance, e.statut, e.dossier_id,
+      `SELECT e.id, e.type, e.precision, e.titre, e.date_echeance, e.statut, e.dossier_id,
               d.numero AS dossier_numero, d.intitule AS dossier_intitule,
               u.prenom || ' ' || u.nom AS responsable,
               (e.date_echeance::date - current_date) AS jours_restants
@@ -44,7 +44,10 @@ router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
   }
 });
 
-// POST /api/evenements  { dossier_id, type, titre, date_echeance, responsable_id? }
+// POST /api/evenements  { dossier_id, type, titre, date_echeance, responsable_id?, precision? }
+// precision : texte libre, pertinent surtout quand type='autre' (même
+// principe que depenses.precision) — pas de validation stricte côté
+// serveur sur ce couplage, simple champ optionnel comme les autres.
 router.post("/", requirePermission("evenements.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.type || !b.date_echeance) {
@@ -52,10 +55,10 @@ router.post("/", requirePermission("evenements.creer"), async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO evenements (dossier_id, type, titre, date_echeance, responsable_id)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO evenements (dossier_id, type, titre, date_echeance, responsable_id, precision)
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id, type, titre, date_echeance, statut`,
-      [b.dossier_id, b.type, b.titre || null, b.date_echeance, b.responsable_id || req.user.sub]
+      [b.dossier_id, b.type, b.titre || null, b.date_echeance, b.responsable_id || req.user.sub, b.precision || null]
     );
     res.status(201).json(rows[0]);
   } catch (e) {

@@ -45,6 +45,7 @@ app.use("/api/documents", authenticate, require("./src/routes/documents"));
 app.use("/api/temps", authenticate, require("./src/routes/temps"));
 app.use("/api/factures", authenticate, require("./src/routes/factures"));
 app.use("/api/evenements", authenticate, require("./src/routes/evenements"));
+app.use("/api/echeances-administratives", authenticate, require("./src/routes/echeances-administratives"));
 app.use("/api/taches", authenticate, require("./src/routes/taches"));
 app.use("/api/ia", authenticate, require("./src/routes/ia"));
 app.use("/api/dashboard", authenticate, require("./src/routes/dashboard"));

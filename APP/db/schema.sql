@@ -2564,3 +2564,46 @@ ALTER TABLE factures ADD COLUMN IF NOT EXISTS objet VARCHAR(240);
 -- =====================================================================
 ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS date_ouverture_origine DATE;
 -- ============ FIN DATE D'OUVERTURE D'ORIGINE ============
+
+-- =====================================================================
+--  ÉCHÉANCIER : TYPES « DILIGENCE »/« AUTRE » + ÉCHÉANCES ADMINISTRATIVES
+--  DU CABINET ENFIN BRANCHÉES (11/09/2026)
+--
+--  Répond à une demande de l'utilisateur : le menu déroulant de
+--  l'Échéancier n'exposait que 6 des 8 types déjà prévus par l'ENUM
+--  type_evenement (Rendez-vous et Relance client manquaient à l'écran),
+--  aucun n'incluait de notion générique de « diligence »/« démarche », et
+--  aucune option « Autre ». Ajouté : 'diligence' (signification, mise en
+--  demeure, formalité… tout ce qui ne rentre pas déjà dans un type précis)
+--  et 'autre' + une colonne de précision libre, même principe déjà utilisé
+--  ailleurs dans JURIA (depenses.precision, montant_litige_sens_precision).
+--
+--  Deuxième volet, plus significatif : la table echeances_administratives
+--  (échéances fiscales/sociales/ordinales du CABINET, sans dossier),
+--  prévue dans le tout premier schéma et déjà pré-remplie (TVA, INPS, ITS,
+--  IS, patente, Ordre des avocats, assurance RC pro — voir plus haut dans
+--  ce fichier) n'a JAMAIS été reliée à la moindre route ni au moindre
+--  écran depuis le 16/08/2026 — gap trouvé en répondant à la question de
+--  l'utilisateur sur les délais non rattachés à un dossier. Les catalogues
+--  listes_valeurs('categorie_echeance') et listes_valeurs('periodicite')
+--  existaient déjà eux aussi, jamais exposés. Comblé ici par un nouveau
+--  fichier de routes (backend/src/routes/echeances-administratives.js),
+--  réutilisant GET /api/listes-valeurs (déjà générique) pour les 2
+--  catalogues plutôt que d'en recréer.
+--
+--  ⚠️ Piège de migration déjà connu (ALTER TYPE ADD VALUE + usage de la
+--  nouvelle valeur dans le MÊME script importé via `gcloud sql import
+--  sql`) : à scinder en imports séquentiels au moment du déploiement,
+--  comme à chaque fois précédemment (voir CLAUDE.md).
+-- =====================================================================
+ALTER TYPE type_evenement ADD VALUE 'diligence';
+ALTER TYPE type_evenement ADD VALUE 'autre';
+ALTER TABLE evenements ADD COLUMN precision TEXT;  -- si type = 'autre'
+
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','echeances_admin.gerer',TRUE),
+ ('associe_fondateur','echeances_admin.gerer',TRUE),
+ ('admin_general','echeances_admin.gerer',TRUE),
+ ('admin_it','echeances_admin.gerer',TRUE),
+ ('comptable','echeances_admin.gerer',TRUE);
+-- ============ FIN ÉCHÉANCIER : DILIGENCE/AUTRE + ÉCHÉANCES ADMIN ============

@@ -361,6 +361,18 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/evenements`, payload);
   }
 
+  // Échéances administratives du cabinet (fiscal/social/ordinal…), sans
+  // dossier (11/09/2026 — gap comblé, voir CLAUDE.md/HISTORY.md).
+  echeancesAdministratives(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/echeances-administratives`);
+  }
+  creerEcheanceAdmin(payload: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/echeances-administratives`, payload);
+  }
+  traiterEcheanceAdmin(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/echeances-administratives/${id}/traiter`, {});
+  }
+
   // Tâches
   taches(params = ''): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/taches${params}`);

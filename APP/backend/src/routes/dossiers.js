@@ -220,7 +220,7 @@ router.get("/:id", async (req, res) => {
 router.get("/:id/evenements", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, type, titre, date_echeance, statut,
+      `SELECT id, type, precision, titre, date_echeance, statut,
               (date_echeance::date - current_date) AS jours_restants
        FROM evenements WHERE dossier_id = $1 ORDER BY date_echeance`,
       [req.params.id]

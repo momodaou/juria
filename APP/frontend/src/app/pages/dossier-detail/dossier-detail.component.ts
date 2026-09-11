@@ -489,12 +489,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         @if (auth.peut('evenements.creer')) {
           <div class="upload">
             <select [(ngModel)]="dType" name="dtype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-              <option value="audience">Audience</option>
-              <option value="delai_procedure">Délai de procédure</option>
-              <option value="delai_recours">Délai de recours</option>
-              <option value="depot">Dépôt</option>
-              <option value="prescription">Prescription</option>
+              @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
             </select>
+            @if (dType === 'autre') {
+              <input [(ngModel)]="dPrecision" name="dprecision" placeholder="Préciser…" style="min-width:120px">
+            }
             <input [(ngModel)]="dTitre" name="dtitre" placeholder="Intitulé" style="flex:1;min-width:150px">
             <input type="date" [(ngModel)]="dDate" name="ddate">
             <button class="btn" (click)="ajouterDelai()" [disabled]="!dDate">Ajouter</button>
@@ -505,7 +504,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <tr><th>Type</th><th>Intitulé</th><th>Échéance</th><th>Jours</th></tr>
             @for (e of evenements(); track e.id) {
               <tr>
-                <td>{{ e.type }}</td><td>{{ e.titre }}</td>
+                <td>{{ libelleType(e.type) }}@if (e.type === 'autre' && e.precision) { : {{ e.precision }} }</td><td>{{ e.titre }}</td>
                 <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
                 <td><span class="tag" [class.haute]="e.jours_restants <= 7">J-{{ e.jours_restants }}</span></td>
               </tr>
@@ -747,7 +746,22 @@ export class DossierDetailComponent implements OnInit {
   descTemps = '';
 
   readonly communications = signal<any[]>([]);
-  dType = 'audience'; dTitre = ''; dDate = '';
+  dType = 'audience'; dTitre = ''; dDate = ''; dPrecision = '';
+  // 10 types (11/09/2026, même liste harmonisée que echeancier.component.ts
+  // — les 2 formulaires divergaient avant ce jour) : les 8 déjà prévus par
+  // l'ENUM type_evenement plus « Diligence / démarche » et « Autre ».
+  readonly typesEvenement = [
+    { code: 'audience', libelle: 'Audience' },
+    { code: 'rendez_vous', libelle: 'Rendez-vous' },
+    { code: 'delai_procedure', libelle: 'Délai de procédure' },
+    { code: 'delai_recours', libelle: 'Délai de recours' },
+    { code: 'echeance_contractuelle', libelle: 'Échéance contractuelle' },
+    { code: 'depot', libelle: 'Dépôt' },
+    { code: 'relance_client', libelle: 'Relance client' },
+    { code: 'prescription', libelle: 'Prescription' },
+    { code: 'diligence', libelle: 'Diligence / démarche' },
+    { code: 'autre', libelle: 'Autre' },
+  ];
   cType = 'email'; cSujet = ''; cResume = '';
 
   iaTexte = '';
@@ -1159,10 +1173,16 @@ export class DossierDetailComponent implements OnInit {
   ajouterDelai(): void {
     if (!this.dDate) return;
     this.erreur.set('');
-    this.api.creerEvenement({ dossier_id: this.id, type: this.dType, titre: this.dTitre, date_echeance: this.dDate }).subscribe({
-      next: () => { this.dTitre = ''; this.dDate = ''; this.rafraichirDelais(); },
+    this.api.creerEvenement({
+      dossier_id: this.id, type: this.dType, titre: this.dTitre, date_echeance: this.dDate,
+      precision: this.dType === 'autre' ? this.dPrecision : null,
+    }).subscribe({
+      next: () => { this.dTitre = ''; this.dDate = ''; this.dPrecision = ''; this.rafraichirDelais(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
     });
+  }
+  libelleType(code: string): string {
+    return this.typesEvenement.find((t) => t.code === code)?.libelle ?? code;
   }
 
   private rafraichirComms(): void {

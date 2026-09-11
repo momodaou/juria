@@ -58,6 +58,11 @@ const CATALOGUE = [
   { code: "echeancier.consulter", module: "Échéancier", label: "Consulter l'échéancier", restreinte: true },
   { code: "evenements.creer", module: "Échéancier", label: "Ajouter une échéance" },
   { code: "evenements.jobs.declencher", module: "Échéancier", label: "Déclencher manuellement le job d'alertes de délais", restreinte: true },
+  // Échéances administratives du cabinet (fiscal/social/ordinal…), pas de
+  // dossier — consultation via echeancier.consulter (même onglet), la
+  // gestion (créer/marquer traité) réservée au même périmètre que
+  // parametres.cabinet.modifier (11/09/2026).
+  { code: "echeances_admin.gerer", module: "Échéancier", label: "Gérer les échéances administratives du cabinet", restreinte: true },
 
   { code: "audiences.consulter", module: "Rôle d'audience", label: "Consulter le rôle d'audience", restreinte: true },
   { code: "audiences.ligne.creer", module: "Rôle d'audience", label: "Inscrire une audience au rôle" },
