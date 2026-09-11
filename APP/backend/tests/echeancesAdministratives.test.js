@@ -222,3 +222,68 @@ describe("IS scindé en 3 échéances annuelles (migration du 11/09/2026)", () =
     expect(joursMois).toEqual(["11-30", "3-31", "7-31"]);
   });
 });
+
+describe("Échéances administratives du cabinet — correction manuelle (PUT) et suppression (DELETE)", () => {
+  test("PUT : modifie un champ simple (libelle) sans toucher à la formule", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ categorie: "sociale", libelle: "Test PUT simple", periodicite: "mensuelle", prochaine_date: "2026-03-15" });
+    const maj = await request(app).put(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test PUT simple corrigé" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.libelle).toBe("Test PUT simple corrigé");
+    expect(maj.body.periodicite).toBe("mensuelle");
+    expect(maj.body.jour_echeance).toBe(15);
+  });
+
+  test("PUT : periodicite sans prochaine_date -> 400 (doivent être fournis ensemble)", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test PUT incomplet", periodicite: "mensuelle", prochaine_date: "2026-03-15" });
+    const res = await request(app).put(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ periodicite: "trimestrielle" });
+    expect(res.status).toBe(400);
+  });
+
+  test("PUT : cas réel — corrige une échéance 'mensuelle' en 'trimestrielle' (ex. INPS selon l'effectif), jour/mois recalculés", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ categorie: "sociale", libelle: "Test INPS", periodicite: "mensuelle", prochaine_date: "2026-01-15" });
+    const maj = await request(app).put(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ periodicite: "trimestrielle", prochaine_date: "2026-04-15" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.periodicite).toBe("trimestrielle");
+    expect(maj.body.jour_echeance).toBe(15);
+    expect(maj.body.mois_echeance).toBe(4);
+  });
+
+  test("PUT : refusé (403) à un collaborateur", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test PUT permission", periodicite: "ponctuelle", prochaine_date: "2026-03-15" });
+    const collabToken = await creerUtilisateurRole("collaborateur");
+    const res = await request(app).put(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${collabToken}`)
+      .send({ libelle: "Tentative refusée" });
+    expect(res.status).toBe(403);
+  });
+
+  test("PUT sur une échéance inexistante -> 404", async () => {
+    const res = await request(app).put("/api/echeances-administratives/00000000-0000-0000-0000-000000000000").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "X" });
+    expect(res.status).toBe(404);
+  });
+
+  test("DELETE : désactive l'échéance, qui disparaît de la liste ; refusé (403) à un collaborateur ; 404 si déjà supprimée", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test DELETE", periodicite: "ponctuelle", prochaine_date: "2026-03-15" });
+
+    const collabToken = await creerUtilisateurRole("collaborateur");
+    const refus = await request(app).delete(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${collabToken}`);
+    expect(refus.status).toBe(403);
+
+    const suppression = await request(app).delete(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(suppression.status).toBe(204);
+
+    const liste = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${token}`);
+    expect(liste.body.some((e) => e.id === creation.body.id)).toBe(false);
+
+    const doubleSuppression = await request(app).delete(`/api/echeances-administratives/${creation.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(doubleSuppression.status).toBe(404);
+  });
+});

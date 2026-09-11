@@ -133,12 +133,12 @@ router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
 // Réservé (echeances_admin.gerer) : contrairement à un délai de dossier
 // (ouvert à la plupart des rôles via evenements.creer), une obligation du
 // cabinet relève de la direction/comptabilité.
-router.post("/", requirePermission("echeances_admin.gerer"), async (req, res) => {
-  const b = req.body || {};
-  if (!b.libelle || !b.prochaine_date) {
-    return res.status(400).json({ error: "libelle et prochaine_date requis" });
-  }
-  const d = new Date(b.prochaine_date + "T00:00:00Z");
+// Déduit (jour_echeance, mois_echeance) d'une date + une périodicité —
+// partagé entre la création et la modification, qui doivent appliquer
+// exactement la même règle (voir le commentaire ci-dessous sur le pourquoi
+// de l'exception mensuelle).
+function deriverFormule(prochaineDate, periodicite) {
+  const d = new Date(prochaineDate + "T00:00:00Z");
   const jourEcheance = d.getUTCDate();
   // Le mois d'ancrage n'a de sens que pour une périodicité >= annuelle
   // (semestrielle/trimestrielle/annuelle) : « le 30 avril » ou « tous les
@@ -147,7 +147,16 @@ router.post("/", requirePermission("echeances_admin.gerer"), async (req, res) =>
   // calculerProchaineEcheance() la fait redémarrer chaque année sur CE
   // mois-là au lieu de flotter sur le mois courant (bug trouvé en testant :
   // une échéance mensuelle créée en janvier restait bloquée en janvier).
-  const moisEcheance = b.periodicite === "mensuelle" ? null : d.getUTCMonth() + 1;
+  const moisEcheance = periodicite === "mensuelle" ? null : d.getUTCMonth() + 1;
+  return { jourEcheance, moisEcheance };
+}
+
+router.post("/", requirePermission("echeances_admin.gerer"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.libelle || !b.prochaine_date) {
+    return res.status(400).json({ error: "libelle et prochaine_date requis" });
+  }
+  const { jourEcheance, moisEcheance } = deriverFormule(b.prochaine_date, b.periodicite);
   try {
     const { rows } = await pool.query(
       `INSERT INTO echeances_administratives
@@ -163,6 +172,73 @@ router.post("/", requirePermission("echeances_admin.gerer"), async (req, res) =>
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/echeances-administratives/:id — correction manuelle (gap
+// signalé par l'utilisateur, 11/09/2026 : la donnée d'origine seedée pour
+// l'INPS précise elle-même « mensuelle... à ajuster selon l'effectif » —
+// aucune route ne permettait de faire cet ajustement, ni de corriger quoi
+// que ce soit d'autre (libellé, montant, responsable…) une fois créée.
+// { categorie?, libelle?, periodicite?, prochaine_date?, montant_estime?,
+//   responsable_id?, reference_ext?, observations? }
+// periodicite et prochaine_date doivent être fournis ENSEMBLE (ou aucun
+// des deux) : la formule (jour/mois d'ancrage) est toujours recalculée à
+// partir des deux à la fois, jamais de l'un sans l'autre — évite un état
+// incohérent (ex. passer en trimestrielle sans redire quel mois sert de
+// point de départ, laissant un ancien ancrage mensuel="pas d'ancrage").
+router.put("/:id", requirePermission("echeances_admin.gerer"), async (req, res) => {
+  const b = req.body || {};
+  const formuleFournie = b.periodicite != null || b.prochaine_date != null;
+  if (formuleFournie && (b.periodicite == null || b.prochaine_date == null)) {
+    return res.status(400).json({ error: "periodicite et prochaine_date doivent être fournis ensemble (la formule se recalcule à partir des deux)" });
+  }
+  const { jourEcheance, moisEcheance } = formuleFournie
+    ? deriverFormule(b.prochaine_date, b.periodicite)
+    : { jourEcheance: null, moisEcheance: null };
+  try {
+    const { rows } = await pool.query(
+      `UPDATE echeances_administratives SET
+         categorie = COALESCE($1, categorie),
+         libelle = COALESCE($2, libelle),
+         periodicite = COALESCE($3, periodicite),
+         jour_echeance = CASE WHEN $4 THEN $5 ELSE jour_echeance END,
+         mois_echeance = CASE WHEN $4 THEN $6 ELSE mois_echeance END,
+         prochaine_date = COALESCE($7, prochaine_date),
+         montant_estime = COALESCE($8, montant_estime),
+         responsable_id = COALESCE($9, responsable_id),
+         reference_ext = COALESCE($10, reference_ext),
+         observations = COALESCE($11, observations)
+       WHERE id = $12 AND actif = TRUE
+       RETURNING id, libelle, categorie, periodicite, jour_echeance, mois_echeance, prochaine_date, montant_estime`,
+      [b.categorie || null, b.libelle || null, b.periodicite || null, formuleFournie, jourEcheance, moisEcheance,
+       b.prochaine_date || null, b.montant_estime ?? null, b.responsable_id || null,
+       b.reference_ext || null, b.observations || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Échéance introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/echeances-administratives/:id — désactive (actif=FALSE)
+// plutôt qu'une suppression définitive : préserve l'historique si
+// l'échéance a déjà été traitée ou liée à une dépense, réutilise la
+// colonne `actif` déjà prévue au schéma (déjà utilisée comme filtre par
+// GET / mais jamais mise à jour par aucune route jusqu'ici).
+router.delete("/:id", requirePermission("echeances_admin.gerer"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "UPDATE echeances_administratives SET actif = FALSE WHERE id = $1 AND actif = TRUE RETURNING id",
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Échéance introuvable ou déjà supprimée" });
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

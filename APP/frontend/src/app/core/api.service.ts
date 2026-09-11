@@ -382,6 +382,13 @@ export class ApiService {
   traiterEcheanceAdmin(id: string, montantDecaisse?: number | null): Observable<any> {
     return this.http.post<any>(`${this.base}/api/echeances-administratives/${id}/traiter`, montantDecaisse ? { montant_decaisse: montantDecaisse } : {});
   }
+  // Correction manuelle (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
+  modifierEcheanceAdmin(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/echeances-administratives/${id}`, payload);
+  }
+  supprimerEcheanceAdmin(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/echeances-administratives/${id}`);
+  }
 
   // Tâches
   taches(params = ''): Observable<any[]> {
