@@ -85,9 +85,9 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .liste-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
     .liste-head h3{margin:0}
     .nouvelle{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;width:100%}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);width:100%}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.sm{padding:8px 12px;font-size:13px}
+    .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn:disabled{opacity:.6;cursor:not-allowed}
 
     .conv{
@@ -96,19 +96,19 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     }
     .conv:hover{background:var(--light)}
     .conv.active{background:var(--navy);color:#fff}
-    .conv-titre{font-weight:600;font-size:13.5px}
-    .conv-apercu{font-size:12px;color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+    .conv-titre{font-weight:600;font-size:var(--fs-base)}
+    .conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .conv.active .conv-apercu{color:#cfd6e3}
-    .badge-nonlus{align-self:flex-end;background:var(--gold);color:#1b2436;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin-top:-18px}
+    .badge-nonlus{align-self:flex-end;background:var(--gold);color:#1b2436;font-size:var(--fs-xs);font-weight:700;padding:2px 7px;border-radius:999px;margin-top:-18px}
 
     .fil{padding:16px;min-height:78vh;display:flex;flex-direction:column}
     .messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
     .msg{display:flex;flex-direction:column;gap:2px;max-width:70%;background:var(--light);border-radius:12px;padding:8px 12px}
     .msg.moi{align-self:flex-end;background:var(--navy);color:#fff}
-    .msg-auteur{font-size:11px;font-weight:700;color:var(--gold)}
+    .msg-auteur{font-size:var(--fs-xs);font-weight:700;color:var(--gold)}
     .msg.moi .msg-auteur{color:#e8c893}
-    .msg-contenu{font-size:14px;white-space:pre-wrap;word-break:break-word}
-    .msg-heure{font-size:10.5px;color:var(--grey);align-self:flex-end}
+    .msg-contenu{font-size:var(--fs-md);white-space:pre-wrap;word-break:break-word}
+    .msg-heure{font-size:var(--fs-2xs);color:var(--grey);align-self:flex-end}
     .msg.moi .msg-heure{color:#cfd6e3}
     .saisie{display:flex;gap:8px;margin-top:10px}
     .saisie .sel{flex:1}

@@ -46,8 +46,8 @@ import { AuthService } from '../../core/auth.service';
     /* Même correctif que mot-de-passe-oublie.component.ts : .login-card
        (styles.css) attend d'être posée sur le <form> lui-même. */
     form{display:flex;flex-direction:column}
-    .confirmation{font-size:13.5px;color:var(--slate);line-height:1.5;margin:10px 0 0}
-    .lien-oublie{display:block;text-align:center;margin-top:18px;font-size:12.5px;color:var(--gold);text-decoration:none}
+    .confirmation{font-size:var(--fs-base);color:var(--slate);line-height:1.5;margin:10px 0 0}
+    .lien-oublie{display:block;text-align:center;margin-top:18px;font-size:var(--fs-sm);color:var(--gold);text-decoration:none}
     .lien-oublie:hover{text-decoration:underline}
   `],
 })

@@ -236,16 +236,16 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
     </section>
   `,
   styles: [`
-    .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
+    .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .form{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
-    .form label{display:flex;flex-direction:column;font-size:12px;color:var(--slate);font-weight:600;gap:4px}
-    .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;min-width:150px}
+    .form label{display:flex;flex-direction:column;font-size:var(--fs-sm);color:var(--slate);font-weight:600;gap:4px}
+    .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);min-width:150px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .ok-msg{color:var(--green);font-size:13px;margin-top:10px}
-    .hint{font-weight:400;color:var(--slate);font-size:11px;white-space:normal;max-width:220px}
-    .desc{font-size:12px;color:var(--slate);max-width:640px;margin:0 0 10px}
-    h4{margin:14px 0 6px;font-size:13px}
+    .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
+    .hint{font-weight:400;color:var(--slate);font-size:var(--fs-xs);white-space:normal;max-width:220px}
+    .desc{font-size:var(--fs-sm);color:var(--slate);max-width:640px;margin:0 0 10px}
+    h4{margin:14px 0 6px;font-size:var(--fs-base)}
     .actions{display:flex;gap:10px;flex-wrap:wrap}
     .edition td{background:var(--light);padding:12px 14px}
   `],

@@ -49,14 +49,14 @@ import { ApiService } from './api.service';
   `,
   styles: [`
     .cp{position:relative}
-    .cp-in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0;font-size:14px}
-    .cp-selection{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0;font-size:14px;background:var(--light)}
-    .cp-x{background:none;border:none;color:var(--slate);cursor:pointer;font-size:12px;padding:0;white-space:nowrap}
+    .cp-in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0;font-size:var(--fs-md)}
+    .cp-selection{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0;font-size:var(--fs-md);background:var(--light)}
+    .cp-x{background:none;border:none;color:var(--slate);cursor:pointer;font-size:var(--fs-sm);padding:0;white-space:nowrap}
     .cp-resultats{list-style:none;margin:2px 0 12px;padding:0;border:1px solid var(--line);border-radius:8px;max-height:220px;overflow-y:auto;background:#fff;position:relative;z-index:5}
-    .cp-resultats li{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;gap:10px}
+    .cp-resultats li{padding:8px 12px;cursor:pointer;font-size:var(--fs-base);display:flex;justify-content:space-between;gap:10px}
     .cp-resultats li:hover{background:var(--light)}
-    .cp-detail{color:var(--grey);font-size:12px}
-    .cp-vide{color:var(--grey);font-size:12px;margin:2px 0 12px}
+    .cp-detail{color:var(--grey);font-size:var(--fs-sm)}
+    .cp-vide{color:var(--grey);font-size:var(--fs-sm);margin:2px 0 12px}
   `],
 })
 export class ClientPickerComponent implements OnChanges {

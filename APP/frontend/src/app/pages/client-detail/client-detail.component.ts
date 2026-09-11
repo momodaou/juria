@@ -223,16 +223,16 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     }
   `,
   styles: [`
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn:disabled{opacity:.6}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.expiree td{background:#fff5f4}
-    .ok-msg{color:var(--green);font-size:13px;margin-top:8px}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:8px}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
     .col2{grid-column:1 / -1}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}

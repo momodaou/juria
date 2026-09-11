@@ -29,7 +29,7 @@ import { ApiService } from './api.service';
   `,
   styles: [`
     .ep-barre{display:flex;justify-content:flex-end;gap:8px;padding:14px 28px 0}
-    .ep-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--slate);cursor:pointer}
+    .ep-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:var(--fs-sm);font-weight:600;color:var(--slate);cursor:pointer}
     .ep-btn:hover{border-color:var(--gold);color:var(--gold)}
     @media print { .ep-barre{display:none} }
   `],

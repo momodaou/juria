@@ -81,8 +81,8 @@ import { AuthService } from '../../core/auth.service';
     .lien:hover{text-decoration:underline}
     .pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
-    .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;max-width:220px}
-    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
+    .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);max-width:220px}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
   `],
 })
 export class DossiersComponent implements OnInit {

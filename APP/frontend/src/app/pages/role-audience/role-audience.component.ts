@@ -144,17 +144,17 @@ import { AuthService } from '../../core/auth.service';
     .actions{display:flex;gap:8px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    .btn.sm{padding:6px 11px;font-size:12.5px}
+    .btn.sm{padding:6px 11px;font-size:var(--fs-sm)}
     .btn:disabled{opacity:.6}
     .statut-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:720px}
     .col2{grid-column:1 / -1}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
   `],
 })
 export class RoleAudienceComponent implements OnInit {

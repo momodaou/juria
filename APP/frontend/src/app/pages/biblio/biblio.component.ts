@@ -103,9 +103,9 @@ import { AuthService } from '../../core/auth.service';
     </section>
   `,
   styles: [`
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px;font-family:inherit}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md);font-family:inherit}
     .ta{min-height:70px;resize:vertical}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}

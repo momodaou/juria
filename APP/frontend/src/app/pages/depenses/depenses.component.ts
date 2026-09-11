@@ -164,22 +164,22 @@ import { AuthService } from '../../core/auth.service';
     </section>
   `,
   styles: [`
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
     .checks{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
     .checks label{font-weight:400}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.sm{padding:8px 12px;font-size:13px}
+    .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn:disabled{opacity:.6}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:13px;color:var(--slate);margin-bottom:14px}
+    .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
   `],
 })
 export class DepensesComponent implements OnInit {

@@ -118,9 +118,9 @@ import { AuthService } from '../../core/auth.service';
     }
   `,
   styles: [`
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-    .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:13px}
+    .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:var(--fs-base)}
     .btn.sm:disabled{opacity:.6}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}

@@ -73,13 +73,13 @@ import { ApiService, Dossier } from '../../core/api.service';
     }
   `,
   styles: [`
-    .in{display:block;width:100%;max-width:480px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .in{display:block;width:100%;max-width:480px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin-top:-6px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
-    .soon{background:#f0ecf9;border:1px solid #ddd3f0;color:#5b3fa0;border-radius:12px;padding:2px 9px;font-size:10.5px;font-weight:700;margin-left:8px;vertical-align:middle}
+    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
+    .soon{background:#f0ecf9;border:1px solid #ddd3f0;color:#5b3fa0;border-radius:12px;padding:2px 9px;font-size:var(--fs-2xs);font-weight:700;margin-left:8px;vertical-align:middle}
     .apercu-frame{border:2px dashed var(--line);border-radius:12px;padding:18px;margin-top:18px}
-    .apercu-banner{text-align:center;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--grey);margin-bottom:14px}
+    .apercu-banner{text-align:center;font-size:var(--fs-xs);letter-spacing:.5px;text-transform:uppercase;color:var(--grey);margin-bottom:14px}
   `],
 })
 export class PortailClientComponent {

@@ -134,8 +134,8 @@ import { ApiService } from '../../core/api.service';
     </section>
   `,
   styles: [`
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
@@ -145,7 +145,7 @@ import { ApiService } from '../../core/api.service';
     .panel.alerte{border-left:4px solid var(--amber)}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:4px}
-    .doublon p{margin:4px 0;font-size:13px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
     .doublon .btns{display:flex;gap:8px;margin-top:10px}
   `],
 })

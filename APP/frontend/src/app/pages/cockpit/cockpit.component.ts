@@ -550,45 +550,45 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi{cursor:pointer;font-family:inherit;text-align:left;transition:box-shadow .15s}
     .kpi:hover{box-shadow:0 3px 10px rgba(31,42,68,.10)}
     .kpi.active{background:var(--light);box-shadow:inset 0 0 0 2px var(--gold)}
-    .kpi .hint{font-size:10.5px;color:var(--gold);margin-top:8px;font-weight:600}
+    .kpi .hint{font-size:var(--fs-2xs);color:var(--gold);margin-top:8px;font-weight:600}
     .kpi .hint.voir{display:flex;align-items:center;gap:4px}
-    .kpi .trend{font-size:11px;font-weight:600;margin-top:3px}
+    .kpi .trend{font-size:var(--fs-xs);font-weight:600;margin-top:3px}
     .kpi .trend.up{color:var(--green)}
     .kpi .trend.down{color:var(--red)}
-    .kpi .n .pole{font-size:14px;color:var(--slate);font-weight:600;vertical-align:1px}
+    .kpi .n .pole{font-size:var(--fs-md);color:var(--slate);font-weight:600;vertical-align:1px}
     /* En-têtes de section (07/09/2026) — même esprit que .nav-groupe du menu
        latéral (30/08/2026), adapté au fond clair de la page plutôt qu'au
        navy de la sidebar. */
-    .groupe-titre{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--grey);margin:26px 0 12px}
+    .groupe-titre{font-size:var(--fs-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--grey);margin:26px 0 12px}
     h3.groupe-titre:first-of-type{margin-top:0}
     /* Aperçus & tendances (07/09/2026) */
     .kpi.apercu{grid-column:span 2}
     .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px}
-    .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+    .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:var(--fs-sm)}
     /* min-width:0 nécessaire pour que l'ellipsis s'applique réellement dans
        un conteneur flex — sans ça, un enfant flex ne rétrécit jamais sous sa
        largeur naturelle (largeur mini par défaut "auto", pas 0). Bug trouvé
        le 07/09/2026 : un montant long ("-150 000 FCFA") débordait du cadre
        de la tuile au lieu de forcer l'intitulé à tronquer. */
     .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
-    .kpi .mini-ligne .secondaire{color:var(--grey);font-size:11px;white-space:nowrap;flex:0 0 auto}
+    .kpi .mini-ligne .secondaire{color:var(--grey);font-size:var(--fs-xs);white-space:nowrap;flex:0 0 auto}
     .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
     .kpi .sparkline{margin-top:8px}
     .kpi .sparkline svg{display:block;width:100%;height:30px;overflow:visible}
     .kpi .barre-tranches{margin-top:9px}
     .kpi .barre-tranches .barre{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line)}
     .kpi .barre-tranches .segment{height:100%}
-    .kpi .barre-tranches .legende-tranches{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;font-size:10px;color:var(--grey)}
+    .kpi .barre-tranches .legende-tranches{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;font-size:var(--fs-2xs);color:var(--grey)}
     .kpi .barre-tranches .legende-tranches span{display:inline-flex;align-items:center;gap:3px}
     .kpi .barre-tranches .legende-tranches i{width:7px;height:7px;border-radius:2px;display:inline-block}
     .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .detail h3{margin:0}
-    .fermer{display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+    .fermer{display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:var(--fs-sm);cursor:pointer;font-family:inherit}
     .fermer:hover{border-color:var(--grey)}
     .lien:hover{border-color:var(--grey)}
     .controls{margin:14px 0;padding-top:12px;border-top:1px solid var(--line)}
-    .controls label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--grey);font-weight:600;text-transform:uppercase;letter-spacing:.03em;max-width:280px}
-    .controls select{font-family:inherit;font-size:13px;font-weight:500;text-transform:none;letter-spacing:0;padding:7px 10px}
+    .controls label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-xs);color:var(--grey);font-weight:600;text-transform:uppercase;letter-spacing:.03em;max-width:280px}
+    .controls select{font-family:inherit;font-size:var(--fs-base);font-weight:500;text-transform:none;letter-spacing:0;padding:7px 10px}
     td.num, th.num{text-align:right;font-variant-numeric:tabular-nums}
   `],
 })

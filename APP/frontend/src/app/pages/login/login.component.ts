@@ -31,7 +31,7 @@ import { MessagerieService } from '../../core/messagerie.service';
     </div>
   `,
   styles: [`
-    .lien-oublie{display:block;text-align:center;margin-top:14px;font-size:12.5px;color:var(--gold);text-decoration:none}
+    .lien-oublie{display:block;text-align:center;margin-top:14px;font-size:var(--fs-sm);color:var(--gold);text-decoration:none}
     .lien-oublie:hover{text-decoration:underline}
   `],
 })

@@ -256,27 +256,27 @@ import { AuthService } from '../../core/auth.service';
     }
   `,
   styles: [`
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:600px}
     .col2{grid-column:1 / -1}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .btn.sm{padding:9px 14px;font-size:13px}
+    .btn.sm{padding:9px 14px;font-size:var(--fs-base)}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .panel.alerte{border-left:4px solid var(--amber)}
-    .mdp{background:#f7f9fc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:14px;font-weight:700;letter-spacing:.5px}
+    .mdp{background:#f7f9fc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:var(--fs-md);font-weight:700;letter-spacing:.5px}
     .matrice-scroll{overflow-x:auto}
-    table.matrice{border-collapse:collapse;font-size:12px;min-width:900px}
+    table.matrice{border-collapse:collapse;font-size:var(--fs-sm);min-width:900px}
     table.matrice th, table.matrice td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
     table.matrice .col-action{text-align:left;min-width:220px;white-space:normal}
     table.matrice .col-role{min-width:56px}
-    table.matrice thead th{background:var(--light);font-weight:700;font-size:11px}
-    tr.ligne-module td{background:var(--navy);color:#fff;font-weight:700;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+    table.matrice thead th{background:var(--light);font-weight:700;font-size:var(--fs-xs)}
+    tr.ligne-module td{background:var(--navy);color:#fff;font-weight:700;text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em}
     .pastille{color:var(--gold);margin-left:3px}
   `],
 })

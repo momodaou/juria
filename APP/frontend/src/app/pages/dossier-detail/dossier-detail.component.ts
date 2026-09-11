@@ -615,7 +615,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <p class="muted" style="margin-bottom:8px">Un appui, jamais une décision : toute production doit être validée par l'avocat.</p>
           <textarea [(ngModel)]="iaTexte" name="iatexte" rows="4"
             placeholder="Collez ici le texte d'une pièce à résumer…"
-            style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;font-family:inherit"></textarea>
+            style="width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:var(--fs-base);font-family:inherit"></textarea>
           <div class="upload" style="margin-top:8px">
             @if (auth.peut('ia.resume')) {
               <button class="btn" (click)="iaResumer()" [disabled]="iaEnCours() || !iaTexte">Résumer (IA)</button>
@@ -628,7 +628,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @if (iaOut()) {
             <div style="margin-top:12px;background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px">
               <b style="color:#8a6412">Assistant IA — projet à valider</b>
-              <p style="white-space:pre-wrap;font-size:13px;margin-top:6px">{{ iaOut() }}</p>
+              <p style="white-space:pre-wrap;font-size:var(--fs-base);margin-top:6px">{{ iaOut() }}</p>
             </div>
           }
         </section>
@@ -640,39 +640,39 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     }
   `,
   styles: [`
-    .hint{display:block;font-size:12px;color:#9a6c12;margin:4px 0 0}
+    .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-    .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+    .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
     .btn:disabled{opacity:.6}
-    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px}
+    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:var(--fs-xs);font-weight:600;margin-left:8px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
     .pastille{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
     .ref{font-family:ui-monospace,monospace;letter-spacing:.02em}
-    .hint-ind{font-size:12px;color:#9a6c12;margin-top:4px}
-    .nature{color:#c3cdde;font-size:13px;margin:2px 0 0}
-    .liens-rapides{display:flex;flex-wrap:wrap;margin:-6px 0 18px;font-size:13px}
+    .hint-ind{font-size:var(--fs-sm);color:#9a6c12;margin-top:4px}
+    .nature{color:#c3cdde;font-size:var(--fs-base);margin:2px 0 0}
+    .liens-rapides{display:flex;flex-wrap:wrap;margin:-6px 0 18px;font-size:var(--fs-base)}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
     .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0 14px}
     .doublon{background:#fff;border:1px solid #f0dcae;border-radius:8px;padding:12px 14px;margin-top:4px}
-    .doublon p{margin:4px 0;font-size:13px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
     .doublon .lien{color:var(--gold);text-decoration:underline}
     .etq-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
-    .etq-ref{font-size:13px}
+    .etq-ref{font-size:var(--fs-base)}
     .etiquette-apercu{display:inline-flex;border:2px dashed var(--gold);border-radius:8px;overflow:hidden;background:#fff;margin-top:12px}
     .etiquette-bande{width:14px}
     .etiquette-corps{display:inline-flex;gap:14px;align-items:center;padding:12px 16px}
-    .etiquette-num{font-size:18px;font-weight:700;color:#1F2A44;letter-spacing:1px;font-family:ui-monospace,monospace}
-    .etiquette-intitule{font-size:13px;font-weight:600;margin-top:2px}
-    .etiquette-sub{font-size:12px;color:var(--slate);margin-top:1px}
-    .etiquette-chemise{font-size:11px;margin-top:4px}
+    .etiquette-num{font-size:var(--fs-xl);font-weight:700;color:#1F2A44;letter-spacing:1px;font-family:ui-monospace,monospace}
+    .etiquette-intitule{font-size:var(--fs-base);font-weight:600;margin-top:2px}
+    .etiquette-sub{font-size:var(--fs-sm);color:var(--slate);margin-top:1px}
+    .etiquette-chemise{font-size:var(--fs-xs);margin-top:4px}
   `],
 })
 export class DossierDetailComponent implements OnInit {

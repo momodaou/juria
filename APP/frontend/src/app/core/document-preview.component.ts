@@ -69,14 +69,14 @@ type TypeApercu = 'pdf' | 'image' | 'docx' | 'feuille' | 'texte' | 'non_supporte
     .dp-fond{position:fixed;inset:0;background:rgba(15,20,30,.55);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px}
     .dp-panneau{background:#fff;border-radius:12px;max-width:min(920px,100%);width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
     .dp-entete{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
-    .dp-nom{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .dp-fermer{background:none;border:none;font-size:16px;cursor:pointer;color:var(--slate);padding:4px 8px}
+    .dp-nom{font-weight:600;font-size:var(--fs-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .dp-fermer{background:none;border:none;font-size:var(--fs-lg);cursor:pointer;color:var(--slate);padding:4px 8px}
     .dp-corps{overflow:auto;flex:1;padding:16px}
-    .dp-msg{color:var(--grey);font-size:13px;text-align:center;padding:40px 0}
+    .dp-msg{color:var(--grey);font-size:var(--fs-base);text-align:center;padding:40px 0}
     .dp-err{color:var(--red)}
     .dp-pdf{width:100%;height:75vh;border:none}
     .dp-image{max-width:100%;display:block;margin:0 auto}
-    .dp-docx{font-size:14px;line-height:1.5;max-width:760px;margin:0 auto}
+    .dp-docx{font-size:var(--fs-md);line-height:1.5;max-width:760px;margin:0 auto}
     /* ::ng-deep : le HTML de dp-docx/dp-feuille est injecté via [innerHTML]
        (mammoth/xlsx), donc jamais passé par le compilateur de gabarits
        Angular — sans ::ng-deep, l'encapsulation de style ne l'atteindrait
@@ -84,12 +84,12 @@ type TypeApercu = 'pdf' | 'image' | 'docx' | 'feuille' | 'texte' | 'non_supporte
     .dp-docx ::ng-deep table{border-collapse:collapse;width:100%}
     .dp-docx ::ng-deep td,.dp-docx ::ng-deep th{border:1px solid var(--line);padding:4px 8px}
     .dp-onglets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-    .dp-onglet{background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+    .dp-onglet{background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:var(--fs-sm);cursor:pointer}
     .dp-onglet.actif{background:var(--gold);border-color:var(--gold);color:#1b2436;font-weight:600}
     .dp-feuille{overflow:auto}
-    .dp-feuille ::ng-deep table{border-collapse:collapse;font-size:12px}
+    .dp-feuille ::ng-deep table{border-collapse:collapse;font-size:var(--fs-sm)}
     .dp-feuille ::ng-deep td,.dp-feuille ::ng-deep th{border:1px solid var(--line);padding:3px 7px;white-space:nowrap}
-    .dp-texte{white-space:pre-wrap;font-size:13px;font-family:ui-monospace,monospace}
+    .dp-texte{white-space:pre-wrap;font-size:var(--fs-base);font-family:ui-monospace,monospace}
   `],
 })
 export class DocumentPreviewComponent {

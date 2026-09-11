@@ -69,18 +69,18 @@ import { AuthService } from '../../core/auth.service';
     }
   `,
   styles: [`
-    .in{display:block;width:100%;max-width:560px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px;font-family:inherit}
+    .in{display:block;width:100%;max-width:560px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md);font-family:inherit}
     .ta{min-height:90px;resize:vertical}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .mode-switch{display:flex;gap:8px;margin-bottom:14px}
-    .mode-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:var(--slate)}
+    .mode-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:var(--fs-base);cursor:pointer;color:var(--slate)}
     .mode-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:1px 7px;font-size:10.5px;font-weight:600;margin-left:4px}
-    .apercu{white-space:pre-wrap;font-family:'Segoe UI',system-ui,sans-serif;font-size:13.5px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:16px;max-height:520px;overflow-y:auto}
+    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:1px 7px;font-size:var(--fs-2xs);font-weight:600;margin-left:4px}
+    .apercu{white-space:pre-wrap;font-family:'Segoe UI',system-ui,sans-serif;font-size:var(--fs-base);background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:16px;max-height:520px;overflow-y:auto}
   `],
 })
 export class ActesComponent implements OnInit {

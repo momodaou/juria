@@ -97,7 +97,7 @@ import { MessagerieService, Conversation } from './messagerie.service';
     }
     .mw-badge{
       position:absolute;top:-4px;right:-4px;background:var(--gold);color:#1b2436;
-      font-size:11px;font-weight:700;min-width:20px;height:20px;border-radius:999px;
+      font-size:var(--fs-xs);font-weight:700;min-width:20px;height:20px;border-radius:999px;
       display:flex;align-items:center;justify-content:center;padding:0 4px;
     }
     .mw-panneau{
@@ -109,36 +109,36 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-entete{
       display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--navy);color:#fff;flex-shrink:0;
     }
-    .mw-titre{font-weight:700;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mw-titre{font-weight:700;font-size:var(--fs-md);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .mw-entete-actions{display:flex;gap:2px}
     .mw-icon-btn{
-      background:none;border:none;color:#fff;cursor:pointer;font-size:15px;width:26px;height:26px;
+      background:none;border:none;color:#fff;cursor:pointer;font-size:var(--fs-lg);width:26px;height:26px;
       border-radius:6px;display:flex;align-items:center;justify-content:center;
     }
     .mw-icon-btn:hover{background:rgba(255,255,255,.15)}
     .mw-liste{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
-    .mw-vide{color:var(--grey);font-size:13px;padding:14px;text-align:center}
+    .mw-vide{color:var(--grey);font-size:var(--fs-base);padding:14px;text-align:center}
     .mw-conv{
       display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;position:relative;
       background:none;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;width:100%;
     }
     .mw-conv:hover{background:var(--light)}
-    .mw-conv-titre{font-weight:600;font-size:13px}
-    .mw-conv-apercu{font-size:12px;color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-    .mw-conv-badge{position:absolute;top:8px;right:8px;background:var(--gold);color:#1b2436;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px}
+    .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
+    .mw-conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+    .mw-conv-badge{position:absolute;top:8px;right:8px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
     .mw-nouvelle{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--line);flex-shrink:0}
     .mw-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:10px}
     .mw-msg{display:flex;flex-direction:column;gap:2px;max-width:80%;background:var(--light);border-radius:10px;padding:6px 10px}
     .mw-msg.moi{align-self:flex-end;background:var(--navy);color:#fff}
-    .mw-msg-auteur{font-size:10.5px;font-weight:700;color:var(--gold)}
+    .mw-msg-auteur{font-size:var(--fs-2xs);font-weight:700;color:var(--gold)}
     .mw-msg.moi .mw-msg-auteur{color:#e8c893}
-    .mw-msg-contenu{font-size:13px;white-space:pre-wrap;word-break:break-word}
-    .mw-msg-heure{font-size:10px;color:var(--grey);align-self:flex-end}
+    .mw-msg-contenu{font-size:var(--fs-base);white-space:pre-wrap;word-break:break-word}
+    .mw-msg-heure{font-size:var(--fs-2xs);color:var(--grey);align-self:flex-end}
     .mw-msg.moi .mw-msg-heure{color:#cfd6e3}
     .mw-saisie{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);flex-shrink:0}
-    .mw-input{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13px;width:100%}
+    .mw-input{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:var(--fs-base);width:100%}
     .mw-saisie .mw-input{flex:1}
-    .mw-btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:7px 12px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap}
+    .mw-btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:7px 12px;font-weight:600;font-size:var(--fs-base);cursor:pointer;white-space:nowrap}
     .mw-btn:disabled{opacity:.6;cursor:not-allowed}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}

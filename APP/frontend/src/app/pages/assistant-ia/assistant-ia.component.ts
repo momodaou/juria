@@ -84,19 +84,19 @@ const CAPACITES: CapaciteInfo[] = [
     </section>
   `,
   styles: [`
-    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:8px;vertical-align:middle}
+    .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:var(--fs-xs);font-weight:600;margin-left:8px;vertical-align:middle}
     .cardgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:18px}
     .cap{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;text-align:left;cursor:pointer;font-family:inherit}
     .cap.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(176,141,87,.25)}
-    .cap h4{font-size:13.5px;color:var(--navy);margin:0 0 4px}
-    .cap p{font-size:12px;color:var(--grey);margin:0}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:14px;font-family:inherit}
+    .cap h4{font-size:var(--fs-base);color:var(--navy);margin:0 0 4px}
+    .cap p{font-size:var(--fs-sm);color:var(--grey);margin:0}
+    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md);font-family:inherit}
     .ta{min-height:130px;resize:vertical}
-    label{font-size:12px;color:var(--slate);font-weight:600}
+    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
     .result{margin-top:16px;border-radius:10px;padding:14px 16px;background:#fffaf0;border:1px solid #f0dcae}
-    .result pre{white-space:pre-wrap;font-family:inherit;font-size:13.5px;margin-top:8px}
+    .result pre{white-space:pre-wrap;font-family:inherit;font-size:var(--fs-base);margin-top:8px}
   `],
 })
 export class AssistantIaComponent implements OnInit {
