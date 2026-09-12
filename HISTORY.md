@@ -2016,4 +2016,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Vérification** : 229/229 tests, build Angular OK, chaîne confirmée présente dans le bundle compilé.
 
-**Déploiement** : pas encore fait à ce stade — à confirmer avec l'utilisateur avant tout déploiement production (regroupable avec le correctif précédent, jamais déployé non plus).
+**Déploiement production — effectué et vérifié le 12/09/2026** (accord utilisateur, « oui déploie »). Aucune migration de schéma — code seul, regroupe ce renommage et le correctif de collision précédent (aucun des deux n'avait encore été déployé). API `juria-00077-5mt` (précédente `juria-00076-v92`), frontend `juria-web-00086-kgf` (précédente `juria-web-00085-nts`). Vérifié : `/health` de l'API et page d'accueil du frontend en `200`, hash du bundle JS servi identique à celui vérifié en local avant déploiement.
