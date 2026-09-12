@@ -2007,3 +2007,13 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : 229/229 tests (aucun changement fonctionnel, uniquement des libellés), build Angular OK, chaîne « Cabinet (RH) » confirmée présente dans le bundle compilé.
 
 **Déploiement** : pas encore fait à ce stade — à confirmer avec l'utilisateur avant tout déploiement production.
+
+## 2026-09-12 — Nom définitif retenu : « Administratif & RH »
+
+**Contexte** : suite du correctif précédent (retour à « Cabinet (RH) » pour éviter la collision avec le groupe de menu « Cabinet ») — l'utilisateur demande d'autres formulations possibles. Plusieurs options discutées (« RH & Obligations », « Équipe & RH », « RH » seul, « RH & Conformité »), puis l'utilisateur propose **« Administratif & RH »**, retenu : correspond exactement au vocabulaire déjà utilisé dans l'écran lui-même (section « Obligations **administratives** du cabinet »), sans collision avec le groupe de menu.
+
+**Fait** : menu, titre de page (`<h1>`) et les 8 libellés de « module » du catalogue de permissions (affichage de la Matrice) renommés « Cabinet (RH) » → **« Administratif & RH »**. Aucun changement de route, de composant ni de permission — uniquement des libellés.
+
+**Vérification** : 229/229 tests, build Angular OK, chaîne confirmée présente dans le bundle compilé.
+
+**Déploiement** : pas encore fait à ce stade — à confirmer avec l'utilisateur avant tout déploiement production (regroupable avec le correctif précédent, jamais déployé non plus).

@@ -11,7 +11,7 @@ import { AuthService } from '../../core/auth.service';
   template: `
     <header class="page-head">
       <div>
-        <h1>Cabinet (RH)</h1>
+        <h1>Administratif &amp; RH</h1>
         <p>Équipe, charge de travail, congés, pointage, échéances RH, obligations administratives.</p>
       </div>
     </header>
