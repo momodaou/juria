@@ -236,4 +236,45 @@ describe("Intervenant(s) sur un dossier (12/09/2026)", () => {
       .send({});
     expect(res.status).toBe(400);
   });
+
+  // 12/09/2026, alignement sur le patron déjà suivi par clients_additionnels/
+  // parties_adverses : la désignation d'intervenant(s) dès la création est
+  // tout aussi légitime que la gestion après coup depuis la fiche dossier.
+  test("POST /api/dossiers avec intervenants les crée directement", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const juriste = await creerUtilisateurRole("juriste");
+    const collaborateur = await creerUtilisateurRole("collaborateur");
+    const creation = await creerDossier(token, {
+      client_id: clientId,
+      responsable_id: associe.id,
+      intervenants: [
+        { utilisateur_id: juriste.id, role_dossier: "Juriste en soutien" },
+        { utilisateur_id: collaborateur.id },
+      ],
+    });
+    expect(creation.status).toBe(201);
+
+    const fiche = await request(app)
+      .get(`/api/dossiers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(fiche.body.intervenants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ utilisateur_id: juriste.id, statut: "juriste", role_dossier: "Juriste en soutien" }),
+        expect.objectContaining({ utilisateur_id: collaborateur.id, statut: "collaborateur", role_dossier: "collaborateur" }),
+      ])
+    );
+    expect(fiche.body.intervenants.length).toBe(2);
+  });
+
+  test("POST /api/dossiers avec un intervenants malformé (sans utilisateur_id) l'ignore silencieusement", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, {
+      client_id: clientId,
+      responsable_id: associe.id,
+      intervenants: [{ role_dossier: "Sans id" }, null],
+    });
+    expect(creation.status).toBe(201);
+  });
 });

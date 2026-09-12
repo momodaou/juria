@@ -280,7 +280,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
                 <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option>
               }
             </select>
-            <span class="hint">Le responsable doit toujours être un avocat (Associé, Associé-fondateur, Of Counsel, Avocat stagiaire, Collaborateur) — un juriste ou un stagiaire non-avocat pourra être ajouté en tant qu'Intervenant depuis la fiche dossier, une fois créé.</span>
+            <span class="hint">Le responsable doit toujours être un avocat (Associé, Associé-fondateur, Of Counsel, Avocat stagiaire, Collaborateur) — un juriste ou un stagiaire non-avocat peut être ajouté ci-dessous en tant qu'Intervenant.</span>
             @if (dossier.pro_bono) {
               <span class="hint">Un dossier pro bono ne peut être attribué qu'à un avocat associé — liste filtrée.</span>
             } @else if (!estAssocie()) {
@@ -288,6 +288,24 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             }
           </div>
         </div>
+
+        <label>Intervenant(s) associés au dossier (facultatif — n'importe quel statut, ex. juriste collaborateur en soutien)</label>
+        <div class="upload">
+          <select class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenantId" name="nouvelIntervenantId">
+            <option value="">Choisir une personne…</option>
+            @for (u of intervenantsDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+          </select>
+          <input class="in" style="margin:0;max-width:200px" [(ngModel)]="nouvelIntervenantRole" name="nouvelIntervenantRole" placeholder="Rôle (ex. collaborateur)" />
+          <button class="btn ghost" type="button" (click)="ajouterIntervenantInitial()" [disabled]="!nouvelIntervenantId">+ Ajouter</button>
+        </div>
+        @if (intervenantsInitiaux().length) {
+          <div class="verifies" style="margin-bottom:12px">
+            @for (i of intervenantsInitiaux(); track i.id) {
+              <span class="chip">{{ i.nom }} ({{ i.role_dossier }}) <button class="lien-x" type="button" (click)="retirerIntervenantInitial(i.id)">✕</button></span>
+            }
+          </div>
+        }
+        <p class="muted" style="margin:-8px 0 12px">Modifiable après création, depuis la fiche dossier.</p>
 
         @if (auth.peut('dossiers.pro_bono.declarer')) {
           <label class="pb">
@@ -501,6 +519,37 @@ export class OuvertureComponent implements OnInit {
     return [this.dossier.client_id, ...this.clientsAdditionnels().map((c) => c.id)].filter(Boolean);
   }
 
+  // Intervenant(s) dès la création (12/09/2026, alignement sur le patron
+  // déjà suivi par clients_additionnels/parties_adverses ci-dessus —
+  // demande explicite de l'utilisateur : la désignation à la création est
+  // tout aussi légitime que la gestion après coup depuis la fiche dossier
+  // (qui reste possible, ce champ est purement facultatif). N'importe quel
+  // statut, contrairement au Responsable.
+  readonly intervenantsInitiaux = signal<{ id: string; nom: string; role_dossier: string }[]>([]);
+  nouvelIntervenantId = '';
+  nouvelIntervenantRole = '';
+
+  intervenantsDisponibles(): any[] {
+    const dejaChoisis = this.intervenantsInitiaux().map((i) => i.id);
+    return this.utilisateurs().filter((u) => !dejaChoisis.includes(u.id));
+  }
+
+  ajouterIntervenantInitial(): void {
+    if (!this.nouvelIntervenantId) return;
+    const u = this.utilisateurs().find((x) => x.id === this.nouvelIntervenantId);
+    if (!u) return;
+    this.intervenantsInitiaux.update((liste) => [
+      ...liste,
+      { id: u.id, nom: `${u.prenom} ${u.nom}`, role_dossier: this.nouvelIntervenantRole || 'collaborateur' },
+    ]);
+    this.nouvelIntervenantId = '';
+    this.nouvelIntervenantRole = '';
+  }
+
+  retirerIntervenantInitial(id: string): void {
+    this.intervenantsInitiaux.update((liste) => liste.filter((x) => x.id !== id));
+  }
+
   // Création de client à la volée (19/08/2026) — pour ne pas obliger à
   // quitter l'écran d'ouverture pour créer un client manquant, tout en
   // gardant Clients & KYC comme registre maître (le KYC complet se fait
@@ -632,6 +681,7 @@ export class OuvertureComponent implements OnInit {
       intitule: this.intituleDossier, ...this.dossier,
       parties_adverses: partiesAdverses,
       clients_additionnels: this.clientsAdditionnels().map((c) => c.id),
+      intervenants: this.intervenantsInitiaux().map((i) => ({ utilisateur_id: i.id, role_dossier: i.role_dossier })),
       instance_initiale: instanceInitiale,
     }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },

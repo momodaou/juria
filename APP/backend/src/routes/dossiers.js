@@ -407,6 +407,20 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
       );
     }
 
+    // Intervenant(s) (12/09/2026, alignement sur le patron déjà suivi par
+    // parties_adverses/clients_additionnels ci-dessus — demande explicite
+    // de l'utilisateur : la désignation à la création est tout aussi
+    // légitime que la gestion après coup, pas l'un ou l'autre).
+    // b.intervenants = tableau de {utilisateur_id, role_dossier?}.
+    const intervenantsInitiaux = Array.isArray(b.intervenants) ? b.intervenants.filter((i) => i && i.utilisateur_id) : [];
+    for (const it of intervenantsInitiaux) {
+      await pool.query(
+        `INSERT INTO dossier_intervenants (dossier_id, utilisateur_id, role_dossier)
+         VALUES ($1,$2,COALESCE($3,'collaborateur')) ON CONFLICT DO NOTHING`,
+        [rows[0].id, it.utilisateur_id, it.role_dossier || null]
+      );
+    }
+
     // Instance initiale (19/08/2026) : degré + juridiction choisis à
     // l'ouverture (pertinent surtout pour un dossier contentieux) —
     // branche pour la première fois la table `instances`, déjà en base
