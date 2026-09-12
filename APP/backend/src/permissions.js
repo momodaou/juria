@@ -55,14 +55,9 @@ const CATALOGUE = [
   // profil précis (ex. associé-fondateur) sans toucher aux autres. Seedé
   // TRUE pour tous les rôles sauf exception explicite, pas sur une petite
   // grappe — voir schema.sql.
-  { code: "echeancier.consulter", module: "Échéancier", label: "Consulter l'échéancier", restreinte: true },
-  { code: "evenements.creer", module: "Échéancier", label: "Ajouter une échéance" },
-  { code: "evenements.jobs.declencher", module: "Échéancier", label: "Déclencher manuellement le job d'alertes de délais", restreinte: true },
-  // Échéances administratives du cabinet (fiscal/social/ordinal…), pas de
-  // dossier — consultation via echeancier.consulter (même onglet), la
-  // gestion (créer/marquer traité) réservée au même périmètre que
-  // parametres.cabinet.modifier (11/09/2026).
-  { code: "echeances_admin.gerer", module: "Échéancier", label: "Gérer les échéances administratives du cabinet", restreinte: true },
+  { code: "echeancier.consulter", module: "Échéances", label: "Consulter l'échéancier", restreinte: true },
+  { code: "evenements.creer", module: "Échéances", label: "Ajouter une échéance" },
+  { code: "evenements.jobs.declencher", module: "Échéances", label: "Déclencher manuellement le job d'alertes de délais", restreinte: true },
 
   { code: "audiences.consulter", module: "Rôle d'audience", label: "Consulter le rôle d'audience", restreinte: true },
   { code: "audiences.ligne.creer", module: "Rôle d'audience", label: "Inscrire une audience au rôle" },
@@ -111,12 +106,23 @@ const CATALOGUE = [
   // Ne gate QUE la vue d'équipe/échéances RH (supervision) — pas congés/
   // présence, qui restent du libre-service même si le module est masqué du
   // menu pour un profil donné (voir cabinet.js).
-  { code: "cabinet.consulter", module: "Cabinet (RH)", label: "Consulter l'équipe et les échéances RH", restreinte: true },
-  { code: "cabinet.conge.demander", module: "Cabinet (RH)", label: "Demander un congé" },
-  { code: "cabinet.conge.decision", module: "Cabinet (RH)", label: "Valider / rejeter un congé", restreinte: true },
-  { code: "cabinet.presence.pointer", module: "Cabinet (RH)", label: "Pointer (présence)" },
-  { code: "cabinet.bulletin.generer", module: "Cabinet (RH)", label: "Générer un bulletin", restreinte: true },
-  { code: "cabinet.bulletins.consulter", module: "Cabinet (RH)", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
+  { code: "cabinet.consulter", module: "Cabinet", label: "Consulter l'équipe et les échéances RH", restreinte: true },
+  { code: "cabinet.conge.demander", module: "Cabinet", label: "Demander un congé" },
+  { code: "cabinet.conge.decision", module: "Cabinet", label: "Valider / rejeter un congé", restreinte: true },
+  { code: "cabinet.presence.pointer", module: "Cabinet", label: "Pointer (présence)" },
+  { code: "cabinet.bulletin.generer", module: "Cabinet", label: "Générer un bulletin", restreinte: true },
+  { code: "cabinet.bulletins.consulter", module: "Cabinet", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
+  // Échéances administratives du cabinet (fiscal/social/ordinal…), pas de
+  // dossier — déplacées d'Échéances vers Cabinet le 12/09/2026 (demande
+  // explicite de l'utilisateur, confidentialité : Échéances était ouvert à
+  // quasiment tout le cabinet, ces obligations relèvent de la direction/
+  // comptabilité comme le reste de ce module). Permission de consultation
+  // DÉDIÉE plutôt que réutiliser cabinet.consulter : ce dernier exclut
+  // volontairement l'associé-fondateur (confidentialité des taux horaires,
+  // 29/08/2026) — un motif sans rapport avec les obligations fiscales, qui
+  // n'ont pas à hériter de cette exclusion précise.
+  { code: "echeances_admin.consulter", module: "Cabinet", label: "Consulter les échéances administratives du cabinet", restreinte: true },
+  { code: "echeances_admin.gerer", module: "Cabinet", label: "Gérer les échéances administratives du cabinet", restreinte: true },
 
   // Pas de route GET à garder ici (chaque capacité IA est un POST déjà
   // individuellement gardé) — ia.consulter sert uniquement à masquer

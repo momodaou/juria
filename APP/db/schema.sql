@@ -2723,3 +2723,37 @@ WHERE libelle = 'Acomptes provisionnels Impôt sur les Sociétés (IS)' AND jour
 
 ALTER TYPE categorie_depense ADD VALUE 'charges_fiscales_sociales';
 -- ============ FIN ÉCHÉANCES ADMINISTRATIVES : FORMULE + LIEN DÉPENSES ============
+
+-- =====================================================================
+--  ÉCHÉANCES ADMINISTRATIVES DU CABINET : DÉPLACÉES VERS CABINET (12/09/2026)
+--
+--  Demande explicite de l'utilisateur, suite à une remarque sur la
+--  confidentialité : la consultation des échéances administratives
+--  (TVA, INPS, ITS, IS, patente, Ordre, assurance) était gardée par
+--  `echeancier.consulter`, ouvert à quasiment tout le cabinet — la
+--  gestion (echeances_admin.gerer) était déjà correctement resserrée
+--  depuis sa création la veille (associé/associé-fondateur/admin
+--  général/admin IT/comptable), mais pas la simple consultation.
+--
+--  Déplacé du module « Échéances » vers « Cabinet » (audience proche :
+--  direction/finance) plutôt que dans Accès & permissions (écarté :
+--  ce module est verrouillé en dur au code sur associe/admin_general/
+--  admin_it UNIQUEMENT — le Comptable, premier concerné en pratique par
+--  ces obligations, en est structurellement exclu, décision volontaire
+--  du 17/08/2026 pour protéger la gestion des comptes/permissions, sans
+--  rapport avec ce sujet).
+--
+--  Nouvelle permission DÉDIÉE (echeances_admin.consulter) plutôt que
+--  réutiliser cabinet.consulter : ce dernier exclut volontairement
+--  l'associé-fondateur (confidentialité des taux horaires de l'équipe,
+--  29/08/2026) — un motif sans rapport avec les obligations fiscales,
+--  qui n'ont pas à hériter de cette exclusion précise. Seedée au même
+--  périmètre que echeances_admin.gerer (déjà correct depuis hier).
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','echeances_admin.consulter',TRUE),
+ ('associe_fondateur','echeances_admin.consulter',TRUE),
+ ('admin_general','echeances_admin.consulter',TRUE),
+ ('admin_it','echeances_admin.consulter',TRUE),
+ ('comptable','echeances_admin.consulter',TRUE);
+-- ============ FIN ÉCHÉANCES ADMINISTRATIVES DÉPLACÉES VERS CABINET ============

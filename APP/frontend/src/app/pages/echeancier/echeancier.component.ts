@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
@@ -8,9 +8,9 @@ import { AuthService } from '../../core/auth.service';
 @Component({
   selector: 'app-echeancier',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
-    <header class="page-head"><h1>Échéancier &amp; délais</h1></header>
+    <header class="page-head"><h1>Échéances</h1></header>
 
     @if (filtreDossierNumero()) {
       <p class="filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tout l'échéancier</a></p>
@@ -58,54 +58,6 @@ import { AuthService } from '../../core/auth.service';
     </section>
 
     <section class="panel">
-      <h3>Échéances administratives du cabinet</h3>
-      <p class="muted" style="margin-bottom:12px">Obligations récurrentes du cabinet (fiscal, social, ordinal…), sans rattachement à un dossier ni un client.</p>
-      @if (auth.peut('echeances_admin.gerer')) {
-        <div class="add">
-          @if (eaEnEditionId()) { <span class="tag">Modification en cours</span> }
-          <select [(ngModel)]="eaCategorie" name="eac">
-            @for (c of categoriesEcheanceAdmin(); track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }
-          </select>
-          <input [(ngModel)]="eaLibelle" name="eal" placeholder="Libellé (ex. Renouvellement assurance RC pro)" style="flex:1;min-width:200px" />
-          <select [(ngModel)]="eaPeriodicite" name="eap">
-            @for (p of periodicitesEcheanceAdmin(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
-          </select>
-          <input type="date" [(ngModel)]="eaDate" name="ead" />
-          @if (eaEnEditionId()) {
-            <button class="btn" (click)="enregistrerModificationEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate">Enregistrer</button>
-            <button class="lien" (click)="annulerEditionEcheanceAdmin()">Annuler</button>
-          } @else {
-            <button class="btn" (click)="ajouterEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate">Ajouter</button>
-          }
-        </div>
-      }
-      @if (echeancesAdmin().length) {
-        <table>
-          <tr><th>Échéance</th><th>Catégorie</th><th>Libellé</th><th>Périodicité</th><th>Responsable</th><th>Payé</th><th>Alerte</th><th></th></tr>
-          @for (e of echeancesAdmin(); track e.id) {
-            <tr>
-              <td>{{ e.prochaine_date | date:'dd/MM/yyyy' }}</td>
-              <td>{{ libelleCategorieEcheanceAdmin(e.categorie) }}</td>
-              <td>{{ e.libelle }}</td>
-              <td>{{ libellePeriodiciteEcheanceAdmin(e.periodicite) }}</td>
-              <td>{{ e.responsable || '—' }}</td>
-              <td>@if (e.depense_montant) { {{ e.depense_montant | number }} FCFA } @else { — }</td>
-              <td><span class="tag" [class.haute]="e.jours_restants <= 7" [class.moy]="e.jours_restants > 7 && e.jours_restants <= 15">{{ badge(e) }}</span></td>
-              <td>
-                @if (auth.peut('echeances_admin.gerer')) {
-                  <input type="number" class="montant-decaisse" [(ngModel)]="montantsDecaisses[e.id]" name="md-{{e.id}}" placeholder="Montant décaissé" title="Montant réellement décaissé (FCFA) — optionnel, crée la dépense correspondante dans Dépenses &amp; caisse" />
-                  <button class="lien" (click)="traiterEcheanceAdmin(e)">Marquer traité</button>
-                  <button class="lien" (click)="modifierEcheanceAdmin(e)">Modifier</button>
-                  <button class="lien" (click)="supprimerEcheanceAdmin(e)">Supprimer</button>
-                }
-              </td>
-            </tr>
-          }
-        </table>
-      } @else { <p class="muted">Aucune échéance administrative enregistrée.</p> }
-    </section>
-
-    <section class="panel">
       <h3>Plan d'action — tâches</h3>
       @if (auth.peut('taches.creer')) {
         <div class="add">
@@ -138,7 +90,6 @@ import { AuthService } from '../../core/auth.service';
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
-    .montant-decaisse{width:110px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:var(--fs-xs);margin-right:6px}
   `],
 })
 export class EcheancierComponent implements OnInit {
@@ -175,25 +126,8 @@ export class EcheancierComponent implements OnInit {
   nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = ''; nvPrecision = '';
   ntTitre = ''; ntEch = '';
 
-  // Échéances administratives du cabinet (11/09/2026) — gap comblé, voir
-  // CLAUDE.md/HISTORY.md : la table et ses catalogues existaient depuis le
-  // tout premier schéma, jamais reliés à aucun écran.
-  readonly echeancesAdmin = signal<any[]>([]);
-  readonly categoriesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
-  readonly periodicitesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
-  eaCategorie = 'fiscale'; eaLibelle = ''; eaPeriodicite = 'ponctuelle'; eaDate = '';
-  // Montant décaissé saisi par ligne avant de cliquer « Marquer traité »
-  // (optionnel — voir traiterEcheanceAdmin ci-dessous).
-  montantsDecaisses: Record<string, number | null> = {};
-  // Correction manuelle (11/09/2026) — le même formulaire sert à la
-  // création ET à la modification (pas de 2e formulaire dupliqué) :
-  // non-null quand une ligne est en cours d'édition.
-  readonly eaEnEditionId = signal<string | null>(null);
-
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
-    this.api.listesValeurs('categorie_echeance').subscribe({ next: (v) => this.categoriesEcheanceAdmin.set(v), error: () => {} });
-    this.api.listesValeurs('periodicite').subscribe({ next: (v) => this.periodicitesEcheanceAdmin.set(v), error: () => {} });
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
@@ -204,19 +138,10 @@ export class EcheancierComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.evenements(dossierId ?? undefined).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
     this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
-    this.api.echeancesAdministratives().subscribe({ next: (e) => this.echeancesAdmin.set(e), error: () => {} });
   }
 
   libelleType(code: string): string {
     return this.typesEvenement.find((t) => t.code === code)?.libelle ?? code;
-  }
-
-  libelleCategorieEcheanceAdmin(code: string): string {
-    return this.categoriesEcheanceAdmin().find((c) => c.code === code)?.libelle ?? code;
-  }
-
-  libellePeriodiciteEcheanceAdmin(code: string): string {
-    return this.periodicitesEcheanceAdmin().find((p) => p.code === code)?.libelle ?? code;
   }
 
   badge(e: any): string {
@@ -233,63 +158,6 @@ export class EcheancierComponent implements OnInit {
     }).subscribe({
       next: () => { this.nvTitre = ''; this.nvDate = ''; this.nvPrecision = ''; this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
-    });
-  }
-
-  ajouterEcheanceAdmin(): void {
-    this.api.creerEcheanceAdmin({
-      categorie: this.eaCategorie, libelle: this.eaLibelle,
-      periodicite: this.eaPeriodicite, prochaine_date: this.eaDate,
-    }).subscribe({
-      next: () => { this.eaLibelle = ''; this.eaDate = ''; this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
-    });
-  }
-
-  // Réutilise le même formulaire que la création — pré-rempli avec les
-  // valeurs actuelles de la ligne (11/09/2026, gap comblé : aucun moyen de
-  // corriger une échéance existante, ex. l'INPS seedée « mensuelle » alors
-  // que sa propre observation dit « à ajuster selon l'effectif »).
-  modifierEcheanceAdmin(e: any): void {
-    this.eaEnEditionId.set(e.id);
-    this.eaCategorie = e.categorie;
-    this.eaLibelle = e.libelle;
-    this.eaPeriodicite = e.periodicite;
-    this.eaDate = e.prochaine_date?.slice(0, 10) ?? '';
-    this.erreur.set('');
-  }
-
-  annulerEditionEcheanceAdmin(): void {
-    this.eaEnEditionId.set(null);
-    this.eaCategorie = 'fiscale'; this.eaLibelle = ''; this.eaPeriodicite = 'ponctuelle'; this.eaDate = '';
-  }
-
-  enregistrerModificationEcheanceAdmin(): void {
-    const id = this.eaEnEditionId();
-    if (!id) return;
-    this.api.modifierEcheanceAdmin(id, {
-      categorie: this.eaCategorie, libelle: this.eaLibelle,
-      periodicite: this.eaPeriodicite, prochaine_date: this.eaDate,
-    }).subscribe({
-      next: () => { this.annulerEditionEcheanceAdmin(); this.charger(); },
-      error: (err) => this.erreur.set(err?.error?.error ?? 'Modification impossible'),
-    });
-  }
-
-  supprimerEcheanceAdmin(e: any): void {
-    if (!confirm(`Supprimer l'échéance « ${e.libelle} » ? Cette action est réversible uniquement en la recréant à la main.`)) return;
-    this.erreur.set('');
-    this.api.supprimerEcheanceAdmin(e.id).subscribe({
-      next: () => this.charger(),
-      error: (err) => this.erreur.set(err?.error?.error ?? 'Suppression impossible'),
-    });
-  }
-
-  traiterEcheanceAdmin(e: any): void {
-    this.erreur.set('');
-    this.api.traiterEcheanceAdmin(e.id, this.montantsDecaisses[e.id]).subscribe({
-      next: () => { delete this.montantsDecaisses[e.id]; this.charger(); },
-      error: (err) => this.erreur.set(err?.error?.error ?? 'Action impossible'),
     });
   }
 

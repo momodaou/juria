@@ -215,7 +215,7 @@ export class AppComponent implements OnInit {
     // Dossiers, hors périmètre d'un blocage sûr sans le scinder en deux
     // routes distinctes (29/08/2026, pas fait dans cette passe).
     { path: '/clients', label: 'Clients & KYC', icon: this.icons.clients, requiert: 'clients.consulter', groupe: 'Dossiers & clients' },
-    { path: '/echeancier', label: 'Échéancier', icon: this.icons.echeancier, requiert: 'echeancier.consulter', groupe: 'Dossiers & clients' },
+    { path: '/echeancier', label: 'Échéances', icon: this.icons.echeancier, requiert: 'echeancier.consulter', groupe: 'Dossiers & clients' },
     { path: '/role-audience', label: "Rôle d'audience", icon: this.icons.roleAudience, requiert: 'audiences.consulter', groupe: 'Dossiers & clients' },
     { path: '/courrier', label: 'Registre du courrier', icon: this.icons.courrier, requiert: 'courriers.consulter', groupe: 'Dossiers & clients' },
 
@@ -233,7 +233,7 @@ export class AppComponent implements OnInit {
     // 29/08/2026 (correction explicite de l'utilisateur : le module entier,
     // pas seulement la matrice interne).
     { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'], groupe: 'Cabinet' },
-    { path: '/cabinet', label: 'Cabinet (RH)', icon: this.icons.cabinet, requiert: 'cabinet.consulter', groupe: 'Cabinet' },
+    { path: '/cabinet', label: 'Cabinet', icon: this.icons.cabinet, requiert: 'cabinet.consulter', groupe: 'Cabinet' },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient, groupe: 'Cabinet' },
 
     { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },

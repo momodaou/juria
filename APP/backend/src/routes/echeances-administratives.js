@@ -16,6 +16,14 @@
 // - Lien avec Dépenses & caisse : « Marquer traité » peut désormais créer
 //   la dépense réellement décaissée (montant réel, catégorie dédiée
 //   charges_fiscales_sociales), au lieu de deux mondes disjoints.
+//
+// Déplacé le 12/09/2026 : l'écran vit désormais dans Cabinet, plus dans
+// Échéances (module `backend/src/routes/dossiers.js`+`evenements.js`) —
+// demande explicite de l'utilisateur sur la confidentialité : Échéances
+// était ouvert à quasiment tout le cabinet, ces obligations relèvent de
+// la direction/comptabilité comme le reste de Cabinet. Ce fichier reste
+// distinct (route /api/echeances-administratives séparée) — seule sa
+// place dans le menu/l'écran change, pas son organisation en base.
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
@@ -92,7 +100,11 @@ function calculerProchaineEcheance({ periodicite, jour_echeance, mois_echeance, 
 
 // GET /api/echeances-administratives — actives, triées par échéance
 // effective (calculée pour les récurrentes, stockée pour les ponctuelles).
-router.get("/", requirePermission("echeancier.consulter"), async (req, res) => {
+// Gardée par echeances_admin.consulter (12/09/2026, déplacée d'Échéances
+// vers Cabinet) — dédiée plutôt que cabinet.consulter, qui exclut
+// l'associé-fondateur pour un motif sans rapport (taux horaires) — voir
+// permissions.js.
+router.get("/", requirePermission("echeances_admin.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.id, e.categorie, e.libelle, e.periodicite, e.jour_echeance, e.mois_echeance,

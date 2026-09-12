@@ -79,6 +79,19 @@ describe("Échéances administratives du cabinet — permissions", () => {
     expect(res.body.length).toBeGreaterThanOrEqual(9);
   });
 
+  // 12/09/2026 — déplacé d'Échéances (echeancier.consulter, ouvert à
+  // quasiment tout le cabinet) vers Cabinet (echeances_admin.consulter,
+  // resserré à la direction/comptabilité) : un collaborateur a bien
+  // echeancier.consulter (voit les délais de dossiers), mais ne doit PAS
+  // voir les échéances administratives du cabinet.
+  test("consultation refusée (403) à un collaborateur malgré son accès large à Échéances", async () => {
+    const collabToken = await creerUtilisateurRole("collaborateur");
+    const echeancier = await request(app).get("/api/evenements").set("Authorization", `Bearer ${collabToken}`);
+    expect(echeancier.status).toBe(200); // a bien accès à Échéances (délais de dossiers)
+    const echeancesAdmin = await request(app).get("/api/echeances-administratives").set("Authorization", `Bearer ${collabToken}`);
+    expect(echeancesAdmin.status).toBe(403); // mais pas aux échéances administratives
+  });
+
   test("création refusée (403) à un collaborateur, autorisée (201) à un associé", async () => {
     const collabToken = await creerUtilisateurRole("collaborateur");
     const refus = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${collabToken}`)
