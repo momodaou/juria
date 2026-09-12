@@ -106,12 +106,12 @@ const CATALOGUE = [
   // Ne gate QUE la vue d'équipe/échéances RH (supervision) — pas congés/
   // présence, qui restent du libre-service même si le module est masqué du
   // menu pour un profil donné (voir cabinet.js).
-  { code: "cabinet.consulter", module: "Cabinet", label: "Consulter l'équipe et les échéances RH", restreinte: true },
-  { code: "cabinet.conge.demander", module: "Cabinet", label: "Demander un congé" },
-  { code: "cabinet.conge.decision", module: "Cabinet", label: "Valider / rejeter un congé", restreinte: true },
-  { code: "cabinet.presence.pointer", module: "Cabinet", label: "Pointer (présence)" },
-  { code: "cabinet.bulletin.generer", module: "Cabinet", label: "Générer un bulletin", restreinte: true },
-  { code: "cabinet.bulletins.consulter", module: "Cabinet", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
+  { code: "cabinet.consulter", module: "Cabinet (RH)", label: "Consulter l'équipe et les échéances RH", restreinte: true },
+  { code: "cabinet.conge.demander", module: "Cabinet (RH)", label: "Demander un congé" },
+  { code: "cabinet.conge.decision", module: "Cabinet (RH)", label: "Valider / rejeter un congé", restreinte: true },
+  { code: "cabinet.presence.pointer", module: "Cabinet (RH)", label: "Pointer (présence)" },
+  { code: "cabinet.bulletin.generer", module: "Cabinet (RH)", label: "Générer un bulletin", restreinte: true },
+  { code: "cabinet.bulletins.consulter", module: "Cabinet (RH)", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },
   // Échéances administratives du cabinet (fiscal/social/ordinal…), pas de
   // dossier — déplacées d'Échéances vers Cabinet le 12/09/2026 (demande
   // explicite de l'utilisateur, confidentialité : Échéances était ouvert à
@@ -121,8 +121,8 @@ const CATALOGUE = [
   // volontairement l'associé-fondateur (confidentialité des taux horaires,
   // 29/08/2026) — un motif sans rapport avec les obligations fiscales, qui
   // n'ont pas à hériter de cette exclusion précise.
-  { code: "echeances_admin.consulter", module: "Cabinet", label: "Consulter les échéances administratives du cabinet", restreinte: true },
-  { code: "echeances_admin.gerer", module: "Cabinet", label: "Gérer les échéances administratives du cabinet", restreinte: true },
+  { code: "echeances_admin.consulter", module: "Cabinet (RH)", label: "Consulter les échéances administratives du cabinet", restreinte: true },
+  { code: "echeances_admin.gerer", module: "Cabinet (RH)", label: "Gérer les échéances administratives du cabinet", restreinte: true },
 
   // Pas de route GET à garder ici (chaque capacité IA est un POST déjà
   // individuellement gardé) — ia.consulter sert uniquement à masquer

@@ -1997,3 +1997,13 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : suite étendue à **229/229** (1 nouveau test confirmant explicitement la faille corrigée — un collaborateur garde l'accès à `/api/evenements` (délais de dossiers) mais reçoit désormais 403 sur `/api/echeances-administratives`), build Angular OK. **Vérification visuelle réelle** (Docker + Playwright, comptes associé et collaborateur) : la section a bien disparu d'Échéances et apparaît dans Cabinet pour l'associé ; le collaborateur ne voit même plus l'entrée de menu « Cabinet » (`cabinet.consulter` déjà resserré depuis le 29/08/2026, défense en profondeur) ; alignement des 3 liens d'action confirmé propre ; cycle complet de « Marquer traité » avec l'invite testé en direct (montant 45 000 saisi, date annuelle avancée d'un an, « Payé » affiché correctement).
 
 **Déploiement production — effectué et vérifié le 12/09/2026** (accord utilisateur, « ok »). Migration passée en un seul import (simple `INSERT INTO permissions_role`, sans risque). Fichier uploadé sur `gs://jfc-juria_cloudbuild/tmp-migrations/`, importé via `gcloud sql import sql juria-pg ... --user=postgres` (réussi du premier coup), supprimé après import. API `juria-00076-v92` (précédente `juria-00075-7h5`), frontend `juria-web-00085-nts` (précédente `juria-web-00084-9mr`). Vérifié : `/health` de l'API et page d'accueil du frontend en `200`.
+
+## 2026-09-12 — Correctif : collision de nom « Cabinet » (menu ⊃ groupe) après le renommage de la veille
+
+**Contexte** : l'utilisateur signale que le groupe de menu « Cabinet » (existant depuis le 30/08/2026 — regroupe Accès & permissions, Cabinet, Portail client, Mon compte) contient désormais un sous-menu **au même nom** « Cabinet », suite au renommage « Cabinet (RH) » → « Cabinet » fait la veille dans la même passe que le déplacement des échéances administratives.
+
+**Fait** : renommage annulé — l'écran redevient **« Cabinet (RH) »** (menu, titre de page `<h1>`, et les 8 libellés de « module » du catalogue de permissions affichés dans la Matrice, pour rester cohérent). Le groupe de menu « Cabinet » (préexistant, pas touché) n'entre donc plus en collision avec aucun de ses sous-menus. Le renommage « Échéancier » → « Échéances » de la veille, lui, ne posait aucun problème de ce type (aucun groupe « Échéancier ») et reste inchangé.
+
+**Vérification** : 229/229 tests (aucun changement fonctionnel, uniquement des libellés), build Angular OK, chaîne « Cabinet (RH) » confirmée présente dans le bundle compilé.
+
+**Déploiement** : pas encore fait à ce stade — à confirmer avec l'utilisateur avant tout déploiement production.
