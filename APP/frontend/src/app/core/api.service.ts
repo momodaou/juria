@@ -212,6 +212,15 @@ export class ApiService {
     return this.http.delete<any>(`${this.base}/api/dossiers/${dossierId}/parties/${partieId}`);
   }
 
+  // Intervenant(s) sur un dossier (12/09/2026) — distinct du responsable
+  // (réservé aux avocats) : n'importe quel statut, pluralité libre.
+  ajouterIntervenant(dossierId: string, payload: { utilisateur_id: string; role_dossier?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/intervenants`, payload);
+  }
+  supprimerIntervenant(dossierId: string, utilisateurId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/dossiers/${dossierId}/intervenants/${utilisateurId}`);
+  }
+
   clients(recherche = '', kyc = ''): Observable<any[]> {
     const params = new URLSearchParams();
     if (recherche) params.set('q', recherche);

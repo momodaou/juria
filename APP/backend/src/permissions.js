@@ -33,6 +33,7 @@ const CATALOGUE = [
   { code: "dossiers.clients_additionnels.gerer", module: "Dossiers 360", label: "Ajouter/retirer un client supplémentaire sur le dossier" },
   { code: "dossiers.instances.gerer", module: "Dossiers 360", label: "Ajouter/modifier une instance (1re instance, appel, cassation…)" },
   { code: "dossiers.parties.gerer", module: "Dossiers 360", label: "Ajouter/rectifier/retirer une partie adverse après la création" },
+  { code: "dossiers.intervenants.gerer", module: "Dossiers 360", label: "Ajouter/retirer un intervenant sur le dossier" },
 
   { code: "conflits.soumettre", module: "Nouveau dossier", label: "Soumettre un contrôle de conflit" },
   { code: "conflits.decision", module: "Nouveau dossier", label: "Décider sur un conflit potentiel", restreinte: true },

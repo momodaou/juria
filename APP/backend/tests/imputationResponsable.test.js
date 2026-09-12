@@ -1,14 +1,24 @@
 // JURIA — imputation du responsable d'un dossier à un profil subordonné
 // (30/08/2026, précision explicite de l'utilisateur, suite de l'exercice
 // « pour chaque profil ») : « seul l'avocat associé peut imputer un
-// dossier à un profil [Of Counsel, collaborateur, avocat stagiaire,
-// juriste, stagiaire], sur tout dossier, classique ou pro bono. »
+// dossier à un profil [Of Counsel, collaborateur, avocat stagiaire], sur
+// tout dossier, classique ou pro bono. »
 //
 // Un collaborateur garde la capacité de CRÉER un dossier (dossiers.creer
 // reste ouvert) — il ne peut simplement pas se désigner, ni désigner un
-// autre profil subordonné, comme responsable : ce choix doit venir d'un
-// compte associé. Aucune restriction sur les profils hors de cette liste
-// (associé lui-même, rôles administratifs).
+// autre profil avocat subordonné, comme responsable : ce choix doit venir
+// d'un compte associé.
+//
+// Complété le 12/09/2026 (option séparation « Responsable » / « Intervenant(s) »,
+// demande explicite de l'utilisateur) : le responsable d'un dossier doit
+// désormais TOUJOURS être un avocat (associé, associé-fondateur, Of
+// Counsel, avocat stagiaire, collaborateur) — un juriste ou un stagiaire
+// non-avocat ne peut plus être désigné responsable, quel que soit
+// l'appelant (même un associé ne le peut plus). Contrôle NON rétroactif :
+// seul un nouveau choix (création ou réattribution) est vérifié. Ce
+// contrôle avocat-only est distinct et s'exécute AVANT la restriction
+// d'imputation ci-dessus, qui ne concerne plus que les 3 vrais profils
+// avocat subordonnés (Of Counsel, collaborateur, avocat stagiaire).
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const request = require("supertest");
@@ -61,8 +71,48 @@ function creerDossier(tokenAppelant, payload) {
     });
 }
 
-describe("Imputation du responsable — réservée aux associés pour les profils subordonnés (30/08/2026)", () => {
-  test.each(["of_counsel", "collaborateur", "avocat_stagiaire", "juriste", "stagiaire"])(
+describe("Responsable dossier réservé aux avocats (12/09/2026)", () => {
+  test.each(["juriste", "stagiaire"])(
+    "%s ne peut jamais être désigné responsable, même par un associé (400)",
+    async (role) => {
+      const clientId = await creerClient();
+      const nonAvocat = await creerUtilisateurRole(role);
+      const res = await creerDossier(token, { client_id: clientId, responsable_id: nonAvocat.id });
+      expect(res.status).toBe(400);
+    }
+  );
+
+  test("un profil administratif (ex. admin_general) ne peut pas être désigné responsable (400)", async () => {
+    const clientId = await creerClient();
+    const admin = await creerUtilisateurRole("admin_general");
+    const res = await creerDossier(admin.token, { client_id: clientId, responsable_id: admin.id });
+    expect(res.status).toBe(400);
+  });
+
+  test("PUT /api/dossiers/:id : réattribuer le responsable à un juriste est refusé, même par un associé (400)", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
+    expect(creation.status).toBe(201);
+
+    const juriste = await creerUtilisateurRole("juriste");
+    const maj = await request(app)
+      .put(`/api/dossiers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`) // token = associe (test principal)
+      .send({ responsable_id: juriste.id });
+    expect(maj.status).toBe(400);
+  });
+
+  test("un avocat associé peut toujours être désigné responsable (201)", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const res = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("Imputation du responsable — réservée aux associés pour les profils avocat subordonnés (30/08/2026, narrowé le 12/09/2026)", () => {
+  test.each(["of_counsel", "collaborateur", "avocat_stagiaire"])(
     "%s ne peut pas se désigner lui-même comme responsable (403)",
     async (role) => {
       const clientId = await creerClient();
@@ -88,21 +138,22 @@ describe("Imputation du responsable — réservée aux associés pour les profil
     expect(res.status).toBe(201);
   });
 
-  test("un associé peut imputer un dossier à un profil subordonné (201)", async () => {
+  test("un associé peut imputer un dossier à un profil avocat subordonné (201)", async () => {
     const clientId = await creerClient();
     const collaborateur = await creerUtilisateurRole("collaborateur");
     const res = await creerDossier(token, { client_id: clientId, responsable_id: collaborateur.id });
     expect(res.status).toBe(201);
   });
 
-  test("aucune restriction hors des 5 profils listés (ex. admin_general)", async () => {
+  test("aucune restriction d'imputation hors des 3 profils avocat subordonnés listés (ex. un juriste peut désigner un associé)", async () => {
     const clientId = await creerClient();
-    const admin = await creerUtilisateurRole("admin_general");
-    const res = await creerDossier(admin.token, { client_id: clientId, responsable_id: admin.id });
+    const juriste = await creerUtilisateurRole("juriste");
+    const associe = await creerUtilisateurRole("associe");
+    const res = await creerDossier(juriste.token, { client_id: clientId, responsable_id: associe.id });
     expect(res.status).toBe(201);
   });
 
-  test("PUT /api/dossiers/:id : réattribution à un profil subordonné refusée pour un non-associé", async () => {
+  test("PUT /api/dossiers/:id : réattribution à un profil avocat subordonné refusée pour un non-associé", async () => {
     const clientId = await creerClient();
     const associe = await creerUtilisateurRole("associe");
     const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
@@ -128,5 +179,61 @@ describe("Imputation du responsable — réservée aux associés pour les profil
       .set("Authorization", `Bearer ${token}`) // token = associe (test principal)
       .send({ responsable_id: collaborateur.id });
     expect(maj.status).toBe(400);
+  });
+});
+
+describe("Intervenant(s) sur un dossier (12/09/2026)", () => {
+  test("ajouter puis retirer un intervenant non-avocat (juriste) sur un dossier", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
+    expect(creation.status).toBe(201);
+
+    const juriste = await creerUtilisateurRole("juriste");
+    const ajout = await request(app)
+      .post(`/api/dossiers/${creation.body.id}/intervenants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ utilisateur_id: juriste.id, role_dossier: "Juriste en soutien" });
+    expect(ajout.status).toBe(201);
+
+    const fiche = await request(app)
+      .get(`/api/dossiers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(fiche.status).toBe(200);
+    expect(fiche.body.intervenants).toEqual([
+      expect.objectContaining({ utilisateur_id: juriste.id, statut: "juriste", role_dossier: "Juriste en soutien" }),
+    ]);
+
+    const retrait = await request(app)
+      .delete(`/api/dossiers/${creation.body.id}/intervenants/${juriste.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(retrait.status).toBe(204);
+
+    const ficheApres = await request(app)
+      .get(`/api/dossiers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(ficheApres.body.intervenants).toEqual([]);
+  });
+
+  test("retirer un intervenant absent renvoie 404", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
+    const autre = await creerUtilisateurRole("juriste");
+    const res = await request(app)
+      .delete(`/api/dossiers/${creation.body.id}/intervenants/${autre.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("ajouter un intervenant sans utilisateur_id renvoie 400", async () => {
+    const clientId = await creerClient();
+    const associe = await creerUtilisateurRole("associe");
+    const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id });
+    const res = await request(app)
+      .post(`/api/dossiers/${creation.body.id}/intervenants`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
   });
 });

@@ -77,11 +77,18 @@ async function creerDossier(tokenAppelant, payload) {
 // vérifiable), mais ce qui l'est : le responsable attribué doit être un
 // associé, quel que soit le rôle du compte qui soumet le formulaire.
 describe("Déclaration pro bono — dossiers.pro_bono.declarer (qui peut soumettre) + responsable obligatoirement associé (30/08/2026)", () => {
+  // Responsable fixé à un associé (avocat) dans ces 2 tests : depuis le
+  // 12/09/2026, un responsable non-avocat (assistante/admin_general) est
+  // désormais refusé (400) universellement, AVANT même de vérifier la
+  // permission de soumission — cela masquerait ce qu'on veut vérifier ici
+  // (la permission dossiers.pro_bono.declarer du compte qui soumet, pas le
+  // statut du responsable).
   test("refusée (403) pour un rôle non-avocat (assistante) — n'a pas la permission de soumettre", async () => {
     const clientId = await creerClient();
     const assistante = await creerUtilisateurRole("assistante");
+    const associe = await creerUtilisateurRole("associe");
     const res = await creerDossier(assistante.token, {
-      client_id: clientId, responsable_id: assistante.id, pro_bono: true,
+      client_id: clientId, responsable_id: associe.id, pro_bono: true,
     });
     expect(res.status).toBe(403);
   });
@@ -89,8 +96,9 @@ describe("Déclaration pro bono — dossiers.pro_bono.declarer (qui peut soumett
   test("refusée (403) pour un administrateur (admin_general) — technique, pas avocat", async () => {
     const clientId = await creerClient();
     const admin = await creerUtilisateurRole("admin_general");
+    const associe = await creerUtilisateurRole("associe");
     const res = await creerDossier(admin.token, {
-      client_id: clientId, responsable_id: admin.id, pro_bono: true,
+      client_id: clientId, responsable_id: associe.id, pro_bono: true,
     });
     expect(res.status).toBe(403);
   });

@@ -280,10 +280,11 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
                 <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option>
               }
             </select>
+            <span class="hint">Le responsable doit toujours être un avocat (Associé, Associé-fondateur, Of Counsel, Avocat stagiaire, Collaborateur) — un juriste ou un stagiaire non-avocat pourra être ajouté en tant qu'Intervenant depuis la fiche dossier, une fois créé.</span>
             @if (dossier.pro_bono) {
               <span class="hint">Un dossier pro bono ne peut être attribué qu'à un avocat associé — liste filtrée.</span>
             } @else if (!estAssocie()) {
-              <span class="hint">Seul un avocat associé peut désigner un collaborateur/stagiaire/juriste comme responsable — liste filtrée aux associés.</span>
+              <span class="hint">Seul un avocat associé peut désigner un Of Counsel/collaborateur/avocat stagiaire comme responsable — liste filtrée aux associés.</span>
             }
           </div>
         </div>
@@ -457,23 +458,31 @@ export class OuvertureComponent implements OnInit {
     return !!(this.dossier.client_id && this.dossier.responsable_id && this.intituleDossier.trim());
   }
 
-  // Deux règles, filtrées ensemble ici (30/08/2026, précisions de
-  // l'utilisateur) — indicatif côté écran, la vraie garde est dans
-  // POST/PUT /api/dossiers :
-  //  - un dossier pro bono ne peut être attribué qu'à un associé ;
+  // Trois règles, filtrées ensemble ici — indicatif côté écran, la vraie
+  // garde est dans POST/PUT /api/dossiers :
+  //  - le responsable doit toujours être un avocat (12/09/2026, demande
+  //    explicite de l'utilisateur — voir verifierResponsableEstAvocat côté
+  //    serveur) : un juriste ou un stagiaire non-avocat ne peut plus être
+  //    désigné, quel que soit qui fait le choix. Il peut en revanche être
+  //    ajouté comme Intervenant une fois le dossier créé (fiche dossier) ;
+  //  - un dossier pro bono ne peut être attribué qu'à un associé
+  //    (30/08/2026) ;
   //  - sur tout dossier, seul un associé peut imputer la responsabilité à
-  //    un profil subordonné (Of Counsel, collaborateur, avocat stagiaire,
-  //    juriste, stagiaire) — un compte non-associé ne peut donc désigner
-  //    qu'un associé comme responsable, jamais lui-même ni un collègue.
+  //    un profil d'avocat subordonné (Of Counsel, collaborateur, avocat
+  //    stagiaire) — un compte non-associé ne peut donc désigner qu'un
+  //    associé comme responsable, jamais lui-même ni un collègue.
   estAssocie(): boolean {
     return ['associe', 'associe_fondateur'].includes(this.auth.utilisateur()?.role ?? '');
   }
 
+  private readonly rolesAvocat = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
+
   responsablesDisponibles(): any[] {
+    const base = this.utilisateurs().filter((u) => this.rolesAvocat.includes(u.role));
     if (this.dossier.pro_bono || !this.estAssocie()) {
-      return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+      return base.filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
     }
-    return this.utilisateurs();
+    return base;
   }
 
   proBonoChange(): void {

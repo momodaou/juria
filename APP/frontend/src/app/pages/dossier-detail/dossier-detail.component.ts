@@ -265,8 +265,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <select class="in" [(ngModel)]="edit.responsable_id" name="editResponsable">
                 @for (u of responsablesDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
               </select>
+              <span class="hint">Le responsable doit toujours être un avocat (Associé, Associé-fondateur, Of Counsel, Avocat stagiaire, Collaborateur) — un juriste ou un stagiaire non-avocat peut être ajouté en tant qu'Intervenant ci-dessous.</span>
               @if (!estAssocie()) {
-                <span class="hint">Seul un avocat associé peut désigner un collaborateur/stagiaire/juriste comme responsable — liste filtrée aux associés.</span>
+                <span class="hint">Seul un avocat associé peut désigner un Of Counsel/collaborateur/avocat stagiaire comme responsable — liste filtrée aux associés.</span>
               }
             </div>
           </div>
@@ -481,6 +482,42 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             </button>
           </div>
           @if (erreurPartie()) { <p class="err">{{ erreurPartie() }}</p> }
+        }
+      </section>
+
+      <section class="panel">
+        <h3>Intervenant(s)</h3>
+        <p class="muted">Personnes qui travaillent sur le dossier sans en être responsables (juriste collaborateur, avocat en soutien…) — n'importe quel statut, pluralité libre. Distinct du Responsable ci-dessus.</p>
+        @if (d.intervenants?.length) {
+          <table>
+            <tr><th>Nom</th><th>Statut</th><th>Rôle sur le dossier</th><th></th></tr>
+            @for (i of d.intervenants; track i.utilisateur_id) {
+              <tr>
+                <td>{{ i.nom }}</td>
+                <td>{{ i.statut }}</td>
+                <td>{{ i.role_dossier }}</td>
+                <td>
+                  @if (auth.peut('dossiers.intervenants.gerer')) {
+                    <button class="lien" (click)="retirerIntervenant(i.utilisateur_id)">Retirer</button>
+                  }
+                </td>
+              </tr>
+            }
+          </table>
+        } @else { <p class="muted">Aucun intervenant enregistré.</p> }
+
+        @if (auth.peut('dossiers.intervenants.gerer')) {
+          <div class="upload">
+            <select class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenant.utilisateur_id" name="niUtilisateur">
+              <option value="">Choisir une personne…</option>
+              @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+            </select>
+            <input class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenant.role_dossier" name="niRole" placeholder="Rôle (ex. collaborateur)" />
+            <button class="btn" (click)="ajouterIntervenant()" [disabled]="!nouvelIntervenant.utilisateur_id || ajoutIntervenantEnCours()">
+              {{ ajoutIntervenantEnCours() ? 'Ajout…' : '+ Ajouter un intervenant' }}
+            </button>
+          </div>
+          @if (erreurIntervenant()) { <p class="err">{{ erreurIntervenant() }}</p> }
         }
       </section>
 
@@ -805,18 +842,28 @@ export class DossierDetailComponent implements OnInit {
   readonly utilisateurs = signal<any[]>([]);
   edit: any = {};
 
-  // Seul un associé peut imputer un dossier à un profil subordonné
-  // (30/08/2026, précision de l'utilisateur) — indicatif côté écran, la
-  // vraie garde est dans PUT /api/dossiers/:id.
+  // Seul un associé peut imputer un dossier à un profil d'avocat
+  // subordonné (30/08/2026, précision de l'utilisateur) — indicatif côté
+  // écran, la vraie garde est dans PUT /api/dossiers/:id.
   estAssocie(): boolean {
     return ['associe', 'associe_fondateur'].includes(this.auth.utilisateur()?.role ?? '');
   }
 
+  // Responsable dossier réservé aux avocats (12/09/2026, demande explicite
+  // de l'utilisateur — voir verifierResponsableEstAvocat côté serveur,
+  // dossiers.js) : un juriste ou un stagiaire non-avocat ne peut plus être
+  // désigné, quel que soit qui fait le choix. Distinct des Intervenant(s)
+  // ci-dessous, ouverts à n'importe quel statut. Contrôle NON rétroactif :
+  // un dossier déjà en base avec un responsable non-avocat n'est pas
+  // touché tant qu'il n'est pas réattribué.
+  private readonly rolesAvocat = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
+
   responsablesDisponibles(): any[] {
+    const base = this.utilisateurs().filter((u) => this.rolesAvocat.includes(u.role));
     if (!this.estAssocie()) {
-      return this.utilisateurs().filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
+      return base.filter((u) => u.role === 'associe' || u.role === 'associe_fondateur');
     }
-    return this.utilisateurs();
+    return base;
   }
   readonly phases = ['consultation', 'ouverture', 'mise_en_etat', 'plaidoirie', 'decision', 'execution', 'recours', 'cloture'];
   // Statut procédure (19/08/2026) — liste_valeurs déjà utilisée à la
@@ -1103,6 +1150,40 @@ export class DossierDetailComponent implements OnInit {
     this.api.retirerPartieDossier(this.id, partieId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreurPartie.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
+  // Intervenant(s) sur un dossier (12/09/2026) — table dossier_intervenants
+  // présente depuis l'origine du schéma, jamais exposée à l'écran avant
+  // cette passe. Distinct du Responsable (avocat uniquement) — n'importe
+  // quel statut, pluralité libre.
+  nouvelIntervenant: any = { utilisateur_id: '', role_dossier: '' };
+  readonly ajoutIntervenantEnCours = signal(false);
+  readonly erreurIntervenant = signal('');
+
+  ajouterIntervenant(): void {
+    if (!this.nouvelIntervenant.utilisateur_id) return;
+    this.erreurIntervenant.set('');
+    this.ajoutIntervenantEnCours.set(true);
+    this.api.ajouterIntervenant(this.id, {
+      utilisateur_id: this.nouvelIntervenant.utilisateur_id,
+      role_dossier: this.nouvelIntervenant.role_dossier || undefined,
+    }).subscribe({
+      next: () => {
+        this.ajoutIntervenantEnCours.set(false);
+        this.nouvelIntervenant = { utilisateur_id: '', role_dossier: '' };
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => { this.ajoutIntervenantEnCours.set(false); this.erreurIntervenant.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
+  }
+
+  retirerIntervenant(utilisateurId: string): void {
+    if (!window.confirm('Retirer cet intervenant du dossier ?')) return;
+    this.erreurIntervenant.set('');
+    this.api.supprimerIntervenant(this.id, utilisateurId).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreurIntervenant.set(e?.error?.error ?? 'Retrait impossible.'),
     });
   }
 

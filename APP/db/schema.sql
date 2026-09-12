@@ -2757,3 +2757,34 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
  ('admin_it','echeances_admin.consulter',TRUE),
  ('comptable','echeances_admin.consulter',TRUE);
 -- ============ FIN ÉCHÉANCES ADMINISTRATIVES DÉPLACÉES VERS CABINET ============
+
+-- =====================================================================
+--  RESPONSABLE DOSSIER RÉSERVÉ AUX AVOCATS + INTERVENANT(S) (12/09/2026)
+--
+--  Demande explicite de l'utilisateur : distinguer le « Responsable
+--  dossier » (déontologiquement réservé à un avocat — associé,
+--  associé-fondateur, Of Counsel, avocat stagiaire, collaborateur) du
+--  « Porteur »/« Intervenant(s) » (n'importe quel statut, ex. juriste
+--  collaborateur, peut travailler sur le dossier sans en être
+--  responsable). Nom final retenu par l'utilisateur : « Intervenant(s) ».
+--
+--  Contrôle NON rétroactif (décision explicite) : la règle avocat-only
+--  n'est vérifiée qu'à la création/modification du responsable, aucune
+--  correction forcée des dossiers déjà en base avec un responsable
+--  non-avocat (autorisé par l'ancienne règle).
+--
+--  dossier_intervenants existait déjà dans le schéma depuis l'origine
+--  (lue uniquement par facturePdf.js pour « Dossier suivi par », jamais
+--  de route d'écriture/écran) — juste exposée ici via une nouvelle
+--  permission dédiée, ouverte à tous les 13 rôles par défaut (ajouter/
+--  retirer un intervenant n'a pas la sensibilité de l'attribution du
+--  responsable, laissée sans restriction particulière comme les autres
+--  actions de gestion courante de la fiche dossier, ex.
+--  dossiers.parties.gerer/dossiers.clients_additionnels.gerer).
+-- =====================================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY['dossiers.intervenants.gerer']) AS a
+ON CONFLICT (role, action_code) DO NOTHING;
+-- ============ FIN RESPONSABLE DOSSIER AVOCAT-ONLY + INTERVENANT(S) ============

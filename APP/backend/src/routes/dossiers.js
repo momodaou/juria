@@ -4,16 +4,39 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
-// Imputation d'un dossier à un profil subordonné : réservée aux avocats
-// associés (30/08/2026, précision explicite de l'utilisateur — « seul
-// l'avocat associé peut imputer un dossier à un profil » — parmi Of
-// Counsel/collaborateur/avocat stagiaire/juriste/stagiaire, sur tout
+// Responsable dossier réservé aux avocats (12/09/2026, demande explicite de
+// l'utilisateur) : seul un statut d'avocat peut porter la responsabilité
+// déontologique d'un dossier — un juriste ou un stagiaire non-avocat peut y
+// travailler (voir dossier_intervenants plus bas) mais pas en être le
+// responsable, quel que soit qui fait la désignation (même un associé ne
+// peut plus désigner un juriste). Contrôle NON rétroactif — décision
+// explicite : les dossiers déjà en base avec un responsable non-avocat
+// (autorisé par l'ancienne règle, voir ci-dessous) restent tels quels
+// jusqu'à leur prochaine modification, pas de correction forcée en masse.
+const ROLES_AVOCAT = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
+
+async function verifierResponsableEstAvocat(poolOuClient, responsableId) {
+  if (!responsableId) return null;
+  const { rows: [resp] } = await poolOuClient.query("SELECT role FROM utilisateurs WHERE id = $1", [responsableId]);
+  if (resp && !ROLES_AVOCAT.includes(resp.role)) {
+    return "Le responsable d'un dossier doit être un avocat (Associé, Associé-fondateur, Of Counsel, Avocat stagiaire, Collaborateur). Un juriste ou un stagiaire non-avocat peut être ajouté comme intervenant sur le dossier, pas comme responsable.";
+  }
+  return null;
+}
+
+// Imputation d'un dossier à un profil d'avocat subordonné : réservée aux
+// avocats associés (30/08/2026, précision explicite de l'utilisateur —
+// « seul l'avocat associé peut imputer un dossier à un profil » — sur tout
 // dossier, classique ou pro bono). Un collaborateur peut toujours CRÉER un
 // dossier (dossiers.creer reste ouvert), mais ne peut pas se désigner —
 // ni désigner un autre profil subordonné — comme responsable : ce choix
-// doit venir d'un compte associé. Aucune restriction sur les profils hors
-// de cette liste (associé lui-même, administratif...).
-const PROFILS_SUBORDONNES = ["of_counsel", "collaborateur", "avocat_stagiaire", "juriste", "stagiaire"];
+// doit venir d'un compte associé. Narrowé le 12/09/2026 (11→3 statuts,
+// juriste/stagiaire retirés) : ces deux profils sont désormais interdits
+// comme responsable pour TOUT appelant (voir verifierResponsableEstAvocat
+// ci-dessus) — ce contrôle-ci ne concerne plus que les vrais statuts
+// avocat subordonnés à un associé (Of Counsel/collaborateur/avocat
+// stagiaire), pour lesquels le contrôle par appelant reste pertinent.
+const PROFILS_SUBORDONNES = ["of_counsel", "collaborateur", "avocat_stagiaire"];
 
 // Vérifie l'imputation du responsable proposé ; renvoie un message d'erreur
 // (à répondre en 403) ou null si c'est autorisé. `poolOuClient` accepte
@@ -22,7 +45,7 @@ async function verifierImputationResponsable(poolOuClient, responsableId, roleAp
   if (!responsableId) return null;
   const { rows: [resp] } = await poolOuClient.query("SELECT role FROM utilisateurs WHERE id = $1", [responsableId]);
   if (resp && PROFILS_SUBORDONNES.includes(resp.role) && !["associe", "associe_fondateur"].includes(roleAppelant)) {
-    return "Seul un avocat associé peut attribuer un dossier à ce profil (Of Counsel, collaborateur, avocat stagiaire, juriste, stagiaire).";
+    return "Seul un avocat associé peut attribuer un dossier à ce profil (Of Counsel, collaborateur, avocat stagiaire).";
   }
   return null;
 }
@@ -190,10 +213,18 @@ router.get("/:id", async (req, res) => {
       "SELECT id, role, denomination, conseil FROM dossier_parties WHERE dossier_id = $1",
       [id]
     );
-    const equipe = await pool.query(
-      `SELECT u.prenom || ' ' || u.nom AS nom, di.role_dossier
+    // Intervenants (12/09/2026, gap comblé) : la table existait depuis le
+    // premier schéma, lue uniquement par facturePdf.js (« Dossier suivi
+    // par ») via sa propre requête — jamais exposée à l'écran ni
+    // modifiable. Distinct du responsable (dossiers.responsable_id,
+    // réservé aux avocats) : un intervenant peut être n'importe quel
+    // statut (juriste, stagiaire, autre avocat en soutien…), pluralité
+    // libre.
+    const intervenants = await pool.query(
+      `SELECT u.id AS utilisateur_id, u.prenom || ' ' || u.nom AS nom, u.role AS statut, di.role_dossier
        FROM dossier_intervenants di JOIN utilisateurs u ON u.id = di.utilisateur_id
-       WHERE di.dossier_id = $1`,
+       WHERE di.dossier_id = $1
+       ORDER BY u.prenom, u.nom`,
       [id]
     );
     // Clients additionnels (18/08/2026) : un dossier peut désormais
@@ -213,7 +244,7 @@ router.get("/:id", async (req, res) => {
       [id]
     );
     res.json({
-      ...d.rows[0], parties: parties.rows, equipe: equipe.rows,
+      ...d.rows[0], parties: parties.rows, intervenants: intervenants.rows,
       clients_additionnels: clientsAdditionnels.rows, instances: instances.rows,
     });
   } catch (e) {
@@ -301,6 +332,8 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
   const proBono = !!b.pro_bono;
   try {
+    const erreurAvocat = await verifierResponsableEstAvocat(pool, b.responsable_id);
+    if (erreurAvocat) return res.status(400).json({ error: erreurAvocat });
     const erreurImputation = await verifierImputationResponsable(pool, b.responsable_id, req.user.role);
     if (erreurImputation) return res.status(403).json({ error: erreurImputation });
 
@@ -423,6 +456,8 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // TOUJOURS être un associé, quel que soit l'appelant (règle déjà en
     // place à la création, étendue ici à la réattribution).
     if (b.responsable_id) {
+      const erreurAvocat = await verifierResponsableEstAvocat(pool, b.responsable_id);
+      if (erreurAvocat) return res.status(400).json({ error: erreurAvocat });
       const erreurImputation = await verifierImputationResponsable(pool, b.responsable_id, req.user.role);
       if (erreurImputation) return res.status(403).json({ error: erreurImputation });
       const { rows: [actuelProBono] } = await pool.query("SELECT pro_bono FROM dossiers WHERE id = $1", [req.params.id]);
@@ -661,6 +696,46 @@ router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer")
 router.delete("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer"), async (req, res) => {
   try {
     await pool.query("DELETE FROM dossier_parties WHERE id = $1 AND dossier_id = $2", [req.params.partieId, req.params.id]);
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/dossiers/:id/intervenants  { utilisateur_id, role_dossier? }
+// Ajoute un intervenant (12/09/2026, gap comblé — voir plus haut) —
+// n'importe quel statut, pas seulement avocat, contrairement au
+// responsable. `role_dossier` texte libre (ex. « Juriste en soutien »),
+// 'collaborateur' par défaut si omis (comportement d'origine du schéma).
+// ON CONFLICT : réinscrire une personne déjà intervenante met simplement à
+// jour son role_dossier plutôt que d'échouer sur la clé composite.
+router.post("/:id/intervenants", requirePermission("dossiers.intervenants.gerer"), async (req, res) => {
+  const { utilisateur_id, role_dossier } = req.body || {};
+  if (!utilisateur_id) return res.status(400).json({ error: "utilisateur_id requis" });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO dossier_intervenants (dossier_id, utilisateur_id, role_dossier)
+       VALUES ($1,$2,COALESCE($3,'collaborateur'))
+       ON CONFLICT (dossier_id, utilisateur_id) DO UPDATE SET role_dossier = EXCLUDED.role_dossier
+       RETURNING dossier_id, utilisateur_id, role_dossier`,
+      [req.params.id, utilisateur_id, role_dossier || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/dossiers/:id/intervenants/:utilisateurId
+router.delete("/:id/intervenants/:utilisateurId", requirePermission("dossiers.intervenants.gerer"), async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM dossier_intervenants WHERE dossier_id = $1 AND utilisateur_id = $2",
+      [req.params.id, req.params.utilisateurId]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Intervenant introuvable sur ce dossier" });
     res.status(204).send();
   } catch (e) {
     console.error(e);
