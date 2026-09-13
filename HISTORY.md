@@ -2194,3 +2194,20 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : build Angular OK. **Vérification visuelle réelle** (Docker local + Playwright, compte associé de test) : position de défilement de la page confirmée à `0` avant le clic, `914px` après un clic sur la toute première tuile (« Dossiers actifs », groupe 1) — capture d'écran confirmant le panneau « Dossiers actifs » visible entièrement dans la fenêtre sans la moindre action de l'utilisateur.
 
 **Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).
+
+---
+
+### 13/09/2026 (même session, suite) — Panneau de détail repositionné sous son groupe (option B)
+
+**Contexte** : après le correctif de défilement automatique (entrée précédente), demande explicite de l'utilisateur d'explorer d'autres options pour l'accès au détail des tuiles. 3 pistes présentées :
+- **A. Défilement automatique** (déjà en place) — simple, mais la page "bouge" visiblement.
+- **B. Panneau réaffiché sous le bon groupe de tuiles** — résout le problème à la racine, aucun scroll jamais nécessaire, pas de nouveau composant.
+- **C. Fenêtre modale** — la plus radicale, mais un tout premier composant de ce type dans JURIA (aucune fenêtre modale n'existe ailleurs dans l'appli à ce jour), changement d'expérience plus marqué.
+
+**Choix de l'utilisateur : option B.**
+
+**Implémentation** : le panneau de détail (un seul gabarit) extrait dans `<ng-template #panneauDetail>` (contenu strictement inchangé) et inséré à 3 endroits possibles du template via `<ng-container [ngTemplateOutlet]="panneauDetail" />` — juste après le groupe 1 (« Dossiers & procédure »), juste après le groupe 2 (« Tâches & équipe »), juste après le groupe 3 (« Facturation & rentabilité », à l'intérieur du `@if (auth.peut('factures.consulter'))` existant). Un seul de ces 3 emplacements est actif à la fois, piloté par un nouveau signal calculé `groupeOuvert` (mapping statique `GROUPE_PAR_TYPE: Record<string, 1|2|3>`, une entrée par tuile — à tenir à jour si une tuile change de groupe ou qu'un groupe est ajouté). `ngTemplateOutlet` nécessite l'import `NgTemplateOutlet` de `@angular/common`, ajouté aux imports du composant. Le `@ViewChild('detailSection')`/défilement automatique de l'option A sont conservés tels quels — l'unique instance du panneau (peu importe lequel des 3 emplacements la rend) reste trouvée normalement, et le filet de sécurité reste utile si le panneau déborde malgré tout du bas de l'écran.
+
+**Vérification** : build Angular OK. **Vérification visuelle réelle** (Docker local + Playwright, compte associé de test) — un clic dans chacun des 3 groupes (« Dossiers actifs » groupe 1, « Mes tâches » groupe 2, « CA du mois » groupe 3) confirme à chaque fois : le panneau est positionné dans le DOM juste après le bon groupe (avant le titre du groupe suivant, vérifié par `compareDocumentPosition`) et entièrement visible dans la fenêtre sans le moindre défilement manuel. Capture d'écran du cas groupe 3 confirmant visuellement le panneau juste sous ses propres tuiles.
+
+**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).

@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal, ViewChild, ElementRef, OnInit } from '@angular/core';
-import { DecimalPipe, DatePipe } from '@angular/common';
+import { DecimalPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -267,7 +267,7 @@ const CONFIG: Record<string, TuileConfig> = {
 @Component({
   selector: 'app-cockpit',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink],
+  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink, NgTemplateOutlet],
   providers: [DatePipe, DecimalPipe],
   template: `
     <header class="page-head">
@@ -332,6 +332,14 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (peutVoirDetail('probono')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
       </div>
+      <!-- Panneau de détail réaffiché juste sous SON groupe (13/09/2026,
+           option B retenue par l'utilisateur — plutôt qu'un unique
+           emplacement en fin de page obligeant à redescendre après les
+           tuiles des groupes suivants). Un seul gabarit partagé
+           (#panneauDetail, tout en bas du fichier) inséré ici via
+           ngTemplateOutlet — pas de contenu dupliqué, juste rendu à 3
+           endroits possibles selon le groupe de la tuile ouverte. -->
+      @if (groupeOuvert() === 1) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
 
       <h3 class="groupe-titre">Tâches &amp; équipe</h3>
       <div class="kpis">
@@ -381,6 +389,7 @@ const CONFIG: Record<string, TuileConfig> = {
           </button>
         }
       </div>
+      @if (groupeOuvert() === 2) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
 
       @if (auth.peut('factures.consulter')) {
         <h3 class="groupe-titre">Facturation &amp; rentabilité</h3>
@@ -496,8 +505,10 @@ const CONFIG: Record<string, TuileConfig> = {
             </div>
           }
         </div>
+        @if (groupeOuvert() === 3) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
       }
 
+      <ng-template #panneauDetail>
       @if (ouvert(); as o) {
         <section class="panel detail" #detailSection>
           <div class="detail-head">
@@ -535,6 +546,7 @@ const CONFIG: Record<string, TuileConfig> = {
           }
         </section>
       }
+      </ng-template>
 
       <section class="panel">
         <h3>Délais à venir</h3>
@@ -744,6 +756,21 @@ export class CockpitComponent implements OnInit {
 
   readonly CONFIG = CONFIG;
   readonly ouvert = signal<string | null>(null);
+
+  // Groupe (1/2/3) de chaque tuile — pilote où le panneau de détail partagé
+  // (#panneauDetail) est inséré, juste sous le bon groupe plutôt qu'à un
+  // unique emplacement en fin de page (13/09/2026, option B). À tenir à
+  // jour si une tuile change de groupe ou qu'un groupe est ajouté.
+  private static readonly GROUPE_PAR_TYPE: Record<string, 1 | 2 | 3> = {
+    actifs: 1, urgents: 1, audiences: 1, dormants: 1, probono: 1,
+    mes_taches: 2, taches_urgentes: 2, heures: 2, conges: 2, realisation: 2,
+    impayes: 3, ca_mois: 3, non_rentables: 3, impayes_aging: 3, recouvrement: 3,
+    ca_pole: 3, top_clients: 3, productivite: 3,
+  };
+  readonly groupeOuvert = computed<1 | 2 | 3 | null>(() => {
+    const o = this.ouvert();
+    return o ? (CockpitComponent.GROUPE_PAR_TYPE[o] ?? null) : null;
+  });
   readonly lignesDetail = signal<any[]>([]);
   readonly chargementDetail = signal(false);
   // Doit être un signal (pas une propriété simple) : lignesTriees() est un
