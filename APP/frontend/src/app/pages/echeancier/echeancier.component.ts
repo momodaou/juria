@@ -58,7 +58,12 @@ import { AuthService } from '../../core/auth.service';
     </section>
 
     <section class="panel">
-      <h3>Plan d'action — tâches</h3>
+      <div class="entete-section">
+        <h3>Plan d'action — tâches</h3>
+        <button class="lien" (click)="basculerAnciennesTaches()">
+          {{ afficherAnciennesTaches() ? 'Masquer les tâches anciennes' : 'Voir les tâches plus anciennes' }}
+        </button>
+      </div>
       @if (auth.peut('taches.creer')) {
         <div class="add">
           <input [(ngModel)]="ntTitre" name="nt" placeholder="Nouvelle tâche" style="flex:1;min-width:200px" />
@@ -75,7 +80,15 @@ import { AuthService } from '../../core/auth.service';
               <td>@if (t.dossier_id) { <a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a> } @else { — }</td>
               <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td><span class="tag" [class.done]="t.statut === 'termine'">{{ t.statut }}</span></td>
-              <td>@if (t.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="terminer(t)">Marquer fait</button> }</td>
+              <td>
+                @if (t.statut !== 'termine' && t.statut !== 'annule' && auth.peut('taches.statut.modifier')) {
+                  <button class="lien" (click)="terminer(t)">Marquer fait</button>
+                  <button class="lien" (click)="annulerTache(t)">Annuler</button>
+                }
+                @if (t.statut === 'annule' && auth.peut('taches.statut.modifier')) {
+                  <button class="lien" (click)="reactiverTache(t)">Réactiver</button>
+                }
+              </td>
             </tr>
           }
         </table>
@@ -90,6 +103,8 @@ import { AuthService } from '../../core/auth.service';
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
+    .entete-section{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .entete-section h3{margin:0}
   `],
 })
 export class EcheancierComponent implements OnInit {
@@ -101,6 +116,7 @@ export class EcheancierComponent implements OnInit {
   readonly taches = signal<any[]>([]);
   readonly dossiers = signal<Dossier[]>([]);
   readonly erreur = signal('');
+  readonly afficherAnciennesTaches = signal(false);
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -137,7 +153,16 @@ export class EcheancierComponent implements OnInit {
   charger(): void {
     const dossierId = this.filtreDossierId();
     this.api.evenements(dossierId ?? undefined).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
-    this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
+    const params = new URLSearchParams();
+    if (dossierId) params.set('dossier_id', dossierId);
+    if (this.afficherAnciennesTaches()) params.set('anciennes', 'true');
+    const qs = params.toString();
+    this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
+  }
+
+  basculerAnciennesTaches(): void {
+    this.afficherAnciennesTaches.update((v) => !v);
+    this.charger();
   }
 
   libelleType(code: string): string {
@@ -170,5 +195,16 @@ export class EcheancierComponent implements OnInit {
 
   terminer(t: any): void {
     this.api.majTache(t.id, 'termine').subscribe({ next: () => this.charger(), error: () => {} });
+  }
+
+  // Statut "annulé" (13/09/2026) — voir plan-action.component.ts pour le
+  // même comblement côté kanban.
+  annulerTache(t: any): void {
+    if (!confirm(`Annuler la tâche « ${t.titre} » ?`)) return;
+    this.api.majTache(t.id, 'annule').subscribe({ next: () => this.charger(), error: () => {} });
+  }
+
+  reactiverTache(t: any): void {
+    this.api.majTache(t.id, 'a_faire').subscribe({ next: () => this.charger(), error: () => {} });
   }
 }

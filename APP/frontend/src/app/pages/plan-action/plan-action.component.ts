@@ -10,6 +10,11 @@ const COLONNES = [
   { statut: 'en_cours', titre: 'En cours' },
   { statut: 'a_valider', titre: 'À valider' },
   { statut: 'termine', titre: 'Terminé' },
+  // Statut déjà prévu en base et accepté par l'API depuis toujours, mais
+  // jamais câblé à aucun écran (13/09/2026, gap comblé) — pas dans le
+  // circuit séquentiel à_faire→…→terminé (pas de flèches ←/→ dessus,
+  // voir le template), juste une colonne à part avec un "Réactiver".
+  { statut: 'annule', titre: 'Annulé' },
 ];
 
 @Component({
@@ -22,11 +27,16 @@ const COLONNES = [
         <h1>Plan d'action</h1>
         <p>Suivi des tâches du cabinet.</p>
       </div>
-      @if (auth.peut('taches.creer')) {
-        <button class="btn" (click)="afficherForm.set(!afficherForm())">
-          {{ afficherForm() ? 'Annuler' : '+ Nouvelle tâche' }}
+      <div class="entete-actions">
+        <button class="lien" (click)="basculerAnciennes()">
+          {{ afficherAnciennes() ? 'Masquer les tâches anciennes' : 'Voir les tâches plus anciennes' }}
         </button>
-      }
+        @if (auth.peut('taches.creer')) {
+          <button class="btn" (click)="afficherForm.set(!afficherForm())">
+            {{ afficherForm() ? 'Annuler' : '+ Nouvelle tâche' }}
+          </button>
+        }
+      </div>
     </header>
 
     @if (filtreDossierNumero()) {
@@ -104,9 +114,14 @@ const COLONNES = [
               @if (t.responsable) { <div class="carte-info">{{ t.responsable }}</div> }
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
               <div class="carte-actions">
-                @if (col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
-                @if (col.statut === 'a_valider' && auth.peut('taches.valider')) { <button class="lien" (click)="valider(t)">Valider</button> }
-                @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
+                @if (col.statut === 'annule') {
+                  @if (auth.peut('taches.statut.modifier')) { <button class="lien" (click)="reactiver(t)">Réactiver</button> }
+                } @else {
+                  @if (col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
+                  @if (col.statut === 'a_valider' && auth.peut('taches.valider')) { <button class="lien" (click)="valider(t)">Valider</button> }
+                  @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
+                  @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="annulerTache(t)">Annuler</button> }
+                }
               </div>
             </div>
           } @empty {
@@ -124,8 +139,8 @@ const COLONNES = [
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
     .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
-    .kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-    @media(max-width:980px){.kanban{grid-template-columns:1fr 1fr}}
+    .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+    @media(max-width:1180px){.kanban{grid-template-columns:1fr 1fr}}
     .colonne{background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:12px;min-height:140px}
     .colonne h4{font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.5px;color:var(--grey);margin:0 0 10px;display:flex;justify-content:space-between}
     .compte{background:#fff;border:1px solid var(--line);border-radius:10px;padding:0 7px;font-size:var(--fs-xs)}
@@ -138,6 +153,7 @@ const COLONNES = [
     .vide{font-size:var(--fs-sm)}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
+    .entete-actions{display:flex;gap:14px;align-items:center}
   `],
 })
 export class PlanActionComponent implements OnInit {
@@ -149,6 +165,7 @@ export class PlanActionComponent implements OnInit {
   readonly utilisateurs = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly afficherForm = signal(false);
+  readonly afficherAnciennes = signal(false);
   readonly erreur = signal('');
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
@@ -173,7 +190,16 @@ export class PlanActionComponent implements OnInit {
 
   charger(): void {
     const dossierId = this.filtreDossierId();
-    this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t) });
+    const params = new URLSearchParams();
+    if (dossierId) params.set('dossier_id', dossierId);
+    if (this.afficherAnciennes()) params.set('anciennes', 'true');
+    const qs = params.toString();
+    this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => this.taches.set(t) });
+  }
+
+  basculerAnciennes(): void {
+    this.afficherAnciennes.update((v) => !v);
+    this.charger();
   }
 
   rechercherDossiers(): void {
@@ -214,5 +240,19 @@ export class PlanActionComponent implements OnInit {
       next: () => this.charger(),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Validation impossible (rôle associé requis).'),
     });
+  }
+
+  // Statut "annulé" (13/09/2026) : prévu en base et déjà accepté par
+  // l'API depuis toujours, mais aucun écran ne le proposait — comblé ici.
+  // Jamais destructeur (réversible via "Réactiver"), pas de confirmation
+  // technique requise, mais un simple `confirm()` évite un clic accidentel
+  // à côté des flèches ←/→ voisines.
+  annulerTache(t: any): void {
+    if (!confirm(`Annuler la tâche « ${t.titre} » ?`)) return;
+    this.api.majTache(t.id, 'annule').subscribe({ next: () => this.charger() });
+  }
+
+  reactiver(t: any): void {
+    this.api.majTache(t.id, 'a_faire').subscribe({ next: () => this.charger() });
   }
 }

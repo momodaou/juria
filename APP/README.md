@@ -165,6 +165,15 @@ Trois fichiers de tests : `regression.test.js` (motif enum/UUID, 8 tests), `fina
 
 Le script `JURIA deploiement gcp - MAJ 01.08.2026.sh` (dans le dossier Documentations utilisateur, à intégrer/adapter dans ce dépôt) crée le projet, la base **Cloud SQL**, le bucket **Cloud Storage** (GED), les secrets, puis déploie l'API sur **Cloud Run**.
 
+**Déploiement courant d'un changement de code** (13/09/2026, `scripts/deploy.sh` — pour ne plus avoir à coller plusieurs commandes `gcloud` à chaque fois) :
+```bash
+./scripts/deploy.sh                       # API + frontend
+./scripts/deploy.sh api                    # API seule
+./scripts/deploy.sh web                    # frontend seul
+./scripts/deploy.sh migration fichier.sql  # migration Cloud SQL (utilisateur "postgres" par défaut)
+```
+S'arrête au premier échec plutôt que d'enchaîner sur une base à moitié à jour.
+
 ---
 
 ## 5. Les 17 modules de la spécification fonctionnelle — statut

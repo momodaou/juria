@@ -4,13 +4,28 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
 
-// GET /api/taches?dossier_id=...  |  ?mine=1  (mes tâches)
+// GET /api/taches?dossier_id=...  |  ?mine=1  (mes tâches)  |  ?anciennes=true
+//
+// Terminées/annulées masquées par défaut au-delà de 30 jours (13/09/2026,
+// demande explicite de l'utilisateur — même esprit que "masquer/archiver"
+// sur la messagerie, mais une seule règle partagée : une tâche est un
+// objet du cabinet, pas une conversation privée, pas besoin d'un état par
+// personne). Rien n'est jamais supprimé ni réellement caché : ?anciennes=true
+// les fait toutes réapparaître, exactement comme le rappel "Discussions
+// masquées". Corrige au passage un vrai bug latent : avant ce filtre, le
+// LIMIT global (toutes tâches confondues, trié par échéance croissante)
+// pouvait laisser d'anciennes tâches terminées évincer des tâches actives
+// plus récentes une fois le volume total dépassé.
 router.get("/", requirePermission("taches.consulter"), async (req, res) => {
-  const { dossier_id, mine } = req.query;
+  const { dossier_id, mine, anciennes } = req.query;
   const params = [];
-  let where = "";
-  if (dossier_id) { params.push(dossier_id); where = `WHERE t.dossier_id = $${params.length}`; }
-  else if (mine) { params.push(req.user.sub); where = `WHERE t.responsable_id = $${params.length}`; }
+  const conditions = [];
+  if (dossier_id) { params.push(dossier_id); conditions.push(`t.dossier_id = $${params.length}`); }
+  else if (mine) { params.push(req.user.sub); conditions.push(`t.responsable_id = $${params.length}`); }
+  if (anciennes !== "true") {
+    conditions.push(`(t.statut NOT IN ('termine','annule') OR t.maj_le >= now() - interval '30 days')`);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.titre, t.type, t.priorite, t.statut, t.echeance, t.validation_requise,
@@ -21,7 +36,7 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
        LEFT JOIN utilisateurs u ON u.id = t.responsable_id
        ${where}
        ORDER BY t.echeance NULLS LAST, t.cree_le DESC
-       LIMIT 200`,
+       LIMIT 300`,
       params
     );
     res.json(rows);
