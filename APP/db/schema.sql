@@ -2788,3 +2788,30 @@ FROM unnest(enum_range(NULL::role_utilisateur)) AS r
 CROSS JOIN unnest(ARRAY['dossiers.intervenants.gerer']) AS a
 ON CONFLICT (role, action_code) DO NOTHING;
 -- ============ FIN RESPONSABLE DOSSIER AVOCAT-ONLY + INTERVENANT(S) ============
+
+-- =====================================================================
+--  MESSAGERIE : PRÉSENCE + NOTIFICATION E-MAIL + ACCUSÉ DE LECTURE
+--  (13/09/2026, demande différée le 11/09/2026, reprise sur demande
+--  explicite de l'utilisateur après l'audit de la messagerie)
+--
+--  Présence : pas de Redis/Memorystore (écarté explicitement le
+--  11/09/2026, cohérent avec le choix LISTEN/NOTIFY du 17/08/2026) —
+--  une simple table Postgres, alimentée par le ping SSE déjà existant
+--  (25s, messagerie.js) sans nouveau timer. « En ligne » = dernière
+--  activité de moins de ~45s (calculé à la lecture, pas stocké) — un
+--  ping manqué ne fait pas passer quelqu'un hors ligne à tort, et une
+--  déconnexion sale (crash, coupure réseau) s'auto-corrige sans job de
+--  ménage dédié une fois la fenêtre de 45s dépassée.
+-- =====================================================================
+CREATE TABLE presence_utilisateurs (
+    utilisateur_id    UUID PRIMARY KEY REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    derniere_activite TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Notification e-mail groupée par conversation (pas un e-mail par
+-- message) : ce marqueur empêche de renotifier tant que le destinataire
+-- n'a pas effectivement lu la conversation depuis la dernière fois —
+-- une fois qu'il lit (dernier_lu_le avance), un nouveau message non lu
+-- 10 minutes plus tard pourra de nouveau déclencher un e-mail.
+ALTER TABLE conversation_participants ADD COLUMN dernier_email_notifie_le TIMESTAMPTZ;
+-- ============ FIN MESSAGERIE : PRÉSENCE + E-MAIL + ACCUSÉ DE LECTURE ============

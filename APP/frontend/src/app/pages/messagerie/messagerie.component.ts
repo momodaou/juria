@@ -42,7 +42,12 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
               [class.active]="c.id === messagerie.conversationActiveId()"
               (click)="ouvrir(c)"
             >
-              <span class="conv-titre">{{ titreAffiche(c) }}</span>
+              <span class="conv-titre">
+                @if (enLigneConversation(c); as enLigne) {
+                  <span class="point" [class.point-off]="!enLigne"></span>
+                }
+                {{ titreAffiche(c) }}
+              </span>
               @if (c.dernier_message) { <span class="conv-apercu">{{ c.dernier_message }}</span> }
               @if (c.non_lus > 0) { <span class="badge-nonlus">{{ c.non_lus }}</span> }
             </button>
@@ -52,13 +57,28 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
 
       <section class="panel fil">
         @if (messagerie.conversationActiveId()) {
+          <div class="fil-entete">
+            @if (enLigneConversationActive(); as enLigne) {
+              <span class="point" [class.point-off]="!enLigne"></span>
+            }
+            <span class="fil-titre">{{ titreActif() }}</span>
+          </div>
           <div class="messages" #zoneMessages>
+            @if (messagerie.plusAnciensDisponibles()) {
+              <button type="button" class="plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
+            }
             @for (m of messagerie.messagesActifs(); track m.id) {
               <div class="msg" [class.moi]="m.auteur_id === moi()">
                 <span class="msg-auteur">{{ m.auteur }}</span>
                 <span class="msg-contenu">{{ m.contenu }}</span>
-                <span class="msg-heure">{{ m.cree_le | date: 'HH:mm' }}</span>
+                <span class="msg-heure">
+                  {{ m.cree_le | date: 'HH:mm' }}
+                  @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
+                </span>
               </div>
+            }
+            @if (messagerie.frappeurs().length) {
+              <p class="frappe">{{ messagerie.frappeurs().join(', ') }} {{ messagerie.frappeurs().length > 1 ? 'sont' : 'est' }} en train d'écrire…</p>
             }
           </div>
           @if (auth.peut('messagerie.envoyer_message')) {
@@ -68,6 +88,7 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
                 [(ngModel)]="brouillon"
                 name="brouillon"
                 placeholder="Écrire un message…"
+                (input)="onSaisie()"
                 (keydown.enter)="envoyer()"
               />
               <button class="btn sm" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
@@ -102,6 +123,11 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .badge-nonlus{align-self:flex-end;background:var(--gold);color:#1b2436;font-size:var(--fs-xs);font-weight:700;padding:2px 7px;border-radius:999px;margin-top:-18px}
 
     .fil{padding:16px;min-height:78vh;display:flex;flex-direction:column}
+    .fil-entete{display:flex;align-items:center;gap:6px;font-weight:700;font-size:var(--fs-md);padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+    .point{display:inline-block;width:9px;height:9px;border-radius:50%;background:#4caf7d;flex-shrink:0}
+    .point-off{background:#9aa5b1}
+    .plus-anciens{align-self:center;background:none;border:none;color:var(--slate);text-decoration:underline;font-size:var(--fs-sm);cursor:pointer;padding:4px;margin-bottom:6px}
+    .frappe{font-size:var(--fs-sm);color:var(--grey);font-style:italic;margin:0}
     .messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
     .msg{display:flex;flex-direction:column;gap:2px;max-width:70%;background:var(--light);border-radius:12px;padding:8px 12px}
     .msg.moi{align-self:flex-end;background:var(--navy);color:#fff}
@@ -129,14 +155,24 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     return this.auth.utilisateur()?.id;
   }
 
+  private minuteriePresence: ReturnType<typeof setInterval> | undefined;
+
   ngOnInit(): void {
-    this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.chargerUtilisateurs();
     this.messagerie.rafraichirConversations();
+    // Présence (13/09/2026, même patron que le widget flottant) : rafraîchie
+    // périodiquement, pas diffusée en direct — voir le commentaire du widget.
+    this.minuteriePresence = setInterval(() => this.chargerUtilisateurs(), 25000);
   }
 
   ngOnDestroy(): void {
     // Ferme juste l'écran actif (le flux SSE global reste ouvert pour la pastille).
     this.messagerie.conversationActiveId.set(null);
+    clearInterval(this.minuteriePresence);
+  }
+
+  private chargerUtilisateurs(): void {
+    this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
   titreAffiche(c: Conversation): string {
@@ -144,8 +180,34 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     return c.autres_participants?.join(', ') || 'Conversation';
   }
 
+  titreActif(): string {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return c ? this.titreAffiche(c) : 'Conversation';
+  }
+
+  // Présence (13/09/2026, même patron que le widget flottant) : affichée
+  // uniquement pour une conversation à deux.
+  enLigneConversation(c: Conversation): boolean | null {
+    const ids = c.autres_participants_ids;
+    if (!ids || ids.length !== 1) return null;
+    return this.utilisateurs().find((u) => u.id === ids[0])?.en_ligne ?? null;
+  }
+
+  enLigneConversationActive(): boolean | null {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return c ? this.enLigneConversation(c) : null;
+  }
+
+  onSaisie(): void {
+    const id = this.messagerie.conversationActiveId();
+    if (id) this.messagerie.signalerFrappe(id);
+  }
+
   ouvrir(c: Conversation): void {
     this.messagerie.ouvrirConversation(c.id);
+    this.chargerUtilisateurs();
   }
 
   creer(): void {

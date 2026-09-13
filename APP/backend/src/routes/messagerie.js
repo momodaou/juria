@@ -52,6 +52,12 @@ router.get("/conversations", async (req, res) => {
               (SELECT array_agg(u.prenom || ' ' || u.nom ORDER BY u.prenom)
                  FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
                  WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants,
+              -- Alignés index par index avec autres_participants (même ORDER BY) — 13/09/2026,
+              -- présence : permet au client de savoir QUI afficher en ligne/hors ligne
+              -- sans dépendre d'une correspondance fragile sur le nom affiché.
+              (SELECT array_agg(u.id ORDER BY u.prenom)
+                 FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
+                 WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants_ids,
               (SELECT m.contenu FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message,
               (SELECT m.cree_le FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message_le,
               (SELECT COUNT(*) FROM messages m
@@ -177,7 +183,70 @@ router.post("/conversations/:id/lu", async (req, res) => {
       [req.params.id, req.user.sub]
     );
     if (!rows[0]) return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+
+    // Accusé de lecture (13/09/2026) : diffuse aux AUTRES participants pour
+    // qu'ils voient « Lu » se mettre à jour en direct sur leurs propres
+    // messages, sans avoir à rouvrir la conversation. Aucune nouvelle table
+    // — dernier_lu_le est déjà la source de vérité, seulement rediffusée.
+    const autres = await pool.query(
+      "SELECT utilisateur_id FROM conversation_participants WHERE conversation_id = $1 AND utilisateur_id <> $2",
+      [req.params.id, req.user.sub]
+    );
+    await bus.publier(pool, autres.rows.map((r) => r.utilisateur_id), {
+      type: "lu", conversation_id: req.params.id, utilisateur_id: req.user.sub, lu_le: rows[0].dernier_lu_le,
+    });
+
     res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/messagerie/conversations/:id/lecture — état de lecture des
+// AUTRES participants (13/09/2026, accusé de lecture), lu une fois à
+// l'ouverture d'une conversation puis tenu à jour côté client via
+// l'événement "lu" diffusé ci-dessus. Distinct de la liste des messages
+// pour ne pas casser la forme de réponse existante de /messages.
+router.get("/conversations/:id/lecture", async (req, res) => {
+  try {
+    if (!(await estParticipant(req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+    }
+    const { rows } = await pool.query(
+      `SELECT cp.utilisateur_id, cp.dernier_lu_le
+       FROM conversation_participants cp
+       WHERE cp.conversation_id = $1 AND cp.utilisateur_id <> $2`,
+      [req.params.id, req.user.sub]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/messagerie/conversations/:id/frappe — indicateur de frappe
+// (13/09/2026, « X est en train d'écrire… »). Événement éphémère, jamais
+// persisté (contrairement à un message) : réutilise simplement la même
+// diffusion LISTEN/NOTIFY/SSE. Le client limite lui-même l'envoi (au plus
+// une fois toutes les ~3s pendant la saisie), et l'affichage s'éteint tout
+// seul côté récepteur après quelques secondes sans nouvel événement — pas
+// besoin d'un événement "a arrêté d'écrire" fiable, cassé si l'onglet se
+// ferme brutalement.
+router.post("/conversations/:id/frappe", async (req, res) => {
+  try {
+    if (!(await estParticipant(req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+    }
+    const autres = await pool.query(
+      "SELECT utilisateur_id FROM conversation_participants WHERE conversation_id = $1 AND utilisateur_id <> $2",
+      [req.params.id, req.user.sub]
+    );
+    await bus.publier(pool, autres.rows.map((r) => r.utilisateur_id), {
+      type: "frappe", conversation_id: req.params.id, auteur_id: req.user.sub, auteur: req.user.nom,
+    });
+    res.status(204).send();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -206,13 +275,35 @@ router.get("/stream", (req, res) => {
 
   bus.abonner(utilisateur.sub, res);
 
+  // Présence (13/09/2026) : upsert immédiat à la connexion, puis à chaque
+  // ping (réutilise le timer existant, pas de nouveau). « En ligne » est
+  // calculé à la lecture (utilisateurs.js) à partir de cette seule colonne.
+  const marquerPresent = () => {
+    pool
+      .query(
+        `INSERT INTO presence_utilisateurs (utilisateur_id, derniere_activite) VALUES ($1, now())
+         ON CONFLICT (utilisateur_id) DO UPDATE SET derniere_activite = now()`,
+        [utilisateur.sub]
+      )
+      .catch((e) => console.error("Présence : échec de mise à jour :", e.message));
+  };
+  marquerPresent();
+
   // Ping toutes les 25s pour garder la connexion active à travers d'éventuels
   // proxys intermédiaires (Cloud Run inclus).
-  const ping = setInterval(() => res.write(": ping\n\n"), 25000);
+  const ping = setInterval(() => {
+    res.write(": ping\n\n");
+    marquerPresent();
+  }, 25000);
 
   req.on("close", () => {
     clearInterval(ping);
     bus.desabonner(utilisateur.sub, res);
+    // Déconnexion propre : hors ligne tout de suite plutôt que d'attendre
+    // l'expiration de 45s — seule une coupure sale (crash, réseau) passe
+    // par le délai d'expiration calculé côté lecture.
+    pool.query("DELETE FROM presence_utilisateurs WHERE utilisateur_id = $1", [utilisateur.sub])
+      .catch((e) => console.error("Présence : échec de suppression :", e.message));
   });
 });
 

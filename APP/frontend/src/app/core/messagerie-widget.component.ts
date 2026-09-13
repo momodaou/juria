@@ -31,6 +31,9 @@ import { MessagerieService, Conversation } from './messagerie.service';
           <div class="mw-entete">
             @if (vue() === 'fil') {
               <button type="button" class="mw-icon-btn" (click)="retourListe()" title="Retour aux conversations">←</button>
+              @if (enLigneConversationActive(); as enLigne) {
+                <span class="mw-point" [class.mw-point-off]="!enLigne" [title]="enLigne ? 'En ligne' : 'Hors ligne'"></span>
+              }
               <span class="mw-titre">{{ titreActif() }}</span>
             } @else {
               <span class="mw-titre">Messagerie</span>
@@ -60,7 +63,12 @@ import { MessagerieService, Conversation } from './messagerie.service';
               @if (messagerie.conversations().length) {
                 @for (c of messagerie.conversations(); track c.id) {
                   <button type="button" class="mw-conv" (click)="ouvrir(c)">
-                    <span class="mw-conv-titre">{{ titreAffiche(c) }}</span>
+                    <span class="mw-conv-titre">
+                      @if (enLigneConversation(c); as enLigne) {
+                        <span class="mw-point" [class.mw-point-off]="!enLigne"></span>
+                      }
+                      {{ titreAffiche(c) }}
+                    </span>
                     @if (c.dernier_message) { <span class="mw-conv-apercu">{{ c.dernier_message }}</span> }
                     @if (c.non_lus > 0) { <span class="mw-conv-badge">{{ c.non_lus }}</span> }
                   </button>
@@ -69,17 +77,27 @@ import { MessagerieService, Conversation } from './messagerie.service';
             </div>
           } @else {
             <div class="mw-messages">
+              @if (messagerie.plusAnciensDisponibles()) {
+                <button type="button" class="mw-plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
+              }
               @for (m of messagerie.messagesActifs(); track m.id) {
                 <div class="mw-msg" [class.moi]="m.auteur_id === moi()">
                   <span class="mw-msg-auteur">{{ m.auteur }}</span>
                   <span class="mw-msg-contenu">{{ m.contenu }}</span>
-                  <span class="mw-msg-heure">{{ m.cree_le | date: 'HH:mm' }}</span>
+                  <span class="mw-msg-heure">
+                    {{ m.cree_le | date: 'HH:mm' }}
+                    @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
+                  </span>
                 </div>
+              }
+              @if (messagerie.frappeurs().length) {
+                <p class="mw-frappe">{{ messagerie.frappeurs().join(', ') }} {{ messagerie.frappeurs().length > 1 ? 'sont' : 'est' }} en train d'écrire…</p>
               }
             </div>
             @if (auth.peut('messagerie.envoyer_message')) {
               <div class="mw-saisie">
-                <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…" (keydown.enter)="envoyer()" />
+                <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…"
+                       (input)="onSaisie()" (keydown.enter)="envoyer()" />
                 <button type="button" class="mw-btn" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
               </div>
             }
@@ -140,6 +158,10 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-saisie .mw-input{flex:1}
     .mw-btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:7px 12px;font-weight:600;font-size:var(--fs-base);cursor:pointer;white-space:nowrap}
     .mw-btn:disabled{opacity:.6;cursor:not-allowed}
+    .mw-point{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4caf7d;margin-right:5px;flex-shrink:0}
+    .mw-point-off{background:#9aa5b1}
+    .mw-plus-anciens{align-self:center;background:none;border:none;color:var(--slate);text-decoration:underline;font-size:var(--fs-sm);cursor:pointer;padding:4px;margin-bottom:4px}
+    .mw-frappe{font-size:var(--fs-xs);color:var(--grey);font-style:italic;margin:0;padding:0 2px}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}
       .mw-bulle{right:16px;bottom:16px}
@@ -171,6 +193,18 @@ export class MessagerieWidgetComponent implements OnInit {
         if (!this.visible()) this.ouvert.set(false);
       }
     });
+    this.chargerUtilisateurs();
+    // Présence (13/09/2026) : `en_ligne` est un champ calculé côté serveur
+    // à l'instant de la requête (voir utilisateurs.js) — un seul chargement
+    // au démarrage figerait le statut de chacun pour toute la session.
+    // Rafraîchi périodiquement plutôt que diffusé en direct par le bus
+    // (aurait demandé un nouveau concept de diffusion « à tout le cabinet »
+    // dans messagerie-bus.js, disproportionné pour 16 personnes) — ce
+    // widget vit aussi longtemps que la session, pas de nettoyage requis.
+    setInterval(() => this.chargerUtilisateurs(), 25000);
+  }
+
+  private chargerUtilisateurs(): void {
     this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
@@ -187,6 +221,28 @@ export class MessagerieWidgetComponent implements OnInit {
     const id = this.messagerie.conversationActiveId();
     const c = this.messagerie.conversations().find((x) => x.id === id);
     return c ? this.titreAffiche(c) : 'Conversation';
+  }
+
+  // Présence (13/09/2026) : affichée uniquement pour une conversation à
+  // deux (le seul cas où « en ligne » a un sens univoque) — null pour un
+  // groupe, pas affiché plutôt que trompeur.
+  enLigneConversation(c: Conversation): boolean | null {
+    const ids = c.autres_participants_ids;
+    if (!ids || ids.length !== 1) return null;
+    return this.utilisateurs().find((u) => u.id === ids[0])?.en_ligne ?? null;
+  }
+
+  enLigneConversationActive(): boolean | null {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return c ? this.enLigneConversation(c) : null;
+  }
+
+  // Indicateur de frappe : prévient l'autre participant à chaque saisie,
+  // throttlé côté service (au plus une fois toutes les ~3s).
+  onSaisie(): void {
+    const id = this.messagerie.conversationActiveId();
+    if (id) this.messagerie.signalerFrappe(id);
   }
 
   // 🐛 Bug trouvé et corrigé le 13/09/2026 (audit demandé par l'utilisateur,
@@ -222,6 +278,7 @@ export class MessagerieWidgetComponent implements OnInit {
 
   ouvrir(c: Conversation): void {
     this.messagerie.ouvrirConversation(c.id);
+    this.chargerUtilisateurs();
     this.vue.set('fil');
   }
 

@@ -16,6 +16,7 @@ const { pool } = require("../db");
 const bus = require("../messagerie-bus");
 const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
 const { executerJobAlertesHonoraires } = require("../jobs/alertesHonoraires");
+const { executerJobMessagerieNotifications } = require("../jobs/messagerieNotifications");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -43,6 +44,17 @@ router.post("/alertes-delais", requireSchedulerSecret, async (req, res) => {
 router.post("/alertes-honoraires", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobAlertesHonoraires(pool, bus));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 13/09/2026 — notification e-mail messagerie (message non lu ≥10 min,
+// destinataire hors ligne). Cadence recommandée : toutes les 5 minutes.
+router.post("/messagerie-notifications", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobMessagerieNotifications(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
