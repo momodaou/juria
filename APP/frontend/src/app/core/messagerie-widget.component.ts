@@ -81,8 +81,8 @@ import { MessagerieService, Conversation } from './messagerie.service';
                 <button type="button" class="mw-plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
               }
               @for (m of messagerie.messagesActifs(); track m.id) {
-                <div class="mw-msg" [class.moi]="m.auteur_id === moi()">
-                  <span class="mw-msg-auteur">{{ m.auteur }}</span>
+                <div class="mw-msg" [class.moi]="m.auteur_id === moi()" [class.important]="m.important">
+                  <span class="mw-msg-auteur">{{ m.auteur }} @if (m.important) { <span class="mw-tag-important">❗</span> }</span>
                   <span class="mw-msg-contenu">{{ m.contenu }}</span>
                   <span class="mw-msg-heure">
                     {{ m.cree_le | date: 'HH:mm' }}
@@ -98,6 +98,13 @@ import { MessagerieService, Conversation } from './messagerie.service';
               <div class="mw-saisie">
                 <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…"
                        (input)="onSaisie()" (keydown.enter)="envoyer()" />
+                <button
+                  type="button"
+                  class="mw-icon-btn mw-important-btn"
+                  [class.actif]="important"
+                  title="Marquer comme important : notifie par e-mail même seul si hors ligne"
+                  (click)="important = !important"
+                >❗</button>
                 <button type="button" class="mw-btn" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
               </div>
             }
@@ -162,6 +169,10 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-point-off{background:#9aa5b1}
     .mw-plus-anciens{align-self:center;background:none;border:none;color:var(--slate);text-decoration:underline;font-size:var(--fs-sm);cursor:pointer;padding:4px;margin-bottom:4px}
     .mw-frappe{font-size:var(--fs-xs);color:var(--grey);font-style:italic;margin:0;padding:0 2px}
+    .mw-msg.important{border:1px solid #e08a8a}
+    .mw-tag-important{color:#b23b3b;margin-left:3px}
+    .mw-important-btn{color:var(--grey);opacity:.75}
+    .mw-important-btn.actif{color:#ff8a8a;opacity:1}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}
       .mw-bulle{right:16px;bottom:16px}
@@ -181,6 +192,8 @@ export class MessagerieWidgetComponent implements OnInit {
   participantsChoisis: string[] = [];
   titreChoisi = '';
   brouillon = '';
+  /** Drapeau posé sur le PROCHAIN message envoyé (13/09/2026) — remis à false après envoi. */
+  important = false;
 
   // Masqué sur l'écran /messagerie lui-même — redondant d'afficher la bulle
   // par-dessus la page qui fait déjà la même chose en plus grand.
@@ -309,6 +322,8 @@ export class MessagerieWidgetComponent implements OnInit {
     const id = this.messagerie.conversationActiveId();
     if (!contenu || !id) return;
     this.brouillon = '';
-    this.messagerie.envoyerMessage(id, contenu).subscribe();
+    const important = this.important;
+    this.important = false;
+    this.messagerie.envoyerMessage(id, contenu, important).subscribe();
   }
 }

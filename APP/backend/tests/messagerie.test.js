@@ -119,14 +119,51 @@ describe("Accusé de lecture — GET .../lecture + POST .../lu", () => {
 });
 
 describe("Job de notification e-mail (13/09/2026)", () => {
-  test("envoie un e-mail groupé pour un message non lu depuis >10 min, destinataire hors ligne", async () => {
+  test("n'envoie PAS d'e-mail pour un message isolé (Bonjour) sans relance, même après 10 min hors ligne", async () => {
+    const destId = await creerUtilisateur();
+    const convId = await creerConversation(destId);
+    await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Bonjour" });
+    await pool.query("UPDATE messages SET cree_le = now() - interval '15 minutes' WHERE conversation_id = $1", [convId]);
+
+    envoyerEmail.mockClear();
+    await executerJobMessagerieNotifications(pool);
+    const utilisateur = await pool.query("SELECT email FROM utilisateurs WHERE id = $1", [destId]);
+    const recut = envoyerEmail.mock.calls.some((c) => c[0].to === utilisateur.rows[0].email);
+    expect(recut).toBe(false);
+  });
+
+  test("envoie un e-mail pour un SEUL message marqué important, sans attendre un 2e message", async () => {
+    const destId = await creerUtilisateur();
+    const convId = await creerConversation(destId);
+    await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Merci de rappeler le client avant 17h", important: true });
+    await pool.query("UPDATE messages SET cree_le = now() - interval '15 minutes' WHERE conversation_id = $1", [convId]);
+
+    envoyerEmail.mockClear();
+    const resultat = await executerJobMessagerieNotifications(pool);
+    expect(resultat.notifies).toBeGreaterThanOrEqual(1);
+    const utilisateur = await pool.query("SELECT email FROM utilisateurs WHERE id = $1", [destId]);
+    const recut = envoyerEmail.mock.calls.some((c) => c[0].to === utilisateur.rows[0].email);
+    expect(recut).toBe(true);
+  });
+
+  test("envoie un e-mail groupé à partir de 2 messages non lus depuis >10 min, destinataire hors ligne", async () => {
     const destId = await creerUtilisateur();
     const convId = await creerConversation(destId);
     await request(app)
       .post(`/api/messagerie/conversations/${convId}/messages`)
       .set("Authorization", `Bearer ${token}`)
       .send({ contenu: "Message de test job" });
-    // Recule artificiellement le message de 15 min (le job ne notifie qu'à
+    await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Relance sans réponse" });
+    // Recule artificiellement les messages de 15 min (le job ne notifie qu'à
     // partir de 10 min) — pas d'autre moyen de tester ce délai sans attendre.
     await pool.query("UPDATE messages SET cree_le = now() - interval '15 minutes' WHERE conversation_id = $1", [convId]);
 
@@ -149,6 +186,10 @@ describe("Job de notification e-mail (13/09/2026)", () => {
       .post(`/api/messagerie/conversations/${convId}/messages`)
       .set("Authorization", `Bearer ${token}`)
       .send({ contenu: "Message pendant que le destinataire est en ligne" });
+    await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Deuxième message, toujours en ligne" });
     await pool.query("UPDATE messages SET cree_le = now() - interval '15 minutes' WHERE conversation_id = $1", [convId]);
 
     envoyerEmail.mockClear();

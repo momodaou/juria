@@ -2814,6 +2814,18 @@ CREATE TABLE presence_utilisateurs (
 -- une fois qu'il lit (dernier_lu_le avance), un nouveau message non lu
 -- 10 minutes plus tard pourra de nouveau déclencher un e-mail.
 ALTER TABLE conversation_participants ADD COLUMN dernier_email_notifie_le TIMESTAMPTZ;
+
+-- Marqueur « Important » posé par l'auteur au moment de l'envoi (même
+-- jour, 13/09/2026, en amendement suite à une remarque de l'utilisateur :
+-- la seule règle « ≥2 messages non lus » ratait le cas d'un message
+-- UNIQUE mais réellement important). Décision : pas de détection
+-- automatique de l'importance (contenu, mots-clés) — trop incertain et
+-- plus complexe qu'utile pour ce besoin ; seul l'auteur sait vraiment si
+-- son message est important, comme il le fait déjà pour l'urgence d'un
+-- dossier. Le job de notification (messagerieNotifications.js) notifie
+-- désormais dès qu'un message non lu est marqué important, même seul,
+-- SANS attendre un 2e message.
+ALTER TABLE messages ADD COLUMN important BOOLEAN NOT NULL DEFAULT FALSE;
 -- ============ FIN MESSAGERIE : PRÉSENCE + E-MAIL + ACCUSÉ DE LECTURE ============
 
 -- =====================================================================

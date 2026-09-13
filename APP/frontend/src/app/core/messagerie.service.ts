@@ -22,6 +22,9 @@ export interface Message {
   cree_le: string;
   auteur_id: string;
   auteur: string;
+  /** Marqué par l'auteur au moment de l'envoi (13/09/2026) — seul signal qui fait
+   *  passer outre le seuil de 2 messages pour la notification e-mail groupée. */
+  important: boolean;
 }
 
 export interface Lecture {
@@ -201,8 +204,8 @@ export class MessagerieService {
       });
   }
 
-  envoyerMessage(conversationId: string, contenu: string): Observable<Message> {
-    return this.http.post<Message>(`${this.base}/api/messagerie/conversations/${conversationId}/messages`, { contenu });
+  envoyerMessage(conversationId: string, contenu: string, important = false): Observable<Message> {
+    return this.http.post<Message>(`${this.base}/api/messagerie/conversations/${conversationId}/messages`, { contenu, important });
   }
 
   // Indicateur de frappe : limité à un envoi au plus toutes les ~3s pendant

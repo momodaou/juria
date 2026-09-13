@@ -132,7 +132,7 @@ router.get("/conversations/:id/messages", async (req, res) => {
     let clause = "";
     if (req.query.avant) { params.push(req.query.avant); clause = "AND m.cree_le < $2"; }
     const { rows } = await pool.query(
-      `SELECT m.id, m.contenu, m.cree_le, m.auteur_id, u.prenom || ' ' || u.nom AS auteur
+      `SELECT m.id, m.contenu, m.cree_le, m.auteur_id, m.important, u.prenom || ' ' || u.nom AS auteur
        FROM messages m JOIN utilisateurs u ON u.id = m.auteur_id
        WHERE m.conversation_id = $1 ${clause}
        ORDER BY m.cree_le DESC LIMIT 50`,
@@ -145,18 +145,19 @@ router.get("/conversations/:id/messages", async (req, res) => {
   }
 });
 
-// POST /api/messagerie/conversations/:id/messages  { contenu }
+// POST /api/messagerie/conversations/:id/messages  { contenu, important? }
 router.post("/conversations/:id/messages", requirePermission("messagerie.envoyer_message"), async (req, res) => {
   const contenu = (req.body?.contenu || "").trim();
   if (!contenu) return res.status(400).json({ error: "contenu requis" });
+  const important = req.body?.important === true;
   try {
     if (!(await estParticipant(req.params.id, req.user.sub))) {
       return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
     }
     const { rows } = await pool.query(
-      `INSERT INTO messages (conversation_id, auteur_id, contenu) VALUES ($1,$2,$3)
-       RETURNING id, contenu, cree_le, auteur_id`,
-      [req.params.id, req.user.sub, contenu]
+      `INSERT INTO messages (conversation_id, auteur_id, contenu, important) VALUES ($1,$2,$3,$4)
+       RETURNING id, contenu, cree_le, auteur_id, important`,
+      [req.params.id, req.user.sub, contenu, important]
     );
     const message = { ...rows[0], auteur: req.user.nom, conversation_id: req.params.id };
 

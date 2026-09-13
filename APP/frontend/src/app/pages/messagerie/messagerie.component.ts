@@ -68,8 +68,8 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
               <button type="button" class="plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
             }
             @for (m of messagerie.messagesActifs(); track m.id) {
-              <div class="msg" [class.moi]="m.auteur_id === moi()">
-                <span class="msg-auteur">{{ m.auteur }}</span>
+              <div class="msg" [class.moi]="m.auteur_id === moi()" [class.important]="m.important">
+                <span class="msg-auteur">{{ m.auteur }} @if (m.important) { <span class="tag-important">❗ Important</span> }</span>
                 <span class="msg-contenu">{{ m.contenu }}</span>
                 <span class="msg-heure">
                   {{ m.cree_le | date: 'HH:mm' }}
@@ -91,6 +91,13 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
                 (input)="onSaisie()"
                 (keydown.enter)="envoyer()"
               />
+              <button
+                type="button"
+                class="btn-important"
+                [class.actif]="important"
+                title="Marquer ce message comme important : prévient par e-mail même seul si le destinataire est hors ligne"
+                (click)="important = !important"
+              >❗ Important</button>
               <button class="btn sm" (click)="envoyer()" [disabled]="!brouillon.trim()">Envoyer</button>
             </div>
           }
@@ -138,6 +145,11 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .msg.moi .msg-heure{color:#cfd6e3}
     .saisie{display:flex;gap:8px;margin-top:10px}
     .saisie .sel{flex:1}
+    .btn-important{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;color:var(--grey)}
+    .btn-important.actif{background:#fdecec;border-color:#e08a8a;color:#b23b3b;font-weight:600}
+    .msg.important{border:1px solid #e08a8a}
+    .tag-important{font-size:var(--fs-2xs);color:#b23b3b;font-weight:700;margin-left:6px}
+    .msg.moi .tag-important{color:#ffd6d6}
   `],
 })
 export class MessagerieComponent implements OnInit, OnDestroy {
@@ -150,6 +162,8 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   participantsChoisis: string[] = [];
   titreChoisi = '';
   brouillon = '';
+  /** Drapeau posé sur le PROCHAIN message envoyé (13/09/2026) — remis à false après envoi. */
+  important = false;
 
   moi(): string | undefined {
     return this.auth.utilisateur()?.id;
@@ -231,6 +245,8 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     const id = this.messagerie.conversationActiveId();
     if (!contenu || !id) return;
     this.brouillon = '';
-    this.messagerie.envoyerMessage(id, contenu).subscribe();
+    const important = this.important;
+    this.important = false;
+    this.messagerie.envoyerMessage(id, contenu, important).subscribe();
   }
 }
