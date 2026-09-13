@@ -63,7 +63,7 @@ import { AuthService } from '../../core/auth.service';
                         [title]="(d.cumul_xof | number) + ' / ' + (d.honoraires_seuil_xof | number) + ' FCFA'">
                     {{ libelleHonoraires(d.statut_honoraires) }}
                   </span>
-                } @else { — }
+                } @else { Non }
               </td>
             </tr>
           }

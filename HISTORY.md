@@ -2078,3 +2078,11 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : suite complète **244/244** (7 nouveaux tests) sur une base neuve, build Angular OK. **Vérification visuelle réelle de bout en bout** (Playwright headless, stack Docker locale, 2 comptes réels séparés) : point de présence confirmé vert pour un contact en ligne (🐛 piège rencontré et corrigé en cours de route — `utilisateurs()` n'était chargé qu'une fois au démarrage du widget, figeant `en_ligne` pour toute la session ; corrigé par un rafraîchissement périodique de 25s + à l'ouverture de chaque conversation) ; indicateur de frappe confirmé apparaître puis disparaître tout seul après ~5s ; accusé de lecture confirmé apparaître en direct sur le message de l'expéditeur dès que le destinataire lit, sans recharger ; pagination confirmée (50 messages affichés, bouton visible, 6 messages plus anciens chargés après clic, bouton disparu une fois l'historique épuisé). Aucune erreur console dans aucun scénario.
 
 **Déploiement production** : pas encore fait à ce stade — nécessite une migration (nouvelle table + colonne) et la création d'un 3ᵉ job Cloud Scheduler (`messagerie-notifications`, cadence recommandée ~5 min) — à faire sur confirmation explicite de l'utilisateur, en 2 temps (code d'abord, infrastructure ensuite).
+
+## 2026-09-13 — Correctif d'affichage : « Non » plutôt qu'un tiret ambigu (colonne Pro bono)
+
+**Contexte** : l'utilisateur signale que la colonne « Pro bono » de la liste des dossiers (`dossiers.component.ts`) affiche un simple tiret « — » pour un dossier non pro bono — visuellement indissociable d'un champ vide/non renseigné, alors que c'est une réponse « Non » ferme et déjà connue.
+
+**Fait** : `} @else { — }` → `} @else { Non }`. Purement cosmétique, aucun changement de donnée ni de logique — la case pro bono cochée affichait déjà correctement le statut d'honoraires (atteint/sous seuil/sans honoraires) via `@if (d.pro_bono)`, seule la branche négative était ambiguë.
+
+**Vérification** : build Angular OK (aucun changement backend, aucun test à adapter). **Déploiement production** : pas encore fait à ce stade — à confirmer avec l'utilisateur.
