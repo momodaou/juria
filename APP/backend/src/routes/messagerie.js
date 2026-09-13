@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
 const { SECRET, authenticate } = require("../auth");
 const { requirePermission } = require("../permissions");
+const { logAudit } = require("../audit");
 const bus = require("../messagerie-bus");
 
 const router = express.Router();
@@ -44,29 +45,47 @@ async function estParticipant(conversationId, utilisateurId) {
 // GET /api/messagerie/conversations — mes conversations, dernier message
 // et nombre de non-lus (messages postés après dernier_lu_le, ou tous si
 // jamais lu).
+//
+// Masquer/archiver/supprimer (13/09/2026) : purement personnel, filtré ici
+// uniquement pour l'appelant — jamais visible dans la liste des autres
+// participants. `?masquees=true` bascule vers l'écran de récupération des
+// conversations masquées (les seules qui ne reviennent jamais toutes
+// seules, contrairement à archivée/supprimée qui réapparaissent dès qu'un
+// nouveau message arrive — voir schema.sql pour le détail du calcul).
 router.get("/conversations", async (req, res) => {
+  const listerMasquees = req.query.masquees === "true";
   try {
     const { rows } = await pool.query(
-      `SELECT c.id, c.titre, c.dossier_id, c.cree_le,
-              cp.dernier_lu_le,
-              (SELECT array_agg(u.prenom || ' ' || u.nom ORDER BY u.prenom)
-                 FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
-                 WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants,
-              -- Alignés index par index avec autres_participants (même ORDER BY) — 13/09/2026,
-              -- présence : permet au client de savoir QUI afficher en ligne/hors ligne
-              -- sans dépendre d'une correspondance fragile sur le nom affiché.
-              (SELECT array_agg(u.id ORDER BY u.prenom)
-                 FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
-                 WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants_ids,
-              (SELECT m.contenu FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message,
-              (SELECT m.cree_le FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message_le,
-              (SELECT COUNT(*) FROM messages m
-                 WHERE m.conversation_id = c.id
-                   AND m.cree_le > COALESCE(cp.dernier_lu_le, 'epoch'::timestamptz)
-                   AND m.auteur_id <> $1) AS non_lus
-       FROM conversations c
-       JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.utilisateur_id = $1
-       ORDER BY dernier_message_le DESC NULLS LAST, c.cree_le DESC`,
+      `WITH base AS (
+         SELECT c.id, c.titre, c.dossier_id, c.cree_le,
+                cp.dernier_lu_le, cp.masquee_le, cp.archivee_le, cp.supprimee_le,
+                (SELECT array_agg(u.prenom || ' ' || u.nom ORDER BY u.prenom)
+                   FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
+                   WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants,
+                -- Alignés index par index avec autres_participants (même ORDER BY) — 13/09/2026,
+                -- présence : permet au client de savoir QUI afficher en ligne/hors ligne
+                -- sans dépendre d'une correspondance fragile sur le nom affiché.
+                (SELECT array_agg(u.id ORDER BY u.prenom)
+                   FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
+                   WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants_ids,
+                (SELECT m.contenu FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message,
+                (SELECT m.cree_le FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message_le,
+                (SELECT COUNT(*) FROM messages m
+                   WHERE m.conversation_id = c.id
+                     AND m.cree_le > COALESCE(cp.dernier_lu_le, 'epoch'::timestamptz)
+                     AND m.auteur_id <> $1) AS non_lus
+         FROM conversations c
+         JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.utilisateur_id = $1
+       )
+       SELECT id, titre, dossier_id, cree_le, dernier_lu_le, autres_participants,
+              autres_participants_ids, dernier_message, dernier_message_le, non_lus
+       FROM base
+       WHERE ${listerMasquees
+         ? "masquee_le IS NOT NULL"
+         : `masquee_le IS NULL
+            AND (archivee_le IS NULL OR archivee_le < COALESCE(dernier_message_le, 'epoch'::timestamptz))
+            AND (supprimee_le IS NULL OR supprimee_le < COALESCE(dernier_message_le, 'epoch'::timestamptz))`}
+       ORDER BY dernier_message_le DESC NULLS LAST, cree_le DESC`,
       [req.user.sub]
     );
     res.json(rows);
@@ -75,6 +94,44 @@ router.get("/conversations", async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
+// Petite fabrique pour les 5 actions "personnelles" sur une conversation
+// (masquer/afficher/archiver/désarchiver/supprimer) : même vérification
+// de participation, même colonne à poser à `now()` ou NULL, même
+// journalisation d'audit — seul le nom de colonne/action varie.
+function actionPersonnelleConversation(colonne, valeur, actionCode, auditAction) {
+  return async (req, res) => {
+    try {
+      if (!(await estParticipant(req.params.id, req.user.sub))) {
+        return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+      }
+      await pool.query(
+        `UPDATE conversation_participants SET ${colonne} = ${valeur}
+         WHERE conversation_id = $1 AND utilisateur_id = $2`,
+        [req.params.id, req.user.sub]
+      );
+      await logAudit({ utilisateurId: req.user.sub, action: auditAction, entite: "conversations", entiteId: req.params.id, ip: req.ip });
+      res.status(204).send();
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  };
+}
+
+router.post("/conversations/:id/masquer", requirePermission("messagerie.conversation.masquer"),
+  actionPersonnelleConversation("masquee_le", "now()", "messagerie.conversation.masquer", "masquer_conversation"));
+router.post("/conversations/:id/afficher", requirePermission("messagerie.conversation.masquer"),
+  actionPersonnelleConversation("masquee_le", "NULL", "messagerie.conversation.masquer", "afficher_conversation"));
+router.post("/conversations/:id/archiver", requirePermission("messagerie.conversation.archiver"),
+  actionPersonnelleConversation("archivee_le", "now()", "messagerie.conversation.archiver", "archiver_conversation"));
+router.post("/conversations/:id/desarchiver", requirePermission("messagerie.conversation.archiver"),
+  actionPersonnelleConversation("archivee_le", "NULL", "messagerie.conversation.archiver", "desarchiver_conversation"));
+// Supprimer (soi-même) : pose seulement la barrière temporelle — jamais de
+// retour en arrière possible (contrairement à masquer/archiver, symétriques),
+// cohérent avec la sémantique "suppression" plutôt que "rangement".
+router.post("/conversations/:id/supprimer", requirePermission("messagerie.conversation.supprimer"),
+  actionPersonnelleConversation("supprimee_le", "now()", "messagerie.conversation.supprimer", "supprimer_conversation"));
 
 // GET /api/messagerie/non-lus — total, pour la pastille de la barre latérale.
 router.get("/non-lus", async (req, res) => {
@@ -123,22 +180,64 @@ router.post("/conversations", requirePermission("messagerie.creer_conversation")
 });
 
 // GET /api/messagerie/conversations/:id/messages?avant=<ISO>  (page de 50)
+//
+// Deux filtres personnels appliqués ici (13/09/2026), uniquement pour
+// l'appelant, jamais visibles chez les autres participants :
+//  - `supprimee_le` (suppression de toute la conversation) : barrière
+//    définitive, les messages antérieurs ne sont même plus renvoyés.
+//  - `messages_masques` (suppression d'UN message précis) : le message
+//    reste à sa place dans le fil (pour ne pas casser la chronologie
+//    visuellement), mais son contenu est remplacé par `null`/`masque:true`
+//    — jamais transmis au client qui l'a supprimé chez lui.
 router.get("/conversations/:id/messages", async (req, res) => {
   try {
     if (!(await estParticipant(req.params.id, req.user.sub))) {
       return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
     }
-    const params = [req.params.id];
+    const params = [req.params.id, req.user.sub];
     let clause = "";
-    if (req.query.avant) { params.push(req.query.avant); clause = "AND m.cree_le < $2"; }
+    if (req.query.avant) { params.push(req.query.avant); clause = "AND m.cree_le < $3"; }
     const { rows } = await pool.query(
-      `SELECT m.id, m.contenu, m.cree_le, m.auteur_id, m.important, u.prenom || ' ' || u.nom AS auteur
-       FROM messages m JOIN utilisateurs u ON u.id = m.auteur_id
-       WHERE m.conversation_id = $1 ${clause}
+      `SELECT m.id, CASE WHEN mm.message_id IS NULL THEN m.contenu ELSE NULL END AS contenu,
+              (mm.message_id IS NOT NULL) AS masque,
+              m.cree_le, m.auteur_id, m.important, u.prenom || ' ' || u.nom AS auteur
+       FROM messages m
+       JOIN utilisateurs u ON u.id = m.auteur_id
+       JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.utilisateur_id = $2
+       LEFT JOIN messages_masques mm ON mm.message_id = m.id AND mm.utilisateur_id = $2
+       WHERE m.conversation_id = $1
+         AND (cp.supprimee_le IS NULL OR m.cree_le > cp.supprimee_le)
+         ${clause}
        ORDER BY m.cree_le DESC LIMIT 50`,
       params
     );
     res.json(rows.reverse());
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// DELETE /api/messagerie/conversations/:id/messages/:messageId — supprime
+// UN message, pour soi-même uniquement (les autres participants continuent
+// de le voir normalement). Idempotent (ON CONFLICT DO NOTHING).
+router.delete("/conversations/:id/messages/:messageId", requirePermission("messagerie.message.supprimer"), async (req, res) => {
+  try {
+    if (!(await estParticipant(req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+    }
+    const { rowCount } = await pool.query(
+      `INSERT INTO messages_masques (message_id, utilisateur_id)
+       SELECT id, $2 FROM messages WHERE id = $1 AND conversation_id = $3
+       ON CONFLICT DO NOTHING`,
+      [req.params.messageId, req.user.sub, req.params.id]
+    );
+    if (!rowCount) {
+      const existant = await pool.query("SELECT 1 FROM messages WHERE id = $1 AND conversation_id = $2", [req.params.messageId, req.params.id]);
+      if (!existant.rows[0]) return res.status(404).json({ error: "Message introuvable" });
+    }
+    await logAudit({ utilisateurId: req.user.sub, action: "supprimer_message", entite: "messages", entiteId: req.params.messageId, ip: req.ip });
+    res.status(204).send();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

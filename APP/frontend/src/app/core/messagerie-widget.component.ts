@@ -39,6 +39,9 @@ import { MessagerieService, Conversation } from './messagerie.service';
               <span class="mw-titre">Messagerie</span>
             }
             <div class="mw-entete-actions">
+              @if (vue() === 'liste' && auth.peut('messagerie.conversation.masquer')) {
+                <button type="button" class="mw-icon-btn" title="Discussions masquées" (click)="basculerMasquees()">🗄</button>
+              }
               @if (vue() === 'liste' && auth.peut('messagerie.creer_conversation')) {
                 <button type="button" class="mw-icon-btn" title="Nouvelle conversation" (click)="afficherNouvelle.set(!afficherNouvelle())">+</button>
               }
@@ -59,22 +62,48 @@ import { MessagerieService, Conversation } from './messagerie.service';
                 <button type="button" class="mw-btn" (click)="creer()" [disabled]="!participantsChoisis.length">Créer</button>
               </div>
             }
-            <div class="mw-liste">
-              @if (messagerie.conversations().length) {
-                @for (c of messagerie.conversations(); track c.id) {
-                  <button type="button" class="mw-conv" (click)="ouvrir(c)">
-                    <span class="mw-conv-titre">
-                      @if (enLigneConversation(c); as enLigne) {
-                        <span class="mw-point" [class.mw-point-off]="!enLigne"></span>
-                      }
-                      {{ titreAffiche(c) }}
-                    </span>
-                    @if (c.dernier_message) { <span class="mw-conv-apercu">{{ c.dernier_message }}</span> }
-                    @if (c.non_lus > 0) { <span class="mw-conv-badge">{{ c.non_lus }}</span> }
-                  </button>
-                }
-              } @else { <p class="mw-vide">Aucune conversation. Créez-en une pour commencer.</p> }
-            </div>
+            @if (afficherMasquees()) {
+              <div class="mw-liste">
+                @if (conversationsMasquees().length) {
+                  @for (c of conversationsMasquees(); track c.id) {
+                    <div class="mw-conv mw-conv-masquee">
+                      <span class="mw-conv-titre">{{ titreAffiche(c) }}</span>
+                      <button type="button" class="mw-lien" (click)="afficherConversation(c)">Afficher</button>
+                    </div>
+                  }
+                } @else { <p class="mw-vide">Aucune conversation masquée.</p> }
+              </div>
+            } @else {
+              <div class="mw-liste">
+                @if (messagerie.conversations().length) {
+                  @for (c of messagerie.conversations(); track c.id) {
+                    <div class="mw-conv">
+                      <button type="button" class="mw-conv-corps" (click)="ouvrir(c)">
+                        <span class="mw-conv-titre">
+                          @if (enLigneConversation(c); as enLigne) {
+                            <span class="mw-point" [class.mw-point-off]="!enLigne"></span>
+                          }
+                          {{ titreAffiche(c) }}
+                        </span>
+                        @if (c.dernier_message) { <span class="mw-conv-apercu">{{ c.dernier_message }}</span> }
+                        @if (c.non_lus > 0) { <span class="mw-conv-badge">{{ c.non_lus }}</span> }
+                      </button>
+                      <span class="mw-conv-actions">
+                        @if (auth.peut('messagerie.conversation.masquer')) {
+                          <button type="button" class="mw-lien" (click)="masquer(c)">Masquer</button>
+                        }
+                        @if (auth.peut('messagerie.conversation.archiver')) {
+                          <button type="button" class="mw-lien" (click)="archiver(c)">Archiver</button>
+                        }
+                        @if (auth.peut('messagerie.conversation.supprimer')) {
+                          <button type="button" class="mw-lien" (click)="supprimer(c)">Supprimer</button>
+                        }
+                      </span>
+                    </div>
+                  }
+                } @else { <p class="mw-vide">Aucune conversation. Créez-en une pour commencer.</p> }
+              </div>
+            }
           } @else {
             <div class="mw-messages">
               @if (messagerie.plusAnciensDisponibles()) {
@@ -83,10 +112,17 @@ import { MessagerieService, Conversation } from './messagerie.service';
               @for (m of messagerie.messagesActifs(); track m.id) {
                 <div class="mw-msg" [class.moi]="m.auteur_id === moi()" [class.important]="m.important">
                   <span class="mw-msg-auteur">{{ m.auteur }} @if (m.important) { <span class="mw-tag-important">❗</span> }</span>
-                  <span class="mw-msg-contenu">{{ m.contenu }}</span>
+                  @if (m.masque) {
+                    <span class="mw-msg-contenu mw-msg-supprime">Message supprimé</span>
+                  } @else {
+                    <span class="mw-msg-contenu">{{ m.contenu }}</span>
+                  }
                   <span class="mw-msg-heure">
                     {{ m.cree_le | date: 'HH:mm' }}
                     @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
+                    @if (!m.masque && auth.peut('messagerie.message.supprimer')) {
+                      <button type="button" class="mw-lien" (click)="supprimerMessage(m.id)">✕</button>
+                    }
                   </span>
                 </div>
               }
@@ -144,13 +180,18 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-liste{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
     .mw-vide{color:var(--grey);font-size:var(--fs-base);padding:14px;text-align:center}
     .mw-conv{
-      display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;position:relative;
-      background:none;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;width:100%;
+      display:flex;flex-direction:column;align-items:stretch;gap:2px;position:relative;
+      background:none;border:none;border-radius:8px;padding:8px 10px 5px;width:100%;
     }
     .mw-conv:hover{background:var(--light)}
+    .mw-conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:none;padding:0;cursor:pointer;width:100%}
     .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
     .mw-conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .mw-conv-badge{position:absolute;top:8px;right:8px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
+    .mw-conv-actions{display:flex;gap:6px;margin-top:3px}
+    .mw-conv-actions .mw-lien,.mw-msg-heure .mw-lien{font-size:var(--fs-2xs)}
+    .mw-conv-masquee{flex-direction:row;align-items:center;justify-content:space-between}
+    .mw-lien{background:none;border:none;color:var(--slate);text-decoration:underline;cursor:pointer;padding:0}
     .mw-nouvelle{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--line);flex-shrink:0}
     .mw-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:10px}
     .mw-msg{display:flex;flex-direction:column;gap:2px;max-width:80%;background:var(--light);border-radius:10px;padding:6px 10px}
@@ -173,6 +214,8 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-tag-important{color:#b23b3b;margin-left:3px}
     .mw-important-btn{color:var(--grey);opacity:.75}
     .mw-important-btn.actif{color:#ff8a8a;opacity:1}
+    .mw-msg-supprime{font-style:italic;color:var(--grey)}
+    .mw-msg.moi .mw-msg-supprime{color:#cfd6e3}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}
       .mw-bulle{right:16px;bottom:16px}
@@ -189,6 +232,8 @@ export class MessagerieWidgetComponent implements OnInit {
   readonly vue = signal<'liste' | 'fil'>('liste');
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);
+  readonly afficherMasquees = signal(false);
+  readonly conversationsMasquees = signal<Conversation[]>([]);
   participantsChoisis: string[] = [];
   titreChoisi = '';
   brouillon = '';
@@ -325,5 +370,53 @@ export class MessagerieWidgetComponent implements OnInit {
     const important = this.important;
     this.important = false;
     this.messagerie.envoyerMessage(id, contenu, important).subscribe();
+  }
+
+  // Masquer/archiver/supprimer (13/09/2026) : mêmes actions, mêmes règles
+  // que l'écran plein page — voir messagerie.component.ts pour le détail.
+  basculerMasquees(): void {
+    this.afficherMasquees.update((v) => !v);
+    if (this.afficherMasquees()) this.chargerMasquees();
+  }
+
+  private chargerMasquees(): void {
+    this.messagerie.conversationsMasquees().subscribe({ next: (c) => this.conversationsMasquees.set(c) });
+  }
+
+  private fermerSiActive(c: Conversation): void {
+    if (this.messagerie.conversationActiveId() === c.id) this.retourListe();
+  }
+
+  masquer(c: Conversation): void {
+    this.messagerie.masquerConversation(c.id).subscribe({
+      next: () => { this.fermerSiActive(c); this.messagerie.rafraichirConversations(); },
+    });
+  }
+
+  archiver(c: Conversation): void {
+    this.messagerie.archiverConversation(c.id).subscribe({
+      next: () => { this.fermerSiActive(c); this.messagerie.rafraichirConversations(); },
+    });
+  }
+
+  supprimer(c: Conversation): void {
+    if (!confirm(`Supprimer « ${this.titreAffiche(c)} » ? L'historique déjà échangé disparaîtra de votre côté (les autres participants gardent tout).`)) return;
+    this.messagerie.supprimerConversation(c.id).subscribe({
+      next: () => { this.fermerSiActive(c); this.messagerie.rafraichirConversations(); },
+    });
+  }
+
+  afficherConversation(c: Conversation): void {
+    this.messagerie.afficherConversation(c.id).subscribe({
+      next: () => { this.chargerMasquees(); this.messagerie.rafraichirConversations(); },
+    });
+  }
+
+  supprimerMessage(messageId: string): void {
+    const id = this.messagerie.conversationActiveId();
+    if (!id) return;
+    this.messagerie.supprimerMessage(id, messageId).subscribe({
+      next: () => this.messagerie.retirerMessageLocalement(messageId),
+    });
   }
 }

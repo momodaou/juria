@@ -3186,3 +3186,57 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
 ALTER TABLE documents ADD COLUMN modifie_le TIMESTAMPTZ;
 ALTER TABLE documents ADD COLUMN modifie_par UUID REFERENCES utilisateurs(id);
 -- ============ FIN ATELIER D'ACTES : MODÈLES + CYCLE ÉDITION/PDF ============
+
+-- =====================================================================
+--  MESSAGERIE : MASQUER / ARCHIVER / SUPPRIMER (personnel, non destructif)
+--  (13/09/2026, demande explicite de l'utilisateur — modèle WhatsApp)
+--
+--  Principe central, validé avec l'utilisateur : ces 3 actions sur une
+--  conversation, + la suppression d'un message précis, ne modifient QUE
+--  la vue de leur auteur — jamais visibles chez les autres participants,
+--  AUCUNE ligne réellement supprimée en base (la traçabilité du cabinet
+--  reste intacte pour tout le monde sauf pour soi-même). On ne "quitte"
+--  jamais une conversation (pas de "Quitter un groupe" demandé) : les
+--  nouveaux messages continuent d'arriver normalement.
+--
+--  Comportement différencié à la relecture (calculé, pas stocké tel quel) :
+--   - masquee_le   : reste caché indéfiniment, y compris si de nouveaux
+--                    messages arrivent — seule une action explicite
+--                    "afficher" (masquee_le remis à NULL) la fait revenir.
+--   - archivee_le  : caché de la liste par défaut, mais réapparaît tout
+--                    seul dès qu'un nouveau message arrive après cette date.
+--   - supprimee_le : caché de la liste par défaut, réapparaît lui aussi
+--                    dès qu'un nouveau message arrive après cette date —
+--                    MAIS sert aussi de barrière définitive sur l'historique :
+--                    tous les messages antérieurs à cette date restent
+--                    invisibles pour cette personne pour toujours (même
+--                    une fois la conversation réapparue avec de nouveaux
+--                    messages), exactement le comportement "Supprimer la
+--                    discussion" de WhatsApp.
+-- =====================================================================
+ALTER TABLE conversation_participants ADD COLUMN masquee_le TIMESTAMPTZ;
+ALTER TABLE conversation_participants ADD COLUMN archivee_le TIMESTAMPTZ;
+ALTER TABLE conversation_participants ADD COLUMN supprimee_le TIMESTAMPTZ;
+
+-- Suppression d'un message précis, pour soi-même uniquement : table de
+-- jointure plutôt qu'une colonne sur `messages` (qui n'a aucune notion
+-- d'auteur multiple à qui s'adresser individuellement) — chaque
+-- participant qui supprime un message chez lui obtient sa propre ligne,
+-- les autres continuent de voir le message normalement.
+CREATE TABLE messages_masques (
+    message_id     UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    utilisateur_id UUID NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    masque_le      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (message_id, utilisateur_id)
+);
+
+-- Catalogue de permissions : 4 nouvelles actions, ouvertes à tous les
+-- rôles par défaut (aucune n'est destructrice pour autrui, cf. ci-dessus).
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, a, TRUE
+FROM unnest(enum_range(NULL::role_utilisateur)) AS r
+CROSS JOIN unnest(ARRAY[
+  'messagerie.conversation.masquer','messagerie.conversation.archiver',
+  'messagerie.conversation.supprimer','messagerie.message.supprimer'
+]) AS a;
+-- ============ FIN MESSAGERIE : MASQUER / ARCHIVER / SUPPRIMER ============

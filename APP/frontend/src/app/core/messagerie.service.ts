@@ -18,13 +18,16 @@ export interface Conversation {
 export interface Message {
   id: string;
   conversation_id?: string;
-  contenu: string;
+  contenu: string | null;
   cree_le: string;
   auteur_id: string;
   auteur: string;
   /** Marqué par l'auteur au moment de l'envoi (13/09/2026) — seul signal qui fait
    *  passer outre le seuil de 2 messages pour la notification e-mail groupée. */
   important: boolean;
+  /** Supprimé par MOI (13/09/2026) — `contenu` est alors null, jamais transmis
+   *  par le serveur ; les autres participants continuent de le voir normalement. */
+  masque: boolean;
 }
 
 export interface Lecture {
@@ -224,5 +227,43 @@ export class MessagerieService {
       titre: titre || undefined,
       dossier_id: dossierId || undefined,
     });
+  }
+
+  // Masquer/archiver/supprimer (13/09/2026) : purement personnel — voir
+  // schema.sql pour le détail du comportement de chacune (masquer reste
+  // caché jusqu'à "afficher" ; archiver/supprimer reviennent tout seuls dès
+  // qu'un nouveau message arrive, seul supprimer efface aussi l'historique
+  // antérieur pour soi). Fermeture de la conversation active si elle vient
+  // de disparaître de ma liste, laissée à l'appelant (l'écran sait mieux
+  // que le service si `conversationActiveId` doit être réinitialisé).
+  masquerConversation(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/messagerie/conversations/${id}/masquer`, {});
+  }
+  afficherConversation(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/messagerie/conversations/${id}/afficher`, {});
+  }
+  archiverConversation(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/messagerie/conversations/${id}/archiver`, {});
+  }
+  supprimerConversation(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/messagerie/conversations/${id}/supprimer`, {});
+  }
+  supprimerMessage(conversationId: string, messageId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/messagerie/conversations/${conversationId}/messages/${messageId}`);
+  }
+  /** Reflète localement une suppression de message réussie — aucun événement
+   *  SSE ne prévient de ce changement (purement personnel, rien à diffuser),
+   *  donc `messagesActifs` doit être réécrit ici via `.update()` (jamais une
+   *  mutation directe d'un élément du tableau — voir la règle signaux du
+   *  projet, déjà source de 2 bugs distincts cette année). */
+  retirerMessageLocalement(messageId: string): void {
+    this.messagesActifs.update((liste) =>
+      liste.map((m) => (m.id === messageId ? { ...m, masque: true, contenu: null } : m))
+    );
+  }
+  /** Conversations masquées (13/09/2026) — seules celles-ci ne reviennent jamais
+   *  toutes seules, d'où ce rappel dédié pour pouvoir les "afficher" à nouveau. */
+  conversationsMasquees(): Observable<Conversation[]> {
+    return this.http.get<Conversation[]>(`${this.base}/api/messagerie/conversations?masquees=true`);
   }
 }

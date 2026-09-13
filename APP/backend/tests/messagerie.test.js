@@ -202,3 +202,128 @@ describe("Job de notification e-mail (13/09/2026)", () => {
     expect(recut).toBe(false);
   });
 });
+
+describe("Masquer / archiver / supprimer une conversation (13/09/2026, personnel)", () => {
+  test("masquer retire la conversation de ma liste, sans effet chez l'autre participant", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+
+    const jwt = require("jsonwebtoken");
+    const { SECRET } = require("../src/auth");
+    const jetonAutre = jwt.sign({ sub: autreId, role: "collaborateur", nom: "Autre" }, SECRET, { expiresIn: "1h" });
+
+    const masquer = await request(app).post(`/api/messagerie/conversations/${convId}/masquer`).set("Authorization", `Bearer ${token}`);
+    expect(masquer.status).toBe(204);
+
+    const listeMoi = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(listeMoi.body.some((c) => c.id === convId)).toBe(false);
+
+    const listeAutre = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${jetonAutre}`);
+    expect(listeAutre.body.some((c) => c.id === convId)).toBe(true);
+
+    // Visible dans le rappel "masquées"
+    const rappel = await request(app).get("/api/messagerie/conversations?masquees=true").set("Authorization", `Bearer ${token}`);
+    expect(rappel.body.some((c) => c.id === convId)).toBe(true);
+
+    // "Afficher" la fait revenir
+    const afficher = await request(app).post(`/api/messagerie/conversations/${convId}/afficher`).set("Authorization", `Bearer ${token}`);
+    expect(afficher.status).toBe(204);
+    const listeApres = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(listeApres.body.some((c) => c.id === convId)).toBe(true);
+  });
+
+  test("archiver disparaît puis réapparaît tout seul dès qu'un nouveau message arrive", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+
+    await request(app).post(`/api/messagerie/conversations/${convId}/archiver`).set("Authorization", `Bearer ${token}`);
+    const apresArchivage = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(apresArchivage.body.some((c) => c.id === convId)).toBe(false);
+
+    const jwt = require("jsonwebtoken");
+    const { SECRET } = require("../src/auth");
+    const jetonAutre = jwt.sign({ sub: autreId, role: "collaborateur", nom: "Autre" }, SECRET, { expiresIn: "1h" });
+    await request(app).post(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${jetonAutre}`).send({ contenu: "Un nouveau message" });
+
+    const apresNouveauMessage = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(apresNouveauMessage.body.some((c) => c.id === convId)).toBe(true);
+  });
+
+  test("supprimer une conversation : réapparaît sur nouveau message, mais l'historique antérieur reste caché pour toujours", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    await request(app).post(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${token}`).send({ contenu: "Message avant suppression" });
+
+    await request(app).post(`/api/messagerie/conversations/${convId}/supprimer`).set("Authorization", `Bearer ${token}`);
+    const apresSuppression = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(apresSuppression.body.some((c) => c.id === convId)).toBe(false);
+
+    const jwt = require("jsonwebtoken");
+    const { SECRET } = require("../src/auth");
+    const jetonAutre = jwt.sign({ sub: autreId, role: "collaborateur", nom: "Autre" }, SECRET, { expiresIn: "1h" });
+    await request(app).post(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${jetonAutre}`).send({ contenu: "Message après suppression" });
+
+    // La conversation revient (jamais quittée)
+    const apresNouveauMessage = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(apresNouveauMessage.body.some((c) => c.id === convId)).toBe(true);
+
+    // Mais l'historique d'avant la suppression reste invisible pour moi
+    const messages = await request(app).get(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${token}`);
+    const contenus = messages.body.map((m) => m.contenu);
+    expect(contenus).not.toContain("Message avant suppression");
+    expect(contenus).toContain("Message après suppression");
+
+    // L'autre participant, lui, voit toujours tout
+    const messagesAutre = await request(app).get(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${jetonAutre}`);
+    expect(messagesAutre.body.map((m) => m.contenu)).toContain("Message avant suppression");
+  });
+});
+
+describe("Supprimer un message précis (13/09/2026, personnel)", () => {
+  test("masque le contenu chez moi uniquement, l'autre participant voit toujours le message", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    const envoi = await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Message à supprimer chez moi" });
+    const messageId = envoi.body.id;
+
+    const suppression = await request(app)
+      .delete(`/api/messagerie/conversations/${convId}/messages/${messageId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppression.status).toBe(204);
+
+    const mesMessages = await request(app).get(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${token}`);
+    const mien = mesMessages.body.find((m) => m.id === messageId);
+    expect(mien.masque).toBe(true);
+    expect(mien.contenu).toBeNull();
+
+    const jwt = require("jsonwebtoken");
+    const { SECRET } = require("../src/auth");
+    const jetonAutre = jwt.sign({ sub: autreId, role: "collaborateur", nom: "Autre" }, SECRET, { expiresIn: "1h" });
+    const messagesAutre = await request(app).get(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${jetonAutre}`);
+    const cheLAutre = messagesAutre.body.find((m) => m.id === messageId);
+    expect(cheLAutre.masque).toBe(false);
+    expect(cheLAutre.contenu).toBe("Message à supprimer chez moi");
+  });
+
+  test("404 sur un message inexistant, idempotent si déjà supprimé", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    const introuvable = await request(app)
+      .delete(`/api/messagerie/conversations/${convId}/messages/00000000-0000-0000-0000-000000000000`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(introuvable.status).toBe(404);
+
+    const envoi = await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu: "Message pour idempotence" });
+    const messageId = envoi.body.id;
+    const premiere = await request(app).delete(`/api/messagerie/conversations/${convId}/messages/${messageId}`).set("Authorization", `Bearer ${token}`);
+    const seconde = await request(app).delete(`/api/messagerie/conversations/${convId}/messages/${messageId}`).set("Authorization", `Bearer ${token}`);
+    expect(premiere.status).toBe(204);
+    expect(seconde.status).toBe(204);
+  });
+});

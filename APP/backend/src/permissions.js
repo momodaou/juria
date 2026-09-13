@@ -139,6 +139,16 @@ const CATALOGUE = [
 
   { code: "messagerie.creer_conversation", module: "Messagerie", label: "Créer une conversation" },
   { code: "messagerie.envoyer_message", module: "Messagerie", label: "Envoyer un message" },
+  // Masquer/archiver/supprimer (13/09/2026, demande explicite de
+  // l'utilisateur) : purement personnel — n'affecte QUE la vue de son
+  // auteur, jamais celle des autres participants, aucune donnée réellement
+  // effacée en base (voir schema.sql). Ouvertes à tous sans distinction,
+  // volontairement pas de "restreinte" : rien ici n'est destructeur pour
+  // qui que ce soit d'autre que soi-même.
+  { code: "messagerie.conversation.masquer", module: "Messagerie", label: "Masquer une conversation (soi-même)" },
+  { code: "messagerie.conversation.archiver", module: "Messagerie", label: "Archiver une conversation (soi-même)" },
+  { code: "messagerie.conversation.supprimer", module: "Messagerie", label: "Supprimer une conversation (soi-même)" },
+  { code: "messagerie.message.supprimer", module: "Messagerie", label: "Supprimer un message (soi-même)" },
 
   // Code inchangé depuis sa création (18/08/2026) pour éviter une migration
   // de renommage ; le périmètre s'est réduit au pro bono depuis l'abandon
