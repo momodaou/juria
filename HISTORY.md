@@ -2180,3 +2180,17 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : build Angular OK. **Parcours réel bout en bout** (Docker local + Playwright) : compte associé de test créé, client + dossier + événement à échéance future (J+10) créés via l'API pour peupler réellement `v_delais_a_venir` (pas de données déjà présentes sur un schéma neuf), connexion, ouverture du Tableau de bord, clic sur le lien du panneau confirmé menant sur `/dossiers/:id` avec la fiche du bon dossier chargée (texte de l'intitulé du dossier de test retrouvé sur la page cible). Dossier/client de test conservés en base locale (suppression refusée par le garde-fou anti-perte de données, activité déjà enregistrée — comportement voulu), sans conséquence puisque tout l'environnement Docker a été détruit juste après.
 
 **Déploiement — effectué et vérifié le 13/09/2026, même session** — frontend seul (aucun changement backend/schéma), révision `juria-web-00095-jqk` (précédente `juria-web-00094-2kh`).
+
+---
+
+### 13/09/2026 (même session, suite) — Défilement automatique vers le panneau de détail du Tableau de bord
+
+**Constat utilisateur** : « le système d'affichage détaillé des informations des capsules en bas : y a-t-il pas un problème ? On clique une case puis il faut redescendre jusqu'en bas pour voir la liste. »
+
+**Diagnostic** : confirmé — le panneau de détail (`@if (ouvert(); as o) { <section class="panel detail"> ... }`) n'est rendu qu'une seule fois dans le template, positionné après les 3 groupes de tuiles (« Dossiers & procédure », « Tâches & équipe », « Facturation & rentabilité », 18 tuiles au total, regroupées le 07/09/2026). Cliquer une tuile du premier groupe ouvre bien le panneau, mais celui-ci reste hors de l'écran tant que l'utilisateur n'a pas fait défiler manuellement au-delà des 13 tuiles restantes des 2 groupes suivants — c'est exactement ce que l'utilisateur décrivait.
+
+**Correctif** : plutôt que de restructurer le gabarit (dupliquer le panneau sous chaque groupe, ou le rendre "sticky"), solution minimale et robuste — un défilement automatique et fluide vers le panneau dès qu'une tuile est cliquée. `#detailSection` posé sur la balise `<section class="panel detail">`, récupéré via `@ViewChild('detailSection') detailSection?: ElementRef<HTMLElement>` dans `clic()`, `this.detailSection?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' })` appelé dans un `setTimeout()` (sans délai explicite — juste pour repousser l'exécution après le prochain cycle de rendu, le temps que le `@if` insère effectivement le panneau dans le DOM, qui n'existe pas encore au moment synchrone du clic). Aucun changement de structure, le panneau reste unique et partagé par les 18 tuiles comme avant.
+
+**Vérification** : build Angular OK. **Vérification visuelle réelle** (Docker local + Playwright, compte associé de test) : position de défilement de la page confirmée à `0` avant le clic, `914px` après un clic sur la toute première tuile (« Dossiers actifs », groupe 1) — capture d'écran confirmant le panneau « Dossiers actifs » visible entièrement dans la fenêtre sans la moindre action de l'utilisateur.
+
+**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).

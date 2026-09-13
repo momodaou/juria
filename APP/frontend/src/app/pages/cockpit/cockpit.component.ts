@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, signal, ViewChild, ElementRef, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -499,7 +499,7 @@ const CONFIG: Record<string, TuileConfig> = {
       }
 
       @if (ouvert(); as o) {
-        <section class="panel detail">
+        <section class="panel detail" #detailSection>
           <div class="detail-head">
             <h3>{{ CONFIG[o].titre }}</h3>
             <button type="button" class="fermer" (click)="fermer()"><span [innerHTML]="icons['close']"></span>Fermer</button>
@@ -784,6 +784,15 @@ export class CockpitComponent implements OnInit {
     return !perm || this.auth.peut(perm);
   }
 
+  // Panneau de détail unique, rendu une seule fois après les 3 groupes de
+  // tuiles (18 au total) — sans ce défilement automatique, cliquer une
+  // tuile du 1er groupe obligeait à redescendre manuellement après les 13
+  // autres tuiles pour voir le résultat (constat utilisateur, 13/09/2026).
+  // `setTimeout` laisse le temps au `@if` de rendre le panneau dans le DOM
+  // avant de le cibler (le clic qui l'ouvre et cette lecture du DOM se
+  // produisent sinon dans le même cycle, avant que l'élément n'existe).
+  @ViewChild('detailSection') private detailSection?: ElementRef<HTMLElement>;
+
   clic(type: string): void {
     if (!this.peutVoirDetail(type)) return;
     if (this.ouvert() === type) { this.fermer(); return; }
@@ -794,6 +803,7 @@ export class CockpitComponent implements OnInit {
       next: (rows) => { this.lignesDetail.set(rows); this.chargementDetail.set(false); },
       error: () => { this.lignesDetail.set([]); this.chargementDetail.set(false); },
     });
+    setTimeout(() => this.detailSection?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   fermer(): void {
