@@ -2193,7 +2193,7 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Vérification** : build Angular OK. **Vérification visuelle réelle** (Docker local + Playwright, compte associé de test) : position de défilement de la page confirmée à `0` avant le clic, `914px` après un clic sur la toute première tuile (« Dossiers actifs », groupe 1) — capture d'écran confirmant le panneau « Dossiers actifs » visible entièrement dans la fenêtre sans la moindre action de l'utilisateur.
 
-**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).
+**Déploiement** : ce correctif n'a pas été déployé séparément — l'utilisateur a demandé à explorer d'autres options avant de lancer le build (voir l'entrée suivante, option B), et les deux ont fini par être déployés ensemble dans la même révision `juria-web-00096-d4p`.
 
 ---
 
@@ -2210,4 +2210,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Vérification** : build Angular OK. **Vérification visuelle réelle** (Docker local + Playwright, compte associé de test) — un clic dans chacun des 3 groupes (« Dossiers actifs » groupe 1, « Mes tâches » groupe 2, « CA du mois » groupe 3) confirme à chaque fois : le panneau est positionné dans le DOM juste après le bon groupe (avant le titre du groupe suivant, vérifié par `compareDocumentPosition`) et entièrement visible dans la fenêtre sans le moindre défilement manuel. Capture d'écran du cas groupe 3 confirmant visuellement le panneau juste sous ses propres tuiles.
 
-**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).
+**Déploiement — effectué et vérifié le 13/09/2026, même session** — frontend seul (aucun changement backend/schéma), déployé avec le correctif de défilement automatique de l'entrée précédente dans la même révision, `juria-web-00096-d4p` (précédente `juria-web-00095-jqk`).
