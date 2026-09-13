@@ -2165,4 +2165,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Vérification** : build Angular OK. **Reproduit le bug puis confirmé le correctif visuellement** (Playwright, captures d'écran réelles avant/après) — avant : capture montrant seulement « Masquer » visible dans un cadre tronqué ; après : capture montrant les 3 actions (« Masquer », « Archiver », « Supprimer » en rouge) entièrement visibles, `boundingBox()` du menu confirmé entièrement contenu dans le viewport. Revérifié fonctionnellement (fermeture au clic ailleurs, action « Archiver » toujours opérationnelle depuis le nouveau menu) et sur le widget flottant séparément (mêmes 3 actions, même correctif, capture d'écran confirmée). Aucun changement backend/schéma — purement CSS/template/logique de positionnement côté frontend.
 
-**Déploiement** : à faire dans la foulée, code prêt et vérifié.
+**Déploiement — effectué et vérifié le 13/09/2026, même session** (commandes fournies une par une, comme demandé par l'utilisateur). Frontend seul (aucun changement backend/schéma) — révision `juria-web-00094-2kh` (précédente `juria-web-00093-gpd`).
