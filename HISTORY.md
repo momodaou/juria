@@ -2179,4 +2179,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Vérification** : build Angular OK. **Parcours réel bout en bout** (Docker local + Playwright) : compte associé de test créé, client + dossier + événement à échéance future (J+10) créés via l'API pour peupler réellement `v_delais_a_venir` (pas de données déjà présentes sur un schéma neuf), connexion, ouverture du Tableau de bord, clic sur le lien du panneau confirmé menant sur `/dossiers/:id` avec la fiche du bon dossier chargée (texte de l'intitulé du dossier de test retrouvé sur la page cible). Dossier/client de test conservés en base locale (suppression refusée par le garde-fou anti-perte de données, activité déjà enregistrée — comportement voulu), sans conséquence puisque tout l'environnement Docker a été détruit juste après.
 
-**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).
+**Déploiement — effectué et vérifié le 13/09/2026, même session** — frontend seul (aucun changement backend/schéma), révision `juria-web-00095-jqk` (précédente `juria-web-00094-2kh`).
