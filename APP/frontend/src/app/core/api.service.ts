@@ -506,6 +506,31 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/actes/generer`, payload);
   }
 
+  // Cycle brouillon/édition/validation (13/09/2026).
+  modifierActe(id: string, texte: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/actes/${id}`, { texte });
+  }
+  changerStatutActe(id: string, statut: 'brouillon' | 'valide'): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/actes/${id}/statut`, { statut });
+  }
+  telechargerActePdf(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/actes/${id}/pdf`, { responseType: 'blob' });
+  }
+
+  // Gestion du catalogue de modèles (13/09/2026, actes.modeles.gerer).
+  modelesActesTous(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/actes/modeles/tous`);
+  }
+  creerModeleActe(payload: { code: string; nom: string; categorie?: string; corps: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/actes/modeles`, payload);
+  }
+  modifierModeleActe(id: string, payload: { nom?: string; categorie?: string; corps?: string; actif?: boolean }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/actes/modeles/${id}`, payload);
+  }
+  desactiverModeleActe(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/actes/modeles/${id}`);
+  }
+
   // Bibliothèque
   biblio(filtres: { type?: string; matiere?: string; q?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();

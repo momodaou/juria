@@ -78,6 +78,7 @@ const CATALOGUE = [
 
   { code: "actes.consulter", module: "Atelier d'actes", label: "Consulter l'atelier d'actes", restreinte: true },
   { code: "actes.generer", module: "Atelier d'actes", label: "Générer un acte" },
+  { code: "actes.modeles.gerer", module: "Atelier d'actes", label: "Ajouter/modifier/désactiver un modèle d'acte", restreinte: true },
 
   { code: "biblio.creer", module: "Bibliothèque", label: "Ajouter une ressource" },
   { code: "biblio.supprimer", module: "Bibliothèque", label: "Supprimer une ressource" },

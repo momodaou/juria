@@ -2815,3 +2815,362 @@ CREATE TABLE presence_utilisateurs (
 -- 10 minutes plus tard pourra de nouveau déclencher un e-mail.
 ALTER TABLE conversation_participants ADD COLUMN dernier_email_notifie_le TIMESTAMPTZ;
 -- ============ FIN MESSAGERIE : PRÉSENCE + E-MAIL + ACCUSÉ DE LECTURE ============
+
+-- =====================================================================
+--  ATELIER D'ACTES : MODÈLES DYNAMIQUES + CYCLE BROUILLON/ÉDITION/PDF
+--  (13/09/2026, demande explicite de l'utilisateur, suite à une analyse
+--  des pratiques du secteur)
+--
+--  Jusqu'ici les 4 modèles étaient codés en dur dans actes.js (objet JS
+--  `MODELES`, fonctions de fusion) — aucun moyen d'en ajouter sans toucher
+--  au code, et le résultat généré (texte brut) n'était ni modifiable ni
+--  imprimable proprement (juste un <pre> figé). Remplacé par une vraie
+--  table, sur le modèle de `ressources_biblio` : un `corps` texte avec
+--  placeholders {{...}}, fusionnés par une fonction de substitution simple
+--  (voir actes.js, applatirContexte()/fusionner()) — pas un moteur de
+--  template externe, cohérent avec le reste du projet (pas de nouvelle
+--  dépendance). Les 4 modèles d'origine sont migrés à l'identique (même
+--  texte, juste réécrit en placeholders) + une entrée « Autre » (squelette
+--  vierge) + 7 squelettes structurels supplémentaires (assignation,
+--  requête, mémoire, compte rendu d'audience, lettre de constitution,
+--  avis juridique, courrier de transmission) — volontairement minimaux
+--  (en-tête + objet + corps à compléter), à enrichir par le cabinet
+--  lui-même via le nouvel écran de gestion des modèles : je ne suis pas
+--  en position de rédiger un contenu juridique de fond fiable pour des
+--  actes de procédure OHADA précis.
+-- =====================================================================
+CREATE TABLE modeles_actes (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code       VARCHAR(60) UNIQUE NOT NULL,
+    nom        VARCHAR(200) NOT NULL,
+    categorie  categorie_document NOT NULL DEFAULT 'autre',
+    corps      TEXT NOT NULL,
+    actif      BOOLEAN NOT NULL DEFAULT TRUE,
+    cree_par   UUID REFERENCES utilisateurs(id),
+    cree_le    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    modifie_le TIMESTAMPTZ
+);
+
+INSERT INTO modeles_actes (code, nom, categorie, corps) VALUES
+('mise_en_demeure', 'Mise en demeure (recouvrement)', 'correspondance',
+$${{cabinet_raison_sociale}}
+{{cabinet_forme}}
+{{cabinet_adresse}} — {{cabinet_telephone}} — {{cabinet_email}}
+RCCM {{cabinet_rccm}} · NIF {{cabinet_nif}}
+
+Bamako, le {{date}}
+
+À l'attention de : {{destinataire}}
+Réf. dossier : {{dossier_numero}}
+
+Objet : MISE EN DEMEURE — {{dossier_objet_ou_intitule}}
+
+Maître,
+
+Nous avons été saisis par notre client {{client}} dans le cadre du dossier référencé en objet.
+
+Malgré nos précédentes relances, nous constatons à ce jour l'absence de règlement de la créance
+due, ainsi que le rappellent les pièces du dossier.
+
+En conséquence, nous vous mettons en demeure, par la présente, de bien vouloir régulariser
+votre situation dans un délai de QUINZE (15) jours à compter de la réception des présentes,
+faute de quoi nous serons contraints d'engager toute voie de droit utile, y compris judiciaire,
+sans autre avis ni sommation, aux frais, risques et périls du débiteur.
+
+Sous toutes réserves.
+
+Visas : Code civil (obligations), Acte uniforme OHADA portant organisation des procédures
+simplifiées de recouvrement et des voies d'exécution.
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('lettre_mission', 'Lettre de mission / d''engagement', 'correspondance',
+$${{cabinet_raison_sociale}}
+{{cabinet_adresse}} — {{cabinet_telephone}} — {{cabinet_email}}
+
+Bamako, le {{date}}
+
+À l'attention de : {{client}}
+Réf. dossier : {{dossier_numero}}
+
+Objet : Lettre de mission — {{dossier_intitule}}
+
+Cher client, chère cliente,
+
+Nous vous confirmons par la présente les termes de notre mission dans le dossier référencé
+en objet : {{dossier_objet_ou_intitule}}.
+
+Cette lettre a pour objet de préciser l'étendue de notre mandat, les modalités d'intervention
+du cabinet {{cabinet_raison_sociale}}, ainsi que les conditions de facturation applicables
+(mode d'honoraires : {{dossier_mode_honoraires}}).
+
+Nous vous remercions de nous retourner un exemplaire signé pour accord.
+
+{{avocat}}
+Pour {{cabinet_raison_sociale}}$$),
+
+('demande_provision', 'Demande de provision', 'correspondance',
+$${{cabinet_raison_sociale}}
+Compte CARPA : {{cabinet_compte_carpa}}
+
+Bamako, le {{date}}
+
+À l'attention de : {{client}}
+Réf. dossier : {{dossier_numero}} — {{dossier_intitule}}
+
+Objet : Demande de provision sur honoraires et frais
+
+Cher client, chère cliente,
+
+Dans le cadre du suivi de votre dossier, nous vous prions de bien vouloir procéder au
+versement d'une provision destinée à couvrir les diligences à venir ainsi que les frais
+et débours prévisibles (huissier, greffe, expertise, le cas échéant).
+
+Nous restons à votre disposition pour toute précision.
+
+{{avocat}}$$),
+
+('conclusions_trame', 'Trame de conclusions', 'conclusions',
+$$POUR : {{client}}
+CONTRE : {{partie_adverse}}
+
+CONCLUSIONS
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Juridiction : {{dossier_juridiction}}
+
+PLAISE À LA JURIDICTION
+
+RAPPEL DES FAITS ET DE LA PROCÉDURE
+[à compléter]
+
+DISCUSSION
+[à compléter]
+
+PAR CES MOTIFS
+
+Il est demandé à la juridiction de :
+- [à compléter]
+
+SOUS TOUTES RÉSERVES
+
+{{avocat}}
+{{cabinet_forme}}
+Fait à Bamako, le {{date}}$$),
+
+('assignation', 'Assignation', 'conclusions',
+$${{cabinet_raison_sociale}}
+{{cabinet_forme}}
+
+ASSIGNATION
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Juridiction : {{dossier_juridiction}}
+
+L'AN {{date}}
+
+À LA REQUÊTE DE : {{client}}
+
+J'AI, HUISSIER SOUSSIGNÉ, DONNÉ ASSIGNATION À :
+{{partie_adverse}}
+
+D'AVOIR À COMPARAÎTRE devant la juridiction susvisée, à l'effet de s'entendre :
+
+EXPOSÉ DES FAITS
+[à compléter]
+
+MOYENS ET DISCUSSION
+[à compléter]
+
+PAR CES MOTIFS
+[à compléter]
+
+SOUS TOUTES RÉSERVES
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('requete', 'Requête', 'conclusions',
+$${{cabinet_raison_sociale}}
+
+REQUÊTE
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Juridiction : {{dossier_juridiction}}
+
+À MONSIEUR/MADAME LE PRÉSIDENT DE LA JURIDICTION
+
+A l'honneur de vous exposer respectueusement ce qui suit pour le compte de {{client}} :
+
+EXPOSÉ DES FAITS
+[à compléter]
+
+DISCUSSION
+[à compléter]
+
+PAR CES MOTIFS
+
+Plaise à la juridiction de :
+- [à compléter]
+
+SOUS TOUTES RÉSERVES
+
+Fait à Bamako, le {{date}}
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('memoire', 'Mémoire (recours/appel)', 'conclusions',
+$${{cabinet_raison_sociale}}
+
+MÉMOIRE
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Juridiction : {{dossier_juridiction}}
+
+POUR : {{client}}
+CONTRE : {{partie_adverse}}
+
+RAPPEL DE LA PROCÉDURE ET DE LA DÉCISION ENTREPRISE
+[à compléter]
+
+MOYENS
+[à compléter]
+
+PAR CES MOTIFS
+
+Il est demandé de :
+- [à compléter]
+
+SOUS TOUTES RÉSERVES
+
+Fait à Bamako, le {{date}}
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('compte_rendu_audience', 'Compte rendu d''audience', 'note_interne',
+$$COMPTE RENDU D'AUDIENCE
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Juridiction : {{dossier_juridiction}}
+Date de l'audience : {{date}}
+
+Présents :
+[à compléter]
+
+Déroulement de l'audience :
+[à compléter]
+
+Décision / renvoi :
+[à compléter]
+
+Suites à donner :
+[à compléter]
+
+Rédigé par {{avocat}}$$),
+
+('lettre_constitution', 'Lettre de constitution d''avocat', 'correspondance',
+$${{cabinet_raison_sociale}}
+{{cabinet_adresse}} — {{cabinet_telephone}} — {{cabinet_email}}
+
+Bamako, le {{date}}
+
+À l'attention de : {{destinataire}}
+Réf. dossier : {{dossier_numero}} — {{dossier_intitule}}
+
+Objet : Constitution d'avocat
+
+Maître,
+
+Nous avons l'honneur de vous informer que le cabinet {{cabinet_raison_sociale}} se constitue
+pour la défense des intérêts de {{client}} dans le cadre du dossier référencé en objet.
+
+Nous vous remercions de bien vouloir nous adresser désormais toute correspondance relative
+à cette affaire.
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('avis_juridique', 'Avis juridique / Legal opinion', 'recherche',
+$${{cabinet_raison_sociale}}
+
+AVIS JURIDIQUE
+
+Dossier : {{dossier_numero}} — {{dossier_intitule}}
+Destinataire : {{client}}
+Date : {{date}}
+
+QUESTION POSÉE
+[à compléter]
+
+RÉSUMÉ DE L'AVIS
+[à compléter]
+
+ANALYSE
+[à compléter — visas, textes applicables, jurisprudence]
+
+CONCLUSION / RECOMMANDATION
+[à compléter]
+
+Cet avis est établi sur la base des éléments communiqués à la date ci-dessus et ne saurait
+engager le cabinet au-delà des informations fournies.
+
+{{avocat}}
+{{cabinet_forme}}$$),
+
+('courrier_transmission', 'Courrier de transmission', 'correspondance',
+$${{cabinet_raison_sociale}}
+{{cabinet_adresse}} — {{cabinet_telephone}} — {{cabinet_email}}
+
+Bamako, le {{date}}
+
+À l'attention de : {{destinataire}}
+Réf. dossier : {{dossier_numero}} — {{dossier_intitule}}
+
+Objet : Transmission de pièces
+
+Maître, Madame, Monsieur,
+
+Nous vous prions de bien vouloir trouver ci-joint, pour votre information/attribution,
+les pièces suivantes :
+- [à compléter]
+
+Restant à votre disposition pour toute précision utile.
+
+{{avocat}}$$),
+
+('autre', 'Autre (page vierge)', 'autre',
+$${{cabinet_raison_sociale}}
+{{cabinet_adresse}} — {{cabinet_telephone}} — {{cabinet_email}}
+
+Bamako, le {{date}}
+
+Réf. dossier : {{dossier_numero}} — {{dossier_intitule}}
+
+Objet : [à préciser]
+
+
+[Rédiger librement le contenu ici]
+
+
+{{avocat}}
+{{cabinet_forme}}$$);
+
+-- Nouvelle permission dédiée à la gestion du catalogue de modèles
+-- (distincte de « générer un acte », qui reste ouverte par défaut) —
+-- cluster direction/administratif, même esprit que parametres.cabinet.modifier.
+INSERT INTO permissions_role (role, action_code, autorise) VALUES
+ ('associe','actes.modeles.gerer',TRUE),
+ ('associe_fondateur','actes.modeles.gerer',TRUE),
+ ('admin_general','actes.modeles.gerer',TRUE),
+ ('admin_it','actes.modeles.gerer',TRUE);
+
+-- Cycle d'édition (13/09/2026) : documents n'avait jamais été modifié après
+-- création (aucun UPDATE nulle part dans le code avant ce jour) — ajout de
+-- l'audit minimal correspondant, même patron que valide_par/valide_le
+-- ailleurs dans le schéma.
+ALTER TABLE documents ADD COLUMN modifie_le TIMESTAMPTZ;
+ALTER TABLE documents ADD COLUMN modifie_par UUID REFERENCES utilisateurs(id);
+-- ============ FIN ATELIER D'ACTES : MODÈLES + CYCLE ÉDITION/PDF ============
