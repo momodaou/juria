@@ -2085,4 +2085,4 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 
 **Fait** : `} @else { — }` → `} @else { Non }`. Purement cosmétique, aucun changement de donnée ni de logique — la case pro bono cochée affichait déjà correctement le statut d'honoraires (atteint/sous seuil/sans honoraires) via `@if (d.pro_bono)`, seule la branche négative était ambiguë.
 
-**Vérification** : build Angular OK (aucun changement backend, aucun test à adapter). **Déploiement production** : pas encore fait à ce stade — à confirmer avec l'utilisateur.
+**Vérification** : build Angular OK (aucun changement backend, aucun test à adapter). **Déploiement production — effectué et vérifié le 13/09/2026** (accord utilisateur) — frontend seul, révision `juria-web-00090-b9x` (précédente `juria-web-00089-cgk`). Vérifié : page d'accueil du frontend en `200`.
