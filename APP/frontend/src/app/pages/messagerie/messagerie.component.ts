@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
@@ -62,18 +62,33 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
                 @if (c.dernier_message) { <span class="conv-apercu">{{ c.dernier_message }}</span> }
                 @if (c.non_lus > 0) { <span class="badge-nonlus">{{ c.non_lus }}</span> }
               </button>
-              <span class="conv-actions">
+              @if (auth.peut('messagerie.conversation.masquer') || auth.peut('messagerie.conversation.archiver') || auth.peut('messagerie.conversation.supprimer')) {
+                <button type="button" class="conv-menu-btn" title="Actions" (click)="basculerMenu(c.id, $event)">⋮</button>
+              }
+            </div>
+          }
+          <!-- Rendu hors de la liste défilante (13/09/2026) : un menu en
+               position:absolute imbriqué dans .liste (overflow-y:auto) se
+               faisait couper net dès qu'il dépassait la hauteur du contenu
+               visible — seul "Masquer" restait visible, "Archiver"/
+               "Supprimer" invisibles sans qu'aucune erreur ne le signale.
+               position:fixed + coordonnées calculées au clic (voir
+               basculerMenu ci-dessous) échappe à ce cadrage, quel que soit
+               l'endroit où le bouton ⋮ se trouve dans la liste. -->
+          @if (menuOuvertId(); as idOuvert) {
+            @if (conversationParId(idOuvert); as c) {
+              <div class="conv-menu" [style.top.px]="menuPos()?.top" [style.left.px]="menuPos()?.left">
                 @if (auth.peut('messagerie.conversation.masquer')) {
-                  <button class="lien" title="Masquer (reste caché jusqu'à ce que vous alliez la rechercher)" (click)="masquer(c)">Masquer</button>
+                  <button class="conv-menu-item" title="Reste caché jusqu'à ce que vous alliez la rechercher" (click)="masquer(c)">Masquer</button>
                 }
                 @if (auth.peut('messagerie.conversation.archiver')) {
-                  <button class="lien" title="Archiver (revient toute seule si un nouveau message arrive)" (click)="archiver(c)">Archiver</button>
+                  <button class="conv-menu-item" title="Revient toute seule si un nouveau message arrive" (click)="archiver(c)">Archiver</button>
                 }
                 @if (auth.peut('messagerie.conversation.supprimer')) {
-                  <button class="lien" title="Supprimer (chez vous uniquement — l'historique déjà échangé disparaît de votre côté)" (click)="supprimer(c)">Supprimer</button>
+                  <button class="conv-menu-item conv-menu-item-danger" title="Chez vous uniquement — l'historique déjà échangé disparaît de votre côté" (click)="supprimer(c)">Supprimer</button>
                 }
-              </span>
-            </div>
+              </div>
+            }
           }
         } @else { <p class="muted">Aucune conversation. Créez-en une pour commencer.</p> }
       </section>
@@ -102,7 +117,7 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
                   {{ m.cree_le | date: 'HH:mm' }}
                   @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
                   @if (!m.masque && auth.peut('messagerie.message.supprimer')) {
-                    <button class="lien" title="Supprimer ce message (chez vous uniquement)" (click)="supprimerMessage(m.id)">✕</button>
+                    <button class="msg-supprimer" title="Supprimer ce message (chez vous uniquement)" (click)="supprimerMessage(m.id)">✕</button>
                   }
                 </span>
               </div>
@@ -149,18 +164,46 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .btn:disabled{opacity:.6;cursor:not-allowed}
 
     .conv{
-      display:flex;flex-direction:column;align-items:stretch;gap:2px;text-align:left;
-      background:none;border:none;border-radius:10px;padding:10px 12px 6px;width:100%;
+      display:flex;align-items:center;gap:2px;text-align:left;position:relative;
+      background:none;border:none;border-radius:10px;padding:6px 6px 6px 12px;width:100%;
     }
     .conv:hover{background:var(--light)}
     .conv.active{background:var(--navy);color:#fff}
-    .conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:none;padding:0;cursor:pointer;width:100%;text-align:left}
+    .conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:none;padding:4px 0;cursor:pointer;flex:1;min-width:0;text-align:left}
     .conv-titre{font-weight:600;font-size:var(--fs-base)}
     .conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .conv.active .conv-apercu{color:#cfd6e3}
     .badge-nonlus{align-self:flex-end;background:var(--gold);color:#1b2436;font-size:var(--fs-xs);font-weight:700;padding:2px 7px;border-radius:999px;margin-top:-18px}
-    .conv-actions{display:flex;gap:4px;margin-top:4px;font-size:var(--fs-2xs)}
-    .conv-masquee{flex-direction:row;align-items:center;justify-content:space-between}
+    .conv-masquee{justify-content:space-between}
+
+    /* Menu "⋮" discret (13/09/2026) — remplace 3 liens texte toujours
+       visibles, jugés encombrants par l'utilisateur. Visible en permanence
+       mais très atténué, plein contraste seulement au survol de la ligne
+       ou quand le menu est ouvert (sinon invisible sur mobile/tactile,
+       qui n'a pas de :hover). */
+    .conv-menu-btn{
+      background:none;border:none;color:var(--grey);font-size:var(--fs-lg);line-height:1;
+      cursor:pointer;padding:4px 8px;border-radius:6px;opacity:.35;flex-shrink:0;
+    }
+    .conv:hover .conv-menu-btn, .conv-menu-btn:focus-visible{opacity:1}
+    .conv-menu-btn:hover{background:rgba(0,0,0,.08)}
+    .conv.active .conv-menu-btn{color:#cfd6e3}
+    /* position:fixed (pas absolute) + coordonnées calculées en JS au clic
+       (voir basculerMenu()) : échappe à l'overflow:auto de .liste, qui
+       coupait sinon le menu net dès qu'il dépassait la hauteur visible du
+       contenu (bug trouvé et corrigé le 13/09/2026 avant tout déploiement,
+       lors de la vérification visuelle demandée par l'utilisateur). */
+    .conv-menu{
+      position:fixed;z-index:1000;min-width:150px;
+      background:#fff;border:1px solid var(--line);border-radius:10px;
+      box-shadow:0 6px 18px rgba(0,0,0,.16);padding:4px;display:flex;flex-direction:column;
+    }
+    .conv-menu-item{
+      background:none;border:none;text-align:left;padding:8px 10px;border-radius:6px;
+      font-size:var(--fs-sm);color:var(--dark,#1b2436);cursor:pointer;white-space:nowrap;
+    }
+    .conv-menu-item:hover{background:var(--light)}
+    .conv-menu-item-danger{color:#b23b3b}
 
     .fil{padding:16px;min-height:78vh;display:flex;flex-direction:column}
     .fil-entete{display:flex;align-items:center;gap:6px;font-weight:700;font-size:var(--fs-md);padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
@@ -185,7 +228,12 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     .msg.moi .tag-important{color:#ffd6d6}
     .msg-supprime{font-style:italic;color:var(--grey)}
     .msg.moi .msg-supprime{color:#cfd6e3}
-    .msg-heure .lien{margin-left:6px;font-size:var(--fs-2xs)}
+    .msg-supprimer{
+      background:none;border:none;cursor:pointer;margin-left:6px;font-size:var(--fs-2xs);
+      color:inherit;opacity:.35;padding:0 2px;
+    }
+    .msg:hover .msg-supprimer{opacity:.85}
+    .msg-supprimer:hover{opacity:1}
   `],
 })
 export class MessagerieComponent implements OnInit, OnDestroy {
@@ -197,6 +245,10 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   readonly afficherNouvelle = signal(false);
   readonly afficherMasquees = signal(false);
   readonly conversationsMasquees = signal<Conversation[]>([]);
+  /** Menu "⋮" ouvert pour cette conversation (13/09/2026) — un seul à la fois. */
+  readonly menuOuvertId = signal<string | null>(null);
+  /** Coordonnées écran du menu (position:fixed, calculées au clic — voir basculerMenu). */
+  readonly menuPos = signal<{ top: number; left: number } | null>(null);
   participantsChoisis: string[] = [];
   titreChoisi = '';
   brouillon = '';
@@ -292,6 +344,27 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   // personnel — après succès, un simple rafraîchissement de la liste
   // suffit à la faire disparaître (le serveur ne la renvoie plus), sans
   // avoir besoin de manipuler le tableau local à la main.
+  // Menu "⋮" (13/09/2026) : `stopPropagation` sur le bouton empêche le clic
+  // d'ouverture d'être immédiatement refermé par le listener document
+  // ci-dessous (qui, lui, ferme sur tout clic ailleurs — y compris les
+  // items du menu, ce qui est voulu : choisir une action referme aussi).
+  basculerMenu(id: string, ev: Event): void {
+    ev.stopPropagation();
+    if (this.menuOuvertId() === id) { this.menuOuvertId.set(null); return; }
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    this.menuPos.set({ top: rect.bottom + 4, left: Math.max(8, rect.right - 156) });
+    this.menuOuvertId.set(id);
+  }
+
+  @HostListener('document:click')
+  fermerMenu(): void {
+    this.menuOuvertId.set(null);
+  }
+
+  conversationParId(id: string): Conversation | undefined {
+    return this.messagerie.conversations().find((c) => c.id === id);
+  }
+
   basculerMasquees(): void {
     this.afficherMasquees.update((v) => !v);
     if (this.afficherMasquees()) this.chargerMasquees();

@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, HostListener, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
@@ -88,20 +88,30 @@ import { MessagerieService, Conversation } from './messagerie.service';
                         @if (c.dernier_message) { <span class="mw-conv-apercu">{{ c.dernier_message }}</span> }
                         @if (c.non_lus > 0) { <span class="mw-conv-badge">{{ c.non_lus }}</span> }
                       </button>
-                      <span class="mw-conv-actions">
-                        @if (auth.peut('messagerie.conversation.masquer')) {
-                          <button type="button" class="mw-lien" (click)="masquer(c)">Masquer</button>
-                        }
-                        @if (auth.peut('messagerie.conversation.archiver')) {
-                          <button type="button" class="mw-lien" (click)="archiver(c)">Archiver</button>
-                        }
-                        @if (auth.peut('messagerie.conversation.supprimer')) {
-                          <button type="button" class="mw-lien" (click)="supprimer(c)">Supprimer</button>
-                        }
-                      </span>
+                      @if (auth.peut('messagerie.conversation.masquer') || auth.peut('messagerie.conversation.archiver') || auth.peut('messagerie.conversation.supprimer')) {
+                        <button type="button" class="mw-conv-menu-btn" title="Actions" (click)="basculerMenu(c.id, $event)">⋮</button>
+                      }
                     </div>
                   }
                 } @else { <p class="mw-vide">Aucune conversation. Créez-en une pour commencer.</p> }
+                <!-- position:fixed, hors de .mw-liste/.mw-panneau (tous deux
+                     limitent l'overflow) — même correctif que l'écran plein
+                     page, sans quoi le menu se ferait couper net. -->
+                @if (menuOuvertId(); as idOuvert) {
+                  @if (conversationParId(idOuvert); as c) {
+                    <div class="mw-conv-menu" [style.top.px]="menuPos()?.top" [style.left.px]="menuPos()?.left">
+                      @if (auth.peut('messagerie.conversation.masquer')) {
+                        <button type="button" class="mw-conv-menu-item" (click)="masquer(c)">Masquer</button>
+                      }
+                      @if (auth.peut('messagerie.conversation.archiver')) {
+                        <button type="button" class="mw-conv-menu-item" (click)="archiver(c)">Archiver</button>
+                      }
+                      @if (auth.peut('messagerie.conversation.supprimer')) {
+                        <button type="button" class="mw-conv-menu-item mw-conv-menu-item-danger" (click)="supprimer(c)">Supprimer</button>
+                      }
+                    </div>
+                  }
+                }
               </div>
             }
           } @else {
@@ -121,7 +131,7 @@ import { MessagerieService, Conversation } from './messagerie.service';
                     {{ m.cree_le | date: 'HH:mm' }}
                     @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
                     @if (!m.masque && auth.peut('messagerie.message.supprimer')) {
-                      <button type="button" class="mw-lien" (click)="supprimerMessage(m.id)">✕</button>
+                      <button type="button" class="mw-msg-supprimer" title="Supprimer ce message (chez vous uniquement)" (click)="supprimerMessage(m.id)">✕</button>
                     }
                   </span>
                 </div>
@@ -180,18 +190,28 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-liste{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
     .mw-vide{color:var(--grey);font-size:var(--fs-base);padding:14px;text-align:center}
     .mw-conv{
-      display:flex;flex-direction:column;align-items:stretch;gap:2px;position:relative;
-      background:none;border:none;border-radius:8px;padding:8px 10px 5px;width:100%;
+      display:flex;align-items:center;gap:2px;position:relative;
+      background:none;border:none;border-radius:8px;padding:2px 4px 2px 10px;width:100%;
     }
     .mw-conv:hover{background:var(--light)}
-    .mw-conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:none;padding:0;cursor:pointer;width:100%}
+    .mw-conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:none;padding:6px 0;cursor:pointer;flex:1;min-width:0}
     .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
     .mw-conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-    .mw-conv-badge{position:absolute;top:8px;right:8px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
-    .mw-conv-actions{display:flex;gap:6px;margin-top:3px}
-    .mw-conv-actions .mw-lien,.mw-msg-heure .mw-lien{font-size:var(--fs-2xs)}
-    .mw-conv-masquee{flex-direction:row;align-items:center;justify-content:space-between}
+    .mw-conv-badge{position:absolute;top:8px;right:34px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
+    .mw-conv-masquee{flex-direction:row;align-items:center;justify-content:space-between;padding:8px 10px}
     .mw-lien{background:none;border:none;color:var(--slate);text-decoration:underline;cursor:pointer;padding:0}
+
+    /* Menu "⋮" discret (13/09/2026) — même esprit que l'écran plein page. */
+    .mw-conv-menu-btn{background:none;border:none;color:var(--grey);font-size:var(--fs-md);line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px;opacity:.35;flex-shrink:0}
+    .mw-conv:hover .mw-conv-menu-btn, .mw-conv-menu-btn:focus-visible{opacity:1}
+    .mw-conv-menu-btn:hover{background:rgba(0,0,0,.08)}
+    /* position:fixed (pas absolute) : .mw-panneau a overflow:hidden et
+       .mw-liste overflow-y:auto — un menu imbriqué s'y ferait couper net,
+       même bug/correctif que l'écran plein page (voir messagerie.component.ts). */
+    .mw-conv-menu{position:fixed;z-index:1000;min-width:140px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.16);padding:4px;display:flex;flex-direction:column}
+    .mw-conv-menu-item{background:none;border:none;text-align:left;padding:7px 9px;border-radius:6px;font-size:var(--fs-sm);color:#1b2436;cursor:pointer;white-space:nowrap}
+    .mw-conv-menu-item:hover{background:var(--light)}
+    .mw-conv-menu-item-danger{color:#b23b3b}
     .mw-nouvelle{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--line);flex-shrink:0}
     .mw-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:10px}
     .mw-msg{display:flex;flex-direction:column;gap:2px;max-width:80%;background:var(--light);border-radius:10px;padding:6px 10px}
@@ -216,6 +236,9 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-important-btn.actif{color:#ff8a8a;opacity:1}
     .mw-msg-supprime{font-style:italic;color:var(--grey)}
     .mw-msg.moi .mw-msg-supprime{color:#cfd6e3}
+    .mw-msg-supprimer{background:none;border:none;cursor:pointer;margin-left:5px;font-size:var(--fs-2xs);color:inherit;opacity:.35;padding:0 2px}
+    .mw-msg:hover .mw-msg-supprimer{opacity:.85}
+    .mw-msg-supprimer:hover{opacity:1}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}
       .mw-bulle{right:16px;bottom:16px}
@@ -234,6 +257,8 @@ export class MessagerieWidgetComponent implements OnInit {
   readonly afficherNouvelle = signal(false);
   readonly afficherMasquees = signal(false);
   readonly conversationsMasquees = signal<Conversation[]>([]);
+  readonly menuOuvertId = signal<string | null>(null);
+  readonly menuPos = signal<{ top: number; left: number } | null>(null);
   participantsChoisis: string[] = [];
   titreChoisi = '';
   brouillon = '';
@@ -374,6 +399,23 @@ export class MessagerieWidgetComponent implements OnInit {
 
   // Masquer/archiver/supprimer (13/09/2026) : mêmes actions, mêmes règles
   // que l'écran plein page — voir messagerie.component.ts pour le détail.
+  basculerMenu(id: string, ev: Event): void {
+    ev.stopPropagation();
+    if (this.menuOuvertId() === id) { this.menuOuvertId.set(null); return; }
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    this.menuPos.set({ top: rect.bottom + 4, left: Math.max(8, rect.right - 146) });
+    this.menuOuvertId.set(id);
+  }
+
+  @HostListener('document:click')
+  fermerMenu(): void {
+    this.menuOuvertId.set(null);
+  }
+
+  conversationParId(id: string): Conversation | undefined {
+    return this.messagerie.conversations().find((c) => c.id === id);
+  }
+
   basculerMasquees(): void {
     this.afficherMasquees.update((v) => !v);
     if (this.afficherMasquees()) this.chargerMasquees();
