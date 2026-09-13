@@ -2166,3 +2166,17 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification** : build Angular OK. **Reproduit le bug puis confirmé le correctif visuellement** (Playwright, captures d'écran réelles avant/après) — avant : capture montrant seulement « Masquer » visible dans un cadre tronqué ; après : capture montrant les 3 actions (« Masquer », « Archiver », « Supprimer » en rouge) entièrement visibles, `boundingBox()` du menu confirmé entièrement contenu dans le viewport. Revérifié fonctionnellement (fermeture au clic ailleurs, action « Archiver » toujours opérationnelle depuis le nouveau menu) et sur le widget flottant séparément (mêmes 3 actions, même correctif, capture d'écran confirmée). Aucun changement backend/schéma — purement CSS/template/logique de positionnement côté frontend.
 
 **Déploiement — effectué et vérifié le 13/09/2026, même session** (commandes fournies une par une, comme demandé par l'utilisateur). Frontend seul (aucun changement backend/schéma) — révision `juria-web-00094-2kh` (précédente `juria-web-00093-gpd`).
+
+---
+
+### 13/09/2026 (même session, suite) — Panneau "Délais à venir" du Tableau de bord rendu cliquable
+
+**Constat utilisateur** : « Tableau de bord "délai à venir" non cliquable (et afin que ça ouvre et renvoi dans le menu concerné). Est-ce normal ? ».
+
+**Diagnostic** : non, ce n'était pas normal — un oubli, pas un choix. Le panneau « Délais à venir » (`d.delais_a_venir`, alimenté par la vue `v_delais_a_venir` présente dans le schéma depuis le tout premier jour) est un panneau plus ancien, structurellement séparé du système de tuiles cliquables + liens contextuels construit les 04/09 et 06-07/09/2026 (`CONFIG`/`c.lien`/`routerLink` — voir entrées correspondantes). Contrairement aux 18 tuiles du Tableau de bord, ce panneau-là rendait sa colonne « Dossier » en texte brut, jamais migré vers le mécanisme de lien déjà en place ailleurs dans le même fichier.
+
+**Correctif** : réutilisation à l'identique du patron déjà écrit 12 fois dans `cockpit.component.ts` pour les autres tuiles — `<a class="lien" [routerLink]="['/dossiers', e.dossier_id]">` — la vue `v_delais_a_venir` expose déjà `dossier_id` (confirmé dans `schema.sql`, aucune migration nécessaire). Repli en texte simple si `dossier_id` est absent (ne devrait jamais arriver vu la jointure `JOIN dossiers d` dans la vue, mais gardé par prudence, même style défensif que le reste du fichier).
+
+**Vérification** : build Angular OK. **Parcours réel bout en bout** (Docker local + Playwright) : compte associé de test créé, client + dossier + événement à échéance future (J+10) créés via l'API pour peupler réellement `v_delais_a_venir` (pas de données déjà présentes sur un schéma neuf), connexion, ouverture du Tableau de bord, clic sur le lien du panneau confirmé menant sur `/dossiers/:id` avec la fiche du bon dossier chargée (texte de l'intitulé du dossier de test retrouvé sur la page cible). Dossier/client de test conservés en base locale (suppression refusée par le garde-fou anti-perte de données, activité déjà enregistrée — comportement voulu), sans conséquence puisque tout l'environnement Docker a été détruit juste après.
+
+**Déploiement** : à faire, code prêt et vérifié (frontend seul, aucun changement backend/schéma).

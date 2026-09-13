@@ -543,7 +543,13 @@ const CONFIG: Record<string, TuileConfig> = {
             <tr><th>Dossier</th><th>Type</th><th>Échéance</th><th>Jours</th></tr>
             @for (e of d.delais_a_venir; track e.id) {
               <tr>
-                <td>{{ e.dossier_numero }} — {{ e.intitule }}</td>
+                <td>
+                  @if (e.dossier_id) {
+                    <a class="lien" [routerLink]="['/dossiers', e.dossier_id]">{{ e.dossier_numero }} — {{ e.intitule }}</a>
+                  } @else {
+                    {{ e.dossier_numero }} — {{ e.intitule }}
+                  }
+                </td>
                 <td>{{ e.type }}</td>
                 <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
                 <td>J-{{ e.jours_restants }}</td>
