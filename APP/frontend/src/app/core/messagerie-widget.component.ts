@@ -189,9 +189,25 @@ export class MessagerieWidgetComponent implements OnInit {
     return c ? this.titreAffiche(c) : 'Conversation';
   }
 
+  // 🐛 Bug trouvé et corrigé le 13/09/2026 (audit demandé par l'utilisateur,
+  // « la messagerie réduite en bas semble ne pas opérer ») : cliquer sur la
+  // bulle pour FERMER le panneau (le geste le plus naturel — pas la petite
+  // croix ✕) ne réinitialisait ni `vue` ni `conversationActiveId`. Résultat
+  // silencieux et invisible : tout message reçu ensuite pour cette même
+  // conversation était marqué "vu" par erreur (voir le commentaire de
+  // MessagerieService.recevoirMessage, déjà correct pour fermer() mais
+  // jamais appliqué ici) — aucun badge, aucune pastille, rien à l'écran,
+  // exactement ce qui ressemble à « la messagerie ne fonctionne plus ».
+  // Reproduit puis corrigé en faisant de la fermeture par la bulle un appel
+  // strict à fermer() (même nettoyage dans les deux cas), au lieu d'un
+  // simple bascule du booléen `ouvert`.
   basculer(): void {
-    this.ouvert.set(!this.ouvert());
-    if (this.ouvert()) this.messagerie.rafraichirConversations();
+    if (this.ouvert()) {
+      this.fermer();
+    } else {
+      this.ouvert.set(true);
+      this.messagerie.rafraichirConversations();
+    }
   }
 
   fermer(): void {
