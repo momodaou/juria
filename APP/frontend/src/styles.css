@@ -46,16 +46,21 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 
 .side nav{margin-top:22px;flex:1;display:flex;flex-direction:column;gap:4px}
 /* En-têtes de groupe du menu (30/08/2026) — repris de la maquette de
-   regroupement discutée précédemment, jamais posée en CSS jusqu'ici. */
+   regroupement discutée précédemment, jamais posée en CSS jusqu'ici.
+   Trait de séparation ajouté le 18/09/2026 (constat utilisateur : sans
+   lire le petit label, impossible de repérer à l'œil où un groupe finit
+   et où le suivant commence) — au-dessus de chaque groupe SAUF le premier
+   (pas de trait flottant juste sous "Cockpit"/"Messagerie"). */
 .nav-groupe{
   font-size:var(--fs-2xs);font-weight:700;letter-spacing:1px;text-transform:uppercase;
-  color:rgba(207,214,227,.55);padding:14px 12px 4px;white-space:nowrap;
+  color:rgba(207,214,227,.55);padding:16px 12px 4px;margin-top:6px;white-space:nowrap;
+  border-top:1px solid rgba(255,255,255,.1);
 }
 .side nav a:first-child,
-.nav-groupe:first-child{margin-top:0}
+.nav-groupe:first-child{margin-top:0;padding-top:4px;border-top:none}
 .app.collapsed .nav-groupe{
   height:1px;padding:0;margin:9px 8px;overflow:hidden;text-indent:-9999px;
-  background:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.12);border-top:none;
 }
 .side nav a{display:flex;align-items:center;gap:10px;color:#cfd6e3;text-decoration:none;padding:10px 12px;border-radius:8px;font-size:var(--fs-md);white-space:nowrap}
 .side nav a:hover{background:rgba(255,255,255,.08);color:#fff}
@@ -120,8 +125,14 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 .tier-legende .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
 
 /* Panneaux & tables */
-.panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px}
-.panel h3{margin:0 0 12px;color:var(--navy);font-size:var(--fs-lg)}
+/* Bordure/ombre renforcées (18/09/2026) — le panneau se distinguait à
+   peine du fond de page (--line #e2e7ee très proche de --fff et de
+   #F4F6F9), rendant les rubriques difficiles à repérer d'un coup d'œil,
+   constat de l'utilisateur, tous écrans confondus (fiche dossier,
+   Échéances, Rôle d'audience...). */
+.panel{background:#fff;border:1px solid #cfd7e2;border-radius:12px;padding:16px 18px;margin-bottom:18px;
+  box-shadow:0 1px 3px rgba(16,24,40,.06)}
+.panel h3{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);color:var(--navy);font-size:var(--fs-lg)}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;color:var(--grey);padding:8px 6px;border-bottom:1px solid var(--line)}
 td{padding:10px 6px;border-bottom:1px solid #f0f3f7;font-size:var(--fs-base)}

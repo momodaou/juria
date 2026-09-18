@@ -2317,3 +2317,24 @@ Proposition initiale (référence + date entièrement backdatées, à titre opti
 **Vérification en production** : `/health` API et page d'accueil frontend en `200`. Comptage forcé via un bloc PL/pgSQL (`DO ... RAISE EXCEPTION` avec les chiffres dans le message, technique utilisée car un import réussi n'affiche pas les `RAISE NOTICE`) confirmant : `modeles_actes` = 12 lignes, permission `actes.modeles.gerer` = 4 lignes, colonnes `documents.modifie_le/modifie_par` = 2/2, colonnes Discipline de facturation sur `dossiers` = 6/6. Pas de vérification fonctionnelle bout en bout sur un compte réel de production (choix cohérent avec la pratique déjà suivie sur ce projet — fonctionnalités testées fidèlement en local avant déploiement).
 
 **Non fait dans cette passe** : Bloc D (levier pro bono) reste en réserve, comme convenu le 17/09/2026.
+
+## 2026-09-18 — Séparation visuelle des groupes de menu et des rubriques internes
+
+**Contexte** : question de l'utilisateur (« difficile souvent à l'œil de repérer rapidement une rubrique car elles ne semblent pas s'encadrer avec des traits de visibilité »), portant à la fois sur les groupes du menu latéral et sur les titres de section à l'intérieur des écrans (fiche dossier, Échéances, Rôle d'audience...).
+
+**Diagnostic** : confirmé fondé en relisant `styles.css` avant tout code, pas supposé. `.nav-groupe` (posé le 30/08/2026 pour regrouper les 19 entrées du menu en 4 blocs) n'a aucun séparateur visuel en mode déplié — seul le mode réduit a une barre de fond. `.panel h3` (motif partagé par tous les écrans à sections, ex. fiche dossier avec 8-11 panneaux empilés) souffre d'un contraste quasi nul entre trois couleurs très proches : fond du panneau `#fff`, fond de page `#F4F6F9`, bordure `--line:#e2e7ee`.
+
+**Correctifs** (2 blocs CSS dans `styles.css`, aucun changement de gabarit HTML) :
+- `.nav-groupe` gagne un `border-top` discret (`rgba(255,255,255,.1)`), absent sur le premier groupe (pas de trait flottant sous Cockpit/Messagerie) et désactivé explicitement en mode réduit (`.app.collapsed .nav-groupe{border-top:none}`, pour ne pas doubler la barre de séparation déjà prévue là-bas).
+- `.panel` : bordure resserrée à `#cfd7e2` + `box-shadow:0 1px 3px rgba(16,24,40,.06)`. `.panel h3` : `border-bottom:1px solid var(--line)` avec un peu plus de padding, pour détacher visuellement le titre du contenu du panneau.
+
+**Vérification visuelle** : première fois dans ce projet que `ng serve` est lancé en local depuis un conteneur headless pour une capture Playwright (jusqu'ici toujours contre une build de production ou directement en production). Stack complète montée en Docker (Postgres + API via `docker compose`, `ng serve` dans un conteneur `node:22` à part, Playwright dans un troisième conteneur avec `host.docker.internal`). Deux pièges rencontrés et résolus :
+1. **Vite bloque les requêtes par nom d'hôte inconnu** (« Blocked request... This host is not allowed ») — le nouveau serveur de dev Angular (basé sur Vite) refuse par défaut tout `Host` différent de `localhost`. Résolu en ajoutant `--allowed-hosts` (sans valeur = autorise tous les hôtes) à la commande `ng serve` documentée dans `APP/README.md` — à retenir pour toute future vérification visuelle en local via un conteneur tiers, la procédure du README ne le mentionne pas encore.
+2. **`environment.ts` pointe l'API vers `http://localhost:8080`**, une adresse valable uniquement depuis le point de vue du navigateur — comme celui-ci tourne dans un conteneur Playwright séparé, ce `localhost` ne résout vers rien. Contourné sans toucher au code applicatif : interception des requêtes (`page.route`) réécrivant `localhost:8080` vers `host.docker.internal:8080` côté Playwright.
+3. **`waitUntil:'networkidle'` ne se résout jamais** sur une page connectée (flux SSE permanent de la messagerie) — piège déjà documenté le 03/09/2026, reconfirmé ici ; utiliser `domcontentloaded` pour toute navigation après connexion.
+
+Captures avant/après publiées dans un Artifact dédié pour validation visuelle par l'utilisateur avant déploiement (menu latéral avec les 4 groupes désormais séparés, écran Échéances avec les 2 panneaux détachés du fond).
+
+**Vérification** : build Angular production OK, pas de changement backend/schéma/tests.
+
+**Déploiement** : accord explicite de l'utilisateur après avoir donné mon avis sur l'importance du correctif (mineur mais légitime, peu risqué). **Déployé et vérifié en production le 18/09/2026** — frontend seul, révision `juria-web-00099-58w` (précédente `juria-web-00098-84t`), `/` en `200`.
