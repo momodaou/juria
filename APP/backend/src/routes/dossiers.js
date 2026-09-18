@@ -2,7 +2,62 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
+const { saveObject } = require("../storage");
+// Réutilise le moteur de fusion de modèles de l'Atelier d'actes (13/09/2026)
+// pour générer la lettre de mission automatiquement à l'ouverture — voir
+// genererLettreMissionAuto() plus bas. Pas de dépendance circulaire :
+// actes.js ne requiert pas dossiers.js.
+const { construireContexte, applatirContexte, fusionner } = require("./actes");
+const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const router = express.Router();
+
+// Discipline de facturation — Bloc A (18/09/2026, voir CLAUDE.md/HISTORY.md
+// pour la synthèse de conception complète). Montant convenu réservé aux
+// modes où un chiffre ferme a du sens à l'ouverture.
+const MODES_MONTANT_CONVENU = ["forfait", "consultation", "abonnement"];
+
+// Génère automatiquement le brouillon de lettre de mission à l'ouverture
+// (modèle 'lettre_mission' déjà seedé dans modeles_actes) et le lie au
+// dossier. Exceptions actées avec l'utilisateur : abonnement (convention-
+// cadre déjà signée en amont) et success fee quand le client a déjà un
+// autre dossier en abonnement (même convention-cadre couvrant ce volet au
+// résultat). Jamais bloquant : une erreur ici est journalisée mais
+// n'empêche pas la création du dossier (principe directeur de la note de
+// conception — la formalisation ne doit jamais retarder l'ouverture).
+async function genererLettreMissionAuto(dossierId, modeHonoraires, clientId, auteurId) {
+  if (modeHonoraires === "abonnement") return null;
+  if (modeHonoraires === "success_fee") {
+    const { rows: [dejaAbonnement] } = await pool.query(
+      `SELECT 1 FROM dossiers WHERE client_id = $1 AND mode_honoraires = 'abonnement' AND id <> $2 LIMIT 1`,
+      [clientId, dossierId]
+    );
+    if (dejaAbonnement) return null;
+  }
+  try {
+    const { rows: [modele] } = await pool.query(
+      "SELECT nom, categorie, corps FROM modeles_actes WHERE code = 'lettre_mission' AND actif = TRUE"
+    );
+    if (!modele) return null;
+    const avocat = await pool.query("SELECT prenom || ' ' || nom AS nom FROM utilisateurs WHERE id = $1", [auteurId]);
+    const ctx = await construireContexte(dossierId, avocat.rows[0]?.nom || "");
+    if (!ctx) return null;
+    const texte = fusionner(modele.corps, applatirContexte(ctx));
+    const nom = `${modele.nom} — ${ctx.dossier.numero}`;
+    const dest = `${dossierId}/${Date.now()}_${nom}.txt`.replace(/\s+/g, "_");
+    const chemin = await saveObject(Buffer.from(texte, "utf-8"), dest, "text/plain");
+    const { rows: [doc] } = await pool.query(
+      `INSERT INTO documents (dossier_id, nom, categorie, statut, chemin_storage, type_mime, taille_octets, auteur_id, ocr_texte)
+       VALUES ($1,$2,$3,'brouillon',$4,'text/plain',$5,$6,$7)
+       RETURNING id`,
+      [dossierId, nom, modele.categorie, chemin, Buffer.byteLength(texte, "utf-8"), auteurId, texte]
+    );
+    await pool.query("UPDATE dossiers SET lettre_mission_document_id = $1 WHERE id = $2", [doc.id, dossierId]);
+    return doc.id;
+  } catch (e) {
+    console.error("Génération automatique de la lettre de mission échouée (non bloquant) :", e);
+    return null;
+  }
+}
 
 // Responsable dossier réservé aux avocats (12/09/2026, demande explicite de
 // l'utilisateur) : seul un statut d'avocat peut porter la responsabilité
@@ -174,11 +229,13 @@ router.get("/", async (req, res) => {
               d.code_matiere, d.couleur_chemise, d.date_ouverture,
               d.client_id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
-              ${SELECT_HONORAIRES}
+              ${SELECT_HONORAIRES},
+              ${SELECT_STATUT_FACTURATION}
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
        ${JOIN_HONORAIRES}
+       ${JOIN_STATUT_FACTURATION}
        ${where}
        ORDER BY d.maj_le DESC
        LIMIT 200`,
@@ -199,11 +256,13 @@ router.get("/:id", async (req, res) => {
       `SELECT d.*,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               u.prenom || ' ' || u.nom AS responsable_nom,
-              ${SELECT_HONORAIRES}
+              ${SELECT_HONORAIRES},
+              ${SELECT_STATUT_FACTURATION}
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
        ${JOIN_HONORAIRES}
+       ${JOIN_STATUT_FACTURATION}
        WHERE d.id = $1`,
       [id]
     );
@@ -243,13 +302,50 @@ router.get("/:id", async (req, res) => {
       "SELECT id, degre, juridiction, numero_role, date_debut, decision FROM instances WHERE dossier_id = $1 ORDER BY date_debut NULLS LAST, cree_le",
       [id]
     );
+    // Discipline de facturation — Bloc A : le montant convenu avec le
+    // client est confidentiel, visible seulement du cercle déjà réservé
+    // aux données chiffrées (factures.consulter) et des personnes
+    // effectivement affectées à CE dossier (responsable + intervenants) —
+    // masqué pour tout autre profil consultant la fiche. Première règle
+    // de ce type dans JURIA (jusqu'ici les permissions sont par rôle, pas
+    // par affectation à un dossier précis).
+    const affecte = d.rows[0].responsable_id === req.user.sub
+      || intervenants.rows.some((i) => i.utilisateur_id === req.user.sub);
+    const peutVoirMontant = affecte || (await estAutorise(req.user.role, "factures.consulter"));
+    const dossier = { ...d.rows[0] };
+    if (!peutVoirMontant) dossier.montant_convenu_xof = null;
+
     res.json({
-      ...d.rows[0], parties: parties.rows, intervenants: intervenants.rows,
+      ...dossier, parties: parties.rows, intervenants: intervenants.rows,
       clients_additionnels: clientsAdditionnels.rows, instances: instances.rows,
     });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/dossiers/:id/lettre-mission-retour  { retour_le? }
+// Discipline de facturation — Bloc A : suivi du retour signé de la lettre
+// de mission, purement informatif (n'entre dans aucun calcul, ne bloque
+// jamais rien — cohérent avec le principe directeur de la note de
+// conception). Version simple pour ce premier jet : action manuelle plutôt
+// que branchée sur un type de courrier dédié du Registre du courrier (un
+// raffinement possible plus tard, pas nécessaire pour que le suivi soit
+// déjà utile). Réutilise la permission déjà existante courriers.creer,
+// plutôt qu'un nouveau code de permission pour un geste aussi ponctuel.
+router.put("/:id/lettre-mission-retour", requirePermission("courriers.creer"), async (req, res) => {
+  const retourLe = req.body?.retour_le || new Date().toISOString().slice(0, 10);
+  try {
+    const { rows } = await pool.query(
+      "UPDATE dossiers SET lettre_mission_retour_le = $1 WHERE id = $2 RETURNING id, lettre_mission_retour_le",
+      [retourLe, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -332,6 +428,19 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
   const b = req.body || {};
   const proBono = !!b.pro_bono;
   try {
+    // Discipline de facturation — Bloc A : mode d'honoraires obligatoire
+    // (aucune valeur par défaut silencieuse), « Autre » exige sa précision
+    // libre, montant convenu verrouillé aux modes où il a du sens.
+    if (!b.mode_honoraires) {
+      return res.status(400).json({ error: "Mode d'honoraires requis (choisir « Autre » et préciser si non déterminé à ce stade)." });
+    }
+    if (b.mode_honoraires === "autre" && !b.mode_honoraires_precision?.trim()) {
+      return res.status(400).json({ error: "Précision requise pour le mode d'honoraires « Autre »." });
+    }
+    if (b.montant_convenu != null && !MODES_MONTANT_CONVENU.includes(b.mode_honoraires)) {
+      return res.status(400).json({ error: "Montant convenu non applicable à ce mode d'honoraires (réservé à forfait/consultation/abonnement)." });
+    }
+
     const erreurAvocat = await verifierResponsableEstAvocat(pool, b.responsable_id);
     if (erreurAvocat) return res.status(400).json({ error: erreurAvocat });
     const erreurImputation = await verifierImputationResponsable(pool, b.responsable_id, req.user.role);
@@ -375,13 +484,16 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, montant_litige_sens, montant_litige_sens_precision, mode_honoraires, urgence, responsable_id, pro_bono,
           objet, statut_procedure, statut_procedure_precision, intermediaire,
-          code_matiere, couleur_chemise, date_ouverture_origine)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          code_matiere, couleur_chemise, date_ouverture_origine,
+          mode_honoraires_precision, montant_convenu_xof)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.montant_litige_sens || null, b.montant_litige_sens_precision || null, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
        b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
-       codeMatiere, couleurChemise, b.date_ouverture_origine || null]
+       codeMatiere, couleurChemise, b.date_ouverture_origine || null,
+       b.mode_honoraires === "autre" ? b.mode_honoraires_precision.trim() : null,
+       MODES_MONTANT_CONVENU.includes(b.mode_honoraires) ? (b.montant_convenu ?? null) : null]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du
@@ -434,7 +546,12 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
       );
     }
 
-    res.status(201).json(rows[0]);
+    // Lettre de mission automatique (Bloc A) — hors chemin critique :
+    // exécutée après la création, son échec éventuel n'empêche jamais la
+    // réponse 201 (le dossier existe déjà à ce stade).
+    const lettreMissionId = await genererLettreMissionAuto(rows[0].id, b.mode_honoraires, b.client_id, req.user.sub);
+
+    res.status(201).json({ ...rows[0], lettre_mission_document_id: lettreMissionId });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
@@ -502,8 +619,20 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       couleurRegeneree = await couleurPour(pool, pole, codeMatiere);
     }
 
+    // Discipline de facturation — Bloc A : même verrouillage qu'à la
+    // création pour le montant convenu, contre le mode d'honoraires
+    // EFFECTIF après cette mise à jour (celui fourni ici, sinon celui déjà
+    // en base — un PUT partiel ne renvoie pas forcément mode_honoraires).
+    if (b.montant_convenu != null) {
+      const modeEffectif = b.mode_honoraires
+        || (await pool.query("SELECT mode_honoraires FROM dossiers WHERE id = $1", [req.params.id])).rows[0]?.mode_honoraires;
+      if (!MODES_MONTANT_CONVENU.includes(modeEffectif)) {
+        return res.status(400).json({ error: "Montant convenu non applicable à ce mode d'honoraires (réservé à forfait/consultation/abonnement)." });
+      }
+    }
+
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $24::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $26::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
@@ -513,6 +642,8 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       b.montant_litige_sens || null,
       b.montant_litige_sens_precision || null,
       b.date_ouverture_origine || null,
+      b.mode_honoraires_precision ?? null,
+      b.montant_convenu ?? null,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -540,8 +671,10 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          montant_litige_sens = COALESCE($20::sens_montant_litige, montant_litige_sens),
          montant_litige_sens_precision = COALESCE($21, montant_litige_sens_precision),
          date_ouverture_origine = COALESCE($22::date, date_ouverture_origine),
+         mode_honoraires_precision = COALESCE($23, mode_honoraires_precision),
+         montant_convenu_xof = COALESCE($24, montant_convenu_xof),
          maj_le = now()
-       WHERE id = $23 ${clauseConcurrence}
+       WHERE id = $25 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
       params
     );
@@ -564,9 +697,22 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
 router.delete("/:id", requirePermission("dossiers.supprimer"), async (req, res) => {
   const id = req.params.id;
   try {
+    // La lettre de mission auto-générée à l'ouverture (Bloc A, 18/09/2026)
+    // ne doit pas, à elle seule, empêcher la suppression d'un dossier
+    // fraîchement créé par erreur — sinon cette voie de secours
+    // deviendrait morte pour la quasi-totalité des dossiers (elle se
+    // génère automatiquement dès qu'un mode d'honoraires facturable est
+    // choisi). Exclue explicitement de ce comptage ; tout AUTRE document
+    // (pièce déposée, acte généré séparément…) continue de bloquer.
     const compteurs = await Promise.all(
       TABLES_ACTIVITE_DOSSIER.map((t) =>
-        pool.query(`SELECT count(*) AS n FROM ${t} WHERE dossier_id = $1`, [id])
+        t === "documents"
+          ? pool.query(
+              `SELECT count(*) AS n FROM documents
+               WHERE dossier_id = $1 AND id IS DISTINCT FROM (SELECT lettre_mission_document_id FROM dossiers WHERE id = $1)`,
+              [id]
+            )
+          : pool.query(`SELECT count(*) AS n FROM ${t} WHERE dossier_id = $1`, [id])
       )
     );
     const bloquants = TABLES_ACTIVITE_DOSSIER

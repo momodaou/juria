@@ -40,6 +40,7 @@ async function creerDossier(clientId, overrides = {}) {
       client_id: clientId,
       pole: "contentieux",
       responsable_id: userId,
+      mode_honoraires: "forfait",
       ...overrides,
     });
   return res.body.id;
@@ -254,7 +255,7 @@ describe("Numérotation selon le Guide de référencement des dossiers", () => {
     const res = await request(app)
       .post("/api/dossiers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ intitule: "Sans matière", client_id: clientId, pole: "contentieux", responsable_id: userId });
+      .send({ intitule: "Sans matière", client_id: clientId, pole: "contentieux", responsable_id: userId, mode_honoraires: "forfait" });
     expect(res.status).toBe(201);
     const annee = new Date().getFullYear();
     expect(res.body.numero).toMatch(new RegExp(`^CX-IND-${annee}-\\d{4}$`));
@@ -268,11 +269,11 @@ describe("Numérotation selon le Guide de référencement des dossiers", () => {
     const premier = await request(app)
       .post("/api/dossiers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ intitule: "Commercial 1", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM" });
+      .send({ intitule: "Commercial 1", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM", mode_honoraires: "forfait" });
     const second = await request(app)
       .post("/api/dossiers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ intitule: "Commercial 2", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM" });
+      .send({ intitule: "Commercial 2", client_id: clientId, pole: "contentieux", responsable_id: userId, code_matiere: "COM", mode_honoraires: "forfait" });
 
     expect(premier.body.numero).toMatch(new RegExp(`^CX-COM-${annee}-\\d{4}$`));
     const n1 = Number(premier.body.numero.split("-")[3]);
@@ -287,7 +288,7 @@ describe("Numérotation selon le Guide de référencement des dossiers", () => {
     const res = await request(app)
       .post("/api/dossiers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ intitule: "Conseil affaires", client_id: clientId, pole: "conseil", responsable_id: userId, code_matiere: "AFF" });
+      .send({ intitule: "Conseil affaires", client_id: clientId, pole: "conseil", responsable_id: userId, code_matiere: "AFF", mode_honoraires: "forfait" });
     expect(res.body.numero).toMatch(new RegExp(`^CS-AFF-${annee}-0001$`));
   });
 });
@@ -298,7 +299,7 @@ describe("Requalification depuis IND — seul cas où la référence, normalemen
     const creation = await request(app)
       .post("/api/dossiers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ intitule: "À qualifier", client_id: clientId, pole: "contentieux", responsable_id: userId });
+      .send({ intitule: "À qualifier", client_id: clientId, pole: "contentieux", responsable_id: userId, mode_honoraires: "forfait" });
     const dossierId = creation.body.id;
     expect(creation.body.code_matiere).toBe("IND");
     const ancienNumero = creation.body.numero;

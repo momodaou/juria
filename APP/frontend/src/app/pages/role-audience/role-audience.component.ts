@@ -34,12 +34,22 @@ import { AuthService } from '../../core/auth.service';
 
         @if (r.lignes?.length) {
           <table>
-            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Résultat</th><th></th></tr>
+            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Résultat</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
-              <tr [class.urgent]="l.urgente">
+              <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
                 <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
                 <td>{{ l.heure || '—' }}</td>
-                <td><a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a></td>
+                <td>
+                  <a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a>
+                  @if (l.statut_facturation) {
+                    <div>
+                      <span class="tag" [class.attente]="l.statut_facturation === 'en_attente'" [class.haute]="l.statut_facturation === 'toujours_pas'">
+                        {{ l.statut_facturation === 'toujours_pas' ? 'Toujours pas facturé' : 'En attente de facturation' }}
+                      </span>
+                    </div>
+                  }
+                </td>
+                <td>{{ l.responsable_dossier_nom || '—' }}</td>
                 <td>{{ l.juridiction || '—' }}</td>
                 <td>{{ l.type }}</td>
                 <td>{{ l.avocat_nom || '—' }}</td>
@@ -217,6 +227,7 @@ import { AuthService } from '../../core/auth.service';
     .statut-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}
+    tr.facturation-alerte td{background:#fdf6e8}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:720px}

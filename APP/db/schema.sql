@@ -3240,3 +3240,85 @@ CROSS JOIN unnest(ARRAY[
   'messagerie.conversation.supprimer','messagerie.message.supprimer'
 ]) AS a;
 -- ============ FIN MESSAGERIE : MASQUER / ARCHIVER / SUPPRIMER ============
+
+-- =====================================================================
+--  DISCIPLINE DE FACTURATION — BLOC A : FORMALISATION À LA CRÉATION
+--  (18/09/2026, suite à une discussion approfondie avec l'utilisateur sur
+--  l'incitation à facturer systématiquement les dossiers non pro bono —
+--  voir CLAUDE.md/HISTORY.md pour la synthèse complète de la conception.
+--  Principe directeur retenu : jamais bloquer une action liée à un délai
+--  de procédure — ce bloc agit uniquement sur la formalisation à
+--  l'ouverture, jamais sur la capacité à travailler le dossier ensuite.)
+--
+--  mode_honoraires devient obligatoire CÔTÉ APPLICATION (POST /api/dossiers
+--  refuse désormais sa création sans lui) — pas de contrainte NOT NULL en
+--  base : des dossiers réels existent déjà sans cette valeur, une
+--  contrainte dure casserait leur lecture/mise à jour. Nouvelle valeur
+--  d'ENUM 'autre' (cas d'urgence — référé de nuit, garde à vue — où les
+--  honoraires ne peuvent pas encore être fixés) + sa précision libre.
+ALTER TYPE mode_honoraires ADD VALUE IF NOT EXISTS 'autre';
+
+ALTER TABLE dossiers ADD COLUMN mode_honoraires_precision TEXT;
+
+-- Montant convenu avec le client : PAS une facture (aucun document fiscal
+-- émis à ce stade) — une donnée de référence qui pré-remplira la vraie
+-- facture le moment venu (même principe que factures.objet pré-rempli
+-- depuis dossiers.objet, 05/09/2026). Verrouillé côté application aux
+-- modes forfait/consultation/abonnement (décision explicite de
+-- l'utilisateur, 18/09/2026) — sans objet pour temps passé/success
+-- fee/autre, où aucun chiffre ferme n'existe à l'ouverture.
+ALTER TABLE dossiers ADD COLUMN montant_convenu_xof NUMERIC(14,0);
+
+-- Lettre de mission générée automatiquement à la création (réutilise le
+-- modèle 'lettre_mission' déjà seedé dans modeles_actes le 13/09/2026,
+-- jusqu'ici jamais déclenché nulle part) — exceptions actées avec
+-- l'utilisateur : mode 'abonnement' (convention-cadre déjà signée en
+-- amont) et mode 'success_fee' quand le client a déjà un autre dossier en
+-- abonnement (la convention-cadre couvre alors aussi ce volet au
+-- résultat). lettre_mission_document_id pointe vers le document GED
+-- généré, pour l'afficher/le lier depuis la fiche.
+ALTER TABLE dossiers ADD COLUMN lettre_mission_document_id UUID REFERENCES documents(id);
+
+-- Suivi du retour signé — purement informatif (n'entre dans aucun calcul,
+-- ne bloque jamais rien), simple date renseignée manuellement pour cette
+-- première version plutôt que branchée sur le Registre du courrier
+-- (simplification assumée : le rattachement automatique via un type de
+-- courrier dédié est un raffinement possible plus tard, pas nécessaire
+-- pour que le suivi soit déjà utile).
+ALTER TABLE dossiers ADD COLUMN lettre_mission_retour_le DATE;
+
+-- Le modèle 'lettre_mission' seedé le 13/09/2026 ne mentionnait que le
+-- mode d'honoraires, pas de montant — complété par une ligne
+-- supplémentaire (UPDATE ciblé plutôt que réécrire le seed d'origine, qui
+-- a déjà été appliqué en production et ne se rejoue pas). Garde
+-- idempotente (NOT LIKE) pour ne pas dupliquer la ligne si rejoué.
+UPDATE modeles_actes
+SET corps = REPLACE(
+  corps,
+  '(mode d''honoraires : {{dossier_mode_honoraires}}).',
+  '(mode d''honoraires : {{dossier_mode_honoraires}} ; montant convenu : {{dossier_montant_convenu}}).'
+)
+WHERE code = 'lettre_mission' AND corps NOT LIKE '%dossier_montant_convenu%';
+-- ============ FIN DISCIPLINE DE FACTURATION — BLOC A ============
+
+-- =====================================================================
+--  DISCIPLINE DE FACTURATION — BLOC C : ESCALADE PAR COURRIEL
+--  (18/09/2026, même session — voir CLAUDE.md/HISTORY.md)
+--
+--  Deux alertes indépendantes, même patron idempotent que le job
+--  d'alertes honoraires du 18/08/2026 (colonnes booléennes par palier,
+--  jamais redéclenchées une fois marquées) :
+--   - Impayé (factures.alerte_impaye_j60/j90) : mêmes bornes déjà
+--     utilisées par la tuile "Ancienneté des impayés" du Tableau de bord
+--     (jours écoulés depuis l'échéance : >60 puis >90 jours) — pas de
+--     nouveau seuil inventé.
+--   - Jamais facturé (dossiers.alerte_facturation_j30/j60) : mêmes seuils
+--     que le marquage visuel du Bloc B (statut_facturation), la même
+--     donnée pilotant le mail et le badge visuel.
+-- =====================================================================
+ALTER TABLE factures ADD COLUMN alerte_impaye_j60 BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE factures ADD COLUMN alerte_impaye_j90 BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE dossiers ADD COLUMN alerte_facturation_j30 BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE dossiers ADD COLUMN alerte_facturation_j60 BOOLEAN NOT NULL DEFAULT FALSE;
+-- ============ FIN DISCIPLINE DE FACTURATION — BLOC C ============

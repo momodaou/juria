@@ -12,6 +12,8 @@ export interface DashboardData {
   dossiers_sous_seuil_honoraires: number;
   conges_attente: number | null; // null si le rôle n'a pas cabinet.consulter
   dossiers_dormants: number;
+  // Discipline de facturation, Bloc B (18/09/2026) — null si le rôle n'a pas factures.consulter.
+  dossiers_en_attente_facturation: number | null;
   taux_realisation: number | null; // null si le rôle n'a pas factures.consulter
   // 6 indicateurs de performance (04/09/2026) — tous null si le rôle n'a pas factures.consulter
   ca_mois: number | null;
@@ -73,6 +75,10 @@ export interface Dossier {
   // le 18/08/2026, seul le volet pro bono reste suivi.
   honoraires_seuil_xof: number | null;
   statut_honoraires: 'sans_honoraires' | 'sous_seuil' | 'atteint' | null;
+  // Discipline de facturation, Bloc B (18/09/2026) — null pour un dossier
+  // pro bono (autre mécanisme ci-dessus), un mode success_fee/abonnement,
+  // un dossier clos/archivé, ou déjà facturé. Voir facturationDiscipline.js.
+  statut_facturation: 'en_attente' | 'toujours_pas' | null;
 }
 
 export interface ParametresHonoraires {
@@ -182,6 +188,12 @@ export class ApiService {
 
   supprimerDossier(id: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/dossiers/${id}`);
+  }
+
+  // Discipline de facturation — Bloc A (18/09/2026) : suivi du retour
+  // signé de la lettre de mission, purement informatif.
+  marquerRetourLettreMission(id: string, retourLe?: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/dossiers/${id}/lettre-mission-retour`, { retour_le: retourLe });
   }
 
   // Instances (19/08/2026) — 1re instance / appel / cassation… d'un dossier.

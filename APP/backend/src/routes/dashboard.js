@@ -19,6 +19,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { estAutorise } = require("../permissions");
+const { STATUT_FACTURATION_EXPR, SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const router = express.Router();
 
 const NOM_CLIENT = `COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom)`;
@@ -141,6 +142,19 @@ router.get("/", async (req, res) => {
        WHERE d.statut IN ('ouvert','en_cours')
          AND (current_date - act.dernier::date) >= 30`
     );
+    // Discipline de facturation — Bloc B (18/09/2026) : dossiers non pro
+    // bono « en attente de facturation »/« toujours pas facturé », voir
+    // facturationDiscipline.js pour la définition exacte (30j/60j,
+    // exemptions success fee/abonnement). Même permission que le reste des
+    // tuiles financières — c'est une donnée de facturation comme les autres.
+    const enAttenteFacturation = voitFactures
+      ? await one(
+          `SELECT count(*) AS n
+           FROM dossiers d
+           ${JOIN_STATUT_FACTURATION}
+           WHERE (${STATUT_FACTURATION_EXPR}) IS NOT NULL`
+        )
+      : null;
     // Taux de réalisation (rentabilité) — heures facturées / heures saisies
     // ce mois, cabinet entier. Dérivé de temps.facture_id (câblé le
     // 25/08/2026) — même permission que les autres données financières.
@@ -375,6 +389,7 @@ router.get("/", async (req, res) => {
       dossiers_sous_seuil_honoraires: Number(sousSeuil.n),
       conges_attente: voitCabinet ? Number(conges.n) : null,
       dossiers_dormants: Number(dormants.n),
+      dossiers_en_attente_facturation: voitFactures ? Number(enAttenteFacturation.n) : null,
       taux_realisation: voitFactures && realisation.taux !== null ? Number(realisation.taux) : null,
       ca_mois: caMois,
       ca_tendance_pct: tendancePct,
@@ -526,6 +541,22 @@ router.get("/detail/:type", async (req, res) => {
            ) act
            WHERE d.statut IN ('ouvert','en_cours') AND (current_date - act.dernier::date) >= 30
            ORDER BY jours_inactivite DESC LIMIT 200`
+        );
+        return res.json(rows);
+      }
+      case "en_attente_facturation": {
+        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(
+          `SELECT d.id AS dossier_id, d.numero, d.intitule, u.prenom || ' ' || u.nom AS responsable,
+                  d.date_ouverture, (current_date - d.date_ouverture) AS jours,
+                  ${SELECT_STATUT_FACTURATION}
+           FROM dossiers d
+           JOIN utilisateurs u ON u.id = d.responsable_id
+           ${JOIN_STATUT_FACTURATION}
+           WHERE (${STATUT_FACTURATION_EXPR}) IS NOT NULL
+           ORDER BY d.date_ouverture ASC LIMIT 200`
         );
         return res.json(rows);
       }

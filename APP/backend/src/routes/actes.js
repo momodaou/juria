@@ -147,6 +147,7 @@ function applatirContexte(ctx) {
     dossier_objet_ou_intitule: d.objet || d.intitule || "",
     dossier_juridiction: d.juridiction || "—",
     dossier_mode_honoraires: d.mode_honoraires || "à convenir",
+    dossier_montant_convenu: d.montant_convenu_xof ? `${Number(d.montant_convenu_xof).toLocaleString("fr-FR")} FCFA` : "à convenir",
     avocat: ctx.avocat || "",
     cabinet_raison_sociale: cab.raison_sociale || "",
     cabinet_forme: cab.forme || "Avocat au Barreau du Mali",
@@ -283,3 +284,4 @@ router.get("/:id/pdf", requirePermission("actes.consulter"), async (req, res) =>
 module.exports = router;
 module.exports.applatirContexte = applatirContexte;
 module.exports.fusionner = fusionner;
+module.exports.construireContexte = construireContexte;

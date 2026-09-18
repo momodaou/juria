@@ -66,6 +66,7 @@ async function creerDossier(tokenAppelant, payload) {
       numero: `HON-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
       intitule: "Dossier test honoraires",
       pole: "contentieux",
+      mode_honoraires: "forfait",
       ...payload,
     });
 }

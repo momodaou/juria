@@ -40,7 +40,7 @@ import { AuthService } from '../../core/auth.service';
 
       @if (dossiers().length) {
         <table>
-          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th></tr>
+          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
               <td class="clik" [routerLink]="['/dossiers', d.id]">
@@ -64,6 +64,15 @@ import { AuthService } from '../../core/auth.service';
                     {{ libelleHonoraires(d.statut_honoraires) }}
                   </span>
                 } @else { Non }
+              </td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">
+                @if (d.statut_facturation) {
+                  <span class="tag"
+                        [class.attente]="d.statut_facturation === 'en_attente'"
+                        [class.haute]="d.statut_facturation === 'toujours_pas'">
+                    {{ libelleFacturation(d.statut_facturation) }}
+                  </span>
+                }
               </td>
             </tr>
           }
@@ -139,6 +148,19 @@ export class DossiersComponent implements OnInit {
       case 'sous_seuil': return 'Sous le seuil';
       case 'sans_honoraires': return 'Sans honoraires';
       default: return statut ?? '—';
+    }
+  }
+
+  // Discipline de facturation, Bloc B (18/09/2026) — terminologie retenue
+  // avec l'utilisateur : « En attente de facturation » à 30j, « Toujours
+  // pas facturé » au rappel de 60j (jamais « jamais facturé », jugé trop
+  // définitif ; jamais une formule parlant de paiement/encaissement, qui
+  // se confondrait avec l'alerte Impayé — sujet distinct).
+  libelleFacturation(statut: string | null): string {
+    switch (statut) {
+      case 'en_attente': return 'En attente de facturation';
+      case 'toujours_pas': return 'Toujours pas facturé';
+      default: return statut ?? '';
     }
   }
 }

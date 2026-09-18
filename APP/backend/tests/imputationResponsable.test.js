@@ -67,6 +67,7 @@ function creerDossier(tokenAppelant, payload) {
       numero: `IMP-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
       intitule: "Dossier test imputation",
       pole: "contentieux",
+      mode_honoraires: "forfait",
       ...payload,
     });
 }

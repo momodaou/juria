@@ -46,6 +46,7 @@ async function creerDossier(clientId, overrides = {}) {
       client_id: clientId,
       pole: "contentieux",
       responsable_id: userId,
+      mode_honoraires: "forfait",
       ...overrides,
     });
   return res.body.id;

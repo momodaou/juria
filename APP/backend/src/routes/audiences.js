@@ -3,6 +3,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const router = express.Router();
 
 // Lundi de la semaine contenant la date donnée (chaîne YYYY-MM-DD).
@@ -37,14 +38,18 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
       `SELECT l.id, l.date_prevue, l.juridiction, l.type, d.numero AS dossier_numero,
               d.intitule AS dossier_intitule, d.id AS dossier_id,
               u.prenom || ' ' || u.nom AS avocat_nom,
+              ur.prenom || ' ' || ur.nom AS responsable_dossier_nom,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
               a.resultat, a.prochaine_date, a.observations,
-              mr.libelle AS motif_renvoi
+              mr.libelle AS motif_renvoi,
+              ${SELECT_STATUT_FACTURATION}
        FROM role_audience_lignes l
        JOIN dossiers d ON d.id = l.dossier_id
        LEFT JOIN utilisateurs u ON u.id = l.avocat_id
+       LEFT JOIN utilisateurs ur ON ur.id = d.responsable_id
        LEFT JOIN audiences a ON a.id = l.audience_id
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
+       ${JOIN_STATUT_FACTURATION}
        WHERE l.role_id = $1
        ORDER BY l.date_prevue, l.juridiction`,
       [role.rows[0].id]

@@ -61,7 +61,28 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </div>
           <div><span>Statut</span><b>{{ d.statut }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
-          <div><span>Mode d'honoraires</span><b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b></div>
+          <div>
+            <span>Mode d'honoraires</span>
+            <b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b>
+            @if (d.mode_honoraires === 'autre' && d.mode_honoraires_precision) {
+              <div class="montant-sens">({{ d.mode_honoraires_precision }})</div>
+            }
+            @if (d.montant_convenu_xof) {
+              <div class="montant-sens">Montant convenu : {{ d.montant_convenu_xof | number }} FCFA</div>
+            }
+            @if (d.lettre_mission_document_id) {
+              <div class="montant-sens">
+                Lettre de mission —
+                @if (d.lettre_mission_retour_le) {
+                  retour signé le {{ d.lettre_mission_retour_le | date:'dd/MM/yyyy' }}
+                } @else if (auth.peut('courriers.creer')) {
+                  <button class="lien" (click)="marquerRetourLettreMission()">Marquer le retour signé</button>
+                } @else {
+                  retour non encore signé
+                }
+              </div>
+            }
+          </div>
         </div>
       </div>
 
@@ -234,8 +255,21 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <option value="success_fee">Success fee</option>
                 <option value="abonnement">Abonnement</option>
                 <option value="consultation">Consultation</option>
+                <option value="autre">Autre — à préciser</option>
               </select>
             </div>
+            @if (edit.mode_honoraires === 'autre') {
+              <div>
+                <label>Précision</label>
+                <input class="in" [(ngModel)]="edit.mode_honoraires_precision" name="editModeHonorairesPrecision" />
+              </div>
+            }
+            @if (['forfait','consultation','abonnement'].includes(edit.mode_honoraires)) {
+              <div>
+                <label>Montant convenu avec le client (FCFA)</label>
+                <input class="in" type="number" min="0" [(ngModel)]="edit.montant_convenu" name="editMontantConvenu" />
+              </div>
+            }
             <div>
               <label>Urgence</label>
               <select class="in" [(ngModel)]="edit.urgence" name="editUrgence">
@@ -1196,6 +1230,16 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
+  // Discipline de facturation — Bloc A : purement informatif, ne
+  // conditionne jamais rien d'autre dans l'écran.
+  marquerRetourLettreMission(): void {
+    this.erreur.set('');
+    this.api.marquerRetourLettreMission(this.id).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Impossible d\'enregistrer le retour.'),
+    });
+  }
+
   supprimerDossier(): void {
     if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
     this.erreur.set('');
@@ -1230,6 +1274,7 @@ export class DossierDetailComponent implements OnInit {
       intitule: d.intitule, client_id: d.client_id, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
       montant_litige: d.montant_litige, montant_litige_sens: d.montant_litige_sens || 'indetermine',
       montant_litige_sens_precision: d.montant_litige_sens_precision, mode_honoraires: d.mode_honoraires,
+      mode_honoraires_precision: d.mode_honoraires_precision, montant_convenu: d.montant_convenu_xof,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,
       intermediaire: d.intermediaire, code_matiere: d.code_matiere,

@@ -255,15 +255,31 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
           </div>
 
           <div>
-            <label>Mode d'honoraires</label>
-            <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires">
+            <label>Mode d'honoraires *</label>
+            <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires" required>
+              <option value="">— Sélectionner —</option>
               <option value="forfait">Forfait</option>
               <option value="temps_passe">Temps passé</option>
               <option value="success_fee">Success fee</option>
               <option value="abonnement">Abonnement</option>
               <option value="consultation">Consultation</option>
+              <option value="autre">Autre — à préciser</option>
             </select>
           </div>
+          @if (dossier.mode_honoraires === 'autre') {
+            <div>
+              <label>Précision *</label>
+              <input class="in" [(ngModel)]="dossier.mode_honoraires_precision" name="modeHonorairesPrecision"
+                     placeholder="Ex. Urgence — honoraires à convenir avec le client sous 48h">
+            </div>
+          }
+          @if (MODES_MONTANT_CONVENU.includes(dossier.mode_honoraires)) {
+            <div>
+              <label>Montant convenu avec le client (FCFA, facultatif)</label>
+              <input class="in" type="number" min="0" [(ngModel)]="dossier.montant_convenu" name="montantConvenu"
+                     placeholder="Ex. 500000">
+            </div>
+          }
           <div>
             <label>Urgence</label>
             <select class="in" [(ngModel)]="dossier.urgence" name="urgence">
@@ -384,7 +400,13 @@ export class OuvertureComponent implements OnInit {
   readonly creation = signal(false);
   readonly erreurCreation = signal('');
   partiesAdversesEdit = '';
-  dossier: any = { pole: 'contentieux', mode_honoraires: 'forfait', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '', montant_litige_sens: 'indetermine' };
+  // mode_honoraires démarre volontairement vide (18/09/2026, discipline de
+  // facturation Bloc A) — un ancien défaut silencieux sur 'forfait'
+  // permettait de créer un dossier sans jamais vraiment choisir un mode,
+  // sans que rien ne le signale. Le placeholder vide du <select> force un
+  // choix actif, y compris « Autre » en cas d'urgence.
+  dossier: any = { pole: 'contentieux', mode_honoraires: '', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '', montant_litige_sens: 'indetermine' };
+  readonly MODES_MONTANT_CONVENU = ['forfait', 'consultation', 'abonnement'];
 
   // Intitulé du dossier (30/08/2026, demande utilisateur) — suggéré
   // automatiquement (« Client c/ Partie adverse » en contentieux, client
@@ -670,6 +692,16 @@ export class OuvertureComponent implements OnInit {
 
   creerDossier(): void {
     this.erreurCreation.set('');
+    // Discipline de facturation — Bloc A : même garde que côté serveur,
+    // pour un retour immédiat plutôt qu'un aller-retour réseau.
+    if (!this.dossier.mode_honoraires) {
+      this.erreurCreation.set("Mode d'honoraires requis (choisir « Autre » et préciser si non déterminé à ce stade).");
+      return;
+    }
+    if (this.dossier.mode_honoraires === 'autre' && !this.dossier.mode_honoraires_precision?.trim()) {
+      this.erreurCreation.set('Précision requise pour le mode d\'honoraires « Autre ».');
+      return;
+    }
     this.creation.set(true);
     const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
     // Instance initiale : seulement pertinent en contentieux, et seulement

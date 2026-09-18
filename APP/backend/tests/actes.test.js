@@ -36,6 +36,7 @@ async function creerDossier(clientId) {
       pole: "contentieux",
       client_id: clientId,
       responsable_id: associeId,
+      mode_honoraires: "forfait",
     });
   return res.body.id;
 }

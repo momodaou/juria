@@ -46,6 +46,9 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   actifs: null, urgents: null, audiences: null, impayes: 'factures.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
+  // Discipline de facturation, Bloc B (18/09/2026) — même permission que
+  // le reste des tuiles financières, cohérent avec impayes/realisation.
+  en_attente_facturation: 'factures.consulter',
   // "Mes tâches" est personnel (déjà filtré sur l'appelant, aucun risque de
   // confidentialité) ; "Tâches urgentes" est cabinet entier — même
   // permission que le reste des tuiles de charge de travail (cabinet.consulter,
@@ -160,6 +163,19 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Date de début (la plus proche)', key: 'date_debut', dir: 'asc' },
       { label: 'Soumis le (le plus ancien)', key: 'soumis', dir: 'asc' },
+    ],
+  },
+  en_attente_facturation: {
+    titre: 'Dossiers en attente de facturation',
+    cols: [
+      { key: 'numero', label: 'Référence', lien: { route: '/dossiers', idKey: 'dossier_id' } }, { key: 'intitule', label: 'Intitulé' },
+      { key: 'responsable', label: 'Responsable' },
+      { key: 'date_ouverture', label: 'Ouvert le', format: 'date' },
+      { key: 'jours', label: 'Jours sans facture', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours sans facture (décroissant)', key: 'jours', dir: 'desc' },
+      { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
     ],
   },
   dormants: {
@@ -406,6 +422,13 @@ const CONFIG: Record<string, TuileConfig> = {
                 </div>
               }
               <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.dossiers_en_attente_facturation !== null) {
+            <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'en_attente_facturation'" (click)="clic('en_attente_facturation')">
+              <span class="tico" [innerHTML]="icons['en_attente_facturation']"></span>
+              <span class="n">{{ d.dossiers_en_attente_facturation }}</span><span class="l">Dossiers en attente de facturation</span>
+              @if (peutVoirDetail('en_attente_facturation')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
             </button>
           }
           @if (d.ca_mois !== null) {
@@ -716,6 +739,9 @@ export class CockpitComponent implements OnInit {
     dormants: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 1 0 10.5 10.5Z"/></svg>',
     ),
+    en_attente_facturation: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.6 2.6"/><path d="M9 2.5h6"/></svg>',
+    ),
     realisation: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 0 1 16 0"/><line x1="12" y1="16" x2="16.2" y2="10.4"/></svg>',
     ),
@@ -765,7 +791,7 @@ export class CockpitComponent implements OnInit {
     actifs: 1, urgents: 1, audiences: 1, dormants: 1, probono: 1,
     mes_taches: 2, taches_urgentes: 2, heures: 2, conges: 2, realisation: 2,
     impayes: 3, ca_mois: 3, non_rentables: 3, impayes_aging: 3, recouvrement: 3,
-    ca_pole: 3, top_clients: 3, productivite: 3,
+    ca_pole: 3, top_clients: 3, productivite: 3, en_attente_facturation: 3,
   };
   readonly groupeOuvert = computed<1 | 2 | 3 | null>(() => {
     const o = this.ouvert();

@@ -42,6 +42,7 @@ beforeAll(async () => {
       client_id: clientId,
       pole: "contentieux",
       responsable_id: userId,
+      mode_honoraires: "forfait",
     });
   dossierId = dossier.body.id;
 });
@@ -74,6 +75,7 @@ describe("Régression — champs enum/UUID optionnels omis", () => {
         client_id: clientId,
         pole: "contentieux",
         responsable_id: userId,
+        mode_honoraires: "forfait",
       });
     expect(res.status).toBe(201);
   });

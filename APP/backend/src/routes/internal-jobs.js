@@ -17,6 +17,7 @@ const bus = require("../messagerie-bus");
 const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
 const { executerJobAlertesHonoraires } = require("../jobs/alertesHonoraires");
 const { executerJobMessagerieNotifications } = require("../jobs/messagerieNotifications");
+const { executerJobAlertesFacturationDiscipline } = require("../jobs/alertesFacturationDiscipline");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -55,6 +56,18 @@ router.post("/alertes-honoraires", requireSchedulerSecret, async (req, res) => {
 router.post("/messagerie-notifications", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobMessagerieNotifications(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 18/09/2026 — discipline de facturation, Bloc C (impayé + jamais
+// facturé). Cadence recommandée : quotidienne (contrairement à la
+// messagerie, ces seuils se comptent en jours, pas en minutes).
+router.post("/alertes-facturation-discipline", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobAlertesFacturationDiscipline(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
