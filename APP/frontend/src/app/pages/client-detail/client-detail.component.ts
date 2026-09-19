@@ -5,11 +5,12 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <a routerLink="/clients" class="back">← Retour aux clients</a>
 
@@ -109,13 +110,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   @if (p.expiree) { <span class="tag haute">expirée</span> }
                 </td>
                 <td>{{ p.cree_le | date:'dd/MM/yyyy' }}</td>
-                <td>
-                  <button class="lien" (click)="apercuPiece(p)">Aperçu</button>
-                  <button class="lien" (click)="ouvrirPiece(p)">Ouvrir</button>
-                  @if (auth.peut('clients.kyc_piece.supprimer')) {
-                    <button class="lien" (click)="supprimerPiece(p.id)">Supprimer</button>
-                  }
-                </td>
+                <td><app-menu-actions [actions]="actionsPourPiece(p)" /></td>
               </tr>
             }
           </table>
@@ -416,6 +411,16 @@ export class ClientDetailComponent implements OnInit {
   // — les pièces plus anciennes retombent sur "aperçu non disponible".
   apercuPiece(p: any): void {
     this.preview.ouvrir(p.libelle, this.api.telechargerPieceKyc(this.clientId, p.id));
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourPiece(p: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [
+      { label: 'Aperçu', action: () => this.apercuPiece(p) },
+      { label: 'Ouvrir', action: () => this.ouvrirPiece(p) },
+    ];
+    if (this.auth.peut('clients.kyc_piece.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimerPiece(p.id), danger: true });
+    return items;
   }
 
   ouvrirPiece(p: any): void {

@@ -118,6 +118,73 @@ router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
   }
 });
 
+// PUT /api/retrocessions/:id — corriger une rétrocession saisie par erreur
+// (19/09/2026, gap comblé — jusqu'ici aucune correction possible une fois
+// créée). Restreint aux rétrocessions encore en attente (jamais après
+// décaissement — la rémunération déjà versée ne se corrige pas après
+// coup, seule voie légitime alors : compensation manuelle hors JURIA).
+// beneficiaire_id volontairement non modifiable (changer le bénéficiaire
+// n'est pas "corriger une erreur de saisie", c'est une toute autre
+// rétrocession — supprimer et recréer dans ce cas). montant toujours
+// recalculé côté serveur (jamais accepté brut du client), même règle qu'à
+// la création : cohérence taux×base_ht garantie.
+router.put("/:id", requirePermission("retrocessions.creer"), async (req, res) => {
+  const b = req.body || {};
+  if (b.qualite === "non_avocat") {
+    return res.status(400).json({ error: "La qualité « non-avocat » (10 %) n'est plus utilisable." });
+  }
+  try {
+    const { rows: [actuelle] } = await pool.query(
+      "SELECT qualite, taux, base_ht, statut FROM retrocessions WHERE id = $1",
+      [req.params.id]
+    );
+    if (!actuelle) return res.status(404).json({ error: "Rétrocession introuvable" });
+    if (actuelle.statut !== "attente") {
+      return res.status(409).json({ error: "Rétrocession déjà décaissée — non modifiable." });
+    }
+    const qualite = b.qualite || actuelle.qualite;
+    const baseHt = b.base_ht != null ? Number(b.base_ht) : Number(actuelle.base_ht);
+    const taux = b.taux != null ? Number(b.taux) : (b.qualite ? TAUX_DEFAUT[qualite] : Number(actuelle.taux));
+    const montant = Math.round((baseHt * taux) / 100);
+    const { rows } = await pool.query(
+      `UPDATE retrocessions SET
+         qualite = $1::qualite_retro, taux = $2, base_ht = $3, montant = $4,
+         dossier_id = COALESCE($5, dossier_id), facture_id = COALESCE($6, facture_id)
+       WHERE id = $7 AND statut = 'attente'
+       RETURNING id, qualite, taux, base_ht, montant, statut`,
+      [qualite, taux, baseHt, montant, b.dossier_id || null, b.facture_id || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(409).json({ error: "Rétrocession déjà décaissée entre-temps — non modifiable." });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/retrocessions/:id — retirer une rétrocession saisie par
+// erreur, tant qu'elle n'est pas décaissée. Même permission que la
+// création (si on peut la créer, on peut la retirer avant qu'elle
+// n'engage quoi que ce soit).
+router.delete("/:id", requirePermission("retrocessions.creer"), async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM retrocessions WHERE id = $1 AND statut = 'attente'",
+      [req.params.id]
+    );
+    if (!rowCount) {
+      const existe = await pool.query("SELECT 1 FROM retrocessions WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Déjà décaissée — non supprimable." : "Rétrocession introuvable",
+      });
+    }
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/retrocessions/:id/decaisser  (associé/admin/comptable)
 // Règle « tout ou rien » : refusé si une facture est liée et n'est pas intégralement encaissée.
 router.post("/:id/decaisser", requirePermission("retrocessions.decaisser"), async (req, res) => {

@@ -94,6 +94,38 @@ router.get("/:id/fichier", async (req, res) => {
   }
 });
 
+// PUT /api/biblio/:id — corriger les métadonnées d'une ressource après
+// import (19/09/2026, gap comblé — jusqu'ici seule solution : supprimer et
+// re-téléverser). Ne touche jamais au fichier lui-même (chemin_storage/
+// type_mime) : si le fichier joint est erroné, mieux vaut supprimer et
+// recréer plutôt qu'un remplacement silencieux d'un document déjà
+// consulté/partagé. Même permission que la création (biblio.creer) —
+// pas de nouvelle entrée au catalogue pour une simple correction.
+router.put("/:id", requirePermission("biblio.creer"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      `UPDATE ressources_biblio SET
+         type = COALESCE($1::type_ressource_biblio, type),
+         titre = COALESCE($2, titre),
+         reference = COALESCE($3, reference),
+         source = COALESCE($4, source),
+         matiere = COALESCE($5, matiere),
+         date_publication = COALESCE($6, date_publication),
+         resume = COALESCE($7, resume)
+       WHERE id = $8
+       RETURNING id, type, titre, reference, source, matiere, date_publication, resume`,
+      [b.type || null, b.titre || null, b.reference || null, b.source || null,
+       b.matiere || null, b.date_publication || null, b.resume || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Ressource introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // DELETE /api/biblio/:id
 // Nettoie aussi l'objet physique du stockage (28/08/2026 — même gap que
 // clients.js/documents.js, comblé dans la foulée).

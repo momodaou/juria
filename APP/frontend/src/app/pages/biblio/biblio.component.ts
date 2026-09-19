@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-biblio',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -85,16 +86,44 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ r.source }}</td>
               <td>{{ r.matiere || '—' }}</td>
               <td>{{ r.date_publication ? (r.date_publication | date:'dd/MM/yyyy') : '—' }}</td>
-              <td>
-                @if (r.a_fichier) {
-                  <button class="lien" (click)="apercu(r)">Aperçu</button>
-                  <button class="lien" (click)="telecharger(r.id)">Télécharger</button>
-                }
-                @if (auth.peut('biblio.supprimer')) {
-                  <button class="lien" (click)="supprimer(r.id)">Supprimer</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPour(r)" /></td>
             </tr>
+            @if (editionId() === r.id) {
+              <tr class="edition">
+                <td colspan="7">
+                  <div class="grid2">
+                    <div>
+                      <label>Type</label>
+                      <select class="in" [(ngModel)]="editForm.type" name="edType">
+                        <option value="jurisprudence">Jurisprudence</option>
+                        <option value="texte_loi">Texte de loi</option>
+                        <option value="veille">Veille législative</option>
+                        <option value="modele">Modèle</option>
+                        <option value="consultation">Consultation (anonymisée)</option>
+                        <option value="checklist">Checklist</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Source</label>
+                      <select class="in" [(ngModel)]="editForm.source" name="edSource">
+                        <option value="OHADA">OHADA</option>
+                        <option value="National">National</option>
+                        <option value="Interne">Interne</option>
+                      </select>
+                    </div>
+                    <div class="col2"><label>Titre</label><input class="in" [(ngModel)]="editForm.titre" name="edTitre" /></div>
+                    <div><label>Référence</label><input class="in" [(ngModel)]="editForm.reference" name="edReference" /></div>
+                    <div><label>Matière</label><input class="in" [(ngModel)]="editForm.matiere" name="edMatiere" /></div>
+                    <div><label>Date de publication</label><input class="in" type="date" [(ngModel)]="editForm.date_publication" name="edDate" /></div>
+                    <div class="col2"><label>Résumé</label><textarea class="in ta" [(ngModel)]="editForm.resume" name="edResume"></textarea></div>
+                  </div>
+                  <p class="hint">Le fichier joint n'est pas modifiable ici — supprimer et re-téléverser si le document lui-même est erroné.</p>
+                  <button class="lien" (click)="enregistrerEdition()">Enregistrer</button>
+                  <button class="lien" (click)="annulerEdition()">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else {
@@ -103,6 +132,8 @@ import { AuthService } from '../../core/auth.service';
     </section>
   `,
   styles: [`
+    .edition td{background:var(--light);padding:12px 14px}
+    .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md);font-family:inherit}
     .ta{min-height:70px;resize:vertical}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
@@ -133,6 +164,20 @@ export class BiblioComponent implements OnInit {
     modele: 'Modèle', consultation: 'Consultation', checklist: 'Checklist',
   };
   libelleType(t: string): string { return this.libelles[t] ?? t; }
+
+  // Menu "⋮" (19/09/2026) — remplace les liens texte, jusqu'à 4 actions
+  // possibles par ligne (Aperçu/Télécharger conditionnés à un fichier
+  // joint, Modifier/Supprimer selon permission).
+  actionsPour(r: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (r.a_fichier) {
+      items.push({ label: 'Aperçu', action: () => this.apercu(r) });
+      items.push({ label: 'Télécharger', action: () => this.telecharger(r.id) });
+    }
+    if (this.auth.peut('biblio.creer')) items.push({ label: 'Modifier', action: () => this.commencerEdition(r) });
+    if (this.auth.peut('biblio.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimer(r.id), danger: true });
+    return items;
+  }
 
   // Aperçu sans ouverture classique (21/08/2026, demande utilisateur).
   apercu(r: any): void {
@@ -175,6 +220,30 @@ export class BiblioComponent implements OnInit {
         this.charger();
       },
       error: (e) => { this.creation.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
+  }
+
+  readonly editionId = signal<string | null>(null);
+  editForm: any = {};
+  commencerEdition(r: any): void {
+    this.erreur.set('');
+    this.editForm = {
+      type: r.type, source: r.source, titre: r.titre, reference: r.reference,
+      matiere: r.matiere, date_publication: r.date_publication, resume: r.resume,
+    };
+    this.editionId.set(r.id);
+  }
+  annulerEdition(): void {
+    this.editionId.set(null);
+    this.editForm = {};
+  }
+  enregistrerEdition(): void {
+    const id = this.editionId();
+    if (!id) return;
+    this.erreur.set('');
+    this.api.majRessourceBiblio(id, this.editForm).subscribe({
+      next: () => { this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 

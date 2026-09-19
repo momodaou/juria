@@ -3,7 +3,7 @@
 // comptes du cabinet, vignettes de plaidoirie (stock).
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=&a_refacturer=
@@ -35,7 +35,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
               d.facture_id, d.dossier_id, c.intitule AS compte, dos.numero AS dossier_numero,
-              u.prenom || ' ' || u.nom AS soumis_par
+              d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
        LEFT JOIN dossiers dos ON dos.id = d.dossier_id
@@ -71,6 +71,53 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
        b.dossier_id || null, b.recurrente, req.user.sub]
     );
     res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/depenses/:id — corriger une dépense avant décision (19/09/2026,
+// gap comblé — jusqu'ici seul recours : la rejeter puis la resaisir).
+// Restreint au déposant lui-même OU à quelqu'un habilité à décider
+// (depenses.decision) — pas n'importe qui avec depenses.creer, pour éviter
+// qu'une tierce personne corrige la dépense d'un collègue sans lien avec
+// elle. Verrouillée dès que la décision est prise (statut ≠ 'soumise') —
+// même principe que les autres corrections « avant qu'un engagement soit
+// pris » déjà dans JURIA (facture non payée, instance...).
+router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [req.params.id]);
+    if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
+    const estDeposant = actuelle.soumis_par === req.user.sub;
+    if (!estDeposant && !(await estAutorise(req.user.role, "depenses.decision"))) {
+      return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut corriger cette dépense." });
+    }
+    if (actuelle.statut !== "soumise") {
+      return res.status(409).json({ error: "Dépense déjà traitée — non modifiable." });
+    }
+    const { rows } = await pool.query(
+      `UPDATE depenses SET
+         type = COALESCE($1::type_depense, type),
+         categorie = COALESCE($2::categorie_depense, categorie),
+         libelle = COALESCE($3, libelle),
+         montant = COALESCE($4, montant),
+         date_depense = COALESCE($5, date_depense),
+         mode_paiement = COALESCE($6::mode_paiement, mode_paiement),
+         compte_id = COALESCE($7, compte_id),
+         petite_caisse = COALESCE($8, petite_caisse),
+         justificatif = COALESCE($9, justificatif),
+         refacturable_client = COALESCE($10, refacturable_client),
+         dossier_id = COALESCE($11, dossier_id)
+       WHERE id = $12 AND statut = 'soumise'
+       RETURNING id, type, categorie, libelle, montant, statut`,
+      [b.type || null, b.categorie || null, b.libelle || null, b.montant ?? null,
+       b.date_depense || null, b.mode_paiement || null, b.compte_id || null,
+       b.petite_caisse, b.justificatif, b.refacturable_client, b.dossier_id || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps — non modifiable." });
+    res.json(rows[0]);
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

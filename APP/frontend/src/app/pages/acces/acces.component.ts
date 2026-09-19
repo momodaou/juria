@@ -3,11 +3,12 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ParametresHonoraires, ParametresCabinet, CompteBancaire } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-acces',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -76,12 +77,24 @@ import { AuthService } from '../../core/auth.service';
                   {{ libelleStatut(u) }}
                 </span>
               </td>
-              <td>
-                @if (statut(u) === 'attente') { <button class="lien" (click)="valider(u)">Valider</button> }
-                @else { <button class="lien" (click)="basculerActif(u)">{{ u.actif ? 'Désactiver' : 'Réactiver' }}</button> }
-                <button class="lien" (click)="reinitialiserMotDePasse(u)">Réinit. mot de passe</button>
-              </td>
+              <td><app-menu-actions [actions]="actionsPourUtilisateur(u)" /></td>
             </tr>
+            @if (editionUtilisateurId() === u.id) {
+              <tr class="edition">
+                <td colspan="4">
+                  <div class="grid2">
+                    <div><label>Prénom</label><input class="in" [(ngModel)]="editUtilisateur.prenom" name="euPrenom" /></div>
+                    <div><label>Nom</label><input class="in" [(ngModel)]="editUtilisateur.nom" name="euNom" /></div>
+                    <div><label>Code</label><input class="in" [(ngModel)]="editUtilisateur.code" name="euCode" /></div>
+                    <div><label>E-mail</label><input class="in" type="email" [(ngModel)]="editUtilisateur.email" name="euEmail" /></div>
+                    <div><label>Taux horaire (FCFA/h)</label><input class="in" type="number" [(ngModel)]="editUtilisateur.taux_horaire" name="euTaux" /></div>
+                  </div>
+                  <button class="lien" (click)="enregistrerEditionUtilisateur()">Enregistrer</button>
+                  <button class="lien" (click)="annulerEditionUtilisateur()">Annuler</button>
+                  @if (erreurGlobale()) { <p class="err">{{ erreurGlobale() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
       </section>
@@ -259,6 +272,7 @@ import { AuthService } from '../../core/auth.service';
     }
   `,
   styles: [`
+    .edition td{background:var(--light);padding:12px 14px}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
@@ -510,6 +524,46 @@ export class AccesComponent implements OnInit {
 
   changerRole(u: any, role: string): void {
     this.api.majRoleUtilisateur(u.id, role).subscribe({ next: () => this.majUtilisateurLocal(u.id, { role }) });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourUtilisateur(u: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [{ label: 'Modifier', action: () => this.commencerEditionUtilisateur(u) }];
+    if (this.statut(u) === 'attente') {
+      items.push({ label: 'Valider', action: () => this.valider(u) });
+    } else {
+      items.push({ label: u.actif ? 'Désactiver' : 'Réactiver', action: () => this.basculerActif(u), danger: u.actif });
+    }
+    items.push({ label: 'Réinit. mot de passe', action: () => this.reinitialiserMotDePasse(u) });
+    return items;
+  }
+
+  // Correction d'identité/taux horaire (19/09/2026, gap comblé — la route
+  // existait depuis le 04/09/2026 mais n'avait jamais eu d'UI, voir
+  // CLAUDE.md).
+  readonly editionUtilisateurId = signal<string | null>(null);
+  editUtilisateur: any = {};
+  commencerEditionUtilisateur(u: any): void {
+    this.erreurGlobale.set('');
+    this.editUtilisateur = { code: u.code, prenom: u.prenom, nom: u.nom, email: u.email, taux_horaire: u.taux_horaire };
+    this.editionUtilisateurId.set(u.id);
+  }
+  annulerEditionUtilisateur(): void {
+    this.editionUtilisateurId.set(null);
+    this.editUtilisateur = {};
+  }
+  enregistrerEditionUtilisateur(): void {
+    const id = this.editionUtilisateurId();
+    if (!id) return;
+    this.erreurGlobale.set('');
+    this.api.majIdentiteUtilisateur(id, this.editUtilisateur).subscribe({
+      next: (u) => {
+        this.majUtilisateurLocal(id, u);
+        this.editionUtilisateurId.set(null);
+        this.editUtilisateur = {};
+      },
+      error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Modification impossible.'),
+    });
   }
 
   // 🐛 Bug trouvé le 04/09/2026 (« désactiver/réactiver a du mal à

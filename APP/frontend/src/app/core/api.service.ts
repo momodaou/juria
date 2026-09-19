@@ -566,6 +566,9 @@ export class ApiService {
     if (fichier) fd.append('fichier', fichier);
     return this.http.post<any>(`${this.base}/api/biblio`, fd);
   }
+  majRessourceBiblio(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/biblio/${id}`, payload);
+  }
   supprimerRessourceBiblio(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/biblio/${id}`);
   }
@@ -593,6 +596,9 @@ export class ApiService {
   }
   decaisserDepense(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, {});
+  }
+  majDepense(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/depenses/${id}`, payload);
   }
   comptesBancaires(): Observable<{ id: string; intitule: string; type: string }[]> {
     return this.http.get<{ id: string; intitule: string; type: string }[]>(`${this.base}/api/depenses/comptes`);
@@ -627,6 +633,12 @@ export class ApiService {
   decaisserRetrocession(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/retrocessions/${id}/decaisser`, {});
   }
+  majRetrocession(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/retrocessions/${id}`, payload);
+  }
+  retirerRetrocession(id: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/retrocessions/${id}`);
+  }
   proBono(mois?: string): Observable<any[]> {
     const q = mois ? `?mois=${mois}` : '';
     return this.http.get<any[]>(`${this.base}/api/retrocessions/pro-bono${q}`);
@@ -655,6 +667,9 @@ export class ApiService {
   }
   majActifUtilisateur(id: string, actif: boolean): Observable<any> {
     return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}/actif`, { actif });
+  }
+  majIdentiteUtilisateur(id: string, payload: { code?: string; prenom?: string; nom?: string; email?: string; pole?: string; taux_horaire?: number }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}`, payload);
   }
   delegations(filtres: { utilisateur_id?: string; actif?: boolean } = {}): Observable<any[]> {
     const params = new URLSearchParams();
@@ -725,6 +740,9 @@ export class ApiService {
   }
   decisionConge(id: string, statut: 'approuve' | 'refuse'): Observable<any> {
     return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut });
+  }
+  retirerConge(id: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/cabinet/conges/${id}`);
   }
   presencesMois(mois?: string): Observable<any> {
     const q = mois ? `?mois=${mois}` : '';

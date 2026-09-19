@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-role-audience',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -129,13 +130,7 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ dl.membre_nom || '—' }}</td>
               <td>{{ dl.lieu || '—' }}</td>
               <td>{{ dl.objet || '—' }}</td>
-              <td>
-                @if (auth.peut('audiences.diligence.gerer')) {
-                  <button class="lien" (click)="majDiligence(dl, 'fait')">Fait</button>
-                  <button class="lien" (click)="majDiligence(dl, 'reporte')">Reporter</button>
-                  <button class="lien" (click)="majDiligence(dl, 'annule')">Annuler</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPourDiligence(dl)" /></td>
             </tr>
           }
         </table>
@@ -333,6 +328,16 @@ export class RoleAudienceComponent implements OnInit {
       },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
     });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourDiligence(dl: any): ActionMenuItem[] {
+    if (!this.auth.peut('audiences.diligence.gerer')) return [];
+    return [
+      { label: 'Fait', action: () => this.majDiligence(dl, 'fait') },
+      { label: 'Reporter', action: () => this.majDiligence(dl, 'reporte') },
+      { label: 'Annuler', action: () => this.majDiligence(dl, 'annule'), danger: true },
+    ];
   }
 
   majDiligence(dl: any, statut: string): void {

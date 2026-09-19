@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-depenses',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -126,14 +127,36 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { — }</td>
               <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ d.statut }}</span></td>
-              <td>
-                @if (d.statut === 'soumise' && auth.peut('depenses.decision')) {
-                  <button class="lien" (click)="decision(d, 'validee')">Valider</button>
-                  <button class="lien" (click)="decision(d, 'rejetee')">Rejeter</button>
-                }
-                @if (d.statut === 'validee' && auth.peut('depenses.decaisser')) { <button class="lien" (click)="decaisser(d)">Décaisser</button> }
-              </td>
+              <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
+            @if (editionId() === d.id) {
+              <tr class="edition">
+                <td colspan="7">
+                  <div class="grid2">
+                    <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
+                    <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
+                    <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
+                    <div>
+                      <label>Catégorie</label>
+                      <select class="in" [(ngModel)]="editForm.categorie" name="edCategorie">
+                        <option value="loyer">Loyer</option><option value="eau">Eau</option>
+                        <option value="electricite">Électricité</option><option value="nettoyage">Nettoyage</option>
+                        <option value="carburant">Carburant</option><option value="telephonie">Téléphonie</option>
+                        <option value="internet">Internet</option><option value="consommables">Consommables</option>
+                        <option value="fournitures">Fournitures</option><option value="deplacement">Déplacement</option>
+                        <option value="hebergement">Hébergement</option><option value="restauration">Restauration</option>
+                        <option value="entretien">Entretien</option><option value="vignette_plaidoirie">Vignette de plaidoirie</option>
+                        <option value="frais_procedure">Frais de procédure</option><option value="charges_fiscales_sociales">Charges fiscales et sociales</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button class="lien" (click)="enregistrerEdition()">Enregistrer</button>
+                  <button class="lien" (click)="annulerEdition()">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else { <p class="muted">Aucune dépense.</p> }
@@ -165,6 +188,7 @@ import { AuthService } from '../../core/auth.service';
     </section>
   `,
   styles: [`
+    .edition td{background:var(--light);padding:12px 14px}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
@@ -239,6 +263,22 @@ export class DepensesComponent implements OnInit {
     });
   }
 
+  // Menu "⋮" (19/09/2026).
+  actionsPour(d: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
+      items.push({ label: 'Valider', action: () => this.decision(d, 'validee') });
+      items.push({ label: 'Rejeter', action: () => this.decision(d, 'rejetee'), danger: true });
+    }
+    if (d.statut === 'validee' && this.auth.peut('depenses.decaisser')) {
+      items.push({ label: 'Décaisser', action: () => this.decaisser(d) });
+    }
+    if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
+      items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });
+    }
+    return items;
+  }
+
   decision(d: any, statut: 'validee' | 'rejetee'): void {
     this.api.decisionDepense(d.id, { statut }).subscribe({
       next: () => this.charger(),
@@ -250,6 +290,27 @@ export class DepensesComponent implements OnInit {
     this.api.decaisserDepense(d.id).subscribe({
       next: () => { this.charger(); this.chargerCaisse(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'),
+    });
+  }
+
+  readonly editionId = signal<string | null>(null);
+  editForm: any = {};
+  commencerEdition(d: any): void {
+    this.erreur.set('');
+    this.editForm = { libelle: d.libelle, montant: d.montant, date_depense: d.date_depense, categorie: d.categorie };
+    this.editionId.set(d.id);
+  }
+  annulerEdition(): void {
+    this.editionId.set(null);
+    this.editForm = {};
+  }
+  enregistrerEdition(): void {
+    const id = this.editionId();
+    if (!id) return;
+    this.erreur.set('');
+    this.api.majDepense(id, this.editForm).subscribe({
+      next: () => { this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 

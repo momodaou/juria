@@ -6,11 +6,12 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-dossier-detail',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent],
+  imports: [DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent],
   template: `
     <a routerLink="/dossiers" class="back">← Retour aux dossiers</a>
 
@@ -438,12 +439,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   <td>{{ i.numero_role || '—' }}</td>
                   <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
-                  <td>
-                    @if (auth.peut('dossiers.instances.gerer')) {
-                      <button class="lien" (click)="commencerEditionInstance(i)">Modifier</button>
-                      <button class="lien" (click)="retirerInstance(i.id)">Retirer</button>
-                    }
-                  </td>
+                  <td><app-menu-actions [actions]="actionsPourInstance(i)" /></td>
                 </tr>
                 @if (instanceEnEdition() === i.id) {
                   <tr class="edition">
@@ -564,12 +560,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   <td>{{ libelleRolePartie(p.role) }}</td>
                   <td>{{ p.denomination }}</td>
                   <td>{{ p.conseil || '—' }}</td>
-                  <td>
-                    @if (auth.peut('dossiers.parties.gerer')) {
-                      <button class="lien" (click)="demarrerEditionPartie(p)">Modifier</button>
-                      <button class="lien" (click)="retirerPartie(p.id)">Retirer</button>
-                    }
-                  </td>
+                  <td><app-menu-actions [actions]="actionsPourPartie(p)" /></td>
                 </tr>
               }
             }
@@ -708,13 +699,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <tr>
                 <td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td>
                 <td>v{{ doc.version }}</td><td>{{ doc.statut }}</td>
-                <td>
-                  <button class="lien" (click)="apercu(doc)">Aperçu</button>
-                  <button class="lien" (click)="ouvrir(doc)">Ouvrir</button>
-                  @if (auth.peut('documents.supprimer')) {
-                    <button class="lien" (click)="supprimerDocument(doc)">Supprimer</button>
-                  }
-                </td>
+                <td><app-menu-actions [actions]="actionsPourDocument(doc)" /></td>
               </tr>
             }
           </table>
@@ -1289,12 +1274,30 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
+  // Menu "⋮" (19/09/2026).
+  actionsPourPartie(p: any): ActionMenuItem[] {
+    if (!this.auth.peut('dossiers.parties.gerer')) return [];
+    return [
+      { label: 'Modifier', action: () => this.demarrerEditionPartie(p) },
+      { label: 'Retirer', action: () => this.retirerPartie(p.id), danger: true },
+    ];
+  }
+
   retirerPartie(partieId: string): void {
     if (!window.confirm('Retirer cette partie du dossier ?')) return;
     this.api.retirerPartieDossier(this.id, partieId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreurPartie.set(e?.error?.error ?? 'Retrait impossible.'),
     });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourInstance(i: any): ActionMenuItem[] {
+    if (!this.auth.peut('dossiers.instances.gerer')) return [];
+    return [
+      { label: 'Modifier', action: () => this.commencerEditionInstance(i) },
+      { label: 'Retirer', action: () => this.retirerInstance(i.id), danger: true },
+    ];
   }
 
   retirerInstance(instanceId: string): void {
@@ -1553,6 +1556,16 @@ export class DossierDetailComponent implements OnInit {
   // au composant partagé plutôt qu'ouvert dans un nouvel onglet.
   apercu(doc: any): void {
     this.preview.ouvrir(doc.nom, this.api.telechargerDocument(doc.id));
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourDocument(doc: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [
+      { label: 'Aperçu', action: () => this.apercu(doc) },
+      { label: 'Ouvrir', action: () => this.ouvrir(doc) },
+    ];
+    if (this.auth.peut('documents.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimerDocument(doc), danger: true });
+    return items;
   }
 
   ouvrir(doc: any): void {

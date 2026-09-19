@@ -2,7 +2,7 @@
 // pointage, compteur d'heures, bulletins de paie (option légère).
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
 // GET /api/cabinet/equipe — membres, heures du mois, dossiers actifs, échéance de congé/contrat
@@ -56,7 +56,7 @@ router.get("/conges", async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT c.id, c.type, c.date_debut, c.date_fin, c.statut, c.motif,
+      `SELECT c.id, c.utilisateur_id, c.type, c.date_debut, c.date_fin, c.statut, c.motif,
               u.prenom || ' ' || u.nom AS membre,
               a.prenom || ' ' || a.nom AS approuve_par
        FROM conges c
@@ -89,6 +89,29 @@ router.post("/conges", requirePermission("cabinet.conge.demander"), async (req, 
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/cabinet/conges/:id — retirer sa propre demande avant décision
+// (19/09/2026, gap comblé — jusqu'ici seule la décision associé/RH
+// existait, le demandeur ne pouvait pas retirer ni corriger une demande
+// faite par erreur). Restreint au demandeur lui-même OU à quelqu'un
+// habilité à décider (cabinet.conge.decision) — verrouillé dès qu'une
+// décision est prise (statut ≠ 'demande').
+router.delete("/conges/:id", requirePermission("cabinet.conge.demander"), async (req, res) => {
+  try {
+    const { rows: [conge] } = await pool.query("SELECT utilisateur_id, statut FROM conges WHERE id = $1", [req.params.id]);
+    if (!conge) return res.status(404).json({ error: "Demande introuvable" });
+    const estDemandeur = conge.utilisateur_id === req.user.sub;
+    if (!estDemandeur && !(await estAutorise(req.user.role, "cabinet.conge.decision"))) {
+      return res.status(403).json({ error: "Seul le demandeur ou une personne habilitée à décider peut retirer cette demande." });
+    }
+    const { rowCount } = await pool.query("DELETE FROM conges WHERE id = $1 AND statut = 'demande'", [req.params.id]);
+    if (!rowCount) return res.status(409).json({ error: "Demande déjà traitée — non retirable." });
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 const COLONNES = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -20,7 +21,7 @@ const COLONNES = [
 @Component({
   selector: 'app-plan-action',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -113,15 +114,16 @@ const COLONNES = [
               @if (t.dossier_id) { <div class="carte-info"><a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a></div> }
               @if (t.responsable) { <div class="carte-info">{{ t.responsable }}</div> }
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
+              <!-- ← / → restent des liens directement visibles (19/09/2026) :
+                   c'est l'action PRIMAIRE de ce kanban (déplacer une carte),
+                   pas une action secondaire à cacher dans un menu — même
+                   logique que Gmail/Linear qui gardent l'action la plus
+                   fréquente visible et réservent le menu "⋮" aux actions
+                   occasionnelles (Valider/Annuler/Réactiver ici). -->
               <div class="carte-actions">
-                @if (col.statut === 'annule') {
-                  @if (auth.peut('taches.statut.modifier')) { <button class="lien" (click)="reactiver(t)">Réactiver</button> }
-                } @else {
-                  @if (col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
-                  @if (col.statut === 'a_valider' && auth.peut('taches.valider')) { <button class="lien" (click)="valider(t)">Valider</button> }
-                  @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
-                  @if (col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="annulerTache(t)">Annuler</button> }
-                }
+                @if (col.statut !== 'annule' && col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
+                @if (col.statut !== 'annule' && col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
+                <app-menu-actions [actions]="actionsPourTache(t, col)" />
               </div>
             </div>
           } @empty {
@@ -226,6 +228,18 @@ export class PlanActionComponent implements OnInit {
       },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
     });
+  }
+
+  // Menu "⋮" (19/09/2026) — actions occasionnelles seulement ; ←/→ restent
+  // des liens visibles à côté (voir commentaire dans le template).
+  actionsPourTache(t: any, col: any): ActionMenuItem[] {
+    if (col.statut === 'annule') {
+      return this.auth.peut('taches.statut.modifier') ? [{ label: 'Réactiver', action: () => this.reactiver(t) }] : [];
+    }
+    const items: ActionMenuItem[] = [];
+    if (col.statut === 'a_valider' && this.auth.peut('taches.valider')) items.push({ label: 'Valider', action: () => this.valider(t) });
+    if (col.statut !== 'termine' && this.auth.peut('taches.statut.modifier')) items.push({ label: 'Annuler', action: () => this.annulerTache(t), danger: true });
+    return items;
   }
 
   deplacer(t: any, sens: 1 | -1): void {

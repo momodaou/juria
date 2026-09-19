@@ -3,11 +3,12 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-cabinet',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule],
+  imports: [DatePipe, DecimalPipe, FormsModule, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -89,12 +90,7 @@ import { AuthService } from '../../core/auth.service';
               <td>{{ c.membre }}</td><td>{{ c.type }}</td>
               <td>{{ c.date_debut | date:'dd/MM/yyyy' }}</td><td>{{ c.date_fin | date:'dd/MM/yyyy' }}</td>
               <td><span class="tag" [class.ok]="c.statut==='approuve'" [class.haute]="c.statut==='refuse'">{{ c.statut }}</span></td>
-              <td>
-                @if (c.statut === 'demande' && auth.peut('cabinet.conge.decision')) {
-                  <button class="lien" (click)="decider(c, 'approuve')">Approuver</button>
-                  <button class="lien" (click)="decider(c, 'refuse')">Refuser</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPourConge(c)" /></td>
             </tr>
           }
         </table>
@@ -136,13 +132,7 @@ import { AuthService } from '../../core/auth.service';
                 <td>{{ libellePeriodiciteEcheanceAdmin(e.periodicite) }}</td>
                 <td>@if (e.depense_montant) { {{ e.depense_montant | number }} FCFA } @else { — }</td>
                 <td><span class="tag" [class.haute]="e.jours_restants <= 7">{{ e.jours_restants < 0 ? 'dépassé' : 'J-' + e.jours_restants }}</span></td>
-                <td>
-                  @if (auth.peut('echeances_admin.gerer')) {
-                    <button class="lien" (click)="traiterEcheanceAdmin(e)">Marquer traité</button>
-                    <button class="lien" (click)="modifierEcheanceAdmin(e)">Modifier</button>
-                    <button class="lien" (click)="supprimerEcheanceAdmin(e)">Supprimer</button>
-                  }
-                </td>
+                <td><app-menu-actions [actions]="actionsPourEcheanceAdmin(e)" /></td>
               </tr>
             }
           </table>
@@ -242,6 +232,16 @@ export class CabinetComponent implements OnInit {
     });
   }
 
+  // Menu "⋮" (19/09/2026).
+  actionsPourEcheanceAdmin(e: any): ActionMenuItem[] {
+    if (!this.auth.peut('echeances_admin.gerer')) return [];
+    return [
+      { label: 'Marquer traité', action: () => this.traiterEcheanceAdmin(e) },
+      { label: 'Modifier', action: () => this.modifierEcheanceAdmin(e) },
+      { label: 'Supprimer', action: () => this.supprimerEcheanceAdmin(e), danger: true },
+    ];
+  }
+
   // Réutilise le même formulaire que la création — pré-rempli avec les
   // valeurs actuelles de la ligne (gap comblé le 11/09/2026 : aucun moyen
   // de corriger une échéance existante, ex. l'INPS seedée « mensuelle »
@@ -317,6 +317,24 @@ export class CabinetComponent implements OnInit {
 
   decider(c: any, statut: 'approuve' | 'refuse'): void {
     this.api.decisionConge(c.id, statut).subscribe({ next: () => this.chargerConges() });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourConge(c: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (c.statut === 'demande' && this.auth.peut('cabinet.conge.decision')) {
+      items.push({ label: 'Approuver', action: () => this.decider(c, 'approuve') });
+      items.push({ label: 'Refuser', action: () => this.decider(c, 'refuse'), danger: true });
+    }
+    if (c.statut === 'demande' && (c.utilisateur_id === this.auth.utilisateur()?.id || this.auth.peut('cabinet.conge.decision'))) {
+      items.push({ label: 'Retirer', action: () => this.retirerConge(c.id), danger: true });
+    }
+    return items;
+  }
+
+  retirerConge(id: string): void {
+    if (!window.confirm('Retirer cette demande de congé ?')) return;
+    this.api.retirerConge(id).subscribe({ next: () => this.chargerConges() });
   }
 
   archiverBulletin(): void {

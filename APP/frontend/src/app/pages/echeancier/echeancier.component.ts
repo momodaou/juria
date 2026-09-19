@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-echeancier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head"><h1>Échéances</h1></header>
 
@@ -80,15 +81,7 @@ import { AuthService } from '../../core/auth.service';
               <td>@if (t.dossier_id) { <a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a> } @else { — }</td>
               <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td><span class="tag" [class.done]="t.statut === 'termine'">{{ t.statut }}</span></td>
-              <td>
-                @if (t.statut !== 'termine' && t.statut !== 'annule' && auth.peut('taches.statut.modifier')) {
-                  <button class="lien" (click)="terminer(t)">Marquer fait</button>
-                  <button class="lien" (click)="annulerTache(t)">Annuler</button>
-                }
-                @if (t.statut === 'annule' && auth.peut('taches.statut.modifier')) {
-                  <button class="lien" (click)="reactiverTache(t)">Réactiver</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPourTache(t)" /></td>
             </tr>
           }
         </table>
@@ -191,6 +184,19 @@ export class EcheancierComponent implements OnInit {
       next: () => { this.ntTitre = ''; this.ntEch = ''; this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
     });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourTache(t: any): ActionMenuItem[] {
+    if (!this.auth.peut('taches.statut.modifier')) return [];
+    if (t.statut === 'annule') return [{ label: 'Réactiver', action: () => this.reactiverTache(t) }];
+    if (t.statut !== 'termine') {
+      return [
+        { label: 'Marquer fait', action: () => this.terminer(t) },
+        { label: 'Annuler', action: () => this.annulerTache(t), danger: true },
+      ];
+    }
+    return [];
   }
 
   terminer(t: any): void {

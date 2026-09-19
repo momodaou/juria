@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-retrocessions',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, RouterLink],
+  imports: [DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -96,18 +97,36 @@ import { AuthService } from '../../core/auth.service';
                 <span class="tag" [class.ok]="r.statut==='decaissee'">{{ r.statut }}</span>
                 @if (r.facture_numero && !r.honoraires_encaisses) { <span class="tag haute">non encaissée</span> }
               </td>
-              <td>
-                @if (r.statut !== 'decaissee' && auth.peut('retrocessions.decaisser')) {
-                  <button class="lien" (click)="decaisser(r)" [disabled]="r.facture_numero && !r.honoraires_encaisses">Décaisser</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPour(r)" /></td>
             </tr>
+            @if (editionId() === r.id) {
+              <tr class="edition">
+                <td colspan="8">
+                  <div class="grid2">
+                    <div>
+                      <label>Qualité</label>
+                      <select class="in" [(ngModel)]="editForm.qualite" name="edQualite">
+                        @for (q of qualites(); track q.code) { <option [value]="q.code">{{ q.libelle }} — {{ q.taux }} %</option> }
+                      </select>
+                    </div>
+                    <div><label>Base HT (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.base_ht" name="edBaseHt" /></div>
+                    <div><label>Taux appliqué (%, optionnel)</label><input class="in" type="number" [(ngModel)]="editForm.taux" name="edTaux" placeholder="Par défaut selon la qualité" /></div>
+                  </div>
+                  <p class="hint">Le bénéficiaire n'est pas modifiable — retirer puis recréer si erroné.</p>
+                  <button class="lien" (click)="enregistrerEdition()">Enregistrer</button>
+                  <button class="lien" (click)="annulerEdition()">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else { <p class="muted">Aucune rétrocession.</p> }
     </section>
   `,
   styles: [`
+    .edition td{background:var(--light);padding:12px 14px}
+    .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
@@ -208,10 +227,56 @@ export class RetrocessionsComponent implements OnInit {
     });
   }
 
+  // Menu "⋮" (19/09/2026) — Décaisser est omis (pas juste désactivé) tant
+  // que les honoraires liés ne sont pas intégralement encaissés : plus
+  // cohérent avec le reste de l'appli, qui cache les actions impossibles
+  // plutôt que de les griser.
+  actionsPour(r: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (r.statut !== 'decaissee' && this.auth.peut('retrocessions.decaisser') && (!r.facture_numero || r.honoraires_encaisses)) {
+      items.push({ label: 'Décaisser', action: () => this.decaisser(r) });
+    }
+    if (r.statut !== 'decaissee' && this.auth.peut('retrocessions.creer')) {
+      items.push({ label: 'Modifier', action: () => this.commencerEdition(r) });
+      items.push({ label: 'Retirer', action: () => this.retirer(r.id), danger: true });
+    }
+    return items;
+  }
+
   decaisser(r: any): void {
     this.api.decaisserRetrocession(r.id).subscribe({
       next: () => this.charger(),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'),
+    });
+  }
+
+  readonly editionId = signal<string | null>(null);
+  editForm: any = {};
+  commencerEdition(r: any): void {
+    this.erreur.set('');
+    this.editForm = { qualite: r.qualite, base_ht: r.base_ht, taux: r.taux };
+    this.editionId.set(r.id);
+  }
+  annulerEdition(): void {
+    this.editionId.set(null);
+    this.editForm = {};
+  }
+  enregistrerEdition(): void {
+    const id = this.editionId();
+    if (!id) return;
+    this.erreur.set('');
+    this.api.majRetrocession(id, this.editForm).subscribe({
+      next: () => { this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+    });
+  }
+
+  retirer(id: string): void {
+    if (!window.confirm('Retirer cette rétrocession (saisie par erreur) ?')) return;
+    this.erreur.set('');
+    this.api.retirerRetrocession(id).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
     });
   }
 }

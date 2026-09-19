@@ -6,11 +6,12 @@ import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-facturation',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink],
+  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head"><h1>Facturation</h1></header>
 
@@ -196,14 +197,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
               <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
               <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
               <td><span class="tag" [class.haute]="f.statut !== 'payee'">{{ f.statut }}</span></td>
-              <td class="actions">
-                <button class="lien" (click)="apercuPdf(f)">Aperçu</button>
-                <button class="lien" (click)="ouvrirPdf(f)">Télécharger</button>
-                @if (auth.peut('factures.annuler') && f.statut === 'emise') {
-                  <button class="lien" (click)="commencerEdition(f)">Modifier</button>
-                  <button class="lien" (click)="annuler(f)">Annuler</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPourFacture(f)" /></td>
             </tr>
             @if (editionId() === f.id) {
               <tr class="edition">
@@ -382,6 +376,19 @@ export class FacturationComponent implements OnInit {
       next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
     });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourFacture(f: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [
+      { label: 'Aperçu', action: () => this.apercuPdf(f) },
+      { label: 'Télécharger', action: () => this.ouvrirPdf(f) },
+    ];
+    if (this.auth.peut('factures.annuler') && f.statut === 'emise') {
+      items.push({ label: 'Modifier', action: () => this.commencerEdition(f) });
+      items.push({ label: 'Annuler', action: () => this.annuler(f), danger: true });
+    }
+    return items;
   }
 
   annuler(f: any): void {

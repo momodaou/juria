@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 // Atelier d'actes — réécrit le 13/09/2026 (demande explicite de l'utilisateur,
 // suite à une analyse des pratiques du secteur, voir HISTORY.md) :
@@ -15,7 +16,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 @Component({
   selector: 'app-actes',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -127,10 +128,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <td>{{ m.nom }}</td>
                 <td>{{ m.categorie }}</td>
                 <td>{{ m.actif ? 'Actif' : 'Désactivé' }}</td>
-                <td>
-                  <button class="lien" (click)="editerModele(m)">Modifier</button>
-                  <button class="lien" (click)="basculerActifModele(m)">{{ m.actif ? 'Désactiver' : 'Réactiver' }}</button>
-                </td>
+                <td><app-menu-actions [actions]="actionsPourModele(m)" /></td>
               </tr>
             }
           </table>
@@ -309,6 +307,14 @@ export class ActesComponent implements OnInit {
 
   private chargerModelesGestion(): void {
     this.api.modelesActesTous().subscribe({ next: (m) => this.modelesGestion.set(m) });
+  }
+
+  // Menu "⋮" (19/09/2026).
+  actionsPourModele(m: any): ActionMenuItem[] {
+    return [
+      { label: 'Modifier', action: () => this.editerModele(m) },
+      { label: m.actif ? 'Désactiver' : 'Réactiver', action: () => this.basculerActifModele(m), danger: m.actif },
+    ];
   }
 
   editerModele(m: any): void {
