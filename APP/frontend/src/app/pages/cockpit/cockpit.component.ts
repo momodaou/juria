@@ -618,13 +618,22 @@ const CONFIG: Record<string, TuileConfig> = {
     h3.groupe-titre:first-of-type{margin-top:0}
     /* Aperçus & tendances (07/09/2026) */
     .kpi.apercu{grid-column:span 2}
-    .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px}
-    .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:var(--fs-sm)}
+    .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px;min-width:0;width:100%}
+    .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:var(--fs-sm);min-width:0;width:100%}
     /* min-width:0 nécessaire pour que l'ellipsis s'applique réellement dans
        un conteneur flex — sans ça, un enfant flex ne rétrécit jamais sous sa
        largeur naturelle (largeur mini par défaut "auto", pas 0). Bug trouvé
        le 07/09/2026 : un montant long ("-150 000 FCFA") débordait du cadre
-       de la tuile au lieu de forcer l'intitulé à tronquer. */
+       de la tuile au lieu de forcer l'intitulé à tronquer — corrigé à
+       l'époque uniquement sur .principal, ce qui suffisait pour ce cas.
+       Repéré à nouveau le 19/09/2026 avec un intitulé de dossier long :
+       min-width:0 seul, à chaque étage, ne suffisait toujours pas (vérifié
+       par inspection des styles calculés : .mini-liste/.mini-ligne se
+       rendaient bien plus larges que .kpi malgré min-width:0 — le
+       "stretch" par défaut d'un conteneur flex en colonne ne s'appliquait
+       pas de façon fiable ici, probablement lié au fait que le parent est
+       un <button>). Correctif déterministe : width:100% explicite en plus
+       de min-width:0, plutôt que de compter sur le stretch implicite. */
     .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
     .kpi .mini-ligne .secondaire{color:var(--grey);font-size:var(--fs-xs);white-space:nowrap;flex:0 0 auto}
     .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}

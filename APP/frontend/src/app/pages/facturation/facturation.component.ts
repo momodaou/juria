@@ -78,10 +78,10 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
         <label>Mention (facultatif)
           <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
-        @if (auth.peut('factures.creer')) {
-          <button class="btn" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt">Émettre</button>
-        }
       </div>
+      @if (auth.peut('factures.creer')) {
+        <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt">Émettre</button>
+      }
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
@@ -184,12 +184,13 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
     <section class="panel">
       <h3>Toutes les factures</h3>
       @if (factures().length) {
+        <div class="table-scroll">
         <table>
-          <tr><th>N°</th><th>Client</th><th>Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
+          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
-              <td>{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
-              <td>@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
+              <td class="nowrap">{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
+              <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
               <td>{{ f.mode }}</td>
               <td>{{ f.montant_ht | number }} {{ f.devise }}</td>
               <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
@@ -232,6 +233,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
             }
           }
         </table>
+        </div>
       } @else { <p class="muted">Aucune facture.</p> }
     </section>
   `,
@@ -246,7 +248,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
     .hint{font-weight:400;color:var(--slate);font-size:var(--fs-xs);white-space:normal;max-width:220px}
     .desc{font-size:var(--fs-sm);color:var(--slate);max-width:640px;margin:0 0 10px}
     h4{margin:14px 0 6px;font-size:var(--fs-base)}
-    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .actions{display:flex;gap:10px;flex-wrap:nowrap;white-space:nowrap}
     .edition td{background:var(--light);padding:12px 14px}
   `],
 })

@@ -39,11 +39,12 @@ import { AuthService } from '../../core/auth.service';
       </div>
 
       @if (dossiers().length) {
+        <div class="table-scroll">
         <table>
-          <tr><th>N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
+          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">
+              <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">
                 @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
                 {{ d.numero }}
               </td>
@@ -77,6 +78,7 @@ import { AuthService } from '../../core/auth.service';
             </tr>
           }
         </table>
+        </div>
       } @else if (erreur()) {
         <p class="err">{{ erreur() }}</p>
       } @else {

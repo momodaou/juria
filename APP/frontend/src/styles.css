@@ -95,7 +95,14 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 
 /* KPIs */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px}
-.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;border-left:4px solid var(--gold);display:flex;flex-direction:column}
+/* min-width:0 (19/09/2026) — sans lui, une tuile "aperçu" avec une ligne
+   de texte trop longue (ex. un long intitulé de dossier, white-space:nowrap
+   sur .principal pour l'ellipse) forçait la tuile-item de grille à s'élargir
+   à son contenu au lieu de se limiter à la largeur de sa colonne — le texte
+   débordait, tronqué en plein mot au bord de la tuile, au lieu de l'ellipse
+   "…" pourtant déjà posée sur .principal. Constat utilisateur avec des
+   données réalistes (18-19/09/2026). */
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;border-left:4px solid var(--gold);display:flex;flex-direction:column;min-width:0}
 .kpi .n{font-size:var(--fs-5xl);font-weight:700;color:var(--navy)}
 .kpi .l{font-size:var(--fs-sm);color:var(--grey);margin-top:4px}
 .kpi.red{border-left-color:var(--red)} .kpi.green{border-left-color:var(--green)} .kpi.amber{border-left-color:var(--amber)}
@@ -148,6 +155,17 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;color:var(--grey);padding:8px 6px;border-bottom:1px solid var(--line)}
 td{padding:10px 6px;border-bottom:1px solid #f0f3f7;font-size:var(--fs-base)}
+/* Utilitaires tableaux (19/09/2026) — sur les tableaux à beaucoup de
+   colonnes (Dossiers, Toutes les factures), la référence (N°/Dossier,
+   toujours un code court de longueur fixe) et la colonne d'actions se
+   cassaient sur 2 lignes, les colonnes de texte long (Intitulé, Client)
+   prenant toute la place disponible — constat de l'utilisateur avec des
+   données réalistes. `.nowrap` empêche ces cellules précises de se
+   casser ; `.table-scroll` (sur un conteneur autour du tableau) absorbe
+   le débordement horizontal résultant plutôt que de casser le texte,
+   même principe déjà utilisé sur la Matrice des permissions. */
+.nowrap{white-space:nowrap}
+.table-scroll{overflow-x:auto}
 .tag{background:#eceff3;color:#5a6675;border-radius:12px;padding:2px 9px;font-size:var(--fs-xs);font-weight:600}
 .tag.haute{background:#fbe6e5;color:#b13a36}
 .muted{color:var(--grey);font-size:var(--fs-base)}
