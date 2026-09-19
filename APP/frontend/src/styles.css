@@ -129,9 +129,15 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
    peine du fond de page (--line #e2e7ee très proche de --fff et de
    #F4F6F9), rendant les rubriques difficiles à repérer d'un coup d'œil,
    constat de l'utilisateur, tous écrans confondus (fiche dossier,
-   Échéances, Rôle d'audience...). */
-.panel{background:#fff;border:1px solid #cfd7e2;border-radius:12px;padding:16px 18px;margin-bottom:18px;
-  box-shadow:0 1px 3px rgba(16,24,40,.06)}
+   Échéances, Rôle d'audience...).
+   Relief renforcé une seconde fois le même jour (retour utilisateur après
+   la première passe : « les distinguer de loin par le visuel ») — ombre
+   plus présente + espacement vertical légèrement augmenté entre panneaux,
+   volontairement mesuré (pas un relief spectaculaire) car une fiche
+   dossier empile 8 à 11 panneaux à la suite : trop d'ombre par panneau
+   charge la page au lieu d'aider à la scanner. */
+.panel{background:#fff;border:1px solid #cfd7e2;border-radius:12px;padding:16px 18px;margin-bottom:22px;
+  box-shadow:0 3px 10px rgba(16,24,40,.10)}
 .panel h3{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);color:var(--navy);font-size:var(--fs-lg)}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.5px;color:var(--grey);padding:8px 6px;border-bottom:1px solid var(--line)}

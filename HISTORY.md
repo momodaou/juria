@@ -2338,3 +2338,13 @@ Captures avant/après publiées dans un Artifact dédié pour validation visuell
 **Vérification** : build Angular production OK, pas de changement backend/schéma/tests.
 
 **Déploiement** : accord explicite de l'utilisateur après avoir donné mon avis sur l'importance du correctif (mineur mais légitime, peu risqué). **Déployé et vérifié en production le 18/09/2026** — frontend seul, révision `juria-web-00099-58w` (précédente `juria-web-00098-84t`), `/` en `200`.
+
+## 2026-09-18 — Relief des panneaux renforcé une seconde fois (retour immédiat)
+
+**Contexte** : retour utilisateur immédiat après le déploiement du correctif précédent — « mettre un peu plus en relief de sorte à distinguer de loin par le visuel ». Confirmé qu'il s'agissait bien des panneaux (`.panel`), pas des tuiles du Tableau de bord ni du menu.
+
+**Correctif** : `.panel` — `box-shadow` porté de `0 1px 3px rgba(16,24,40,.06)` à `0 3px 10px rgba(16,24,40,.10)`, `margin-bottom` de 18 à 22px. Dosage délibérément mesuré (discuté avant de coder) : une fiche dossier empile 8 à 11 panneaux à la suite, un relief trop marqué par panneau aurait chargé la page au lieu d'aider à la scanner.
+
+**Vérification** : build Angular OK, capture visuelle (Playwright, même environnement de dev que la passe précédente) sur Échéances et Accès & permissions (3 panneaux dont la Matrice des permissions) — relief net et lisible « de loin », sans surcharge visuelle même avec plusieurs panneaux à la suite.
+
+**Déploiement** : **déployé et vérifié en production le 18/09/2026** — frontend seul, révision `juria-web-00100-smj` (précédente `juria-web-00099-58w`), `/` en `200`.
