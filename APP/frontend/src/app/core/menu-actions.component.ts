@@ -31,16 +31,24 @@ export interface ActionMenuItem {
   `,
   styles: [`
     :host{position:relative;display:inline-block}
-    /* Visible en permanence mais très atténué, plein contraste seulement
-       au survol de la ligne ou quand le menu est ouvert — invisible sinon
-       sur mobile/tactile, qui n'a pas de :hover (même patron que la
-       Messagerie, 13/09/2026). */
+    /* 19/09/2026 (2e passe) : le patron initial (icône ⋮ à opacity:.35,
+       plein contraste seulement au survol de la ligne, repris de la
+       Messagerie) s'est révélé trop discret une fois généralisé à toute
+       l'appli — remonté par l'utilisateur (« assez fondu, difficile à
+       appréhender »). Autre défaut trouvé au passage : en dehors d'un
+       <tr> (ex. Plan d'action, carte kanban), le sélecteur "tr:hover"
+       ne s'appliquait jamais — le bouton restait invisible en
+       permanence, atteignable seulement au clavier (:focus-visible).
+       Remplacé par une pastille toujours pleinement visible (fond +
+       bordure, même langage que .btn), sans dépendre du survol d'un
+       ancêtre précis — visible sur mobile/tactile aussi. */
     .menu-btn{
-      background:none;border:none;color:var(--grey);font-size:var(--fs-lg);line-height:1;
-      cursor:pointer;padding:4px 8px;border-radius:6px;opacity:.35;
+      background:var(--light);border:1px solid var(--line);color:var(--slate);
+      font-size:var(--fs-lg);font-weight:700;line-height:1;
+      cursor:pointer;width:28px;height:26px;border-radius:7px;
+      display:inline-flex;align-items:center;justify-content:center;
     }
-    tr:hover .menu-btn, .menu-btn:focus-visible{opacity:1}
-    .menu-btn:hover{background:rgba(0,0,0,.08)}
+    .menu-btn:hover, .menu-btn:focus-visible{background:var(--navy);border-color:var(--navy);color:#fff}
     /* position:fixed (pas absolute) : échappe à l'overflow:auto/hidden de
        tout ancêtre (ex. .table-scroll) — un menu en position:absolute
        imbriqué dans un conteneur à défilement se fait couper net dès
