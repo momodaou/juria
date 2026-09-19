@@ -2348,3 +2348,15 @@ Captures avant/après publiées dans un Artifact dédié pour validation visuell
 **Vérification** : build Angular OK, capture visuelle (Playwright, même environnement de dev que la passe précédente) sur Échéances et Accès & permissions (3 panneaux dont la Matrice des permissions) — relief net et lisible « de loin », sans surcharge visuelle même avec plusieurs panneaux à la suite.
 
 **Déploiement** : **déployé et vérifié en production le 18/09/2026** — frontend seul, révision `juria-web-00100-smj` (précédente `juria-web-00099-58w`), `/` en `200`.
+
+## 2026-09-19 — Accent de couleur sur les panneaux (3e passe, repère aligné sur les tuiles KPI)
+
+**Contexte** : question de l'utilisateur (« peut-on encore mettre plus en relief... filigrane ou autres solutions ? »), posée explicitement pour avoir un avis avant d'agir.
+
+**Avis donné avant tout code** : redoubler l'ombre une 3ᵉ fois jugé à rendement décroissant (risque de panneaux plus imposants que leur contenu, après 2 passes déjà le 18/09) ; un filigrane/motif décoratif écarté comme peu adapté à un outil professionnel pour un cabinet d'avocats (risque de rendu chargé). Proposé à la place : reprendre le repère déjà établi par les tuiles KPI du Tableau de bord (`.kpi`, `border-left:4px solid var(--gold)`) plutôt qu'inventer une nouvelle décoration — cohérence avec le langage visuel existant. Validé par l'utilisateur (« si tu trouve c'est la meilleure option vas y »).
+
+**Correctif** : `.panel` gagne `border-left:4px solid var(--gold)`, identique au motif déjà utilisé par `.kpi`.
+
+**Vérification** : build Angular OK, capture visuelle (Playwright, même environnement de dev) sur Accès & permissions (4 panneaux, dont un nouvellement découvert dans la capture — « Seuils pro bono »/« Identité du cabinet », déjà existants) et Échéances — repère net et immédiat dès le survol, sans surcharge même avec plusieurs panneaux à la suite.
+
+**Déploiement** : **déployé et vérifié en production le 19/09/2026** — frontend seul, révision `juria-web-00101-cdl` (précédente `juria-web-00100-smj`), `/` en `200`.

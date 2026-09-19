@@ -135,8 +135,14 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
    plus présente + espacement vertical légèrement augmenté entre panneaux,
    volontairement mesuré (pas un relief spectaculaire) car une fiche
    dossier empile 8 à 11 panneaux à la suite : trop d'ombre par panneau
-   charge la page au lieu d'aider à la scanner. */
-.panel{background:#fff;border:1px solid #cfd7e2;border-radius:12px;padding:16px 18px;margin-bottom:22px;
+   charge la page au lieu d'aider à la scanner.
+   3e passe le même jour (« peut-on encore mettre plus en relief... ») —
+   plutôt que redoubler l'ombre (rendement décroissant, risque de panneaux
+   plus imposants que leur contenu) ou un filigrane décoratif (écarté,
+   jugé trop chargé pour un outil professionnel), reprise du repère déjà
+   établi par les tuiles KPI du Cockpit (`.kpi`, border-left 4px --gold)
+   plutôt qu'une nouvelle décoration inventée. */
+.panel{background:#fff;border:1px solid #cfd7e2;border-left:4px solid var(--gold);border-radius:12px;padding:16px 18px;margin-bottom:22px;
   box-shadow:0 3px 10px rgba(16,24,40,.10)}
 .panel h3{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);color:var(--navy);font-size:var(--fs-lg)}
 table{width:100%;border-collapse:collapse}
