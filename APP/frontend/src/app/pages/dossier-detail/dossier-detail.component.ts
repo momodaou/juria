@@ -440,10 +440,50 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   <td>{{ i.decision || '—' }}</td>
                   <td>
                     @if (auth.peut('dossiers.instances.gerer')) {
+                      <button class="lien" (click)="commencerEditionInstance(i)">Modifier</button>
                       <button class="lien" (click)="retirerInstance(i.id)">Retirer</button>
                     }
                   </td>
                 </tr>
+                @if (instanceEnEdition() === i.id) {
+                  <tr class="edition">
+                    <td colspan="6">
+                      <div class="grid2">
+                        <div>
+                          <label>Juridiction</label>
+                          <select class="in" [(ngModel)]="editInstance.juridiction" name="eiJuridiction">
+                            <option value="">— Sélectionner —</option>
+                            @for (j of juridictions(); track j.code) { <option [value]="j.libelle">{{ j.libelle }}</option> }
+                          </select>
+                        </div>
+                        <div><label>N° de rôle</label><input class="in" [(ngModel)]="editInstance.numero_role" name="eiNumeroRole" /></div>
+                        <div>
+                          <label>Statut de {{ d.client_nom }}</label>
+                          <select class="in" [(ngModel)]="editInstance.statut_partie" name="eiStatutPartie">
+                            <option value="">— Non précisé —</option>
+                            @if (d.code_matiere === 'PEN') {
+                              <option value="prevenu">Prévenu</option>
+                              <option value="partie_civile">Partie civile</option>
+                            } @else {
+                              <option value="demandeur">{{ libelleStatutPartie('demandeur', i.degre) }}</option>
+                              <option value="defendeur">{{ libelleStatutPartie('defendeur', i.degre) }}</option>
+                            }
+                            <option value="intervenant_volontaire">Intervenant volontaire</option>
+                            <option value="intervenant_force">Intervenant forcé</option>
+                            <option value="autre">Autre</option>
+                          </select>
+                        </div>
+                        @if (editInstance.statut_partie === 'autre') {
+                          <div><label>Préciser le statut</label><input class="in" [(ngModel)]="editInstance.statut_partie_precision" name="eiStatutPartiePrecision" /></div>
+                        }
+                        <div class="col2"><label>Décision</label><textarea class="in" rows="2" [(ngModel)]="editInstance.decision" name="eiDecision"></textarea></div>
+                      </div>
+                      <button class="lien" (click)="enregistrerEditionInstance()">Enregistrer</button>
+                      <button class="lien" (click)="annulerEditionInstance()">Annuler</button>
+                      @if (erreurInstance()) { <p class="err">{{ erreurInstance() }}</p> }
+                    </td>
+                  </tr>
+                }
               }
             </table>
           } @else { <p class="muted">Aucune instance enregistrée.</p> }
@@ -766,6 +806,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     }
   `,
   styles: [`
+    .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
@@ -1019,6 +1060,13 @@ export class DossierDetailComponent implements OnInit {
   readonly ajoutInstanceEnCours = signal(false);
   readonly erreurInstance = signal('');
   nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '' };
+  // Modifier une instance déjà créée (19/09/2026, gap comblé — la route PUT
+  // existait déjà côté API mais rien ne l'exposait à l'écran). Le degré
+  // n'est volontairement pas modifiable ici : le backend ne l'accepte pas
+  // en PUT (changer le degré change le sens des libellés Demandeur/
+  // Appelant/etc.) — en cas d'erreur de degré, retirer puis recréer.
+  readonly instanceEnEdition = signal<string | null>(null);
+  editInstance: any = {};
 
   // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
   // comporter plusieurs identités clientes. Sélecteur avec recherche
@@ -1254,6 +1302,34 @@ export class DossierDetailComponent implements OnInit {
     this.api.retirerInstanceDossier(this.id, instanceId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
+  commencerEditionInstance(i: any): void {
+    this.erreurInstance.set('');
+    this.editInstance = {
+      juridiction: i.juridiction || '', numero_role: i.numero_role || '', decision: i.decision || '',
+      statut_partie: i.statut_partie || '', statut_partie_precision: i.statut_partie_precision || '',
+    };
+    this.instanceEnEdition.set(i.id);
+  }
+
+  annulerEditionInstance(): void {
+    this.instanceEnEdition.set(null);
+    this.editInstance = {};
+  }
+
+  enregistrerEditionInstance(): void {
+    const instanceId = this.instanceEnEdition();
+    if (!instanceId) return;
+    this.erreurInstance.set('');
+    this.api.majInstance(this.id, instanceId, this.editInstance).subscribe({
+      next: () => {
+        this.instanceEnEdition.set(null);
+        this.editInstance = {};
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 
