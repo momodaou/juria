@@ -44,7 +44,14 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </div>
         </div>
         <div class="meta">
-          <div><span>Client</span><b>{{ d.client_nom }}</b></div>
+          <div>
+            <span>Client</span><b>{{ d.client_nom }}</b>
+            @if (instanceActuelle(d); as ia) {
+              @if (libelleStatutPartie(ia.statut_partie, ia.degre, ia.statut_partie_precision); as sp) {
+                <div class="montant-sens">({{ sp }})</div>
+              }
+            }
+          </div>
           <div><span>Responsable</span><b>{{ d.responsable_nom }}</b></div>
           <div>
             <span>Ouvert le</span><b>{{ d.date_ouverture ? (d.date_ouverture | date:'dd/MM/yyyy') : '—' }}</b>
@@ -423,12 +430,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <p class="muted">1re instance, appel, cassation… chaque degré garde sa propre juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
             <table>
-              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Décision</th></tr>
+              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th></tr>
               @for (i of d.instances; track i.id) {
                 <tr>
                   <td>{{ libelleDegre(i.degre) }}</td>
                   <td>{{ i.juridiction || '—' }}</td>
                   <td>{{ i.numero_role || '—' }}</td>
+                  <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
                 </tr>
               }
@@ -457,6 +465,25 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 </select>
               </div>
               <div><label>N° de rôle (facultatif)</label><input class="in" [(ngModel)]="nouvelleInstance.numero_role" name="niNumeroRole" /></div>
+              <div>
+                <label>Statut de {{ d.client_nom }}</label>
+                <select class="in" [(ngModel)]="nouvelleInstance.statut_partie" name="niStatutPartie">
+                  <option value="">— Non précisé —</option>
+                  @if (d.code_matiere === 'PEN') {
+                    <option value="prevenu">Prévenu</option>
+                    <option value="partie_civile">Partie civile</option>
+                  } @else {
+                    <option value="demandeur">{{ libelleStatutPartie('demandeur', nouvelleInstance.degre) }}</option>
+                    <option value="defendeur">{{ libelleStatutPartie('defendeur', nouvelleInstance.degre) }}</option>
+                  }
+                  <option value="intervenant_volontaire">Intervenant volontaire</option>
+                  <option value="intervenant_force">Intervenant forcé</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              @if (nouvelleInstance.statut_partie === 'autre') {
+                <div><label>Préciser le statut</label><input class="in" [(ngModel)]="nouvelleInstance.statut_partie_precision" name="niStatutPartiePrecision" /></div>
+              }
             </div>
             <button class="btn" (click)="ajouterInstance()" [disabled]="ajoutInstanceEnCours()">
               {{ ajoutInstanceEnCours() ? 'Ajout…' : '+ Ajouter cette instance' }}
@@ -1081,6 +1108,36 @@ export class DossierDetailComponent implements OnInit {
     opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
   };
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
+
+  // Instance la plus récente (19/09/2026) — même tri que le backend
+  // (date_debut croissant, nulls en dernier), donc le dernier élément du
+  // tableau est le plus récent. Utilisé pour l'en-tête (statut de la
+  // partie affiché sous "Client") ; l'historique complet reste visible
+  // dans le panneau "Instances" plus bas.
+  instanceActuelle(d: any): any {
+    return d.instances?.length ? d.instances[d.instances.length - 1] : null;
+  }
+
+  // Statut de la partie sur une instance (19/09/2026, demande utilisateur)
+  // — demandeur/défendeur se relabellisent selon le degré (Appelant/Intimé
+  // en appel, Demandeur/Défendeur au pourvoi en cassation, "en opposition"
+  // pour l'opposition) ; intervenant/pénal restent invariants quel que
+  // soit le degré. Voir CLAUDE.md pour la conception complète.
+  private readonly libellesStatutPartie: Record<string, Record<string, string>> = {
+    demandeur: { appel: 'Appelant', cassation: 'Demandeur au pourvoi', opposition: 'Demandeur en opposition', default: 'Demandeur' },
+    defendeur: { appel: 'Intimé', cassation: 'Défendeur au pourvoi', opposition: 'Défendeur en opposition', default: 'Défendeur' },
+    intervenant_volontaire: { default: 'Intervenant volontaire' },
+    intervenant_force: { default: 'Intervenant forcé' },
+    prevenu: { default: 'Prévenu' },
+    partie_civile: { default: 'Partie civile' },
+  };
+  libelleStatutPartie(statut?: string | null, degre?: string | null, precision?: string | null): string {
+    if (!statut) return '';
+    if (statut === 'autre') return precision?.trim() ? precision.trim() : 'Autre';
+    const table = this.libellesStatutPartie[statut];
+    if (!table) return statut;
+    return table[degre || ''] || table['default'];
+  }
 
   // Qui réclame le montant du litige (31/08/2026, demande utilisateur) —
   // affiché entre parenthèses sous le montant, en petit et en italique

@@ -79,6 +79,13 @@ export interface Dossier {
   // pro bono (autre mécanisme ci-dessus), un mode success_fee/abonnement,
   // un dossier clos/archivé, ou déjà facturé. Voir facturationDiscipline.js.
   statut_facturation: 'en_attente' | 'toujours_pas' | null;
+  // Statut de la partie sur l'instance la plus récente (19/09/2026, demande
+  // utilisateur) — null si aucune instance enregistrée. instance_degre est
+  // nécessaire pour dériver le bon libellé (Demandeur→Appelant→Demandeur au
+  // pourvoi selon le degré) ; voir instanceActuelle.js côté backend.
+  instance_degre: string | null;
+  instance_statut_partie: string | null;
+  instance_statut_partie_precision: string | null;
 }
 
 export interface ParametresHonoraires {

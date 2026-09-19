@@ -9,6 +9,7 @@ const { saveObject } = require("../storage");
 // actes.js ne requiert pas dossiers.js.
 const { construireContexte, applatirContexte, fusionner } = require("./actes");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
+const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
 const router = express.Router();
 
 // Discipline de facturation — Bloc A (18/09/2026, voir CLAUDE.md/HISTORY.md
@@ -230,12 +231,14 @@ router.get("/", async (req, res) => {
               d.client_id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES},
-              ${SELECT_STATUT_FACTURATION}
+              ${SELECT_STATUT_FACTURATION},
+              ${SELECT_INSTANCE_ACTUELLE}
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
        ${JOIN_HONORAIRES}
        ${JOIN_STATUT_FACTURATION}
+       ${JOIN_INSTANCE_ACTUELLE}
        ${where}
        ORDER BY d.maj_le DESC
        LIMIT 200`,
@@ -299,7 +302,7 @@ router.get("/:id", async (req, res) => {
     // juridiction/n° de rôle par degré — 1re instance, appel, cassation…)
     // mais jamais branchée à aucune route jusqu'ici.
     const instances = await pool.query(
-      "SELECT id, degre, juridiction, numero_role, date_debut, decision FROM instances WHERE dossier_id = $1 ORDER BY date_debut NULLS LAST, cree_le",
+      "SELECT id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision FROM instances WHERE dossier_id = $1 ORDER BY date_debut NULLS LAST, cree_le",
       [id]
     );
     // Discipline de facturation — Bloc A : le montant convenu avec le
@@ -539,10 +542,11 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     // mais jusqu'ici jamais utilisée nulle part.
     if (b.instance_initiale && (b.instance_initiale.degre || b.instance_initiale.juridiction)) {
       await pool.query(
-        `INSERT INTO instances (dossier_id, degre, juridiction, numero_role)
-         VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4)`,
+        `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, statut_partie, statut_partie_precision)
+         VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5::statut_partie_instance, $6)`,
         [rows[0].id, b.instance_initiale.degre || null, b.instance_initiale.juridiction || null,
-         b.instance_initiale.numero_role || null]
+         b.instance_initiale.numero_role || null, b.instance_initiale.statut_partie || null,
+         b.instance_initiale.statut_partie_precision || null]
       );
     }
 
@@ -768,10 +772,11 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
-      `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut)
-       VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5)
-       RETURNING id, degre, juridiction, numero_role, date_debut, decision`,
-      [req.params.id, b.degre || null, b.juridiction || null, b.numero_role || null, b.date_debut || null]
+      `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut, statut_partie, statut_partie_precision)
+       VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5, $6::statut_partie_instance, $7)
+       RETURNING id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision`,
+      [req.params.id, b.degre || null, b.juridiction || null, b.numero_role || null, b.date_debut || null,
+       b.statut_partie || null, b.statut_partie_precision || null]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -790,10 +795,13 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
          juridiction = COALESCE($1, juridiction),
          numero_role = COALESCE($2, numero_role),
          date_debut = COALESCE($3, date_debut),
-         decision = COALESCE($4, decision)
-       WHERE id = $5 AND dossier_id = $6
-       RETURNING id, degre, juridiction, numero_role, date_debut, decision`,
+         decision = COALESCE($4, decision),
+         statut_partie = COALESCE($5::statut_partie_instance, statut_partie),
+         statut_partie_precision = COALESCE($6, statut_partie_precision)
+       WHERE id = $7 AND dossier_id = $8
+       RETURNING id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision`,
       [b.juridiction || null, b.numero_role || null, b.date_debut || null, b.decision || null,
+       b.statut_partie || null, b.statut_partie_precision || null,
        req.params.instanceId, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Instance introuvable" });

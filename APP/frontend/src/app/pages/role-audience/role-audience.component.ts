@@ -41,6 +41,9 @@ import { AuthService } from '../../core/auth.service';
                 <td>{{ l.heure || '—' }}</td>
                 <td>
                   <a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a>
+                  @if (libelleStatutPartie(l.instance_statut_partie, l.instance_degre, l.instance_statut_partie_precision); as sp) {
+                    <div class="muted" style="font-size:var(--fs-xs)">({{ sp }})</div>
+                  }
                   @if (l.statut_facturation) {
                     <div>
                       <span class="tag" [class.attente]="l.statut_facturation === 'en_attente'" [class.haute]="l.statut_facturation === 'toujours_pas'">
@@ -266,6 +269,24 @@ export class RoleAudienceComponent implements OnInit {
 
   libelleTypeDiligence(code: string): string {
     return this.typesDiligence().find((t) => t.code === code)?.libelle ?? code;
+  }
+
+  // Statut de la partie (19/09/2026) — même logique que dossiers.component.ts
+  // et dossier-detail.component.ts (voir CLAUDE.md pour la conception).
+  private readonly libellesStatutPartie: Record<string, Record<string, string>> = {
+    demandeur: { appel: 'Appelant', cassation: 'Demandeur au pourvoi', opposition: 'Demandeur en opposition', default: 'Demandeur' },
+    defendeur: { appel: 'Intimé', cassation: 'Défendeur au pourvoi', opposition: 'Défendeur en opposition', default: 'Défendeur' },
+    intervenant_volontaire: { default: 'Intervenant volontaire' },
+    intervenant_force: { default: 'Intervenant forcé' },
+    prevenu: { default: 'Prévenu' },
+    partie_civile: { default: 'Partie civile' },
+  };
+  libelleStatutPartie(statut?: string | null, degre?: string | null, precision?: string | null): string {
+    if (!statut) return '';
+    if (statut === 'autre') return precision?.trim() ? precision.trim() : 'Autre';
+    const table = this.libellesStatutPartie[statut];
+    if (!table) return statut;
+    return table[degre || ''] || table['default'];
   }
 
   ngOnInit(): void {

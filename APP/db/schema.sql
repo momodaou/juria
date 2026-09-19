@@ -3322,3 +3322,38 @@ ALTER TABLE factures ADD COLUMN alerte_impaye_j90 BOOLEAN NOT NULL DEFAULT FALSE
 ALTER TABLE dossiers ADD COLUMN alerte_facturation_j30 BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE dossiers ADD COLUMN alerte_facturation_j60 BOOLEAN NOT NULL DEFAULT FALSE;
 -- ============ FIN DISCIPLINE DE FACTURATION — BLOC C ============
+
+-- =====================================================================
+--  STATUT DE LA PARTIE DANS L'INSTANCE (19/09/2026)
+--  (demande explicite de l'utilisateur — information jugée importante,
+--  absente jusqu'ici : rien ne capturait la position procédurale de
+--  notre client, seule la table dossier_parties existait, et elle ne
+--  décrit que les AUTRES parties — adverse, tiers, conseil adverse.)
+--
+--  Porté par `instances` (pas par `dossiers`) car le libellé — et parfois
+--  le statut lui-même — dépend du DEGRÉ : un même camp peut être
+--  Demandeur en 1re instance puis Appelant ou Intimé en appel selon qui
+--  interjette appel. Le statut est donc toujours rattaché à une instance
+--  déjà créée, jamais indépendant.
+--
+--  Conception discutée et confirmée avec l'utilisateur :
+--   - demandeur/defendeur : libellé dérivé du degré côté frontend
+--     (Demandeur/Défendeur en 1re instance, référé, exécution ;
+--     Demandeur en opposition/Défendeur en opposition ; Appelant/Intimé
+--     en appel ; Demandeur au pourvoi/Défendeur au pourvoi en cassation).
+--   - intervenant_volontaire/intervenant_force : qualité à part, distincte
+--     de demandeur/défendeur (client appelé à une instance à laquelle il
+--     n'est pas partie à l'origine, ou ayant intérêt à y intervenir) —
+--     libellé invariant quel que soit le degré.
+--   - prevenu/partie_civile : axe propre au pénal, invariant quel que
+--     soit le degré (confirmé explicitement — pas d'"appelant" en matière
+--     pénale dans l'usage du cabinet).
+--   - autre + précision libre : même patron que statut_procedure/
+--     statut_procedure_precision, pour les cas hors de cette liste.
+-- =====================================================================
+CREATE TYPE statut_partie_instance AS ENUM
+  ('demandeur','defendeur','intervenant_volontaire','intervenant_force','prevenu','partie_civile','autre');
+
+ALTER TABLE instances ADD COLUMN statut_partie statut_partie_instance;
+ALTER TABLE instances ADD COLUMN statut_partie_precision TEXT;
+-- ============ FIN STATUT DE LA PARTIE DANS L'INSTANCE ============

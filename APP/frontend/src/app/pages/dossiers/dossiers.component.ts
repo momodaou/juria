@@ -41,7 +41,7 @@ import { AuthService } from '../../core/auth.service';
       @if (dossiers().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
+          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
           @for (d of dossiers(); track d.id) {
             <tr>
               <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">
@@ -50,6 +50,7 @@ import { AuthService } from '../../core/auth.service';
               </td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}</td>
               <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ libelleStatutPartie(d.instance_statut_partie, d.instance_degre, d.instance_statut_partie_precision) || '—' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.date_ouverture | date:'dd/MM/yyyy' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.statut === 'archive'">{{ d.statut }}</span></td>
@@ -164,5 +165,26 @@ export class DossiersComponent implements OnInit {
       case 'toujours_pas': return 'Toujours pas facturé';
       default: return statut ?? '';
     }
+  }
+
+  // Statut de la partie sur l'instance la plus récente (19/09/2026, demande
+  // utilisateur) — demandeur/défendeur se relabellisent selon le degré
+  // (Appelant/Intimé en appel, Demandeur/Défendeur au pourvoi en cassation,
+  // "en opposition" pour l'opposition) ; intervenant/pénal restent
+  // invariants quel que soit le degré. Voir CLAUDE.md pour la conception.
+  private readonly libellesStatutPartie: Record<string, Record<string, string>> = {
+    demandeur: { appel: 'Appelant', cassation: 'Demandeur au pourvoi', opposition: 'Demandeur en opposition', default: 'Demandeur' },
+    defendeur: { appel: 'Intimé', cassation: 'Défendeur au pourvoi', opposition: 'Défendeur en opposition', default: 'Défendeur' },
+    intervenant_volontaire: { default: 'Intervenant volontaire' },
+    intervenant_force: { default: 'Intervenant forcé' },
+    prevenu: { default: 'Prévenu' },
+    partie_civile: { default: 'Partie civile' },
+  };
+  libelleStatutPartie(statut?: string | null, degre?: string | null, precision?: string | null): string {
+    if (!statut) return '';
+    if (statut === 'autre') return precision?.trim() ? precision.trim() : 'Autre';
+    const table = this.libellesStatutPartie[statut];
+    if (!table) return statut;
+    return table[degre || ''] || table['default'];
   }
 }
