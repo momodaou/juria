@@ -812,6 +812,20 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
   }
 });
 
+// DELETE /api/dossiers/:id/instances/:instanceId — retirer une instance
+// ajoutée par erreur (19/09/2026, gap comblé — jusqu'ici aucun moyen de
+// corriger un degré/statut mal saisi autrement que par une nouvelle
+// instance à côté). Même patron que DELETE /:id/parties/:partieId.
+router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
+  try {
+    await pool.query("DELETE FROM instances WHERE id = $1 AND dossier_id = $2", [req.params.instanceId, req.params.id]);
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST/PUT/DELETE /api/dossiers/:id/parties — rectifier les parties adverses
 // après la création (20/08/2026, demande utilisateur : gap signalé — seule
 // l'ouverture (POST /) permettait jusqu'ici de les saisir, aucune route ne

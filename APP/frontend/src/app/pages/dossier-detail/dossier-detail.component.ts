@@ -430,7 +430,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <p class="muted">1re instance, appel, cassation… chaque degré garde sa propre juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
             <table>
-              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th></tr>
+              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th></th></tr>
               @for (i of d.instances; track i.id) {
                 <tr>
                   <td>{{ libelleDegre(i.degre) }}</td>
@@ -438,6 +438,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   <td>{{ i.numero_role || '—' }}</td>
                   <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
+                  <td>
+                    @if (auth.peut('dossiers.instances.gerer')) {
+                      <button class="lien" (click)="retirerInstance(i.id)">Retirer</button>
+                    }
+                  </td>
                 </tr>
               }
             </table>
@@ -1241,6 +1246,14 @@ export class DossierDetailComponent implements OnInit {
     this.api.retirerPartieDossier(this.id, partieId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreurPartie.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
+  retirerInstance(instanceId: string): void {
+    if (!window.confirm('Retirer cette instance (ajoutée par erreur) ?')) return;
+    this.api.retirerInstanceDossier(this.id, instanceId).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Retrait impossible.'),
     });
   }
 

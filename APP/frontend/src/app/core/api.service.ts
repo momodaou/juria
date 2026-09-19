@@ -210,6 +210,9 @@ export class ApiService {
   majInstance(dossierId: string, instanceId: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}`, payload);
   }
+  retirerInstanceDossier(dossierId: string, instanceId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}`);
+  }
 
   // Clients additionnels sur un dossier (18/08/2026) — un même dossier peut
   // comporter plusieurs identités clientes en plus du client principal.

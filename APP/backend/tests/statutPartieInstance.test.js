@@ -105,6 +105,22 @@ describe("Statut de la partie dans l'instance", () => {
     expect(maj.body.juridiction).toBe("Tribunal de commerce de Bamako");
   });
 
+  test("DELETE retire une instance ajoutée par erreur (19/09/2026, gap comblé)", async () => {
+    const dossierId = await creerDossier();
+    const creation = await request(app)
+      .post(`/api/dossiers/${dossierId}/instances`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ degre: "premiere_instance", statut_partie: "demandeur" });
+
+    const suppr = await request(app)
+      .delete(`/api/dossiers/${dossierId}/instances/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppr.status).toBe(204);
+
+    const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.instances).toHaveLength(0);
+  });
+
   test("GET /:id renvoie l'historique complet des instances avec leur statut", async () => {
     const dossierId = await creerDossier();
     await request(app).post(`/api/dossiers/${dossierId}/instances`).set("Authorization", `Bearer ${token}`)
