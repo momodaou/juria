@@ -2453,3 +2453,63 @@ Captures avant/après publiées dans un Artifact dédié pour validation visuell
 **Vérification** : environnement Docker local dédié (Postgres + API + `ng serve` + Playwright headless), compte de test créé, une ressource Bibliothèque et une tâche de test créées via l'API pour peupler un tableau et une carte kanban. Captures avant/après : bouton bien visible au repos sur Bibliothèque (tableau) **et** sur Plan d'action (carte kanban, le cas jusque-là cassé), contraste plein au survol, menu correct à l'ouverture (Modifier/Supprimer). Purement CSS, aucun changement backend/schéma. Jeu de données de test et environnement Docker entièrement effacés après vérification (`docker compose down -v` + suppression des conteneurs de vérification), jamais rien touché en production pour l'investigation elle-même.
 
 **Déploiement** : **déployé et vérifié en production le 19/09/2026** (accord explicite, « oui vas-y ») — frontend seul, révision `juria-web-00107-22v` (précédente `juria-web-00106-6s5`), `/` en `200`.
+
+## 2026-09-20 — Bouton « ⋮ » : encore jugé difficile à repérer, corrigé sans agrandir
+
+**Contexte** : l'utilisateur, mitigé, demande d'abord un avis sur 3 pistes possibles pour la présentation des actions par ligne (garder le menu « ⋮ », passer à des symboles, revenir aux mots simples). Recommandation donnée : garder le menu « ⋮ » — c'est ce qui a réglé le vrai problème de départ (mur de texte à 3-4 actions, largeurs de colonnes incohérentes) et c'est conforme aux standards du secteur déjà confirmés (Gmail/Linear/Notion/GitHub). L'utilisateur confirme (« on garde si tu le dis »), puis relève dans la foulée : « ça reste dur à repérer à mon avis... pas forcément agrandir ».
+
+**Diagnostic** : le correctif de la veille (19/09/2026) avait remplacé le patron « invisible par défaut, révélé au survol » par une pastille toujours visible — mais avec `background:var(--light)` (#EEF1F5) et `border:1px solid var(--line)` (#e2e7ee), deux teintes très proches du blanc des tableaux. La pastille existait bien en permanence (corrigeant le bug de fond), mais son contour restait quasiment invisible contre le fond de page — d'où la 2ᵉ plainte.
+
+**Correction** (dimensions strictement inchangées, contrainte explicite de l'utilisateur) : bordure et couleur de l'icône assombries — `border:1.5px solid var(--grey)` (#6B7280, au lieu de `var(--line)`) et `color:var(--navy)` (#1F2A44, au lieu de `var(--slate)`). Fond `var(--light)` conservé (toujours discret au repos), mais le contour et les points eux-mêmes ressortent nettement plus.
+
+**Vérification** : environnement Docker local jetable (Postgres + API + `ng serve` + Playwright headless, même méthode que la veille), une ressource Bibliothèque de test créée pour peupler un tableau. Capture zoomée avant/après confirmant le contraste renforcé au repos. Purement CSS, aucun changement backend. Jeu de données de test et environnement entièrement effacés après vérification.
+
+**Déploiement** : **déployé et vérifié en production le 20/09/2026** (accord implicite dans le fil de la discussion, correctif direct du problème signalé) — frontend seul, révision `juria-web-00108-lph` (précédente `juria-web-00107-22v`), `/` en `200`.
+
+## 2026-09-20 — Bouton « ⋮ » aligné sur la couleur dorée des actions en mot
+
+**Contexte** : question directe de l'utilisateur immédiatement après le correctif précédent — « n'est-il pas cohérent que le pointillet ait la même caractéristique dorée que les actions en mot ? ».
+
+**Vérifié fondé** : `.lien` (les liens à une seule action restés en texte simple sur les lignes qui n'ont qu'une seule action) est stylé `color:var(--gold)` dans `styles.css` depuis le 05/09/2026 (« Uniformisation des liens d'action inline »), et cette couleur dorée sert déjà de convention pour tout élément interactif de premier plan ailleurs dans l'appli (`.side nav a.active`, `.login-card button` — fond `var(--gold)` + texte foncé `#1b2436`, jamais de texte blanc sur fond doré). Le bouton « ⋮ », qui déclenche exactement le même type d'action (une ou plusieurs actions sur une ligne), restait gris/marine depuis son ajout — incohérence réelle, pas cosmétique.
+
+**Correction** : `.menu-btn` passe de `border:var(--grey);color:var(--navy)` à `border:var(--gold);color:var(--gold)` au repos (aligné sur `.lien`), et de `background:var(--navy);color:#fff` à `background:var(--gold);color:#1b2436` au survol/focus (reprend la convention déjà établie du remplissage doré + texte foncé, plutôt que d'inventer un 2ᵉ traitement).
+
+**Vérification** : Playwright headless (même environnement Docker local jetable que les 2 passes précédentes), capture au repos et au survol confirmant l'alignement visuel avec `.lien` et avec le menu latéral actif. Purement CSS, aucun changement backend. Jeu de données de test et environnement effacés après vérification.
+
+**Déploiement** : **déployé et vérifié en production le 20/09/2026** — frontend seul, révision `juria-web-00109-s2z` (précédente `juria-web-00108-lph`), `/` en `200`.
+
+## 2026-09-20 — Bouton « ⋮ » : fond doré plein, comme les vrais boutons d'action (2ᵉ précision de l'utilisateur)
+
+**Contexte** : l'utilisateur précise sa pensée juste après le déploiement précédent — « je voyais plutôt le fond du pointillet en doré comme les "ajouter une partie", "enregistrer" etc... c'est plus cohérent non ? ».
+
+**Vérifié fondé** : `.btn` (dupliqué à l'identique dans 17 composants — `background:var(--gold);color:#1b2436;border:none;border-radius:8px`, aucun `:hover` distinct nulle part dans l'appli) est le vrai bouton d'action primaire de JURIA, plus représentatif que `.lien` de ce que l'utilisateur avait en tête. Le 1er essai (bordure + icône dorées au repos, fond doré seulement au survol) restait donc en décalage.
+
+**Correction** : `.menu-btn` copie `.btn` à l'identique — `background:var(--gold);color:#1b2436;border:none`, fond plein en permanence (pas de bascule repos/survol), mêmes dimensions qu'avant (28×26px, contrainte du 19/09/2026 toujours respectée).
+
+**Piège reproduit une 2ᵉ fois** : un nouveau backtick littéral laissé dans le commentaire (pour désigner `.btn`) a de nouveau cassé la compilation Angular avec exactement la même erreur que la veille (`Failed to resolve styles... Value could not be determined statically`) — corrigé immédiatement (guillemets/texte brut à la place du backtick). Point de vigilance à retenir durablement pour ce fichier : ne plus jamais mettre de backtick dans un commentaire à l'intérieur d'un `styles: [\`...\`]`.
+
+**Vérification** : Playwright headless (même environnement Docker local jetable), capture confirmant le bouton visuellement identique au bouton « + Nouvelle ressource » du même écran. Purement CSS, aucun changement backend. Jeu de données de test et environnement effacés après vérification.
+
+**Déploiement** : **déployé et vérifié en production le 20/09/2026** — frontend seul, révision `juria-web-00110-vhc` (précédente `juria-web-00109-s2z`), `/` en `200`.
+
+## 2026-09-20 — Bouton « ⋮ » : fond doré adouci (le plein doré jugé trop fort pour une action répétée)
+
+**Contexte** : dernière précision de l'utilisateur le même jour — « la couleur moins forte peut-être ? le fond du cadre du pointillet je veux dire ».
+
+**Diagnostic** : le fond doré plein (déployé une passe plus tôt le même jour) est fidèle à `.btn`, mais `.btn` n'apparaît qu'une fois par écran alors que le bouton « ⋮ » se répète sur chaque ligne d'un tableau — l'effet cumulé d'un aplat saturé répété devient effectivement excessif, remarque légitime.
+
+**Correction** : repris le patron déjà utilisé par les badges `.tag`/`.tag.haute` dans `styles.css` (fond teinté clair de la même famille de couleur + texte plus saturé, jamais un aplat plein pour un élément qui se répète) plutôt que d'improviser un nouveau traitement — `background:rgba(176,141,87,.16)` (16 % d'opacité du doré) au repos, icône `color:var(--gold)`. Le doré plein (`.btn`, exactement comme la passe précédente) reste réservé à l'interaction : survol, focus clavier, **et** tant que le menu est effectivement ouvert — nouvelle classe `.menu-btn-ouvert` liée au signal `ouvert()` déjà existant, ajoutée car un clic souris ne déclenche pas toujours `:focus-visible` de façon fiable selon le navigateur/OS ; sans elle, le bouton aurait pu revenir à son fond léger alors que son menu reste affiché juste en dessous.
+
+**Vérification** : Playwright headless (même environnement Docker local jetable), 3 captures (repos, survol, menu ouvert) confirmant le comportement voulu dans les 3 états. Purement CSS, aucun changement backend.
+
+**Déploiement** : **déployé et vérifié en production le 20/09/2026** — frontend seul, révision `juria-web-00111-jv9` (précédente `juria-web-00110-vhc`), `/` en `200`.
+
+## 2026-09-20 — Bouton « ⋮ » : contour plus net (relief), toujours sans revenir au doré plein
+
+**Contexte** : dernier ajustement du même jour — « légèrement plus en relief encore. Sans revenir au fond initial très doré ».
+
+**Correction** : la teinte à 16 % d'opacité (passe précédente) n'avait aucune bordure et se fondait un peu dans les fonds clairs environnants du tableau — remonté à `rgba(176,141,87,.26)` (fond) + `border:1px solid rgba(176,141,87,.45)` (nouveau, contour net dans la même famille de couleur). Le relief vient de la délimitation du contour, pas d'un fond plus saturé — reste très loin de l'aplat plein `.btn`. Au survol/focus/menu ouvert, la bordure bascule aussi en `var(--gold)` (cohérent avec le fond plein qui s'applique déjà à ce moment).
+
+**Vérification** : Playwright headless, capture repos + survol confirmant un contour net perceptible sans excès. Purement CSS, aucun changement backend.
+
+**Déploiement** : **déployé et vérifié en production le 20/09/2026** — frontend seul, révision `juria-web-00112-8dm` (précédente `juria-web-00111-jv9`), `/` en `200`.
