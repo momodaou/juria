@@ -1,5 +1,5 @@
-import { Component, computed, inject, signal, ViewChild, ElementRef, OnInit } from '@angular/core';
-import { DecimalPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
+import { Component, HostListener, computed, inject, signal, OnInit } from '@angular/core';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -283,7 +283,7 @@ const CONFIG: Record<string, TuileConfig> = {
 @Component({
   selector: 'app-cockpit',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink, NgTemplateOutlet],
+  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink],
   providers: [DatePipe, DecimalPipe],
   template: `
     <header class="page-head">
@@ -319,7 +319,14 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (d.urgents_apercu.length) {
             <div class="mini-liste">
               @for (l of d.urgents_apercu; track l.dossier_id) {
-                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="secondaire">{{ joursLabel(l.jours_restants) }}</span></div>
+                <div class="mini-ligne">
+                  @if (l.dossier_id) {
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.numero }} — {{ l.intitule }}</a>
+                  } @else {
+                    <span class="principal">{{ l.numero }} — {{ l.intitule }}</span>
+                  }
+                  <span class="secondaire">{{ joursLabel(l.jours_restants) }}</span>
+                </div>
               }
             </div>
           }
@@ -331,7 +338,14 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (d.audiences_apercu.length) {
             <div class="mini-liste">
               @for (l of d.audiences_apercu; track l.dossier_id + l.date_echeance) {
-                <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.titre }}</span><span class="secondaire">{{ l.date_echeance | date:'dd/MM' }}</span></div>
+                <div class="mini-ligne">
+                  @if (l.dossier_id) {
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.numero }} — {{ l.titre }}</a>
+                  } @else {
+                    <span class="principal">{{ l.numero }} — {{ l.titre }}</span>
+                  }
+                  <span class="secondaire">{{ l.date_echeance | date:'dd/MM' }}</span>
+                </div>
               }
             </div>
           }
@@ -348,15 +362,6 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (peutVoirDetail('probono')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
       </div>
-      <!-- Panneau de détail réaffiché juste sous SON groupe (13/09/2026,
-           option B retenue par l'utilisateur — plutôt qu'un unique
-           emplacement en fin de page obligeant à redescendre après les
-           tuiles des groupes suivants). Un seul gabarit partagé
-           (#panneauDetail, tout en bas du fichier) inséré ici via
-           ngTemplateOutlet — pas de contenu dupliqué, juste rendu à 3
-           endroits possibles selon le groupe de la tuile ouverte. -->
-      @if (groupeOuvert() === 1) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
-
       <h3 class="groupe-titre">Tâches &amp; équipe</h3>
       <div class="kpis">
         <button type="button" class="kpi tier-vigilance apercu hero" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
@@ -365,7 +370,14 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (d.mes_taches_apercu.length) {
             <div class="mini-liste">
               @for (l of d.mes_taches_apercu; track l.id) {
-                <div class="mini-ligne"><span class="principal">{{ l.titre }}</span><span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span></div>
+                <div class="mini-ligne">
+                  @if (l.dossier_id) {
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.titre }}</a>
+                  } @else {
+                    <span class="principal">{{ l.titre }}</span>
+                  }
+                  <span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span>
+                </div>
               }
             </div>
           }
@@ -378,7 +390,14 @@ const CONFIG: Record<string, TuileConfig> = {
             @if (d.taches_urgentes_apercu.length) {
               <div class="mini-liste">
                 @for (l of d.taches_urgentes_apercu; track l.id) {
-                  <div class="mini-ligne"><span class="principal">{{ l.titre }} — {{ l.responsable }}</span><span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span></div>
+                  <div class="mini-ligne">
+                    @if (l.dossier_id) {
+                      <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.titre }} — {{ l.responsable }}</a>
+                    } @else {
+                      <span class="principal">{{ l.titre }} — {{ l.responsable }}</span>
+                    }
+                    <span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span>
+                  </div>
                 }
               </div>
             }
@@ -405,7 +424,6 @@ const CONFIG: Record<string, TuileConfig> = {
           </button>
         }
       </div>
-      @if (groupeOuvert() === 2) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
 
       @if (auth.peut('factures.consulter')) {
         <h3 class="groupe-titre">Facturation &amp; rentabilité</h3>
@@ -417,7 +435,14 @@ const CONFIG: Record<string, TuileConfig> = {
               @if (d.impayes_apercu.length) {
                 <div class="mini-liste">
                   @for (l of d.impayes_apercu; track l.client_id) {
-                    <div class="mini-ligne"><span class="principal">{{ l.client }}</span><span class="valeur">{{ l.montant_ttc | number }}</span></div>
+                    <div class="mini-ligne">
+                      @if (l.client_id) {
+                        <a class="principal" [routerLink]="['/clients', l.client_id]" (click)="$event.stopPropagation()">{{ l.client }}</a>
+                      } @else {
+                        <span class="principal">{{ l.client }}</span>
+                      }
+                      <span class="valeur">{{ l.montant_ttc | number }}</span>
+                    </div>
                   }
                 </div>
               }
@@ -457,7 +482,14 @@ const CONFIG: Record<string, TuileConfig> = {
               @if (d.non_rentables_apercu.length) {
                 <div class="mini-liste">
                   @for (l of d.non_rentables_apercu; track l.dossier_id) {
-                    <div class="mini-ligne"><span class="principal">{{ l.numero }} — {{ l.intitule }}</span><span class="valeur">{{ l.marge_ht | number }}</span></div>
+                    <div class="mini-ligne">
+                      @if (l.dossier_id) {
+                        <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.numero }} — {{ l.intitule }}</a>
+                      } @else {
+                        <span class="principal">{{ l.numero }} — {{ l.intitule }}</span>
+                      }
+                      <span class="valeur">{{ l.marge_ht | number }}</span>
+                    </div>
                   }
                 </div>
               }
@@ -528,48 +560,7 @@ const CONFIG: Record<string, TuileConfig> = {
             </div>
           }
         </div>
-        @if (groupeOuvert() === 3) { <ng-container [ngTemplateOutlet]="panneauDetail" /> }
       }
-
-      <ng-template #panneauDetail>
-      @if (ouvert(); as o) {
-        <section class="panel detail" #detailSection>
-          <div class="detail-head">
-            <h3>{{ CONFIG[o].titre }}</h3>
-            <button type="button" class="fermer" (click)="fermer()"><span [innerHTML]="icons['close']"></span>Fermer</button>
-          </div>
-          <div class="controls">
-            <label>Trier par
-              <select class="in" [ngModel]="triIndex()" (ngModelChange)="triIndex.set($event)" name="tri">
-                @for (s of CONFIG[o].sorts; track $index) { <option [value]="$index">{{ s.label }}</option> }
-              </select>
-            </label>
-          </div>
-          @if (chargementDetail()) {
-            <p class="muted">Chargement…</p>
-          } @else if (lignesTriees().length) {
-            <table>
-              <tr>@for (c of CONFIG[o].cols; track c.key) { <th>{{ c.label }}</th> }</tr>
-              @for (r of lignesTriees(); track $index) {
-                <tr>
-                  @for (c of CONFIG[o].cols; track c.key) {
-                    <td [class.num]="c.format === 'num'">
-                      @if (c.lien && r[c.lien.idKey]) {
-                        <a class="lien" [routerLink]="[c.lien.route, r[c.lien.idKey]]">{{ celluleTexte(r, c) }}</a>
-                      } @else {
-                        {{ celluleTexte(r, c) }}
-                      }
-                    </td>
-                  }
-                </tr>
-              }
-            </table>
-          } @else {
-            <p class="muted">Aucun élément.</p>
-          }
-        </section>
-      }
-      </ng-template>
 
       <section class="panel">
         <h3>Délais à venir</h3>
@@ -599,6 +590,57 @@ const CONFIG: Record<string, TuileConfig> = {
       <p class="err">{{ erreur() }}</p>
     } @else {
       <p class="muted">Chargement…</p>
+    }
+
+    <!-- Panneau de détail en panneau latéral (20/09/2026, remplace le
+         défilement automatique vers un panneau partagé sous le groupe —
+         voir HISTORY.md pour l'analyse et la maquette de comparaison
+         validées par l'utilisateur). Rendu une seule fois, en dehors du
+         @if (data(); as d) puisque ouvert()/CONFIG/lignesTriees() n'en
+         dépendent pas — position:fixed, donc son emplacement dans le DOM
+         n'a aucune incidence sur son positionnement visuel. Même patron
+         de recouvrement que le widget de messagerie déjà présent dans
+         l'appli (panneau persistant par-dessus le contenu), pas un
+         paradigme totalement inédit pour JURIA. -->
+    @if (ouvert(); as o) {
+      <div class="tiroir-fond" (click)="fermer()"></div>
+      <aside class="tiroir" role="dialog" aria-modal="true" [attr.aria-label]="CONFIG[o].titre">
+        <div class="tiroir-head">
+          <h3>{{ CONFIG[o].titre }}</h3>
+          <button type="button" class="tiroir-fermer" (click)="fermer()" title="Fermer" aria-label="Fermer"><span [innerHTML]="icons['close']"></span></button>
+        </div>
+        <div class="tiroir-corps">
+          <div class="controls">
+            <label>Trier par
+              <select class="in" [ngModel]="triIndex()" (ngModelChange)="triIndex.set($event)" name="tri">
+                @for (s of CONFIG[o].sorts; track $index) { <option [value]="$index">{{ s.label }}</option> }
+              </select>
+            </label>
+          </div>
+          @if (chargementDetail()) {
+            <p class="muted">Chargement…</p>
+          } @else if (lignesTriees().length) {
+            <table>
+              <tr>@for (c of CONFIG[o].cols; track c.key) { <th>{{ c.label }}</th> }</tr>
+              @for (r of lignesTriees(); track $index) {
+                <tr>
+                  @for (c of CONFIG[o].cols; track c.key) {
+                    <td [class.num]="c.format === 'num'">
+                      @if (c.lien && r[c.lien.idKey]) {
+                        <a class="lien" [routerLink]="[c.lien.route, r[c.lien.idKey]]">{{ celluleTexte(r, c) }}</a>
+                      } @else {
+                        {{ celluleTexte(r, c) }}
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+            </table>
+          } @else {
+            <p class="muted">Aucun élément.</p>
+          }
+        </div>
+      </aside>
     }
   `,
   styles: [`
@@ -656,7 +698,16 @@ const CONFIG: Record<string, TuileConfig> = {
        pas de façon fiable ici, probablement lié au fait que le parent est
        un <button>). Correctif déterministe : width:100% explicite en plus
        de min-width:0, plutôt que de compter sur le stretch implicite. */
-    .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+    .kpi .mini-ligne .principal{color:var(--slate);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto;text-decoration:none}
+    /* 20/09/2026 : les lignes d'aperçu (mini-liste) pointaient toutes vers
+       l'action générique de la tuile (ouvrir le tiroir) sans lien direct
+       vers le dossier/client concerné, alors que l'id est déjà disponible
+       — incohérent avec le principe déjà établi ailleurs (06-07/09/2026,
+       « Navigation inter-modules »). a.principal est le même élément que
+       le span existant (même règle ci-dessus), seul un survol y est ajouté
+       pour signaler que la ligne mène directement au dossier/client, en
+       plus du clic sur la tuile qui ouvre toujours le tiroir général. */
+    a.principal:hover{text-decoration:underline}
     .kpi .mini-ligne .secondaire{color:var(--grey);font-size:var(--fs-xs);white-space:nowrap;flex:0 0 auto}
     .kpi .mini-ligne .valeur{color:var(--navy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
     .kpi .sparkline{margin-top:8px}
@@ -667,15 +718,38 @@ const CONFIG: Record<string, TuileConfig> = {
     .kpi .barre-tranches .legende-tranches{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;font-size:var(--fs-2xs);color:var(--grey)}
     .kpi .barre-tranches .legende-tranches span{display:inline-flex;align-items:center;gap:3px}
     .kpi .barre-tranches .legende-tranches i{width:7px;height:7px;border-radius:2px;display:inline-block}
-    .detail .detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-    .detail h3{margin:0}
-    .fermer{display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);color:var(--grey);border-radius:8px;padding:5px 10px;font-size:var(--fs-sm);cursor:pointer;font-family:inherit}
-    .fermer:hover{border-color:var(--grey)}
     .lien:hover{border-color:var(--grey)}
-    .controls{margin:14px 0;padding-top:12px;border-top:1px solid var(--line)}
+    .controls{margin:0 0 14px;padding-top:0}
     .controls label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-xs);color:var(--grey);font-weight:600;text-transform:uppercase;letter-spacing:.03em;max-width:280px}
     .controls select{font-family:inherit;font-size:var(--fs-base);font-weight:500;text-transform:none;letter-spacing:0;padding:7px 10px}
     td.num, th.num{text-align:right;font-variant-numeric:tabular-nums}
+    /* Panneau de détail en tiroir latéral (20/09/2026) — remplace le
+       défilement automatique vers un panneau partagé sous le groupe
+       (13/09/2026). Analyse complète + maquette de comparaison dans
+       HISTORY.md : la mosaïque libre "accordéon collé à la tuile" a été
+       écartée (conflit avec grid-auto-flow:dense, ajouté la veille pour
+       les tuiles héros — impossible de garantir qu'un panneau attaché à
+       une tuile précise reste visuellement sous elle une fois le calage
+       automatique en jeu) ; une fenêtre modale plein écran a aussi été
+       écartée (premier vrai paradigme de superposition de l'appli,
+       alors qu'un patron plus léger existe déjà — le widget de
+       messagerie). Le tiroir retenu réutilise ce même langage : panneau
+       fixe, superposé, sans dépendre de la position de la tuile
+       cliquée dans la grille. */
+    .tiroir-fond{position:fixed;inset:0;background:rgba(20,26,40,.18);z-index:900}
+    .tiroir{
+      position:fixed;top:0;right:0;bottom:0;width:440px;max-width:92vw;z-index:901;
+      background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(16,24,40,.18);
+      display:flex;flex-direction:column;
+    }
+    .tiroir-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
+    .tiroir-head h3{margin:0;font-size:var(--fs-lg)}
+    .tiroir-fermer{
+      display:flex;align-items:center;justify-content:center;width:28px;height:26px;flex:none;
+      background:var(--light);border:none;color:var(--slate);border-radius:7px;cursor:pointer;
+    }
+    .tiroir-fermer:hover{background:var(--gold);color:#1b2436}
+    .tiroir-corps{padding:16px 20px;overflow:auto;flex:1}
   `],
 })
 export class CockpitComponent implements OnInit {
@@ -813,21 +887,6 @@ export class CockpitComponent implements OnInit {
 
   readonly CONFIG = CONFIG;
   readonly ouvert = signal<string | null>(null);
-
-  // Groupe (1/2/3) de chaque tuile — pilote où le panneau de détail partagé
-  // (#panneauDetail) est inséré, juste sous le bon groupe plutôt qu'à un
-  // unique emplacement en fin de page (13/09/2026, option B). À tenir à
-  // jour si une tuile change de groupe ou qu'un groupe est ajouté.
-  private static readonly GROUPE_PAR_TYPE: Record<string, 1 | 2 | 3> = {
-    actifs: 1, urgents: 1, audiences: 1, dormants: 1, probono: 1,
-    mes_taches: 2, taches_urgentes: 2, heures: 2, conges: 2, realisation: 2,
-    impayes: 3, ca_mois: 3, non_rentables: 3, impayes_aging: 3, recouvrement: 3,
-    ca_pole: 3, top_clients: 3, productivite: 3, en_attente_facturation: 3,
-  };
-  readonly groupeOuvert = computed<1 | 2 | 3 | null>(() => {
-    const o = this.ouvert();
-    return o ? (CockpitComponent.GROUPE_PAR_TYPE[o] ?? null) : null;
-  });
   readonly lignesDetail = signal<any[]>([]);
   readonly chargementDetail = signal(false);
   // Doit être un signal (pas une propriété simple) : lignesTriees() est un
@@ -868,15 +927,6 @@ export class CockpitComponent implements OnInit {
     return !perm || this.auth.peut(perm);
   }
 
-  // Panneau de détail unique, rendu une seule fois après les 3 groupes de
-  // tuiles (18 au total) — sans ce défilement automatique, cliquer une
-  // tuile du 1er groupe obligeait à redescendre manuellement après les 13
-  // autres tuiles pour voir le résultat (constat utilisateur, 13/09/2026).
-  // `setTimeout` laisse le temps au `@if` de rendre le panneau dans le DOM
-  // avant de le cibler (le clic qui l'ouvre et cette lecture du DOM se
-  // produisent sinon dans le même cycle, avant que l'élément n'existe).
-  @ViewChild('detailSection') private detailSection?: ElementRef<HTMLElement>;
-
   clic(type: string): void {
     if (!this.peutVoirDetail(type)) return;
     if (this.ouvert() === type) { this.fermer(); return; }
@@ -887,11 +937,17 @@ export class CockpitComponent implements OnInit {
       next: (rows) => { this.lignesDetail.set(rows); this.chargementDetail.set(false); },
       error: () => { this.lignesDetail.set([]); this.chargementDetail.set(false); },
     });
-    setTimeout(() => this.detailSection?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   fermer(): void {
     this.ouvert.set(null);
     this.lignesDetail.set([]);
+  }
+
+  // Échap ferme le tiroir (20/09/2026) — attendu de tout panneau superposé,
+  // même patron d'accessibilité que la fermeture au clic sur le fond assombri.
+  @HostListener('document:keydown.escape')
+  surEchap(): void {
+    if (this.ouvert()) this.fermer();
   }
 }
