@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService, ParametresHonoraires, ParametresCabinet, CompteBancaire } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { ROLES } from '../../core/roles';
 
 @Component({
   selector: 'app-acces',
@@ -362,21 +363,11 @@ export class AccesComponent implements OnInit {
   // = intitulé complet ailleurs. L'associé-fondateur a les mêmes droits
   // qu'un associé classique partout SAUF la matrice de permissions
   // elle-même (réservée associé + admin IT, voir acces.js backend).
-  readonly roles: { code: string; libelle: string; court: string }[] = [
-    { code: 'associe', libelle: 'Avocat associé', court: 'Associé' },
-    { code: 'associe_fondateur', libelle: 'Avocat associé-fondateur', court: 'Assoc. fondateur' },
-    { code: 'of_counsel', libelle: 'Avocat Of Counsel', court: 'Of Counsel' },
-    { code: 'collaborateur', libelle: 'Avocat collaborateur', court: 'Collab. avocat' },
-    { code: 'avocat_stagiaire', libelle: 'Avocat stagiaire', court: 'Avocat stag.' },
-    { code: 'stagiaire', libelle: 'Stagiaire (non-avocat)', court: 'Stagiaire' },
-    { code: 'juriste', libelle: 'Collaborateur non-avocat/juriste', court: 'Juriste' },
-    { code: 'admin_general', libelle: 'Administrateur général', court: 'Admin. général' },
-    { code: 'assistante', libelle: 'Assistante juridique et administrative', court: 'Assistante' },
-    { code: 'comptable', libelle: 'Comptable', court: 'Comptable' },
-    { code: 'assistant_comptable', libelle: 'Assistant comptable', court: 'Assist. comptable' },
-    { code: 'admin_it', libelle: 'Administrateur IT', court: 'Admin. IT' },
-    { code: 'archiviste', libelle: 'Archiviste', court: 'Archiviste' },
-  ];
+  // 20/09/2026 : extrait dans core/roles.ts (source unique) — cette copie
+  // locale était jusqu'ici la seule source de libellés, jamais réutilisée
+  // ailleurs dans l'appli (constat de l'utilisateur : rôle brut affiché
+  // dans Cabinet, Mon compte, les sélecteurs de responsable/intervenant).
+  readonly roles = ROLES;
 
   readonly matrice = signal<{ catalogue: any[]; roles: string[]; valeurs: Record<string, boolean> } | null>(null);
 

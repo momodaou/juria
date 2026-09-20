@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-cabinet',
@@ -41,7 +42,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         @for (m of equipe(); track m.id) {
           <tr>
             <td>{{ m.prenom }} {{ m.nom }}</td>
-            <td>{{ m.role }}</td>
+            <td>{{ libelleRole(m.role) }}</td>
             <td>{{ m.dossiers_actifs }}</td>
             <td>{{ m.heures_mois | number }} h</td>
           </tr>
@@ -169,6 +170,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 export class CabinetComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  readonly libelleRole = libelleRole;
   readonly equipe = signal<any[]>([]);
   readonly echeances = signal<any[]>([]);
   readonly conges = signal<any[]>([]);

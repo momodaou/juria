@@ -1,6 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-mon-compte',
@@ -21,7 +22,7 @@ import { ApiService } from '../../core/api.service';
           <div><span>Nom</span><b>{{ p.prenom }} {{ p.nom }}</b></div>
           <div><span>Code</span><b>{{ p.code }}</b></div>
           <div><span>Email</span><b>{{ p.email }}</b></div>
-          <div><span>Rôle</span><b>{{ p.role }}</b></div>
+          <div><span>Rôle</span><b>{{ libelleRole(p.role) }}</b></div>
         </div>
       </section>
     }
@@ -57,6 +58,7 @@ import { ApiService } from '../../core/api.service';
 })
 export class MonCompteComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly libelleRole = libelleRole;
   readonly profil = signal<any | null>(null);
   readonly enCours = signal(false);
   readonly succes = signal(false);

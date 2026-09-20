@@ -7,6 +7,7 @@ import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-dossier-detail',
@@ -607,7 +608,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <div class="upload">
             <select class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenant.utilisateur_id" name="niUtilisateur">
               <option value="">Choisir une personne…</option>
-              @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+              @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ libelleRole(u.role, 'court') }})</option> }
             </select>
             <input class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenant.role_dossier" name="niRole" placeholder="Rôle (ex. collaborateur)" />
             <button class="btn" (click)="ajouterIntervenant()" [disabled]="!nouvelIntervenant.utilisateur_id || ajoutIntervenantEnCours()">
@@ -834,6 +835,7 @@ export class DossierDetailComponent implements OnInit {
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
   private readonly preview = inject(DocumentPreviewService);
+  readonly libelleRole = libelleRole;
 
   private id = '';
   readonly dossier = signal<any | null>(null);

@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
+import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-ouverture',
@@ -309,7 +310,7 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
         <div class="upload">
           <select class="in" style="margin:0;max-width:220px" [(ngModel)]="nouvelIntervenantId" name="nouvelIntervenantId">
             <option value="">Choisir une personne…</option>
-            @for (u of intervenantsDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+            @for (u of intervenantsDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ libelleRole(u.role, 'court') }})</option> }
           </select>
           <input class="in" style="margin:0;max-width:200px" [(ngModel)]="nouvelIntervenantRole" name="nouvelIntervenantRole" placeholder="Rôle (ex. collaborateur)" />
           <button class="btn ghost" type="button" (click)="ajouterIntervenantInitial()" [disabled]="!nouvelIntervenantId">+ Ajouter</button>
@@ -376,6 +377,7 @@ export class OuvertureComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
+  readonly libelleRole = libelleRole;
 
   clientNom = '';
   partiesAdverses = '';

@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-retrocessions',
@@ -51,7 +52,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <label>Bénéficiaire</label>
             <select class="in" [(ngModel)]="form.beneficiaire_id" name="beneficiaire" (ngModelChange)="onQualiteAuto()">
               <option value="">—</option>
-              @for (u of beneficiairesEligibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ u.role }})</option> }
+              @for (u of beneficiairesEligibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }} ({{ libelleRole(u.role, 'court') }})</option> }
             </select>
           </div>
           <div>
@@ -145,6 +146,7 @@ export class RetrocessionsComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  readonly libelleRole = libelleRole;
   readonly retros = signal<any[]>([]);
   readonly qualites = signal<{ code: string; libelle: string; taux: number }[]>([]);
   readonly utilisateurs = signal<any[]>([]);
