@@ -313,7 +313,7 @@ const CONFIG: Record<string, TuileConfig> = {
           <span class="n">{{ d.dossiers_actifs }}</span><span class="l">Dossiers actifs</span>
           @if (peutVoirDetail('actifs')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
         </button>
-        <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
+        <button type="button" class="kpi tier-critique apercu hero" [class.active]="ouvert() === 'urgents'" (click)="clic('urgents')">
           <span class="tico" [innerHTML]="icons['urgents']"></span>
           <span class="n">{{ d.dossiers_urgents }}</span><span class="l">Dossiers urgents</span>
           @if (d.urgents_apercu.length) {
@@ -359,7 +359,7 @@ const CONFIG: Record<string, TuileConfig> = {
 
       <h3 class="groupe-titre">Tâches &amp; équipe</h3>
       <div class="kpis">
-        <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
+        <button type="button" class="kpi tier-vigilance apercu hero" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
           <span class="tico" [innerHTML]="icons['mesTaches']"></span>
           <span class="n">{{ d.mes_taches_n }}</span><span class="l">Mes tâches</span>
           @if (d.mes_taches_apercu.length) {
@@ -411,7 +411,7 @@ const CONFIG: Record<string, TuileConfig> = {
         <h3 class="groupe-titre">Facturation &amp; rentabilité</h3>
         <div class="kpis">
           @if (d.impayes_ttc !== null) {
-            <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
+            <button type="button" class="kpi tier-vigilance apercu hero" [class.active]="ouvert() === 'impayes'" (click)="clic('impayes')">
               <span class="tico" [innerHTML]="icons['impayes']"></span>
               <span class="n">{{ d.impayes_ttc | number }}</span><span class="l">Impayés (FCFA)</span>
               @if (d.impayes_apercu.length) {
@@ -618,6 +618,28 @@ const CONFIG: Record<string, TuileConfig> = {
     h3.groupe-titre:first-of-type{margin-top:0}
     /* Aperçus & tendances (07/09/2026) */
     .kpi.apercu{grid-column:span 2}
+    /* Version « resserrée » du 20/09/2026 (constat utilisateur : tuiles trop
+       grandes comparées à la densité du menu latéral ; puis analyse
+       best-practices vs. mosaïque libre façon bento — voir HISTORY.md).
+       Toutes les règles ci-dessous sont volontairement scopées au Tableau
+       de bord (pas dans styles.css) — .kpi/.kpis sont aussi réutilisées
+       telles quelles par Dépenses & caisse (bandeau caisse/vignettes),
+       jamais demandé à rapetisser.
+       1) Tuiles et grille resserrées : gap réduit, padding/police/icône
+          réduits sans perdre la lisibilité du chiffre (l'info principale).
+       2) grid-auto-flow:dense + grid-row:span sur 3 tuiles "héros" (une
+          par section, LIMIT de leur aperçu porté de 2 à 5 côté serveur
+          pour un contenu réellement plus riche, pas juste une tuile plus
+          grande à vide) — packing automatique des tuiles plus petites
+          autour, sans mosaïque libre à la main (fragile à maintenir vu le
+          rythme d'ajout de tuiles sur cet écran). */
+    .kpis{gap:10px;grid-auto-flow:dense;grid-auto-rows:minmax(96px,auto)}
+    .kpi{padding:13px}
+    .kpi .n{font-size:var(--fs-4xl)}
+    .kpi .tico{width:26px;height:26px;margin-bottom:8px}
+    .kpi .tico svg{width:15px;height:15px}
+    .kpi.hero{grid-row:span 2}
+    .kpi.hero .mini-liste{flex:1}
     .kpi .mini-liste{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:7px;min-width:0;width:100%}
     .kpi .mini-ligne{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:var(--fs-sm);min-width:0;width:100%}
     /* min-width:0 nécessaire pour que l'ellipsis s'applique réellement dans

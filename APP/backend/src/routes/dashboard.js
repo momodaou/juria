@@ -273,6 +273,14 @@ router.get("/", async (req, res) => {
     // historique 6 mois (sparkline) ; Impayés +60 jours gagne la répartition
     // exacte du même seuil (61-90 j / +90 j — pas les tranches plus jeunes,
     // qui ne font pas partie de cet agrégat).
+    // 20/09/2026 (version « resserrée » du Tableau de bord, analyse
+    // best-practices vs. mosaïque libre) : 3 de ces aperçus (urgentsApercu,
+    // mesTachesApercu, impayesApercu — un par section) deviennent le
+    // contenu de tuiles "héros" 2 colonnes × 2 rangées, LIMIT porté de 2 à
+    // 5 pour qu'une tuile deux fois plus haute affiche vraiment plus de
+    // contenu (pas juste plus d'espace vide). Les 3 autres aperçus
+    // (audiencesApercu, tachesUrgentesApercu, nonRentablesApercu) restent à
+    // LIMIT 2 — tuiles larges (1 rangée) mais pas héros.
     const urgentsApercu = await pool.query(
       `SELECT d.id AS dossier_id, d.numero, d.intitule, ev.jours_restants
        FROM dossiers d
@@ -282,7 +290,7 @@ router.get("/", async (req, res) => {
          ORDER BY e.date_echeance LIMIT 1
        ) ev ON true
        WHERE d.urgence = 'haute' AND d.statut <> 'clos'
-       ORDER BY ev.jours_restants ASC NULLS LAST LIMIT 2`
+       ORDER BY ev.jours_restants ASC NULLS LAST LIMIT 5`
     );
     const audiencesApercu = await pool.query(
       `SELECT d.id AS dossier_id, d.numero, e.titre, e.date_echeance
@@ -299,7 +307,7 @@ router.get("/", async (req, res) => {
         `SELECT f.client_id, ${NOM_CLIENT} AS client, f.montant_ttc
          FROM factures f JOIN clients c ON c.id = f.client_id
          WHERE f.statut IN ('emise','partielle','impayee')
-         ORDER BY f.montant_ttc DESC LIMIT 2`
+         ORDER BY f.montant_ttc DESC LIMIT 5`
       );
       impayesApercu = ia.rows;
 
@@ -336,7 +344,7 @@ router.get("/", async (req, res) => {
       `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite
        FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id
        WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')
-       ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 2`,
+       ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 5`,
       [req.user.sub]
     );
     let tachesUrgentesN = null, tachesUrgentesApercu = [];
