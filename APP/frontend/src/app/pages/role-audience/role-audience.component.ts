@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -110,8 +110,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       </section>
 
       @if (ligneRetour(); as l) {
-        <section class="panel">
-          <h3>Retour d'audience — {{ l.dossier_numero }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})</h3>
+        <section class="panel" #panneauRetour>
+          <h3>Retour d'audience — {{ l.dossier_numero }} — {{ l.dossier_intitule }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})</h3>
           <div class="grid2">
             <div>
               <label>Résultat</label>
@@ -285,6 +285,7 @@ export class RoleAudienceComponent implements OnInit {
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly ligneRetour = signal<any | null>(null);
   readonly erreur = signal('');
+  @ViewChild('panneauRetour') panneauRetour?: ElementRef<HTMLElement>;
 
   // 21/09/2026 — gap comblé : édition d'une audience déjà inscrite au rôle
   // (date/heure/juridiction/type/avocat), jamais le résultat (voir
@@ -444,6 +445,9 @@ export class RoleAudienceComponent implements OnInit {
   ouvrirRetour(l: any): void {
     this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', prochaine_date: '', observations: '' };
     this.ligneRetour.set(l);
+    // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
+    // hors écran si la ligne cliquée est loin dans le tableau : défilement auto.
+    setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
   enregistrerRetour(audienceId: string): void {

@@ -2749,3 +2749,17 @@ Le formulaire de création (« Programmer une audience ») avait déjà le libel
 Aucun changement backend/schéma, aucune migration, suite de tests backend non ré-exécutée (aucun fichier backend touché).
 
 **Déploiement** : **déployé et vérifié en production le 21/09/2026** — frontend seul, révision `juria-web-00126-9x8` (précédente `juria-web-00125-dd6`), `/` et `/health` en `200`.
+
+## 2026-09-21 — Retour d'audience : défilement automatique + parties dans l'en-tête
+
+**Contexte** : deux constats de l'utilisateur le même jour, juste après le renommage « Avocat » → « Audiencier » de l'entrée précédente. « L'action "saisir le retour" ne renvoie pas automatiquement (ne fait pas descendre) à la tuile retour d'audience. Est-ce normal ? » et « l'en-tête de cette tuile mentionne seulement la référence dossier, peut-on indiquer aussi les parties ? ».
+
+**Diagnostic** : la tuile « Retour d'audience » (`ligneRetour()`, rendue conditionnellement) s'insère dans le template juste après la `<section class="panel">` qui contient le tableau du rôle hebdomadaire, avant la section Diligences. Sur un rôle avec beaucoup de lignes, cliquer « Saisir le retour » via le menu « ⋮ » d'une ligne enfoncée dans le tableau fait apparaître la tuile bien après le point de clic (parfois hors de l'écran visible), sans aucun mécanisme pour l'amener à l'écran — confirmé exact. L'en-tête de la tuile (`Retour d'audience — {{ l.dossier_numero }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})`) n'affichait effectivement que la référence, alors que `l.dossier_intitule` (les parties, ex. « Verif Audiencier c/ Test ») était déjà disponible dans le même objet `l` — utilisé ailleurs dans le tableau, juste omis ici.
+
+**Correctifs** (`role-audience.component.ts` uniquement) :
+- **Défilement automatique** : `@ViewChild('panneauRetour') panneauRetour?: ElementRef<HTMLElement>` sur la `<section class="panel" #panneauRetour>` conditionnelle, `ouvrirRetour(l)` appelle désormais `setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }))` après avoir posé `ligneRetour.set(l)` — le `setTimeout` laisse le `@if` insérer la section dans le DOM avant de la cibler (même patron déjà utilisé pour le tiroir de détail du Tableau de bord le 13 puis remplacé par un panneau in-place le 20/09/2026, ici réutilisé tel quel car pertinent pour ce cas).
+- **Parties dans l'en-tête** : titre devient `Retour d'audience — {{ l.dossier_numero }} — {{ l.dossier_intitule }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})`.
+
+**Vérification** : build Angular production OK. Vérifié visuellement (Playwright headless, stack Docker locale — 15 lignes de rôle créées via l'API authentifiée sur un dossier de test, pour garantir un tableau plus haut que l'écran) : position de défilement de la page mesurée à 0 avant clic, 1135px après clic sur « Saisir le retour » de la **dernière** ligne du tableau (la plus défavorable) — tuile confirmée entièrement visible sans aucune action manuelle de l'utilisateur. En-tête capturé confirmant la présence des parties à côté de la référence. Aucun changement backend/schéma, données de test locales entièrement effacées après vérification (`docker compose down`), jamais de données réelles touchées.
+
+**Déploiement** : **déployé et vérifié en production le 21/09/2026** — frontend seul, révision `juria-web-00127-t5s` (précédente `juria-web-00126-9x8`), `/` et `/health` en `200`.
