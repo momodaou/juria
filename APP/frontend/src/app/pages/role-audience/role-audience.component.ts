@@ -243,6 +243,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <option value="autre">Autre</option>
           </select>
         </div>
+        <div>
+          <label>Audiencier (facultatif)</label>
+          <select class="in" [(ngModel)]="nouvelleLigne.avocat_id" name="audiencier">
+            <option value="">—</option>
+            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+          </select>
+          <span class="hint">Qui se rend effectivement à cette audience — peut différer du responsable du dossier, et changer d'une semaine à l'autre (dispatching). Modifiable ensuite via « Modifier ».</span>
+        </div>
         <div class="col2"><label>Instructions à l'avocat</label><input class="in" [(ngModel)]="nouvelleLigne.instructions" name="instr" /></div>
         <div><label><input type="checkbox" [(ngModel)]="nouvelleLigne.urgente" name="urgente" /> Urgente / dernière minute</label></div>
       </div>
@@ -492,6 +500,18 @@ export class RoleAudienceComponent implements OnInit {
   // dédiée construite ici, propres colonnes, reprend le même patron de
   // fenêtre d'impression que ExportPrintComponent pour la cohérence
   // visuelle (en-tête cabinet, styles), sans dépendre du DOM affiché.
+  // 21/09/2026 (3e passe) : 3 observations de l'utilisateur, toutes
+  // scopées explicitement à l'impression (« pas forcément dans
+  // l'interface Rôle d'audience ») — l'écran garde ses noms complets et
+  // son intitulé « Avocat » inchangés, seule cette vue imprimée change :
+  // (i) parties en gras (info prioritaire à la lecture), référence en
+  // dessous en italique/petit (secondaire, juste un repère de recherche) ;
+  // (ii)/(iii) codes courts (MDJ/MDA…) plutôt que noms complets pour
+  // Responsable dossier et « Audiencier » (renommé depuis « Avocat » —
+  // celui qui se rend effectivement à l'audience, potentiellement
+  // différent du responsable permanent du dossier). Nécessite
+  // avocat_code/responsable_dossier_code, ajoutés au SELECT de
+  // GET /api/roles-audience (audiences.js) pour cette seule raison.
   private echapper(v: any): string {
     return String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -518,11 +538,11 @@ export class RoleAudienceComponent implements OnInit {
       lignesHtml.push(`<tr>
         ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
         <td>${this.echapper(l.heure)}</td>
-        <td><b>${this.echapper(l.dossier_numero)}</b><br><span class="parties">${this.echapper(l.dossier_intitule)}</span></td>
-        <td>${this.echapper(l.responsable_dossier_nom)}</td>
+        <td><b>${this.echapper(l.dossier_intitule)}</b><br><span class="reference">${this.echapper(l.dossier_numero)}</span></td>
+        <td>${this.echapper(l.responsable_dossier_code)}</td>
         <td>${this.echapper(l.juridiction)}</td>
         <td>${this.echapper(l.type)}</td>
-        <td>${this.echapper(l.avocat_nom)}</td>
+        <td>${this.echapper(l.avocat_code)}</td>
         <td>${this.echapper(l.instructions)}</td>
       </tr>`);
     }
@@ -536,12 +556,12 @@ export class RoleAudienceComponent implements OnInit {
       table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
       th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top}
       th{background:#1F2A44;color:#fff}
-      .parties{color:#6B7280;font-size:11px}
+      .reference{color:#6B7280;font-size:11px;font-style:italic}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
     <table>
-      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Instructions</th></tr>
+      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Audiencier</th><th>Instructions</th></tr>
       ${lignes}
     </table>
     </body></html>`);

@@ -38,8 +38,8 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
     const lignes = await pool.query(
       `SELECT l.id, l.date_prevue, l.juridiction, l.type, l.avocat_id, d.numero AS dossier_numero,
               d.intitule AS dossier_intitule, d.id AS dossier_id,
-              u.prenom || ' ' || u.nom AS avocat_nom,
-              ur.prenom || ' ' || ur.nom AS responsable_dossier_nom,
+              u.prenom || ' ' || u.nom AS avocat_nom, u.code AS avocat_code,
+              ur.prenom || ' ' || ur.nom AS responsable_dossier_nom, ur.code AS responsable_dossier_code,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
               a.resultat, a.prochaine_date, a.observations,
               mr.libelle AS motif_renvoi,
