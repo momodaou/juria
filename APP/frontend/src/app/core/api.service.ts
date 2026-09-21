@@ -488,6 +488,13 @@ export class ApiService {
   retourAudience(audienceId: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/retour`, payload);
   }
+  // 21/09/2026 — gap comblé : corrige une audience (date/heure/juridiction/
+  // type/avocat), jamais le résultat (réservé à retourAudience ci-dessus).
+  // Appelable depuis le Rôle d'audience ET depuis le panneau Audiences de
+  // la fiche dossier — même audience_id des deux côtés.
+  majAudience(audienceId: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/roles-audience/audiences/${audienceId}`, payload);
+  }
 
   // Diligences (11/09/2026) — planning des rendez-vous/démarches de
   // terrain, distinct du rôle hebdomadaire d'audience.

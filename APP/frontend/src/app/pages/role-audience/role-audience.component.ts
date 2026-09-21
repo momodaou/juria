@@ -63,10 +63,43 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     @if (l.motif_renvoi) { <span class="muted"> · {{ l.motif_renvoi }}</span> }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
-                <td>
-                  @if (!l.resultat && auth.peut('audiences.retour.saisir')) { <button class="lien" (click)="ouvrirRetour(l)">Saisir le retour</button> }
-                </td>
+                <td><app-menu-actions [actions]="actionsPourLigne(l)" /></td>
               </tr>
+              @if (editionAudienceId() === l.audience_id) {
+                <tr class="edition">
+                  <td colspan="9">
+                    <div class="grid2">
+                      <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
+                      <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
+                      <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
+                      <div>
+                        <label>Type</label>
+                        <select class="in" [(ngModel)]="editAudience.type" name="eaType">
+                          <option value="mise_en_etat">Mise en état</option>
+                          <option value="plaidoirie">Plaidoirie</option>
+                          <option value="conciliation">Conciliation</option>
+                          <option value="refere">Référé</option>
+                          <option value="prononce">Prononcé</option>
+                          <option value="autre">Autre</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label>Avocat</label>
+                        <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
+                          <option value="">—</option>
+                          @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+                        </select>
+                      </div>
+                      <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn" (click)="enregistrerEditionAudience(l)">Enregistrer</button>
+                      <button class="btn ghost" (click)="annulerEditionAudience()">Annuler</button>
+                    </div>
+                    @if (erreurEditionAudience()) { <p class="err">{{ erreurEditionAudience() }}</p> }
+                  </td>
+                </tr>
+              }
             }
           </table>
         } @else {
@@ -243,6 +276,13 @@ export class RoleAudienceComponent implements OnInit {
   readonly ligneRetour = signal<any | null>(null);
   readonly erreur = signal('');
 
+  // 21/09/2026 — gap comblé : édition d'une audience déjà inscrite au rôle
+  // (date/heure/juridiction/type/avocat), jamais le résultat (voir
+  // ligneRetour/retourForm ci-dessus, qui reste le seul canal pour ça).
+  readonly editionAudienceId = signal<string | null>(null);
+  readonly erreurEditionAudience = signal('');
+  editAudience: any = {};
+
   // Diligences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
   readonly diligences = signal<any[]>([]);
   readonly typesDiligence = signal<{ code: string; libelle: string }[]>([]);
@@ -394,6 +434,41 @@ export class RoleAudienceComponent implements OnInit {
     this.api.retourAudience(audienceId, payload).subscribe({
       next: () => { this.ligneRetour.set(null); this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Enregistrement du retour impossible.'),
+    });
+  }
+
+  // Menu "⋮" (19/09/2026) — Modifier toujours proposée (avec la permission),
+  // Saisir le retour seulement tant qu'aucun résultat n'est encore enregistré.
+  actionsPourLigne(l: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (this.auth.peut('audiences.ligne.creer')) items.push({ label: 'Modifier', action: () => this.commencerEditionAudience(l) });
+    if (!l.resultat && this.auth.peut('audiences.retour.saisir')) items.push({ label: 'Saisir le retour', action: () => this.ouvrirRetour(l) });
+    return items;
+  }
+
+  commencerEditionAudience(l: any): void {
+    this.erreurEditionAudience.set('');
+    this.editAudience = {
+      date_audience: l.date_prevue ? new Date(l.date_prevue).toISOString().slice(0, 10) : '',
+      heure: l.heure || '',
+      juridiction: l.juridiction || '',
+      type: l.type || 'mise_en_etat',
+      avocat_id: l.avocat_id || '',
+      instructions: l.instructions || '',
+    };
+    this.editionAudienceId.set(l.audience_id);
+  }
+
+  annulerEditionAudience(): void {
+    this.editionAudienceId.set(null);
+  }
+
+  enregistrerEditionAudience(l: any): void {
+    this.erreurEditionAudience.set('');
+    const payload = { ...this.editAudience, avocat_id: this.editAudience.avocat_id || null };
+    this.api.majAudience(l.audience_id, payload).subscribe({
+      next: () => { this.editionAudienceId.set(null); this.charger(); },
+      error: (e) => this.erreurEditionAudience.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 }

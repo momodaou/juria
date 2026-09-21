@@ -115,3 +115,54 @@ describe("Historique des audiences sur la fiche dossier", () => {
     expect(suppression.body.error).toMatch(/audiences/);
   });
 });
+
+// 21/09/2026 — gap comblé (constat de l'utilisateur : « impossible de
+// modifier les informations du rôle ou d'une audience à venir »). Route
+// unique ancrée sur audiences.id, appelable depuis le Rôle d'audience
+// comme depuis le panneau (désormais éditable) de la fiche dossier —
+// demande explicite de l'utilisateur (« les 2 possibilités à la fois »).
+describe("PUT /api/roles-audience/audiences/:id — correction d'une audience", () => {
+  test("modifie juridiction/date/heure/type/avocat et propage à role_audience_lignes", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2026-12-15", juridiction: "TGI Bamako", type: "mise_en_etat", heure: "09:00" });
+    expect(creation.status).toBe(201);
+
+    const maj = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ juridiction: "Tribunal du Commerce de Bamako", date_audience: "2026-12-16", heure: "11:00", type: "plaidoirie" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.juridiction).toBe("Tribunal du Commerce de Bamako");
+    expect(maj.body.type).toBe("plaidoirie");
+
+    // Vue Rôle d'audience (role_audience_lignes) reflète la correction.
+    const role = await request(app).get("/api/roles-audience?semaine=2026-12-14").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.audience_id === creation.body.audience_id);
+    expect(ligne.juridiction).toBe("Tribunal du Commerce de Bamako");
+    expect(ligne.type).toBe("plaidoirie");
+
+    // Vue fiche dossier (audiences) reflète aussi la correction.
+    const fiche = await request(app).get(`/api/dossiers/${dossierId}/audiences`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.body[0].juridiction).toBe("Tribunal du Commerce de Bamako");
+    expect(fiche.body[0].heure).toBe("11:00:00");
+  });
+
+  test("ne touche jamais resultat/motif_renvoi/prochaine_date — réservés à /retour", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2026-12-17", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere" });
+
+    const maj = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`).send({ juridiction: "TGI Commune V" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.resultat).toBe("delibere");
+  });
+
+  test("404 sur une audience inexistante", async () => {
+    const res = await request(app).put("/api/roles-audience/audiences/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${token}`).send({ juridiction: "Test" });
+    expect(res.status).toBe(404);
+  });
+});

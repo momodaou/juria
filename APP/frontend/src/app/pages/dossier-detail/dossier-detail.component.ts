@@ -269,6 +269,12 @@ import { libelleRole } from '../../core/roles';
                 <option value="consultation">Consultation</option>
                 <option value="autre">Autre — à préciser</option>
               </select>
+              @if (auth.peut('dossiers.pro_bono.declarer')) {
+                <span class="hint">
+                  <button type="button" class="lien" (click)="basculerProBono()">{{ d.pro_bono ? 'Retirer le statut pro bono' : 'Marquer pro bono' }}</button>
+                  — action séparée, soumise au quota mensuel du responsable, sans rapport avec « Enregistrer » ci-dessous.
+                </span>
+              }
             </div>
             @if (edit.mode_honoraires === 'autre') {
               <div>
@@ -653,10 +659,10 @@ import { libelleRole } from '../../core/roles';
 
       <section class="panel">
         <h3>Audiences</h3>
-        <p class="muted" style="margin-bottom:12px">Historique en lecture seule — la saisie se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier).</p>
+        <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier) — mais une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
         @if (audiences().length) {
           <table>
-            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Avocat</th><th>Résultat</th></tr>
+            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Avocat</th><th>Résultat</th><th></th></tr>
             @for (a of audiences(); track a.id) {
               <tr [class.urgent]="a.urgente">
                 <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
@@ -669,7 +675,45 @@ import { libelleRole } from '../../core/roles';
                     @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }} }
                   } @else { <span class="muted">à venir</span> }
                 </td>
+                <td>
+                  @if (auth.peut('audiences.ligne.creer')) { <button class="lien" (click)="commencerEditionAudience(a)">Modifier</button> }
+                </td>
               </tr>
+              @if (editionAudienceId() === a.id) {
+                <tr class="edition">
+                  <td colspan="6">
+                    <div class="grid2">
+                      <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
+                      <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
+                      <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
+                      <div>
+                        <label>Type</label>
+                        <select class="in" [(ngModel)]="editAudience.type" name="eaType">
+                          <option value="mise_en_etat">Mise en état</option>
+                          <option value="plaidoirie">Plaidoirie</option>
+                          <option value="conciliation">Conciliation</option>
+                          <option value="refere">Référé</option>
+                          <option value="prononce">Prononcé</option>
+                          <option value="autre">Autre</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label>Avocat</label>
+                        <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
+                          <option value="">—</option>
+                          @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                        </select>
+                      </div>
+                      <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn" (click)="enregistrerEditionAudience(a)">Enregistrer</button>
+                      <button class="btn ghost" (click)="editionAudienceId.set(null)">Annuler</button>
+                    </div>
+                    @if (erreurEditionAudience()) { <p class="err">{{ erreurEditionAudience() }}</p> }
+                  </td>
+                </tr>
+              }
             }
           </table>
         } @else { <p class="muted">Aucune audience enregistrée pour ce dossier.</p> }
@@ -852,6 +896,12 @@ export class DossierDetailComponent implements OnInit {
   readonly evenements = signal<any[]>([]);
   // Historique des audiences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
   readonly audiences = signal<any[]>([]);
+  // 21/09/2026 — gap comblé : correction d'une audience directement depuis
+  // la fiche dossier (même route/donnée que Rôle d'audience, voir
+  // CLAUDE.md/HISTORY.md).
+  readonly editionAudienceId = signal<string | null>(null);
+  readonly erreurEditionAudience = signal('');
+  editAudience: any = {};
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
 
@@ -1410,6 +1460,31 @@ export class DossierDetailComponent implements OnInit {
     this.api.basculerProBono(this.id, activer).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (nd) => this.dossier.set(nd) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+    });
+  }
+
+  commencerEditionAudience(a: any): void {
+    this.erreurEditionAudience.set('');
+    this.editAudience = {
+      date_audience: a.date_audience ? new Date(a.date_audience).toISOString().slice(0, 10) : '',
+      heure: a.heure || '',
+      juridiction: a.juridiction || '',
+      type: a.type || 'mise_en_etat',
+      avocat_id: a.avocat_id || '',
+      instructions: a.instructions || '',
+    };
+    this.editionAudienceId.set(a.id);
+  }
+
+  enregistrerEditionAudience(a: any): void {
+    this.erreurEditionAudience.set('');
+    const payload = { ...this.editAudience, avocat_id: this.editAudience.avocat_id || null };
+    this.api.majAudience(a.id, payload).subscribe({
+      next: () => {
+        this.editionAudienceId.set(null);
+        this.api.dossierAudiences(this.id).subscribe({ next: (aud) => this.audiences.set(aud), error: () => {} });
+      },
+      error: (e) => this.erreurEditionAudience.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 

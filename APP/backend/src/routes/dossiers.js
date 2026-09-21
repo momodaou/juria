@@ -378,7 +378,7 @@ router.get("/:id/evenements", async (req, res) => {
 router.get("/:id/audiences", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT a.id, a.date_audience, a.type, a.juridiction, a.heure,
+      `SELECT a.id, a.date_audience, a.type, a.juridiction, a.heure, a.avocat_id, a.instructions,
               a.resultat, a.urgente, a.prochaine_date, a.observations,
               mr.libelle AS motif_renvoi, u.prenom || ' ' || u.nom AS avocat_nom
        FROM audiences a

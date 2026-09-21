@@ -36,7 +36,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
     if (!role.rows[0]) return res.json({ semaine_debut: semaine, statut: null, lignes: [] });
 
     const lignes = await pool.query(
-      `SELECT l.id, l.date_prevue, l.juridiction, l.type, d.numero AS dossier_numero,
+      `SELECT l.id, l.date_prevue, l.juridiction, l.type, l.avocat_id, d.numero AS dossier_numero,
               d.intitule AS dossier_intitule, d.id AS dossier_id,
               u.prenom || ' ' || u.nom AS avocat_nom,
               ur.prenom || ' ' || ur.nom AS responsable_dossier_nom,
@@ -136,6 +136,62 @@ router.get("/motifs-renvoi", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/roles-audience/audiences/:id — comble un gap signalé par
+// l'utilisateur (21/09/2026, « impossible de modifier les informations du
+// rôle ou d'une audience à venir ») : jusqu'ici seules 3 actions existaient
+// (créer une ligne, valider/diffuser le rôle, saisir un retour), aucune ne
+// permettant de corriger une erreur de saisie (date, heure, juridiction,
+// type, avocat) avant ou après la tenue de l'audience — /retour ne touche
+// que le résultat, jamais ces champs.
+// Ancrée sur `audiences.id` (pas `role_audience_lignes.id`) délibérément :
+// c'est le seul identifiant déjà exposé par LES DEUX écrans qui affichent
+// une audience — le Rôle d'audience (`a.id AS audience_id`) et le panneau
+// lecture seule de la fiche dossier (`a.id`) — une seule route sert donc
+// les deux interfaces sans dupliquer la logique, demande explicite de
+// l'utilisateur (« les 2 possibilités à la fois »). Met à jour `audiences`
+// (source de vérité) et sa `role_audience_lignes` liée (colonnes dupliquées
+// pour l'affichage du rôle hebdomadaire) dans la même transaction, pour ne
+// jamais les laisser diverger.
+// body : { date_audience?, heure?, juridiction?, type?, avocat_id?,
+//          instructions?, urgente? } — jamais resultat/motif_renvoi_id/
+// prochaine_date/observations, qui restent le rôle exclusif de /retour.
+router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const maj = await client.query(
+      `UPDATE audiences SET
+         date_audience = COALESCE($1, date_audience),
+         heure = COALESCE($2, heure),
+         juridiction = COALESCE($3, juridiction),
+         type = COALESCE($4::type_audience, type),
+         avocat_id = COALESCE($5::uuid, avocat_id),
+         instructions = COALESCE($6, instructions),
+         urgente = COALESCE($7, urgente)
+       WHERE id = $8 RETURNING *`,
+      [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
+       b.avocat_id || null, b.instructions || null, b.urgente ?? null, req.params.id]
+    );
+    if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
+    const a = maj.rows[0];
+    await client.query(
+      `UPDATE role_audience_lignes SET
+         date_prevue = $1, juridiction = $2, type = $3::type_audience, avocat_id = $4
+       WHERE audience_id = $5`,
+      [a.date_audience, a.juridiction, a.type, a.avocat_id, a.id]
+    );
+    await client.query("COMMIT");
+    res.json(a);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 
