@@ -2589,3 +2589,15 @@ Captures avant/après publiées dans un Artifact dédié pour validation visuell
 **Vérification** : Playwright headless (compte de test créé avec le rôle `admin_general` spécifiquement, pour exercer un cas à underscore) — « Administrateur général » confirmé affiché correctement sur Mon compte et sur Administratif & RH → Équipe, capture d'écran à l'appui. Purement frontend, aucun changement backend/schéma. Build Angular production OK. Environnement Docker local entièrement effacé après vérification.
 
 **Déploiement** : **déployé et vérifié en production le 20/09/2026** — frontend seul, révision `juria-web-00117-vjf` (précédente `juria-web-00116-2p4`), `/` en `200`.
+
+## 2026-09-21 — Sous-titre d'en-tête de page trop imposant, corrigé
+
+**Contexte** : constat de l'utilisateur — « les descriptifs affichés sous les menus une fois ouverts (ex. "Administratif & RH" — Équipe, charge de travail, congés...) sont mal présentés visuellement à mon goût (éparses, gras, gros caractères) ».
+
+**Diagnostic par mesure directe** (pas à l'aveugle) : `getComputedStyle` sur `.page-head p` via Playwright — `font-size: 16px`, alors que la règle CSS (`styles.css`) ne fixait **aucun** `font-size` pour cette classe. Elle héritait donc silencieusement de la taille par défaut du navigateur, invisible à l'audit du 11/09/2026 (« Uniformisation des tailles de texte ») qui n'avait consolidé que les `font-size` déjà écrits en dur dans le code — ce sous-titre n'en avait jamais eu, donc rien à consolider à l'époque, gap qui n'a été détecté que maintenant. Résultat : 16px contre 22px pour le `h1` juste au-dessus (`--fs-3xl`) — un écart de seulement 6px entre un titre et son sous-titre, qui plus est avec `margin:0` des deux côtés (aucune séparation), donnant l'impression que les deux lignes se disputent la même importance visuelle. Poids de police confirmé normal (400, pas de gras réel) — la perception « gras » vient probablement de la densité visuelle du bloc dans son ensemble, pas d'un `font-weight` erroné.
+
+**Correction** (`styles.css`, un seul endroit — `.page-head p` est une classe partagée par l'en-tête de tous les écrans, donc un seul changement profite à toute l'appli) : `font-size:var(--fs-base)` (13px, remis sur l'échelle commune du 11/09/2026) + `margin:3px 0 0` (légère respiration sous le titre, jusque-là totalement collé).
+
+**Vérification** : Playwright headless, capture avant/après sur Administratif & RH (`header-before.png`/`header-after.png`) confirmant le sous-titre désormais nettement plus discret et clairement subordonné au titre ; vérifié aussi sur l'écran Dossiers (pas de régression visuelle, ce screen n'a pas de sous-titre). Purement CSS, aucun changement backend. Build Angular production OK.
+
+**Déploiement** : **déployé et vérifié en production le 21/09/2026** — frontend seul, révision `juria-web-00118-s4w` (précédente `juria-web-00117-vjf`), `/` en `200`.

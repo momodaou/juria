@@ -90,7 +90,13 @@ body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#F4F6
 /* En-tête de page */
 .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .page-head h1{font-size:var(--fs-3xl);color:var(--navy);margin:0}
-.page-head p{color:var(--grey);margin:0}
+/* 21/09/2026 : le sous-titre n'a jamais eu de font-size explicite — il
+   héritait donc de la taille par défaut du navigateur (16px), invisible à
+   l'audit du 11/09/2026 qui ne portait que sur les font-size déjà écrits
+   en dur. Résultat : presque aussi grand que le h1 (22px), constat de
+   l'utilisateur (« gros caractères, éparses »). Ramené sur l'échelle
+   commune, plus proche du titre pour former un vrai bloc. */
+.page-head p{color:var(--grey);font-size:var(--fs-base);margin:3px 0 0}
 .search{background:#fff;border:1px solid var(--line);border-radius:20px;padding:9px 16px;width:280px;font-size:var(--fs-base)}
 
 /* KPIs */
