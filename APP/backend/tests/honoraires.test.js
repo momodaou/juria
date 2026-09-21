@@ -164,6 +164,131 @@ describe("Quota pro bono — blocage réel à la création", () => {
   });
 });
 
+// 21/09/2026 — gap comblé (constat de l'utilisateur : pro_bono non
+// modifiable après création via le PUT général, volontairement exclu pour
+// ne pas contourner permission/quota). Route dédiée PUT /:id/pro-bono,
+// mêmes contrôles que la création. Piège relevé explicitement par
+// l'utilisateur (« il faut que ça reflète le quota, pas un contournement ») :
+// le quota doit être évalué sur le MOIS D'OUVERTURE du dossier concerné
+// (sa cohorte), pas sur le mois courant — sinon activer le pro bono sur un
+// vieux dossier contournerait ou se ferait bloquer par le mauvais mois.
+describe("Bascule pro bono après création — PUT /:id/pro-bono (21/09/2026)", () => {
+  test("refuse sans la permission dossiers.pro_bono.declarer", async () => {
+    const associe = await creerUtilisateurRole("associe");
+    const clientId = await creerClient();
+    const creation = await creerDossier(associe.token, { client_id: clientId, responsable_id: associe.id });
+    // assistante n'a pas dossiers.pro_bono.declarer (contrairement à
+    // collaborateur, qui peut saisir un pro bono sur instruction d'un
+    // associé — voir la 1re describe ci-dessus, 30/08/2026).
+    const assistante = await creerUtilisateurRole("assistante");
+    const res = await request(app)
+      .put(`/api/dossiers/${creation.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${assistante.token}`)
+      .send({ pro_bono: true });
+    expect(res.status).toBe(403);
+  });
+
+  test("refuse si le dossier est déjà dans l'état demandé (idempotence)", async () => {
+    const associe = await creerUtilisateurRole("associe");
+    const clientId = await creerClient();
+    const creation = await creerDossier(associe.token, { client_id: clientId, responsable_id: associe.id });
+    const res = await request(app)
+      .put(`/api/dossiers/${creation.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: false });
+    expect(res.status).toBe(409);
+  });
+
+  test("refuse d'activer si le responsable n'est pas associé", async () => {
+    const collaborateur = await creerUtilisateurRole("collaborateur");
+    const associe = await creerUtilisateurRole("associe");
+    const clientId = await creerClient();
+    const creation = await creerDossier(associe.token, { client_id: clientId, responsable_id: collaborateur.id });
+    expect(creation.status).toBe(201);
+    const res = await request(app)
+      .put(`/api/dossiers/${creation.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: true });
+    expect(res.status).toBe(400);
+  });
+
+  test("active puis retire correctement le statut pro bono", async () => {
+    const associe = await creerUtilisateurRole("associe");
+    const clientId = await creerClient();
+    const creation = await creerDossier(associe.token, { client_id: clientId, responsable_id: associe.id });
+
+    const activation = await request(app)
+      .put(`/api/dossiers/${creation.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: true });
+    expect(activation.status).toBe(200);
+    expect(activation.body.pro_bono).toBe(true);
+
+    const fiche = await request(app).get(`/api/dossiers/${creation.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.body.pro_bono).toBe(true);
+
+    const retrait = await request(app)
+      .put(`/api/dossiers/${creation.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: false });
+    expect(retrait.status).toBe(200);
+    expect(retrait.body.pro_bono).toBe(false);
+  });
+
+  test("le quota s'évalue sur le mois d'ouverture du dossier, pas le mois courant — accepte un vieux dossier même quota du mois courant atteint", async () => {
+    const responsable = await creerUtilisateurRole("associe");
+    const { body: parametres } = await request(app)
+      .get("/api/parametres/honoraires")
+      .set("Authorization", `Bearer ${token}`);
+    const quota = parametres.quota_pro_bono_mensuel;
+
+    // Sature le quota du mois COURANT pour ce responsable.
+    for (let i = 0; i < quota; i++) {
+      const clientId = await creerClient();
+      const res = await creerDossier(token, { client_id: clientId, responsable_id: responsable.id, pro_bono: true });
+      expect(res.status).toBe(201);
+    }
+    // Un dossier classique du même responsable, reculé d'un mois calendaire complet.
+    const clientAncien = await creerClient();
+    const ancien = await creerDossier(token, { client_id: clientAncien, responsable_id: responsable.id });
+    await pool.query("UPDATE dossiers SET date_ouverture = current_date - 45 WHERE id = $1", [ancien.body.id]);
+
+    // Malgré le quota du mois courant déjà atteint, l'activation sur ce
+    // dossier ancien doit réussir : son propre mois n'a aucun pro bono compté.
+    const res = await request(app)
+      .put(`/api/dossiers/${ancien.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: true });
+    expect(res.status).toBe(200);
+  });
+
+  test("le quota bloque bien dans le mois d'ouverture du dossier lui-même (pas seulement le mois courant)", async () => {
+    const responsable = await creerUtilisateurRole("associe");
+    const { body: parametres } = await request(app)
+      .get("/api/parametres/honoraires")
+      .set("Authorization", `Bearer ${token}`);
+    const quota = parametres.quota_pro_bono_mensuel;
+
+    // `quota` dossiers pro bono, tous reculés dans le MÊME mois passé.
+    for (let i = 0; i < quota; i++) {
+      const clientId = await creerClient();
+      const d = await creerDossier(token, { client_id: clientId, responsable_id: responsable.id, pro_bono: true });
+      expect(d.status).toBe(201);
+      await pool.query("UPDATE dossiers SET date_ouverture = current_date - 45 WHERE id = $1", [d.body.id]);
+    }
+    // Un dossier classique de plus, ouvert le même mois passé.
+    const clientDeTrop = await creerClient();
+    const dossierDeTrop = await creerDossier(token, { client_id: clientDeTrop, responsable_id: responsable.id });
+    await pool.query("UPDATE dossiers SET date_ouverture = current_date - 45 WHERE id = $1", [dossierDeTrop.body.id]);
+
+    const res = await request(app)
+      .put(`/api/dossiers/${dossierDeTrop.body.id}/pro-bono`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pro_bono: true });
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("Statut honoraires pro bono — cumul de factures vs seuil", () => {
   test("dossier pro bono : sans_honoraires → sous_seuil → atteint", async () => {
     const clientId = await creerClient();

@@ -694,6 +694,62 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
   }
 });
 
+// PUT /api/dossiers/:id/pro-bono — comble un gap signalé par l'utilisateur
+// (21/09/2026) : pro_bono est volontairement exclu du PUT général ci-dessus
+// (voir son commentaire) pour ne jamais contourner la permission/le quota
+// prévus à la création — mais ça laissait alors AUCUN moyen de corriger une
+// erreur de saisie ou de reclasser un dossier après coup. Route dédiée qui
+// reproduit exactement les mêmes contrôles que POST / (permission, quota,
+// responsable associé) plutôt qu'un PUT libre.
+// ⚠️ Piège identifié avant d'écrire cette route (relevé explicitement par
+// l'utilisateur, « il faut que ça reflète le quota, pas un contournement ») :
+// le quota de POST / compare `date_ouverture` au mois COURANT — correct
+// seulement parce qu'à la création `date_ouverture` vaut toujours
+// aujourd'hui. Ici, on peut activer le pro bono sur un dossier ancien : le
+// quota doit donc être évalué sur le mois d'OUVERTURE de CE dossier (sa
+// cohorte), pas sur le mois courant — sinon on compterait/bloquerait par
+// rapport au mauvais mois, ou on contournerait silencieusement le quota du
+// mois réel d'ouverture.
+router.put("/:id/pro-bono", requirePermission("dossiers.pro_bono.declarer"), async (req, res) => {
+  const proBono = !!req.body?.pro_bono;
+  try {
+    const { rows: [d] } = await pool.query(
+      "SELECT responsable_id, pro_bono, date_ouverture FROM dossiers WHERE id = $1",
+      [req.params.id]
+    );
+    if (!d) return res.status(404).json({ error: "Dossier introuvable" });
+    if (d.pro_bono === proBono) {
+      return res.status(409).json({
+        error: proBono ? "Ce dossier est déjà pro bono." : "Ce dossier n'est déjà pas pro bono.",
+      });
+    }
+    if (proBono) {
+      const { rows: [resp] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [d.responsable_id]);
+      if (!resp || !["associe", "associe_fondateur"].includes(resp.role)) {
+        return res.status(400).json({ error: "Un dossier pro bono doit être attribué à un avocat associé (seuls les associés ont droit au pro bono)." });
+      }
+      const { rows: [p] } = await pool.query("SELECT quota_pro_bono_mensuel FROM parametres_cabinet WHERE id = 1");
+      const { rows: [c] } = await pool.query(
+        `SELECT count(*) AS n FROM dossiers
+         WHERE pro_bono AND responsable_id = $1
+           AND date_trunc('month', date_ouverture) = date_trunc('month', $2::date)
+           AND id <> $3`,
+        [d.responsable_id, d.date_ouverture, req.params.id]
+      );
+      if (Number(c.n) >= p.quota_pro_bono_mensuel) {
+        return res.status(409).json({
+          error: `Quota pro bono mensuel atteint pour ce responsable, pour le mois d'ouverture de ce dossier (${p.quota_pro_bono_mensuel}/mois)`,
+        });
+      }
+    }
+    await pool.query("UPDATE dossiers SET pro_bono = $1 WHERE id = $2", [proBono, req.params.id]);
+    res.json({ pro_bono: proBono });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // DELETE /api/dossiers/:id — suppression volontairement limitée aux
 // dossiers "à l'ouverture", sans activité réelle enregistrée. Un dossier
 // clôturé se ferme par archivage (PUT statut='archive'), pas par

@@ -73,6 +73,9 @@ import { libelleRole } from '../../core/roles';
           <div>
             <span>Mode d'honoraires</span>
             <b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b>
+            @if (auth.peut('dossiers.pro_bono.declarer')) {
+              <div class="montant-sens"><button class="lien" (click)="basculerProBono()">{{ d.pro_bono ? 'Retirer le statut pro bono' : 'Marquer pro bono' }}</button></div>
+            }
             @if (d.mode_honoraires === 'autre' && d.mode_honoraires_precision) {
               <div class="montant-sens">({{ d.mode_honoraires_precision }})</div>
             }
@@ -1388,6 +1391,25 @@ export class DossierDetailComponent implements OnInit {
     this.api.marquerRetourLettreMission(this.id).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Impossible d\'enregistrer le retour.'),
+    });
+  }
+
+  // 21/09/2026 — gap comblé (constat de l'utilisateur : pro_bono non
+  // modifiable après création). Confirmation demandée car ça déclenche le
+  // contrôle du quota mensuel/responsable côté serveur (route dédiée, pas
+  // un simple champ du formulaire d'édition générale).
+  basculerProBono(): void {
+    const d = this.dossier();
+    if (!d) return;
+    const activer = !d.pro_bono;
+    const msg = activer
+      ? 'Marquer ce dossier comme pro bono ? Soumis au quota mensuel du responsable.'
+      : 'Retirer le statut pro bono de ce dossier ?';
+    if (!window.confirm(msg)) return;
+    this.erreur.set('');
+    this.api.basculerProBono(this.id, activer).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (nd) => this.dossier.set(nd) }),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
     });
   }
 

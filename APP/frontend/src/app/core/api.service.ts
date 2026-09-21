@@ -203,6 +203,14 @@ export class ApiService {
     return this.http.put<any>(`${this.base}/api/dossiers/${id}/lettre-mission-retour`, { retour_le: retourLe });
   }
 
+  // 21/09/2026 — gap comblé : pro_bono était exclu de majDossier() (voir
+  // commentaire backend) sans aucun autre moyen de le corriger après
+  // création. Route dédiée, mêmes contrôles (permission/quota) qu'à la
+  // création.
+  basculerProBono(id: string, proBono: boolean): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/dossiers/${id}/pro-bono`, { pro_bono: proBono });
+  }
+
   // Instances (19/08/2026) — 1re instance / appel / cassation… d'un dossier.
   ajouterInstance(dossierId: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances`, payload);
