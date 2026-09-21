@@ -31,11 +31,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </span>
           @if (r.id && r.statut === 'brouillon' && auth.peut('audiences.role.valider')) { <button class="btn sm" (click)="valider(r.id)">Valider le rôle</button> }
           @if (r.id && r.statut === 'valide' && auth.peut('audiences.role.diffuser')) { <button class="btn sm" (click)="diffuser(r.id)">Diffuser à l'équipe</button> }
+          @if (r.lignes?.length) { <button class="btn sm ghost" (click)="imprimerRole()">🖶 Imprimer le rôle</button> }
         </div>
 
         @if (r.lignes?.length) {
           <table>
-            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Résultat</th><th></th></tr>
+            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Instructions</th><th>Résultat</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
                 <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
@@ -57,6 +58,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 <td>{{ l.juridiction || '—' }}</td>
                 <td>{{ l.type }}</td>
                 <td>{{ l.avocat_nom || '—' }}</td>
+                <td>{{ l.instructions || '—' }}</td>
                 <td>
                   @if (l.resultat) {
                     <span class="tag">{{ l.resultat }}</span>
@@ -67,7 +69,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               </tr>
               @if (editionAudienceId() === l.audience_id) {
                 <tr class="edition">
-                  <td colspan="9">
+                  <td colspan="10">
                     <div class="grid2">
                       <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
                       <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
@@ -282,6 +284,7 @@ export class RoleAudienceComponent implements OnInit {
   readonly editionAudienceId = signal<string | null>(null);
   readonly erreurEditionAudience = signal('');
   editAudience: any = {};
+  private raisonSociale = 'JFC AVOCATS MALI';
 
   // Diligences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
   readonly diligences = signal<any[]>([]);
@@ -330,6 +333,12 @@ export class RoleAudienceComponent implements OnInit {
     this.api.listesValeurs('type_diligence').subscribe({ next: (v) => this.typesDiligence.set(v) });
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u) });
     this.chargerDiligences();
+    // Lecture ouverte (voir parametres.js) — pas besoin de permission dédiée
+    // pour un en-tête d'impression, même patron que ExportPrintComponent.
+    this.api.parametresCabinet().subscribe({
+      next: (c) => { if (c?.raison_sociale) this.raisonSociale = c.raison_sociale; },
+      error: () => {},
+    });
   }
 
   charger(): void {
@@ -470,5 +479,62 @@ export class RoleAudienceComponent implements OnInit {
       next: () => { this.editionAudienceId.set(null); this.charger(); },
       error: (e) => this.erreurEditionAudience.set(e?.error?.error ?? 'Modification impossible.'),
     });
+  }
+
+  // 21/09/2026 — gap comblé (constat de l'utilisateur : « le rôle n'est
+  // pas imprimable en autonomie, avec les instructions et sans la saisie
+  // du retour »). Le bouton générique « Imprimer / PDF » (28/08/2026)
+  // clone tel quel ce qui est affiché à l'écran — il aurait donc inclus
+  // Résultat (non souhaité, l'audience n'a pas encore eu lieu) et jamais
+  // Instructions (pas une colonne visible, seulement dans les formulaires
+  // d'ajout/édition). Impossible de satisfaire les deux avec le même
+  // mécanisme (garder Résultat à l'écran, l'exclure à l'impression) — vue
+  // dédiée construite ici, propres colonnes, reprend le même patron de
+  // fenêtre d'impression que ExportPrintComponent pour la cohérence
+  // visuelle (en-tête cabinet, styles), sans dépendre du DOM affiché.
+  private echapper(v: any): string {
+    return String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  imprimerRole(): void {
+    const r = this.role();
+    if (!r?.lignes?.length) return;
+    const lignes = r.lignes
+      .map((l: any) => `<tr>
+        <td>${this.echapper(this.formaterDate(l.date_prevue))}</td>
+        <td>${this.echapper(l.heure)}</td>
+        <td>${this.echapper(l.dossier_numero + ' — ' + l.dossier_intitule)}</td>
+        <td>${this.echapper(l.responsable_dossier_nom)}</td>
+        <td>${this.echapper(l.juridiction)}</td>
+        <td>${this.echapper(l.type)}</td>
+        <td>${this.echapper(l.avocat_nom)}</td>
+        <td>${this.echapper(l.instructions)}</td>
+      </tr>`)
+      .join('');
+    const w = window.open('', '_print', 'width=1000,height=700');
+    if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
+    w.document.write(`<html><head><title>JURIA — Rôle d'audience</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#1F2A44;padding:24px}
+      h1{font-size:18px;color:#1F2A44;border-bottom:2px solid #B08D57;padding-bottom:6px}
+      .sub{color:#6B7280;font-size:12px;margin:2px 0 16px}
+      table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top}
+      th{background:#1F2A44;color:#fff}
+    </style></head><body>
+    <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
+    <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
+    <table>
+      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Instructions</th></tr>
+      ${lignes}
+    </table>
+    </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  }
+
+  private formaterDate(d: string | null | undefined): string {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('fr-FR');
   }
 }
