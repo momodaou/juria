@@ -499,18 +499,34 @@ export class RoleAudienceComponent implements OnInit {
   imprimerRole(): void {
     const r = this.role();
     if (!r?.lignes?.length) return;
-    const lignes = r.lignes
-      .map((l: any) => `<tr>
-        <td>${this.echapper(this.formaterDate(l.date_prevue))}</td>
+    // 21/09/2026 : les lignes d'un même jour partagent désormais une seule
+    // cellule Date (rowspan), précédée du nom du jour — reprend la mise en
+    // forme du rôle papier du cabinet (fourni en référence par
+    // l'utilisateur, "LUNDI 21/09/26" fusionné sur ses 2 audiences).
+    // r.lignes est déjà trié par date_prevue côté serveur (ORDER BY dans
+    // GET /api/roles-audience), donc les lignes d'un même jour sont déjà
+    // consécutives — un simple compteur de span suffit, pas de tri à refaire.
+    const lignesHtml: string[] = [];
+    for (let i = 0; i < r.lignes.length; i++) {
+      const l = r.lignes[i];
+      const cleJour = (l.date_prevue || '').slice(0, 10);
+      const premiereDuJour = i === 0 || (r.lignes[i - 1].date_prevue || '').slice(0, 10) !== cleJour;
+      let span = 1;
+      if (premiereDuJour) {
+        for (let j = i + 1; j < r.lignes.length && (r.lignes[j].date_prevue || '').slice(0, 10) === cleJour; j++) span++;
+      }
+      lignesHtml.push(`<tr>
+        ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
         <td>${this.echapper(l.heure)}</td>
-        <td>${this.echapper(l.dossier_numero + ' — ' + l.dossier_intitule)}</td>
+        <td><b>${this.echapper(l.dossier_numero)}</b><br><span class="parties">${this.echapper(l.dossier_intitule)}</span></td>
         <td>${this.echapper(l.responsable_dossier_nom)}</td>
         <td>${this.echapper(l.juridiction)}</td>
         <td>${this.echapper(l.type)}</td>
         <td>${this.echapper(l.avocat_nom)}</td>
         <td>${this.echapper(l.instructions)}</td>
-      </tr>`)
-      .join('');
+      </tr>`);
+    }
+    const lignes = lignesHtml.join('');
     const w = window.open('', '_print', 'width=1000,height=700');
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
     w.document.write(`<html><head><title>JURIA — Rôle d'audience</title><style>
@@ -520,6 +536,7 @@ export class RoleAudienceComponent implements OnInit {
       table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
       th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top}
       th{background:#1F2A44;color:#fff}
+      .parties{color:#6B7280;font-size:11px}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
@@ -536,5 +553,14 @@ export class RoleAudienceComponent implements OnInit {
   private formaterDate(d: string | null | undefined): string {
     if (!d) return '—';
     return new Date(d).toLocaleDateString('fr-FR');
+  }
+
+  // "Lundi 21/09/2026" — jour de la semaine (capitalisé) + date, pour la
+  // cellule Date fusionnée de l'impression du rôle.
+  private formaterJour(d: string | null | undefined): string {
+    if (!d) return '—';
+    const date = new Date(d);
+    const jour = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+    return jour.charAt(0).toUpperCase() + jour.slice(1) + ' ' + date.toLocaleDateString('fr-FR');
   }
 }
