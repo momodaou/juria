@@ -36,7 +36,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
         @if (r.lignes?.length) {
           <table>
-            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Avocat</th><th>Instructions</th><th>Résultat</th><th></th></tr>
+            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Audiencier</th><th>Instructions</th><th>Résultat</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
                 <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
@@ -86,7 +86,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         </select>
                       </div>
                       <div>
-                        <label>Avocat</label>
+                        <label>Audiencier</label>
                         <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
                           <option value="">—</option>
                           @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
@@ -251,7 +251,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </select>
           <span class="hint">Qui se rend effectivement à cette audience — peut différer du responsable du dossier, et changer d'une semaine à l'autre (dispatching). Modifiable ensuite via « Modifier ».</span>
         </div>
-        <div class="col2"><label>Instructions à l'avocat</label><input class="in" [(ngModel)]="nouvelleLigne.instructions" name="instr" /></div>
+        <div class="col2"><label>Instructions à l'audiencier</label><input class="in" [(ngModel)]="nouvelleLigne.instructions" name="instr" /></div>
         <div><label><input type="checkbox" [(ngModel)]="nouvelleLigne.urgente" name="urgente" /> Urgente / dernière minute</label></div>
       </div>
       <button class="btn" (click)="ajouter()" [disabled]="!nouvelleLigne.dossier_id || !nouvelleLigne.date_prevue">Ajouter au rôle</button>

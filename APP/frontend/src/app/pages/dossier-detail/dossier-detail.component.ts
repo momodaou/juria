@@ -662,7 +662,7 @@ import { libelleRole } from '../../core/roles';
         <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier) — mais une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
         @if (audiences().length) {
           <table>
-            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Avocat</th><th>Résultat</th><th></th></tr>
+            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
             @for (a of audiences(); track a.id) {
               <tr [class.urgent]="a.urgente">
                 <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
@@ -698,7 +698,7 @@ import { libelleRole } from '../../core/roles';
                         </select>
                       </div>
                       <div>
-                        <label>Avocat</label>
+                        <label>Audiencier</label>
                         <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
                           <option value="">—</option>
                           @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }

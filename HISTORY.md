@@ -2726,3 +2726,26 @@ Puis confirmation en un message : « X (client) c/ Y » — le premier nommé de
 **Vérification** : suite complète **328/328** tests backend (2 colonnes ajoutées à un `SELECT` déjà couvert, aucune régression). Vérifié visuellement (Playwright, stack Docker locale) : en-têtes de l'écran capturés et confirmés inchangés (`["Date","Heure","Dossier","Responsable dossier","Juridiction","Type","Avocat","Instructions","Résultat","",...]`, « Avocat » toujours présent) ; fenêtre d'impression capturée confirmant « Audiencier » en en-tête, codes courts (`TVF`) dans les 2 colonnes concernées, parties en gras suivies de la référence en italique dans la cellule Dossier ; sélecteur « Audiencier (facultatif) » confirmé présent et correctement positionné dans le formulaire de création, avec sa note explicative. Purement frontend hormis les 2 colonnes SQL ajoutées. Build Angular production OK.
 
 **Déploiement** : **déployé et vérifié en production le 21/09/2026** — API `juria-00093-d9m` (précédente `juria-00092-x2t`), frontend `juria-web-00125-dd6` (précédente `juria-web-00124-6w7`), `/health` et `/` en `200`.
+
+## 2026-09-21 — « Avocat » → « Audiencier » dans l'interface Rôle d'audience elle-même (pas seulement l'impression)
+
+**Contexte** : retour en arrière ciblé sur le scope de l'entrée précédente. L'utilisateur précise : « dans l'interface Rôle d'audience il y a toujours la colonne mentionnée Avocat alors que c'est Audiencier. Celui-ci doit être modifié à la saisie et à l'affichage. Tout le monde peut être audiencier (avocat ou non avocat) ». Contrairement aux 3 premières observations de l'entrée précédente (explicitement scopées à l'impression seule), le renommage doit désormais s'appliquer à l'écran lui-même — saisie (formulaire d'édition) et affichage (en-tête de colonne) — sur les deux écrans qui exposent ce champ : Rôle d'audience et le panneau Audiences de la fiche dossier.
+
+**Vérification préalable de la clarification sémantique** : avant tout changement, vérifié que « tout le monde peut être audiencier » n'imposait aucune modification backend. Les deux sélecteurs concernés (`membres()` dans `role-audience.component.ts`, `utilisateurs()` dans `dossier-detail.component.ts`) sont tous deux alimentés par `GET /api/utilisateurs`, un annuaire interne sans aucun filtre de rôle — confirmé en lisant le point d'appel (`this.api.utilisateurs().subscribe(...)`) dans les deux fichiers. Le sélecteur listait donc déjà tout le personnel, avocat ou non, avant même ce changement — aucune modification nécessaire sur ce point.
+
+**5 renommages purement textuels** (aucun changement de logique, de donnée ou de nom de variable interne — `avocat_id`/`avocat_nom`/`avocat_code` restent des identifiants techniques inchangés, cohérent avec la pratique déjà suivie dans ce projet de ne jamais renommer un identifiant de code pour un simple changement de libellé UI, ex. le renommage « Cockpit » → « Tableau de bord » du 04/09/2026) :
+1. `role-audience.component.ts` — en-tête de colonne du tableau affiché : « Avocat » → « Audiencier ».
+2. `role-audience.component.ts` — libellé du formulaire d'édition inline (menu « ⋮ » → Modifier) : « Avocat » → « Audiencier ».
+3. `dossier-detail.component.ts` — en-tête de colonne du panneau Audiences : « Avocat » → « Audiencier ».
+4. `dossier-detail.component.ts` — libellé du formulaire d'édition inline du même panneau : « Avocat » → « Audiencier ».
+5. `role-audience.component.ts` — libellé du champ Instructions sur le formulaire de création : « Instructions à l'avocat » → « Instructions à l'audiencier » (cohérence terminologique avec le champ Audiencier juste au-dessus, ajouté la veille).
+
+Le formulaire de création (« Programmer une audience ») avait déjà le libellé « Audiencier (facultatif) » depuis la veille (21/09/2026, entrée précédente, point iv) — inchangé ici.
+
+**Vérification** : build Angular production OK. Vérifié visuellement (Playwright headless, stack Docker locale — client/dossier/ligne de rôle de test créés via l'API authentifiée, effacés/écrasés après coup avec `docker compose down`, jamais de données réelles touchées) :
+- Écran Rôle d'audience : en-tête de tableau capturé confirmant « AUDIENCIER » (au lieu d'« AVOCAT ») ; menu « ⋮ » → Modifier confirmant le libellé « Audiencier » dans le formulaire d'édition inline ; formulaire de création confirmant « Audiencier (facultatif) » et « Instructions à l'audiencier ».
+- Fiche dossier, panneau Audiences : capture confirmant l'en-tête « AUDIENCIER » ; bouton Modifier du panneau confirmant le libellé « Audiencier » dans le formulaire d'édition inline.
+
+Aucun changement backend/schéma, aucune migration, suite de tests backend non ré-exécutée (aucun fichier backend touché).
+
+**Déploiement** : **déployé et vérifié en production le 21/09/2026** — frontend seul, révision `juria-web-00126-9x8` (précédente `juria-web-00125-dd6`), `/` et `/health` en `200`.
