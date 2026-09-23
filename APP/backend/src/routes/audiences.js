@@ -44,7 +44,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               a.resultat, a.prochaine_date, a.observations,
               a.nature_procedure, a.nature_precision,
               mr.libelle AS motif_renvoi,
-              mrd.libelle AS motif_dernier_renvoi,
+              a.dernier_motif_id, mrd.libelle AS motif_dernier_renvoi,
               ${SELECT_STATUT_FACTURATION},
               ${SELECT_INSTANCE_ACTUELLE}
        FROM role_audience_lignes l
@@ -162,11 +162,21 @@ router.get("/motifs-renvoi", async (req, res) => {
 // pour l'affichage du rôle hebdomadaire) dans la même transaction, pour ne
 // jamais les laisser diverger.
 // body : { date_audience?, heure?, juridiction?, type?, avocat_id?,
-//          instructions?, urgente?, nature_procedure?, nature_precision? } —
-// jamais resultat/motif_renvoi_id/prochaine_date/observations, qui restent
-// le rôle exclusif de /retour.
+//          instructions?, urgente?, nature_procedure?, nature_precision?,
+//          dernier_motif_id? } — jamais resultat/motif_renvoi_id/
+// prochaine_date/observations, qui restent le rôle exclusif de /retour.
+// 23/09/2026 — "dernier_motif_id" (motif de renvoi reporté depuis
+// l'audience précédente par /retour, affiché en lecture seule jusqu'ici)
+// devient corrigeable : gap trouvé par l'utilisateur (aucun moyen de
+// réparer un motif recopié à tort). Traité à part des autres champs, qui
+// utilisent tous COALESCE($n, colonne) — un $n absent/NULL y signifie
+// "ne pas toucher", ce qui empêche structurellement de jamais EFFACER une
+// valeur existante. Ici on veut justement pouvoir la vider (motif faux ->
+// aucun motif) : la clé doit donc être présente dans le corps pour être
+// appliquée ($10::boolean = "la toucher"), valeur NULL possible.
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
+  const toucheMotif = Object.prototype.hasOwnProperty.call(b, "dernier_motif_id");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -180,11 +190,13 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
          instructions = COALESCE($6, instructions),
          urgente = COALESCE($7, urgente),
          nature_procedure = COALESCE($8, nature_procedure),
-         nature_precision = COALESCE($9, nature_precision)
-       WHERE id = $10 RETURNING *`,
+         nature_precision = COALESCE($9, nature_precision),
+         dernier_motif_id = CASE WHEN $10::boolean THEN $11::uuid ELSE dernier_motif_id END
+       WHERE id = $12 RETURNING *`,
       [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
        b.avocat_id || null, b.instructions || null, b.urgente ?? null,
-       b.nature_procedure || null, b.nature_precision || null, req.params.id]
+       b.nature_procedure || null, b.nature_precision || null,
+       toucheMotif, b.dernier_motif_id || null, req.params.id]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];

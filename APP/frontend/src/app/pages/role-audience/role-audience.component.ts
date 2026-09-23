@@ -88,14 +88,23 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     <!-- 23/09/2026 — 3e passe : ordre réaligné sur le nouvel
                          ordre des colonnes du tableau (Date, Heure,
                          [Référence/Parties], Juridiction, Procédure, Type
-                         audience, [Motif renvoi], Instructions, [Resp
+                         audience, Motif renvoi, Instructions, [Resp
                          dossier], Audiencier, [Résultat] — entre crochets :
                          non éditables ici). Comme avant, Instructions
                          (col2, pleine largeur) est reléguée en dernier
                          plutôt qu'à sa place stricte (avant Audiencier),
                          pour que la grille 2 colonnes se remplisse sans
                          case vide (Type d'audience/Audiencier resteraient
-                         sinon seuls sur leur ligne). -->
+                         sinon seuls sur leur ligne).
+                         8e passe : "Motif dernier renvoi" (gap trouvé par
+                         l'utilisateur — jusqu'ici affiché en lecture seule
+                         sans aucun moyen de corriger un motif recopié à
+                         tort après un renvoi) devient éditable ici, placé
+                         juste avant Instructions comme dans le tableau —
+                         laisse une case vide sur sa ligne (7 champs fixes,
+                         nombre impair), accepté comme les autres petits
+                         écarts de ce même formulaire (ex. "Préciser"
+                         conditionnel). -->
                     <div class="grid2">
                       <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
                       <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
@@ -120,6 +129,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                           <option value="prononce">Prononcé</option>
                           <option value="autre">Autre</option>
                         </select>
+                      </div>
+                      <div>
+                        <label>Motif dernier renvoi</label>
+                        <select class="in" [(ngModel)]="editAudience.dernier_motif_id" name="eaDernierMotif">
+                          <option value="">—</option>
+                          @for (m of motifs(); track m.id) { <option [value]="m.id">{{ m.libelle }}</option> }
+                        </select>
+                        <span class="hint">Recopié automatiquement depuis l'audience précédente après un renvoi — à corriger ici seulement si le motif recopié est faux.</span>
                       </div>
                       <div>
                         <label>Audiencier</label>
@@ -679,8 +696,18 @@ export class RoleAudienceComponent implements OnInit {
       instructions: l.instructions || '',
       nature_procedure: l.nature_procedure || '',
       nature_precision: l.nature_precision || '',
+      dernier_motif_id: l.dernier_motif_id || '',
     };
     this.editionAudienceId.set(l.audience_id);
+    // 23/09/2026 — constaté par l'utilisateur (reproduit en défilant comme
+    // un vrai utilisateur doit le faire pour atteindre le bouton "⋮",
+    // toujours hors champ au chargement) : la ligne d'édition n'est pas
+    // figée comme Date/Heure/Référence/Parties, elle démarre toujours à
+    // gauche du tableau (x=0) — sans ce recentrage, elle s'ouvrait
+    // tronquée (champ Date coupé, Juridiction affichant "ommune IV" au
+    // lieu de "Commune IV") pendant qu'on restait défilé à droite.
+    setTimeout(() => this.tableRoleEl?.nativeElement.closest('.table-scroll')
+      ?.scrollTo({ left: 0, behavior: 'smooth' }));
   }
 
   annulerEditionAudience(): void {
@@ -689,7 +716,17 @@ export class RoleAudienceComponent implements OnInit {
 
   enregistrerEditionAudience(l: any): void {
     this.erreurEditionAudience.set('');
-    const payload = { ...this.editAudience, avocat_id: this.editAudience.avocat_id || null };
+    const payload = {
+      ...this.editAudience,
+      avocat_id: this.editAudience.avocat_id || null,
+      // 23/09/2026 — toujours envoyé (même vide -> null), contrairement
+      // aux autres champs qui utilisent COALESCE côté serveur (absence =
+      // ne pas toucher) : "Motif dernier renvoi" doit pouvoir être
+      // explicitement vidé si le motif recopié automatiquement après un
+      // renvoi s'avère faux — voir le commentaire détaillé sur la route
+      // PUT côté backend (audiences.js).
+      dernier_motif_id: this.editAudience.dernier_motif_id || null,
+    };
     this.api.majAudience(l.audience_id, payload).subscribe({
       next: () => { this.editionAudienceId.set(null); this.charger(); },
       error: (e) => this.erreurEditionAudience.set(e?.error?.error ?? 'Modification impossible.'),
@@ -792,7 +829,7 @@ export class RoleAudienceComponent implements OnInit {
       lignesHtml.push(`<tr>
         ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
         <td>${this.echapper(this.formaterHeure(l.heure))}</td>
-        <td class="parties-impr">${this.partiesHtmlImpression(l)}</td>
+        <td>${this.partiesHtmlImpression(l)}</td>
         <td>${this.echapper(this.abregeJuridiction(l.juridiction))}</td>
         <td>${this.echapper(this.libelleNatureProcedure(l.nature_procedure, l.nature_precision))}</td>
         <td>${this.echapper(this.libelleTypeAudience(l.type))}</td>
@@ -811,24 +848,25 @@ export class RoleAudienceComponent implements OnInit {
       .sub{color:#6B7280;font-size:12px;margin:2px 0 16px}
       table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px;table-layout:fixed}
       /* 23/09/2026 — alignement uniformisé à gauche (constaté "désorganisé"
-         avec le mélange centré/gauche du 21/09/2026), inchangé pour les
-         autres colonnes. Parties reprend le "c/" centré entre client et
-         partie adverse (partiesHtmlImpression()), avec la référence du
-         dossier en petit italique dessous. 5e/6e passes : colonne Parties
-         centrée dans son ensemble (".parties-impr", sur la <td>, pas
-         globalement — les autres colonnes restent à gauche) ; le bloc
-         parties+"c/" reste resserré (".partie-l"/".c-barre", marges
-         réduites au minimum) tandis que la référence (".reference") s'en
-         détache par un espacement plus généreux au-dessus — 2 blocs
-         visuellement distincts plutôt qu'un seul empilement uniforme.
-         "(client)" en italique/petit à la suite du nom, pas en préfixe
-         (".etq-client"). */
+         avec le mélange centré/gauche du 21/09/2026), inchangé pour toutes
+         les colonnes. 7e passe : le centrage de la colonne Parties
+         (5e/6e passes) est abandonné — un texte réparti sur plusieurs
+         lignes de longueurs inégales (ex. "Coopérative Agricole du
+         Wassoulou et Autres" sur 2 lignes) rendu centré crée un bloc aux
+         2 bords en dents de scie, sans repère fixe pour l'œil ; l'alignement
+         à gauche (déjà la norme pour tout le reste de ce document) est le
+         choix standard pour du texte multi-lignes de longueur variable.
+         Le bloc parties+"c/" reste resserré verticalement (".partie-l"/
+         ".c-barre", marges réduites au minimum) et la référence
+         (".reference") continue de s'en détacher par un espacement plus
+         généreux au-dessus — seul l'alignement horizontal change, pas
+         l'espacement vertical. "(client)" en italique/petit à la suite
+         du nom (".etq-client"). */
       th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top;overflow-wrap:break-word}
       th{background:#1F2A44;color:#fff}
-      .parties-impr{text-align:center}
       .partie-l{line-height:1.2;margin:0}
       .etq-client{font-size:9px;font-style:italic;color:#6B7280}
-      .c-barre{text-align:center;font-size:10px;color:#6B7280;line-height:1;margin:0}
+      .c-barre{font-size:10px;color:#6B7280;line-height:1;margin:0}
       .reference{color:#6B7280;font-size:11px;font-style:italic;margin-top:8px}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
@@ -839,7 +877,7 @@ export class RoleAudienceComponent implements OnInit {
         <col style="width:10%"><col style="width:8%"><col style="width:20%">
         <col style="width:8%"><col style="width:8%">
       </colgroup>
-      <tr><th>Date</th><th>Heure</th><th class="parties-impr">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
+      <tr><th>Date</th><th>Heure</th><th>Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
       ${lignes}
     </table>
     </body></html>`);
