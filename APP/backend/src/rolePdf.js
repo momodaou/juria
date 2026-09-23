@@ -16,12 +16,14 @@
 // cellule fusionnée par jour, Heure collée à côté, Parties en texte
 // fluide avec « (client) » et référence détachée, Motif dernier renvoi +
 // Instructions fusionnés sous « Notes ») — pas une nouvelle conception.
-// Simplification assumée par rapport au HTML : pas de style mixte au
-// sein d'une même ligne de texte (pdfkit ne permet pas facilement de
-// changer de police en cours de `.text()`) — « (client) » reste en gras
-// comme le reste de la ligne des parties, les libellés « Motif dernier
-// renvoi »/« Instructions » ne sont plus mis en gras dans la colonne
-// Notes.
+// Le style mixte au sein d'une même ligne (nom en gras + « (client) » en
+// gras+italique/petit/gris, étiquettes « Motif dernier renvoi »/
+// « Instructions » en gras dans la colonne Notes) est bien reproduit —
+// voir dessinerLigneParties()/dessinerParagrapheEtiquette() plus bas :
+// pdfkit ne change pas de police EN COURS d'un seul appel `.text()`, mais
+// y parvient en enchaînant plusieurs appels avec `{ continued: true }`,
+// qui se comportent comme un seul paragraphe (retour à la ligne normal,
+// pas de rupture forcée entre les segments).
 const PDFDocument = require("pdfkit");
 
 const STYLE = {
@@ -222,13 +224,66 @@ function contenuColonnes(l, natures) {
 // recherche secondaire) — inversé par rapport à une version antérieure.
 // Centralisé ici pour que hauteurCellule (mesure) et dessinerCellule
 // (rendu) ne divergent jamais sur la police utilisée.
+//
+// "parties" ligne 0 et "notes" sont en réalité des lignes à styles MIXTES
+// (voir dessinerLigneParties/dessinerParagrapheEtiquette) — cette fonction
+// sert uniquement à fixer une police de MESURE (hauteurCellule) volontai-
+// rement conservatrice : tout en gras majore l'estimation de hauteur
+// plutôt que de la sous-estimer (jamais de texte coupé en bas de cellule),
+// le gras étant systématiquement égal ou plus large que le normal/italique.
 function styleLigne(doc, colonne, i) {
   if (colonne.cle === "parties") {
     if (i === 0) { doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte); return; }
     doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(STYLE.gris);
     return;
   }
+  if (colonne.cle === "notes") { doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte); return; }
   doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte);
+}
+
+// Ligne "Parties" (index 0 de la colonne "parties") : reprend le mélange de
+// styles de l'ancienne version imprimée — nom + "c/ adverse" en gras,
+// "(client)" en gras+italique/petit/gris (span imbriqué dans le <b>
+// d'origine). pdfkit ne permet pas de changer de police au milieu d'un
+// .text() : on découpe la chaîne déjà formatée par texteParties() et on
+// enchaîne 2-3 appels en { continued: true }, qui se comportent comme un
+// seul paragraphe qui s'enroule normalement (pas de rupture de ligne forcée
+// entre les segments).
+function dessinerLigneParties(doc, texte, x, y, width) {
+  const i = texte.indexOf(" (client)");
+  if (i === -1) {
+    // Repli défensif — texteParties() ajoute toujours ce suffixe ;
+    // ne devrait jamais se produire.
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte).text(texte, x, y, { width });
+    return;
+  }
+  const gauche = texte.slice(0, i);
+  const reste = texte.slice(i + " (client)".length); // "" ou " c/ Partie adverse"
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte)
+    .text(`${gauche} `, x, y, { width, continued: true });
+  doc.font("Helvetica-BoldOblique").fontSize(7.5).fillColor(STYLE.gris)
+    .text("(client)", { continued: !!reste });
+  if (reste) {
+    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte).text(reste);
+  }
+}
+
+// Segment "Notes" (ex. "Motif dernier renvoi : Grève des greffiers") :
+// même principe — étiquette (avec son " : ") en gras, valeur en normal,
+// repris tel quel de l'ancienne version imprimée (<b>Étiquette :</b>
+// valeur). "—" (aucun motif/instructions) n'a pas de " : " → repli en
+// texte simple, jamais mis en gras à tort.
+function dessinerParagrapheEtiquette(doc, texte, x, y, width) {
+  const i = texte.indexOf(" : ");
+  if (i === -1) {
+    doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte).text(texte, x, y, { width });
+    return;
+  }
+  const etiquette = texte.slice(0, i + 3); // inclut " : "
+  const valeur = texte.slice(i + 3);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte)
+    .text(etiquette, x, y, { width, continued: true });
+  doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte).text(valeur);
 }
 
 function hauteurCellule(doc, colonne, valeur) {
@@ -248,8 +303,14 @@ function dessinerCellule(doc, colonne, valeur, y, hauteurLigne) {
   if (Array.isArray(valeur)) {
     let curY = y + PADDING;
     valeur.forEach((ligne, i) => {
-      styleLigne(doc, colonne, i);
-      doc.text(ligne, colonne.x + PADDING, curY, { width: largeurUtile });
+      styleLigne(doc, colonne, i); // fixe aussi la police utilisée par heightOfString ci-dessous
+      if (colonne.cle === "parties" && i === 0) {
+        dessinerLigneParties(doc, ligne, colonne.x + PADDING, curY, largeurUtile);
+      } else if (colonne.cle === "notes") {
+        dessinerParagrapheEtiquette(doc, ligne, colonne.x + PADDING, curY, largeurUtile);
+      } else {
+        doc.text(ligne, colonne.x + PADDING, curY, { width: largeurUtile });
+      }
       curY += doc.heightOfString(ligne, { width: largeurUtile }) + 2;
     });
   } else {
