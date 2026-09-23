@@ -835,11 +835,11 @@ export class RoleAudienceComponent implements OnInit {
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
     <table>
       <colgroup>
-        <col style="width:8%"><col style="width:6%"><col style="width:25%"><col style="width:10%">
-        <col style="width:11%"><col style="width:8%"><col style="width:21%">
-        <col style="width:6%"><col style="width:5%">
+        <col style="width:8%"><col style="width:6%"><col style="width:22%"><col style="width:10%">
+        <col style="width:10%"><col style="width:8%"><col style="width:20%">
+        <col style="width:8%"><col style="width:8%">
       </colgroup>
-      <tr><th>Date</th><th>Heure</th><th>Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
+      <tr><th>Date</th><th>Heure</th><th class="parties-impr">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
       ${lignes}
     </table>
     </body></html>`);
