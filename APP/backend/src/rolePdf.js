@@ -216,30 +216,47 @@ function contenuColonnes(l, natures) {
   };
 }
 
+// Reprend l'accent décidé le 21/09/2026 pour la version imprimée : les
+// parties en gras (info prioritaire à la lecture d'un rôle), la référence
+// du dossier reléguée en dessous, plus petite et en italique (repère de
+// recherche secondaire) — inversé par rapport à une version antérieure.
+// Centralisé ici pour que hauteurCellule (mesure) et dessinerCellule
+// (rendu) ne divergent jamais sur la police utilisée.
+function styleLigne(doc, colonne, i) {
+  if (colonne.cle === "parties") {
+    if (i === 0) { doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte); return; }
+    doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(STYLE.gris);
+    return;
+  }
+  doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte);
+}
+
 function hauteurCellule(doc, colonne, valeur) {
   const largeurUtile = colonne.w - PADDING * 2;
   if (Array.isArray(valeur)) {
-    doc.font("Helvetica").fontSize(8.5);
-    return valeur.reduce((s, ligne) => s + doc.heightOfString(ligne, { width: largeurUtile }), 0) + (valeur.length - 1) * 2;
+    return valeur.reduce((s, ligne, i) => {
+      styleLigne(doc, colonne, i);
+      return s + doc.heightOfString(ligne, { width: largeurUtile });
+    }, 0) + (valeur.length - 1) * 2;
   }
-  doc.font("Helvetica").fontSize(8.5);
+  styleLigne(doc, colonne, 0);
   return doc.heightOfString(String(valeur), { width: largeurUtile });
 }
 
 function dessinerCellule(doc, colonne, valeur, y, hauteurLigne) {
   const largeurUtile = colonne.w - PADDING * 2;
-  doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte);
   if (Array.isArray(valeur)) {
     let curY = y + PADDING;
     valeur.forEach((ligne, i) => {
-      if (i === 1 && colonne.cle === "parties") { doc.fontSize(7.5).fillColor(STYLE.gris); }
+      styleLigne(doc, colonne, i);
       doc.text(ligne, colonne.x + PADDING, curY, { width: largeurUtile });
       curY += doc.heightOfString(ligne, { width: largeurUtile }) + 2;
     });
-    doc.fillColor(STYLE.texte);
   } else {
+    styleLigne(doc, colonne, 0);
     doc.text(String(valeur), colonne.x + PADDING, y + PADDING, { width: largeurUtile });
   }
+  doc.fillColor(STYLE.texte);
   doc.rect(colonne.x, y, colonne.w, hauteurLigne).strokeColor(STYLE.ligne).lineWidth(0.5).stroke();
 }
 
