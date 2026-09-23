@@ -35,12 +35,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         </div>
 
         @if (r.lignes?.length) {
-          <table>
-            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Audiencier</th><th>Instructions</th><th>Résultat</th><th></th></tr>
+          <div class="table-scroll">
+          <table class="table-role">
+            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Procédure</th><th>Resp dossier</th><th>Juridiction</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Résultat</th><th>Audiencier</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
                 <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
-                <td>{{ l.heure || '—' }}</td>
+                <td>{{ formaterHeure(l.heure) }}</td>
                 <td>
                   <a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a>
                   @if (libelleStatutPartie(l.instance_statut_partie, l.instance_degre, l.instance_statut_partie_precision); as sp) {
@@ -54,10 +55,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     </div>
                   }
                 </td>
-                <td>{{ l.responsable_dossier_nom || '—' }}</td>
-                <td>{{ l.juridiction || '—' }}</td>
-                <td>{{ l.type }}</td>
-                <td>{{ l.avocat_nom || '—' }}</td>
+                <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
+                <td>{{ l.responsable_dossier_code || '—' }}</td>
+                <td>{{ abregeJuridiction(l.juridiction) }}</td>
+                <td>{{ libelleTypeAudience(l.type) }}</td>
+                <td>{{ l.motif_dernier_renvoi || '—' }}</td>
                 <td>{{ l.instructions || '—' }}</td>
                 <td>
                   @if (l.resultat) {
@@ -65,17 +67,18 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     @if (l.motif_renvoi) { <span class="muted"> · {{ l.motif_renvoi }}</span> }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
+                <td>{{ l.avocat_code || '—' }}</td>
                 <td><app-menu-actions [actions]="actionsPourLigne(l)" /></td>
               </tr>
               @if (editionAudienceId() === l.audience_id) {
                 <tr class="edition">
-                  <td colspan="10">
+                  <td colspan="12">
                     <div class="grid2">
                       <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
                       <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
                       <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
                       <div>
-                        <label>Type</label>
+                        <label>Type d'audience</label>
                         <select class="in" [(ngModel)]="editAudience.type" name="eaType">
                           <option value="mise_en_etat">Mise en état</option>
                           <option value="plaidoirie">Plaidoirie</option>
@@ -92,6 +95,16 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                           @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
                         </select>
                       </div>
+                      <div>
+                        <label>Procédure</label>
+                        <select class="in" [(ngModel)]="editAudience.nature_procedure" name="eaNature">
+                          <option value="">—</option>
+                          @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
+                        </select>
+                      </div>
+                      @if (editAudience.nature_procedure === 'autre') {
+                        <div><label>Préciser</label><input class="in" [(ngModel)]="editAudience.nature_precision" name="eaNaturePrecision" /></div>
+                      }
                       <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
                     </div>
                     <div class="actions">
@@ -104,6 +117,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               }
             }
           </table>
+          </div>
         } @else {
           <p class="muted">Aucune audience programmée cette semaine.</p>
         }
@@ -233,7 +247,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <div><label>Heure</label><input class="in" type="time" [(ngModel)]="nouvelleLigne.heure" name="heure" /></div>
         <div><label>Juridiction</label><input class="in" [(ngModel)]="nouvelleLigne.juridiction" name="juridiction" /></div>
         <div>
-          <label>Type</label>
+          <label>Type d'audience</label>
           <select class="in" [(ngModel)]="nouvelleLigne.type" name="type">
             <option value="mise_en_etat">Mise en état</option>
             <option value="plaidoirie">Plaidoirie</option>
@@ -251,6 +265,16 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </select>
           <span class="hint">Qui se rend effectivement à cette audience — peut différer du responsable du dossier, et changer d'une semaine à l'autre (dispatching). Modifiable ensuite via « Modifier ».</span>
         </div>
+        <div>
+          <label>Procédure (facultatif)</label>
+          <select class="in" [(ngModel)]="nouvelleLigne.nature_procedure" name="nature">
+            <option value="">—</option>
+            @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
+          </select>
+        </div>
+        @if (nouvelleLigne.nature_procedure === 'autre') {
+          <div><label>Préciser</label><input class="in" [(ngModel)]="nouvelleLigne.nature_precision" name="naturePrecision" /></div>
+        }
         <div class="col2"><label>Instructions à l'audiencier</label><input class="in" [(ngModel)]="nouvelleLigne.instructions" name="instr" /></div>
         <div><label><input type="checkbox" [(ngModel)]="nouvelleLigne.urgente" name="urgente" /> Urgente / dernière minute</label></div>
       </div>
@@ -269,6 +293,51 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}
     tr.facturation-alerte td{background:#fdf6e8}
+    /* 21/09/2026 — centrage général demandé par l'utilisateur pour une
+       meilleure présentation, sauf les 4 colonnes à texte long (Dossier,
+       Procédure, Motif dernier renvoi, Instructions) qui restent alignées
+       à gauche — centrer plusieurs lignes de texte nuirait à la lecture.
+       Scopé à cette table précise (.table-role) : ne touche pas le
+       tableau Diligences plus bas dans cet écran, ni aucun autre écran.
+       ⚠️ 1er essai en "table-layout:fixed" + largeurs en % : les en-têtes
+       courts ("Resp dossier", "Audiencier"...) cassaient au milieu d'un
+       mot dans les colonnes étroites, illisible. 2e essai en layout "auto"
+       + "white-space:nowrap" sur toutes les colonnes étroites : Juridiction
+       gonflait à plus de 200px dès qu'un nom réel (non abrégeable, ex.
+       "Tribunal de Commerce de Bamako") ne tenait pas sur une ligne —
+       retirée du groupe "nowrap" ci-dessous, elle peut de nouveau passer
+       sur 2 lignes comme les autres colonnes sans contrainte. Les 4
+       colonnes larges reçoivent en plus un "min-width" explicite : sans
+       lui, le layout auto ne leur donnait pas mécaniquement plus de place
+       qu'aux autres malgré un contenu plus long.
+       ⚠️ 3e essai signalé par l'utilisateur comme « très mal affiché,
+       colonnes qui sortent du cadre » : avec 12 colonnes (6 "nowrap" + 4
+       "min-width") la largeur minimale totale de la table dépasse ce que
+       certaines fenêtres/écrans peuvent afficher — table-layout:auto ne
+       la comprime pas en dessous de ce plancher, elle déborde alors
+       visuellement du panneau au lieu de rétrécir. Corrigé en enveloppant
+       la table dans ".table-scroll" (overflow-x:auto, déjà utilisé sur la
+       Matrice de permissions le 11/09/2026) — le tableau reste maintenant
+       toujours contenu dans le panneau, quitte à défiler horizontalement
+       sur un écran étroit, plutôt que de casser la mise en page. Largeurs
+       minimales aussi réduites (140/90/90/110 au lieu de 170/110/110/130)
+       pour que le défilement horizontal reste l'exception, pas la règle,
+       sur un écran de bureau standard. */
+    table.table-role th,table.table-role td{text-align:center}
+    table.table-role th:nth-child(1),table.table-role td:nth-child(1),
+    table.table-role th:nth-child(2),table.table-role td:nth-child(2),
+    table.table-role th:nth-child(5),table.table-role td:nth-child(5),
+    table.table-role th:nth-child(7),table.table-role td:nth-child(7),
+    table.table-role th:nth-child(10),table.table-role td:nth-child(10),
+    table.table-role th:nth-child(11),table.table-role td:nth-child(11){white-space:nowrap}
+    table.table-role th:nth-child(3),table.table-role td:nth-child(3){min-width:140px}
+    table.table-role th:nth-child(4),table.table-role td:nth-child(4){min-width:90px}
+    table.table-role th:nth-child(8),table.table-role td:nth-child(8){min-width:90px}
+    table.table-role th:nth-child(9),table.table-role td:nth-child(9){min-width:110px}
+    table.table-role th:nth-child(3),table.table-role td:nth-child(3),
+    table.table-role th:nth-child(4),table.table-role td:nth-child(4),
+    table.table-role th:nth-child(8),table.table-role td:nth-child(8),
+    table.table-role th:nth-child(9),table.table-role td:nth-child(9){text-align:left}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:720px}
@@ -300,6 +369,11 @@ export class RoleAudienceComponent implements OnInit {
   readonly typesDiligence = signal<{ code: string; libelle: string }[]>([]);
   readonly membres = signal<any[]>([]);
   readonly dlDossierResultats = signal<Dossier[]>([]);
+  // 21/09/2026 — « Nature de la procédure » : gap comblé — colonne
+  // `audiences.nature_procedure` prévue au schéma (catalogue
+  // `listes_valeurs('nature_procedure')`, déjà seedé : Bail/expulsion,
+  // Divorce, Recouvrement…) mais jamais câblée à aucune route ni écran.
+  readonly naturesProcedure = signal<{ code: string; libelle: string }[]>([]);
   dlDossierRecherche = '';
   dlDossierLabel = '';
   nouvelleDiligence: any = { type_diligence: 'diligence' };
@@ -312,6 +386,42 @@ export class RoleAudienceComponent implements OnInit {
 
   libelleStatut(s: string): string {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
+  }
+
+  // 21/09/2026 — a.heure (TIME Postgres) revient sérialisé avec les secondes
+  // ("09:00:00") : n'affiche que l'heure et la minute, écran comme impression.
+  formaterHeure(h: string | null | undefined): string {
+    return h ? h.slice(0, 5) : '—';
+  }
+
+  // 21/09/2026 — l.type affichait jusqu'ici le code d'ENUM brut
+  // ("mise_en_etat"/"refere") au lieu d'un libellé français, seul le
+  // <select> de saisie avait déjà ces intitulés.
+  libelleTypeAudience(code: string): string {
+    return ({
+      mise_en_etat: 'Mise en état', plaidoirie: 'Plaidoirie', conciliation: 'Conciliation',
+      refere: 'Référé', prononce: 'Prononcé', autre: 'Autre',
+    } as Record<string, string>)[code] ?? code;
+  }
+
+  libelleNatureProcedure(code: string | null | undefined, precision: string | null | undefined): string {
+    if (!code) return '—';
+    if (code === 'autre') return precision || 'Autre';
+    return this.naturesProcedure().find((n) => n.code === code)?.libelle ?? code;
+  }
+
+  // 21/09/2026 — abrégé d'affichage uniquement (jamais écrit en base, la
+  // saisie reste en texte libre) : ne couvre que le motif décrit par
+  // l'utilisateur (« TGI CI, CII... TGI Kati ») — toute autre juridiction
+  // (Tribunal de Commerce, Cour d'Appel, CCJA...) reste affichée telle que
+  // saisie, faute de convention d'abréviation communiquée pour ces cas.
+  abregeJuridiction(j: string | null | undefined): string {
+    if (!j) return '—';
+    let m = j.match(/^Tribunal de Grande Instance de la Commune\s+([IVXLCDM]+)$/i);
+    if (m) return `TGI C${m[1].toUpperCase()}`;
+    m = j.match(/^Tribunal de Grande Instance de\s+(.+)$/i);
+    if (m) return `TGI ${m[1]}`;
+    return j;
   }
 
   libelleTypeDiligence(code: string): string {
@@ -340,6 +450,7 @@ export class RoleAudienceComponent implements OnInit {
     this.charger();
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifs.set(m) });
     this.api.listesValeurs('type_diligence').subscribe({ next: (v) => this.typesDiligence.set(v) });
+    this.api.listesValeurs('nature_procedure').subscribe({ next: (v) => this.naturesProcedure.set(v) });
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u) });
     this.chargerDiligences();
     // Lecture ouverte (voir parametres.js) — pas besoin de permission dédiée
@@ -471,11 +582,13 @@ export class RoleAudienceComponent implements OnInit {
     this.erreurEditionAudience.set('');
     this.editAudience = {
       date_audience: l.date_prevue ? new Date(l.date_prevue).toISOString().slice(0, 10) : '',
-      heure: l.heure || '',
+      heure: this.formaterHeure(l.heure) === '—' ? '' : this.formaterHeure(l.heure),
       juridiction: l.juridiction || '',
       type: l.type || 'mise_en_etat',
       avocat_id: l.avocat_id || '',
       instructions: l.instructions || '',
+      nature_procedure: l.nature_procedure || '',
+      nature_precision: l.nature_precision || '',
     };
     this.editionAudienceId.set(l.audience_id);
   }
@@ -541,31 +654,43 @@ export class RoleAudienceComponent implements OnInit {
       }
       lignesHtml.push(`<tr>
         ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
-        <td>${this.echapper(l.heure)}</td>
+        <td>${this.echapper(this.formaterHeure(l.heure))}</td>
         <td><b>${this.echapper(l.dossier_intitule)}</b><br><span class="reference">${this.echapper(l.dossier_numero)}</span></td>
+        <td>${this.echapper(this.libelleNatureProcedure(l.nature_procedure, l.nature_precision))}</td>
         <td>${this.echapper(l.responsable_dossier_code)}</td>
-        <td>${this.echapper(l.juridiction)}</td>
-        <td>${this.echapper(l.type)}</td>
-        <td>${this.echapper(l.avocat_code)}</td>
+        <td>${this.echapper(this.abregeJuridiction(l.juridiction))}</td>
+        <td>${this.echapper(this.libelleTypeAudience(l.type))}</td>
+        <td>${this.echapper(l.motif_dernier_renvoi)}</td>
         <td>${this.echapper(l.instructions)}</td>
+        <td>${this.echapper(l.avocat_code)}</td>
       </tr>`);
     }
     const lignes = lignesHtml.join('');
-    const w = window.open('', '_print', 'width=1000,height=700');
+    const w = window.open('', '_print', 'width=1300,height=700');
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
     w.document.write(`<html><head><title>JURIA — Rôle d'audience</title><style>
+      @page { size: landscape; margin: 14mm; }
       body{font-family:Arial,Helvetica,sans-serif;color:#1F2A44;padding:24px}
       h1{font-size:18px;color:#1F2A44;border-bottom:2px solid #B08D57;padding-bottom:6px}
       .sub{color:#6B7280;font-size:12px;margin:2px 0 16px}
-      table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
-      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top}
+      table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px;table-layout:fixed}
+      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:center;vertical-align:top;overflow-wrap:break-word}
       th{background:#1F2A44;color:#fff}
+      /* 21/09/2026 — centré par défaut (demande utilisateur), sauf les 4
+         colonnes à texte long qui restent lisibles alignées à gauche. */
+      th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4),
+      th:nth-child(8),td:nth-child(8),th:nth-child(9),td:nth-child(9){text-align:left}
       .reference{color:#6B7280;font-size:11px;font-style:italic}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
     <table>
-      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Responsable dossier</th><th>Juridiction</th><th>Type</th><th>Audiencier</th><th>Instructions</th></tr>
+      <colgroup>
+        <col style="width:7%"><col style="width:5%"><col style="width:18%"><col style="width:13%">
+        <col style="width:6%"><col style="width:9%"><col style="width:7%"><col style="width:13%">
+        <col style="width:15%"><col style="width:7%">
+      </colgroup>
+      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Procédure</th><th>Resp dossier</th><th>Juridiction</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Audiencier</th></tr>
       ${lignes}
     </table>
     </body></html>`);

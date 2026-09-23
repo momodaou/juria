@@ -42,7 +42,9 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               ur.prenom || ' ' || ur.nom AS responsable_dossier_nom, ur.code AS responsable_dossier_code,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
               a.resultat, a.prochaine_date, a.observations,
+              a.nature_procedure, a.nature_precision,
               mr.libelle AS motif_renvoi,
+              mrd.libelle AS motif_dernier_renvoi,
               ${SELECT_STATUT_FACTURATION},
               ${SELECT_INSTANCE_ACTUELLE}
        FROM role_audience_lignes l
@@ -51,6 +53,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
        LEFT JOIN utilisateurs ur ON ur.id = d.responsable_id
        LEFT JOIN audiences a ON a.id = l.audience_id
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
+       LEFT JOIN motifs_renvoi mrd ON mrd.id = a.dernier_motif_id
        ${JOIN_STATUT_FACTURATION}
        ${JOIN_INSTANCE_ACTUELLE}
        WHERE l.role_id = $1
@@ -65,7 +68,8 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
 });
 
 // POST /api/roles-audience/lignes
-// { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente? }
+// { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente?,
+//   nature_procedure?, nature_precision? }
 router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.date_prevue) return res.status(400).json({ error: "dossier_id et date_prevue requis" });
@@ -75,10 +79,12 @@ router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, r
     const role = await trouverOuCreerRole(client, lundiDeSemaine(b.date_prevue), req.user.sub);
     const audience = await client.query(
       `INSERT INTO audiences
-         (dossier_id, avocat_id, juridiction, date_audience, type, heure, instructions, urgente, cree_par)
-       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9) RETURNING id`,
+         (dossier_id, avocat_id, juridiction, date_audience, type, heure, instructions, urgente,
+          nature_procedure, nature_precision, cree_par)
+       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9,$10,$11) RETURNING id`,
       [b.dossier_id, b.avocat_id || null, b.juridiction || null, b.date_prevue, b.type,
-       b.heure || null, b.instructions || null, b.urgente, req.user.sub]
+       b.heure || null, b.instructions || null, b.urgente,
+       b.nature_procedure || null, b.nature_precision || null, req.user.sub]
     );
     const ligne = await client.query(
       `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
@@ -156,8 +162,9 @@ router.get("/motifs-renvoi", async (req, res) => {
 // pour l'affichage du rôle hebdomadaire) dans la même transaction, pour ne
 // jamais les laisser diverger.
 // body : { date_audience?, heure?, juridiction?, type?, avocat_id?,
-//          instructions?, urgente? } — jamais resultat/motif_renvoi_id/
-// prochaine_date/observations, qui restent le rôle exclusif de /retour.
+//          instructions?, urgente?, nature_procedure?, nature_precision? } —
+// jamais resultat/motif_renvoi_id/prochaine_date/observations, qui restent
+// le rôle exclusif de /retour.
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   const client = await pool.connect();
@@ -171,10 +178,13 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
          type = COALESCE($4::type_audience, type),
          avocat_id = COALESCE($5::uuid, avocat_id),
          instructions = COALESCE($6, instructions),
-         urgente = COALESCE($7, urgente)
-       WHERE id = $8 RETURNING *`,
+         urgente = COALESCE($7, urgente),
+         nature_procedure = COALESCE($8, nature_procedure),
+         nature_precision = COALESCE($9, nature_precision)
+       WHERE id = $10 RETURNING *`,
       [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
-       b.avocat_id || null, b.instructions || null, b.urgente ?? null, req.params.id]
+       b.avocat_id || null, b.instructions || null, b.urgente ?? null,
+       b.nature_procedure || null, b.nature_precision || null, req.params.id]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
@@ -216,10 +226,20 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
     let prochaine = null;
     if (b.prochaine_date) {
       const role = await trouverOuCreerRole(client, lundiDeSemaine(b.prochaine_date), req.user.sub);
+      // 21/09/2026 — chaînage vers l'audience précédente (audience_prec_id) et
+      // report de son motif de renvoi (dernier_motif_id) : colonnes prévues
+      // au schéma depuis longtemps mais jamais câblées (aucune route ne les
+      // lisait/écrivait) — permet d'afficher « pourquoi cette audience
+      // existe » sans deviner par une jointure heuristique. La nature de la
+      // procédure (nature_procedure/precision) est aussi reportée : même
+      // affaire, même nature, d'un renvoi à l'autre.
       const nouvelleAudience = await client.query(
-        `INSERT INTO audiences (dossier_id, avocat_id, juridiction, date_audience, type, cree_par)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [a.dossier_id, a.avocat_id, a.juridiction, b.prochaine_date, a.type, req.user.sub]
+        `INSERT INTO audiences
+           (dossier_id, avocat_id, juridiction, date_audience, type,
+            nature_procedure, nature_precision, audience_prec_id, dernier_motif_id, cree_par)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [a.dossier_id, a.avocat_id, a.juridiction, b.prochaine_date, a.type,
+         a.nature_procedure, a.nature_precision, a.id, a.motif_renvoi_id, req.user.sub]
       );
       const ligne = await client.query(
         `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
