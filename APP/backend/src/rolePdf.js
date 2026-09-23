@@ -170,20 +170,35 @@ async function chargerDonnees(pool, roleId) {
 // partie sous l'étiquette du jour, cas limite jugé rare et acceptable
 // pour un rôle hebdomadaire.
 // ---------------------------------------------------------------------
+// Proportions reprises À L'IDENTIQUE du <colgroup> de l'ancienne version
+// HTML (8/6/22/10/10/8/20/8/8 — voir git a18b5ba) : ma 1re passe du PDF les
+// avait dérivées sans base (25/…/6/5), ce qui a fini par casser le mot
+// "Audiencier" en 2 lignes ("Audie"/"ncier", colonne trop étroite pour un
+// mot sans espace) — trouvé en vérifiant les autres écarts avec l'original
+// (retour utilisateur du 23/09/2026).
 const COLONNES = [
   { cle: "date", label: "Date", pct: 8 },
   { cle: "heure", label: "Heure", pct: 6 },
-  { cle: "parties", label: "Parties", pct: 25 },
+  { cle: "parties", label: "Parties", pct: 22 },
   { cle: "juridiction", label: "Juridiction", pct: 10 },
-  { cle: "procedure", label: "Procédure", pct: 11 },
+  { cle: "procedure", label: "Procédure", pct: 10 },
   { cle: "type", label: "Type audience", pct: 8 },
-  { cle: "notes", label: "Notes (audience du jour)", pct: 21 },
-  { cle: "resp", label: "Resp dossier", pct: 6 },
-  { cle: "audiencier", label: "Audiencier", pct: 5 },
+  { cle: "notes", label: "Notes (audience du jour)", pct: 20 },
+  { cle: "resp", label: "Resp dossier", pct: 8 },
+  { cle: "audiencier", label: "Audiencier", pct: 8 },
 ];
-const PADDING = 4;
-const HAUTEUR_MIN_LIGNE = 20;
-const HAUTEUR_ENTETE = 18;
+// 23/09/2026 (2e passe, retour utilisateur « écritures en petits
+// caractères, tableau qui ne remplit pas assez la feuille ») — comparé à
+// l'ancienne version HTML (police 12px de base pour le tableau, en-têtes
+// padding 5px/8px), la police 8.5pt/padding 4pt d'origine du PDF étaient
+// nettement en retrait (12px CSS ≈ 9pt en points PDF à 72dpi). Remonté à
+// une échelle plus proche de l'original, avec plus de respiration par
+// ligne — HAUTEUR_ENTETE doublée car les intitulés de colonne à 2 mots
+// ("Type audience", "Resp dossier") s'enroulent désormais sur 2 lignes à
+// cette taille et débordaient de la bande d'en-tête sinon.
+const PADDING = 6;
+const HAUTEUR_MIN_LIGNE = 24;
+const HAUTEUR_ENTETE = 30;
 
 function calculerColonnes(largeurTable, xDepart) {
   let x = xDepart;
@@ -197,8 +212,8 @@ function calculerColonnes(largeurTable, xDepart) {
 
 function dessinerEnTeteColonnes(doc, colonnes, y) {
   doc.rect(colonnes[0].x, y, colonnes.reduce((s, c) => s + c.w, 0), HAUTEUR_ENTETE).fill(STYLE.enteteFond);
-  doc.font("Helvetica-Bold").fontSize(8).fillColor(STYLE.enteteTexte);
-  colonnes.forEach((c) => doc.text(c.label, c.x + PADDING, y + 5, { width: c.w - PADDING * 2 }));
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(STYLE.enteteTexte);
+  colonnes.forEach((c) => doc.text(c.label, c.x + PADDING, y + 7, { width: c.w - PADDING * 2 }));
   doc.fillColor(STYLE.texte);
   return y + HAUTEUR_ENTETE;
 }
@@ -233,12 +248,12 @@ function contenuColonnes(l, natures) {
 // le gras étant systématiquement égal ou plus large que le normal/italique.
 function styleLigne(doc, colonne, i) {
   if (colonne.cle === "parties") {
-    if (i === 0) { doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte); return; }
-    doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(STYLE.gris);
+    if (i === 0) { doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte); return; }
+    doc.font("Helvetica-Oblique").fontSize(8).fillColor(STYLE.gris);
     return;
   }
-  if (colonne.cle === "notes") { doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte); return; }
-  doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte);
+  if (colonne.cle === "notes") { doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte); return; }
+  doc.font("Helvetica").fontSize(9.5).fillColor(STYLE.texte);
 }
 
 // Ligne "Parties" (index 0 de la colonne "parties") : reprend le mélange de
@@ -254,17 +269,17 @@ function dessinerLigneParties(doc, texte, x, y, width) {
   if (i === -1) {
     // Repli défensif — texteParties() ajoute toujours ce suffixe ;
     // ne devrait jamais se produire.
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte).text(texte, x, y, { width });
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte).text(texte, x, y, { width });
     return;
   }
   const gauche = texte.slice(0, i);
   const reste = texte.slice(i + " (client)".length); // "" ou " c/ Partie adverse"
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte)
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte)
     .text(`${gauche} `, x, y, { width, continued: true });
-  doc.font("Helvetica-BoldOblique").fontSize(7.5).fillColor(STYLE.gris)
+  doc.font("Helvetica-BoldOblique").fontSize(8).fillColor(STYLE.gris)
     .text("(client)", { continued: !!reste });
   if (reste) {
-    doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte).text(reste);
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte).text(reste);
   }
 }
 
@@ -276,14 +291,14 @@ function dessinerLigneParties(doc, texte, x, y, width) {
 function dessinerParagrapheEtiquette(doc, texte, x, y, width) {
   const i = texte.indexOf(" : ");
   if (i === -1) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte).text(texte, x, y, { width });
+    doc.font("Helvetica").fontSize(9.5).fillColor(STYLE.texte).text(texte, x, y, { width });
     return;
   }
   const etiquette = texte.slice(0, i + 3); // inclut " : "
   const valeur = texte.slice(i + 3);
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte)
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte)
     .text(etiquette, x, y, { width, continued: true });
-  doc.font("Helvetica").fontSize(8.5).fillColor(STYLE.texte).text(valeur);
+  doc.font("Helvetica").fontSize(9.5).fillColor(STYLE.texte).text(valeur);
 }
 
 function hauteurCellule(doc, colonne, valeur) {
@@ -388,7 +403,7 @@ function dessinerRole(doc, { raisonSociale, role, lignes, natures }) {
     const colDate = colonnes[0];
     function dessinerBoiteDate(yDebutSegment, yFinSegment) {
       doc.rect(colDate.x, yDebutSegment, colDate.w, yFinSegment - yDebutSegment).strokeColor(STYLE.ligne).lineWidth(0.5).stroke();
-      doc.font("Helvetica-Bold").fontSize(8.5).fillColor(STYLE.texte)
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor(STYLE.texte)
         .text(formaterJour(cleJour), colDate.x + PADDING, yDebutSegment + PADDING, { width: colDate.w - PADDING * 2 });
     }
 
