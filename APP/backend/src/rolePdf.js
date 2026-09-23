@@ -383,7 +383,25 @@ function dessinerRole(doc, { raisonSociale, role, lignes, natures }) {
     // haut d'une page fraîche) — un jour scindé entre 2 pages redessine
     // simplement son étiquette sur la page suivante plutôt que de forcer
     // un espace vide en bas de la page courante.
-    if (y + Math.min(hauteurGroupe, HAUTEUR_MIN_LIGNE) > basPage && y > marge + HAUTEUR_ENTETE + 20) {
+    // 23/09/2026 (2e bug de pagination, trouvé sur un rôle réel après le
+    // grossissement de la police/hauteur de ligne) — cette vérification
+    // comparait à `Math.min(hauteurGroupe, HAUTEUR_MIN_LIGNE)`, un seuil
+    // optimiste supposant qu'"au moins une ligne minimale" tiendrait
+    // toujours. Avec des lignes réelles bien plus hautes que le minimum
+    // (Notes sur 2-3 lignes), ce seuil passait alors que la PREMIÈRE ligne
+    // réelle ne tenait pas du tout : la boucle plus bas démarrait alors le
+    // groupe avec 0 ligne dessinée, dessinait l'étiquette du jour dans un
+    // espace quasi nul en bas de page — juste assez pour que pdfkit
+    // déclenche SA PROPRE pagination automatique au milieu du texte
+    // (comportement par défaut de `.text()` en dépassement de page, non
+    // documenté comme tel mais observé), créant une page fantôme jamais
+    // voulue ni gérée par ce code (sans en-tête de colonnes) avant que le
+    // `doc.addPage()` explicite ci-dessous n'en crée une 2e, correcte.
+    // Corrigé en comparant à la hauteur RÉELLE de la première ligne du
+    // groupe plutôt qu'à un minimum optimiste — si elle ne tient pas,
+    // tout le groupe part sur une page fraîche avant qu'aucune ligne (ni
+    // aucune étiquette) n'ait été dessinée.
+    if (y + hauteurs[0].h > basPage && y > marge + HAUTEUR_ENTETE + 20) {
       doc.addPage();
       y = marge;
       y = dessinerEnTeteColonnes(doc, colonnes, y);
@@ -410,7 +428,12 @@ function dessinerRole(doc, { raisonSociale, role, lignes, natures }) {
     let yDebutSegment = y;
     hauteurs.forEach(({ l, contenu, h }) => {
       if (y + h > basPage) {
-        dessinerBoiteDate(yDebutSegment, y);
+        // Filet de sécurité (même bug que ci-dessus, en profondeur) :
+        // jamais de boîte pour un segment où 0 ligne n'a été dessinée
+        // (yDebutSegment === y) — rien à étiqueter, et un rectangle
+        // quasi nul en fin de page est justement ce qui déclenche la
+        // pagination fantôme de pdfkit décrite plus haut.
+        if (y > yDebutSegment) dessinerBoiteDate(yDebutSegment, y);
         doc.addPage();
         y = marge;
         y = dessinerEnTeteColonnes(doc, colonnes, y);
@@ -419,7 +442,7 @@ function dessinerRole(doc, { raisonSociale, role, lignes, natures }) {
       colonnes.forEach((c) => { if (c.cle !== "date") dessinerCellule(doc, c, contenu[c.cle], y, h); });
       y += h;
     });
-    dessinerBoiteDate(yDebutSegment, y);
+    if (y > yDebutSegment) dessinerBoiteDate(yDebutSegment, y);
 
     i = fin;
   }
