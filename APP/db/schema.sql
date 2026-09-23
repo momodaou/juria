@@ -1177,6 +1177,12 @@ ALTER TABLE audiences ADD COLUMN IF NOT EXISTS audience_prec_id  UUID REFERENCES
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS dernier_motif_id  UUID REFERENCES motifs_renvoi(id); -- dernier motif de renvoi connu
 -- Contrôle de cohérence (app) : à l'émission du rôle, si dernier_motif_id diffère du motif
 -- réellement saisi au retour d'audience précédent, lever une alerte de cohérence.
+-- 23/09/2026 — motifs_renvoi n'a pas de "code" stable (juste un libellé de
+-- catalogue) : "Autre (préciser)" est repéré par correspondance de libellé
+-- côté app, même limite que les autres motifs "autre" de ce schéma. Ces 2
+-- colonnes portent le texte libre quand ce motif précis est choisi.
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS motif_renvoi_precision   VARCHAR(200); -- si motif_renvoi_id = "Autre (préciser)"
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS dernier_motif_precision  VARCHAR(200); -- idem, reporté depuis l'audience précédente
 
 -- ---- Planning des diligences & assistances (2e « rôle » hebdomadaire) ----
 --  Auditions en juridiction, assistances en unité d'enquête, formalités,

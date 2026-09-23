@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-role-audience',
@@ -31,7 +32,10 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </span>
           @if (r.id && r.statut === 'brouillon' && auth.peut('audiences.role.valider')) { <button class="btn sm" (click)="valider(r.id)">Valider le rôle</button> }
           @if (r.id && r.statut === 'valide' && auth.peut('audiences.role.diffuser')) { <button class="btn sm" (click)="diffuser(r.id)">Diffuser à l'équipe</button> }
-          @if (r.lignes?.length) { <button class="btn sm ghost" (click)="imprimerRole()">🖶 Imprimer le rôle</button> }
+          @if (r.lignes?.length) {
+            <button class="btn sm ghost" (click)="apercuRolePdf()">Aperçu (PDF)</button>
+            <button class="btn sm ghost" (click)="telechargerRolePdf()">Télécharger (PDF)</button>
+          }
         </div>
 
         @if (r.lignes?.length) {
@@ -70,14 +74,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 <td>{{ abregeJuridiction(l.juridiction) }}</td>
                 <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
                 <td>{{ libelleTypeAudience(l.type) }}</td>
-                <td>{{ l.motif_dernier_renvoi || '—' }}</td>
+                <td>{{ libelleMotif(l.motif_dernier_renvoi, l.dernier_motif_precision) }}</td>
                 <td>{{ l.instructions || '—' }}</td>
                 <td>{{ l.responsable_dossier_code || '—' }}</td>
                 <td>{{ l.avocat_code || '—' }}</td>
                 <td>
                   @if (l.resultat) {
                     <span class="tag">{{ l.resultat }}</span>
-                    @if (l.motif_renvoi) { <span class="muted"> · {{ l.motif_renvoi }}</span> }
+                    @if (l.motif_renvoi) { <span class="muted"> · {{ libelleMotif(l.motif_renvoi, l.motif_renvoi_precision) }}</span> }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
                 <td><app-menu-actions [actions]="actionsPourLigne(l)" /></td>
@@ -138,6 +142,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         </select>
                         <span class="hint">Recopié automatiquement depuis l'audience précédente après un renvoi — à corriger ici seulement si le motif recopié est faux.</span>
                       </div>
+                      @if (motifEstAutre(editAudience.dernier_motif_id)) {
+                        <div><label>Préciser</label><input class="in" [(ngModel)]="editAudience.dernier_motif_precision" name="eaDernierMotifPrecision" /></div>
+                      }
                       <div>
                         <label>Audiencier</label>
                         <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
@@ -186,6 +193,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                   @for (m of motifs(); track m.id) { <option [value]="m.id">{{ m.libelle }}</option> }
                 </select>
               </div>
+              @if (motifEstAutre(retourForm.motif_renvoi_id)) {
+                <div><label>Préciser</label><input class="in" [(ngModel)]="retourForm.motif_renvoi_precision" name="motifPrecision" /></div>
+              }
               <div>
                 <label>Prochaine date</label>
                 <input class="in" type="date" [(ngModel)]="retourForm.prochaine_date" name="prochaine" />
@@ -408,6 +418,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 export class RoleAudienceComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly preview = inject(DocumentPreviewService);
   readonly role = signal<any | null>(null);
   readonly motifs = signal<{ id: string; libelle: string }[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
@@ -422,7 +433,6 @@ export class RoleAudienceComponent implements OnInit {
   readonly editionAudienceId = signal<string | null>(null);
   readonly erreurEditionAudience = signal('');
   editAudience: any = {};
-  private raisonSociale = 'JFC AVOCATS MALI';
 
   // Diligences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
   readonly diligences = signal<any[]>([]);
@@ -442,7 +452,7 @@ export class RoleAudienceComponent implements OnInit {
   dossierRecherche = '';
   dossierLabel = '';
   nouvelleLigne: any = { type: 'mise_en_etat', urgente: false };
-  retourForm: any = { resultat: 'renvoi', motif_renvoi_id: '', prochaine_date: '', observations: '' };
+  retourForm: any = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', observations: '' };
 
   libelleStatut(s: string): string {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
@@ -468,6 +478,23 @@ export class RoleAudienceComponent implements OnInit {
     if (!code) return '—';
     if (code === 'autre') return precision || 'Autre';
     return this.naturesProcedure().find((n) => n.code === code)?.libelle ?? code;
+  }
+
+  // 23/09/2026 — "motifs_renvoi" est un catalogue de base (id + libelle),
+  // pas un ENUM avec un code stable comme nature_procedure/type_audience :
+  // "Autre (préciser)" ne se repère que par correspondance exacte de
+  // libellé. motifEstAutre() sert à afficher/masquer le champ "Préciser"
+  // dans les 2 formulaires qui utilisent ce catalogue (Saisir le retour,
+  // Modifier) ; libelleMotif() combine libellé + précision à l'affichage
+  // (tableau, impression), même patron que libelleNatureProcedure().
+  motifEstAutre(id: string | null | undefined): boolean {
+    return !!id && this.motifs().find((m) => m.id === id)?.libelle === 'Autre (préciser)';
+  }
+
+  libelleMotif(libelle: string | null | undefined, precision: string | null | undefined): string {
+    if (!libelle) return '—';
+    if (libelle === 'Autre (préciser)') return precision || 'Autre';
+    return libelle;
   }
 
   // 23/09/2026 — découpage de l'intitulé du dossier ("Client c/ Partie
@@ -530,12 +557,6 @@ export class RoleAudienceComponent implements OnInit {
     this.api.listesValeurs('nature_procedure').subscribe({ next: (v) => this.naturesProcedure.set(v) });
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u) });
     this.chargerDiligences();
-    // Lecture ouverte (voir parametres.js) — pas besoin de permission dédiée
-    // pour un en-tête d'impression, même patron que ExportPrintComponent.
-    this.api.parametresCabinet().subscribe({
-      next: (c) => { if (c?.raison_sociale) this.raisonSociale = c.raison_sociale; },
-      error: () => {},
-    });
   }
 
   charger(): void {
@@ -661,7 +682,7 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   ouvrirRetour(l: any): void {
-    this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', prochaine_date: '', observations: '' };
+    this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', observations: '' };
     this.ligneRetour.set(l);
     // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
     // hors écran si la ligne cliquée est loin dans le tableau : défilement auto.
@@ -669,7 +690,19 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   enregistrerRetour(audienceId: string): void {
-    const payload = { ...this.retourForm, prochaine_date: this.retourForm.prochaine_date || null, motif_renvoi_id: this.retourForm.motif_renvoi_id || null };
+    // 23/09/2026 — motif_renvoi_precision n'est envoyée que si le motif
+    // sélectionné est bien "Autre (préciser)" : évite qu'un texte tapé
+    // puis abandonné (sélection changée vers un motif normal, le champ
+    // "Préciser" disparaît du formulaire mais garderait sa valeur en
+    // mémoire tant qu'il n'est pas explicitement vidé) ne se retrouve
+    // enregistré sous un motif qui n'en a plus besoin.
+    const precisionValide = this.motifEstAutre(this.retourForm.motif_renvoi_id);
+    const payload = {
+      ...this.retourForm,
+      prochaine_date: this.retourForm.prochaine_date || null,
+      motif_renvoi_id: this.retourForm.motif_renvoi_id || null,
+      motif_renvoi_precision: precisionValide ? (this.retourForm.motif_renvoi_precision || null) : null,
+    };
     this.api.retourAudience(audienceId, payload).subscribe({
       next: () => { this.ligneRetour.set(null); this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Enregistrement du retour impossible.'),
@@ -697,6 +730,7 @@ export class RoleAudienceComponent implements OnInit {
       nature_procedure: l.nature_procedure || '',
       nature_precision: l.nature_precision || '',
       dernier_motif_id: l.dernier_motif_id || '',
+      dernier_motif_precision: l.dernier_motif_precision || '',
     };
     this.editionAudienceId.set(l.audience_id);
     // 23/09/2026 — constaté par l'utilisateur (reproduit en défilant comme
@@ -724,8 +758,12 @@ export class RoleAudienceComponent implements OnInit {
       // ne pas toucher) : "Motif dernier renvoi" doit pouvoir être
       // explicitement vidé si le motif recopié automatiquement après un
       // renvoi s'avère faux — voir le commentaire détaillé sur la route
-      // PUT côté backend (audiences.js).
+      // PUT côté backend (audiences.js). "dernier_motif_precision" n'est
+      // envoyée que si le motif sélectionné est "Autre (préciser)" — même
+      // garde que côté "Saisir le retour" (voir enregistrerRetour()).
       dernier_motif_id: this.editAudience.dernier_motif_id || null,
+      dernier_motif_precision: this.motifEstAutre(this.editAudience.dernier_motif_id)
+        ? (this.editAudience.dernier_motif_precision || null) : null,
     };
     this.api.majAudience(l.audience_id, payload).subscribe({
       next: () => { this.editionAudienceId.set(null); this.charger(); },
@@ -756,149 +794,40 @@ export class RoleAudienceComponent implements OnInit {
   // différent du responsable permanent du dossier). Nécessite
   // avocat_code/responsable_dossier_code, ajoutés au SELECT de
   // GET /api/roles-audience (audiences.js) pour cette seule raison.
-  private echapper(v: any): string {
-    return String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 23/09/2026 — remplace l'impression HTML/navigateur (window.open +
+  // document.write + w.print(), @page landscape jamais fiable sur
+  // Safari) par un vrai PDF généré côté serveur (backend/src/rolePdf.js,
+  // pdfkit, orientation paysage imposée dans le fichier) — même patron
+  // que Facturation (25/08/2026) : "Aperçu" réutilise le composant de
+  // prévisualisation déjà partagé dans toute l'appli (DocumentPreviewService),
+  // "Télécharger" déclenche l'enregistrement direct du fichier. Un bouton
+  // "Imprimer" séparé devient inutile : le lecteur PDF du navigateur a
+  // déjà le sien, orientation déjà correcte car imposée dans le fichier.
+  // "semaine_debut" revient de l'API en ISO complet ("2026-09-21T00:00:00.000Z")
+  // — ne garder que la date pour un nom de fichier lisible.
+  private nomFichierPdf(r: any): string {
+    return `Role-audience-${String(r.semaine_debut).slice(0, 10)}.pdf`;
   }
 
-  // 23/09/2026 — fusion demandée par l'utilisateur pour que l'impression
-  // tienne sur une seule ligne par audience : Motif dernier renvoi +
-  // Instructions (texte libre tous les deux, même nature — « notes sur
-  // cette audience ») regroupés sous un même intitulé « Notes (audience
-  // du jour) ». Type audience reste volontairement sa PROPRE colonne
-  // (court, catégoriel, utile à balayer d'un coup d'œil) — pas fusionné,
-  // contrairement à la proposition initiale de l'utilisateur, sur mon
-  // conseil qu'il a retenu. Chaque ligne n'apparaît que si renseignée
-  // (pas de "—" répété deux fois quand les deux champs sont vides).
-  private notesAudienceHtml(l: any): string {
-    const lignes: string[] = [];
-    if (l.motif_dernier_renvoi) lignes.push(`<div><b>Motif dernier renvoi :</b> ${this.echapper(l.motif_dernier_renvoi)}</div>`);
-    if (l.instructions) lignes.push(`<div><b>Instructions :</b> ${this.echapper(l.instructions)}</div>`);
-    return lignes.length ? lignes.join('') : '—';
-  }
-
-  // 23/09/2026 (4e passe) — sur retour explicite de l'utilisateur, la
-  // Référence rejoint de nouveau la cellule Parties à l'impression
-  // uniquement (l'écran, lui, garde 2 colonnes séparées — inchangé) :
-  // parties en gras (+ "c/" centré s'il y en a 2), référence en petit
-  // italique en dessous — repli sur le traitement du 21/09/2026, avant la
-  // scission en 2 colonnes de la passe précédente.
-  // 5e passe (23/09/2026) — colonne centrée dans son ensemble (voir la
-  // classe "parties-impr" posée sur la <td> plus bas) + interlignage
-  // resserré entre les 2 parties et le "c/" (voir "styles", ".partie-l"/
-  // ".c-barre") ; mention "(client)" en italique/petit à la suite du nom
-  // de notre client (toujours le "gauche" — convention du cabinet, client
-  // cité en premier, établie le 31/08/2026) pour lever l'ambiguïté sans
-  // supposer que le lecteur connaît cette convention.
-  // 6e passe (23/09/2026) — "(client)" déplacé en suffixe entre
-  // parenthèses (au lieu d'une étiquette en préfixe) ; la référence
-  // (".reference") reçoit plus d'espace au-dessus pour se détacher
-  // visuellement du bloc parties+"c/", qui lui reste resserré.
-  // 9e passe (23/09/2026) — le découpage forcé en 3 lignes (nom client /
-  // "c/" seul / nom adverse) est abandonné au profit d'un texte qui suit
-  // naturellement, comme sur l'écran (7e passe côté écran, même
-  // raisonnement) : même un nom court occupait 3 lignes fixes avec
-  // l'ancien découpage, alors qu'en texte fluide 1-2 lignes suffisent
-  // souvent — l'objectif de tout ce chantier était justement de gagner de
-  // la place. C'est aussi le traitement qu'avait la colonne "Dossier"
-  // combinée avant toute cette refonte (des mois sans qu'il ait posé
-  // problème). Seul compromis : "c/" n'est plus isolé sur sa propre
-  // ligne, redevient un mot dans le texte, là où il tombe au retour à la
-  // ligne — jugé acceptable (reste lisible : "Société X c/ Coopérative
-  // Y"), sur avis explicite de l'utilisateur.
-  private partiesHtmlImpression(l: any): string {
-    const gauche = this.echapper(this.partiesGauche(l.dossier_intitule));
-    const droite = this.partiesDroite(l.dossier_intitule);
-    const parties = droite
-      ? `<b>${gauche} <span class="etq-client">(client)</span> c/ ${this.echapper(droite)}</b>`
-      : `<b>${gauche} <span class="etq-client">(client)</span></b>`;
-    return `${parties}<div class="reference">${this.echapper(l.dossier_numero)}</div>`;
-  }
-
-  imprimerRole(): void {
+  apercuRolePdf(): void {
     const r = this.role();
-    if (!r?.lignes?.length) return;
-    // 23/09/2026 (4e passe) — retour sur la 3e passe (ligne diviseur pleine
-    // largeur par jour) : l'utilisateur préfère finalement la colonne Date
-    // "à l'ancienne" (en rowspan, une cellule par jour) — MAIS avec Heure
-    // comme colonne autonome collée à Date (une valeur par ligne, jamais
-    // rowspannée : c'est justement ce qui varie d'une audience à l'autre
-    // au sein d'un même jour). 9 colonnes : Date, Heure, Parties (+
-    // référence en italique dessous), Juridiction, Procédure, Type
-    // audience, Notes, Resp dossier, Audiencier.
-    // r.lignes est déjà trié par date_prevue côté serveur (ORDER BY dans
-    // GET /api/roles-audience), donc les lignes d'un même jour sont déjà
-    // consécutives — un simple compteur de span suffit, pas de tri à refaire.
-    const lignesHtml: string[] = [];
-    for (let i = 0; i < r.lignes.length; i++) {
-      const l = r.lignes[i];
-      const cleJour = (l.date_prevue || '').slice(0, 10);
-      const premiereDuJour = i === 0 || (r.lignes[i - 1].date_prevue || '').slice(0, 10) !== cleJour;
-      let span = 1;
-      if (premiereDuJour) {
-        for (let j = i + 1; j < r.lignes.length && (r.lignes[j].date_prevue || '').slice(0, 10) === cleJour; j++) span++;
-      }
-      lignesHtml.push(`<tr>
-        ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
-        <td>${this.echapper(this.formaterHeure(l.heure))}</td>
-        <td>${this.partiesHtmlImpression(l)}</td>
-        <td>${this.echapper(this.abregeJuridiction(l.juridiction))}</td>
-        <td>${this.echapper(this.libelleNatureProcedure(l.nature_procedure, l.nature_precision))}</td>
-        <td>${this.echapper(this.libelleTypeAudience(l.type))}</td>
-        <td>${this.notesAudienceHtml(l)}</td>
-        <td>${this.echapper(l.responsable_dossier_code)}</td>
-        <td>${this.echapper(l.avocat_code)}</td>
-      </tr>`);
-    }
-    const lignes = lignesHtml.join('');
-    const w = window.open('', '_print', 'width=1300,height=700');
-    if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
-    w.document.write(`<html><head><title>JURIA — Rôle d'audience</title><style>
-      @page { size: landscape; margin: 14mm; }
-      body{font-family:Arial,Helvetica,sans-serif;color:#1F2A44;padding:24px}
-      h1{font-size:18px;color:#1F2A44;border-bottom:2px solid #B08D57;padding-bottom:6px}
-      .sub{color:#6B7280;font-size:12px;margin:2px 0 16px}
-      table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px;table-layout:fixed}
-      /* 23/09/2026 — alignement uniformisé à gauche (constaté "désorganisé"
-         avec le mélange centré/gauche du 21/09/2026), inchangé pour toutes
-         les colonnes. 9e passe : Parties en texte fluide (voir
-         partiesHtmlImpression()) — plus de lignes forcées ".partie-l"/
-         ".c-barre" (retirées), le texte s'enroule naturellement comme
-         n'importe quel paragraphe. La référence (".reference") continue
-         de s'en détacher par un espacement plus généreux au-dessus.
-         "(client)" en italique/petit à la suite du nom (".etq-client"). */
-      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top;overflow-wrap:break-word}
-      th{background:#1F2A44;color:#fff}
-      .etq-client{font-size:9px;font-style:italic;color:#6B7280}
-      .reference{display:block;color:#6B7280;font-size:11px;font-style:italic;margin-top:8px}
-    </style></head><body>
-    <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
-    <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
-    <table>
-      <colgroup>
-        <col style="width:8%"><col style="width:6%"><col style="width:22%"><col style="width:10%">
-        <col style="width:10%"><col style="width:8%"><col style="width:20%">
-        <col style="width:8%"><col style="width:8%">
-      </colgroup>
-      <tr><th>Date</th><th>Heure</th><th>Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
-      ${lignes}
-    </table>
-    </body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
+    if (!r?.id) return;
+    this.preview.ouvrir(this.nomFichierPdf(r), this.api.telechargerRolePdf(r.id));
   }
 
-  private formaterDate(d: string | null | undefined): string {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('fr-FR');
-  }
-
-  // "Lundi 21/09/2026" — jour de la semaine (capitalisé) + date, pour la
-  // cellule Date fusionnée de l'impression du rôle.
-  private formaterJour(d: string | null | undefined): string {
-    if (!d) return '—';
-    const date = new Date(d);
-    const jour = date.toLocaleDateString('fr-FR', { weekday: 'long' });
-    return jour.charAt(0).toUpperCase() + jour.slice(1) + ' ' + date.toLocaleDateString('fr-FR');
+  telechargerRolePdf(): void {
+    const r = this.role();
+    if (!r?.id) return;
+    this.api.telechargerRolePdf(r.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this.nomFichierPdf(r);
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Téléchargement impossible.'),
+    });
   }
 }

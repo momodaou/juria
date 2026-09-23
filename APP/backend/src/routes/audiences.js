@@ -5,6 +5,7 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
+const { envoyerRolePdf } = require("../rolePdf");
 const router = express.Router();
 
 // Lundi de la semaine contenant la date donnée (chaîne YYYY-MM-DD).
@@ -43,8 +44,8 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
               a.resultat, a.prochaine_date, a.observations,
               a.nature_procedure, a.nature_precision,
-              mr.libelle AS motif_renvoi,
-              a.dernier_motif_id, mrd.libelle AS motif_dernier_renvoi,
+              a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
+              a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
               ${SELECT_STATUT_FACTURATION},
               ${SELECT_INSTANCE_ACTUELLE}
        FROM role_audience_lignes l
@@ -174,6 +175,9 @@ router.get("/motifs-renvoi", async (req, res) => {
 // valeur existante. Ici on veut justement pouvoir la vider (motif faux ->
 // aucun motif) : la clé doit donc être présente dans le corps pour être
 // appliquée ($10::boolean = "la toucher"), valeur NULL possible.
+// "dernier_motif_precision" (texte libre du motif "Autre (préciser)")
+// suit le même déclencheur que "dernier_motif_id" -- un seul et même
+// geste de correction, pas un champ à part qui pourrait diverger.
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   const toucheMotif = Object.prototype.hasOwnProperty.call(b, "dernier_motif_id");
@@ -191,12 +195,13 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
          urgente = COALESCE($7, urgente),
          nature_procedure = COALESCE($8, nature_procedure),
          nature_precision = COALESCE($9, nature_precision),
-         dernier_motif_id = CASE WHEN $10::boolean THEN $11::uuid ELSE dernier_motif_id END
+         dernier_motif_id = CASE WHEN $10::boolean THEN $11::uuid ELSE dernier_motif_id END,
+         dernier_motif_precision = CASE WHEN $10::boolean THEN $13 ELSE dernier_motif_precision END
        WHERE id = $12 RETURNING *`,
       [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
        b.avocat_id || null, b.instructions || null, b.urgente ?? null,
        b.nature_procedure || null, b.nature_precision || null,
-       toucheMotif, b.dernier_motif_id || null, req.params.id]
+       toucheMotif, b.dernier_motif_id || null, req.params.id, b.dernier_motif_precision || null]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
@@ -218,7 +223,8 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
 });
 
 // POST /api/roles-audience/audiences/:id/retour
-// body : { resultat, motif_renvoi_id?, prochaine_date?, observations? }
+// body : { resultat, motif_renvoi_id?, motif_renvoi_precision?, prochaine_date?,
+//          observations? }
 // Si prochaine_date est fourni, inscrit automatiquement l'audience suivante au rôle
 // de la semaine correspondante (renvoi -> compilation du rôle N+1).
 router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
@@ -228,9 +234,11 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
   try {
     await client.query("BEGIN");
     const maj = await client.query(
-      `UPDATE audiences SET resultat = $1, motif_renvoi_id = $2, prochaine_date = $3, observations = $4
-       WHERE id = $5 RETURNING *`,
-      [b.resultat, b.motif_renvoi_id || null, b.prochaine_date || null, b.observations || null, req.params.id]
+      `UPDATE audiences SET resultat = $1, motif_renvoi_id = $2, motif_renvoi_precision = $3,
+         prochaine_date = $4, observations = $5
+       WHERE id = $6 RETURNING *`,
+      [b.resultat, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
+       b.prochaine_date || null, b.observations || null, req.params.id]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
@@ -244,14 +252,18 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
       // lisait/écrivait) — permet d'afficher « pourquoi cette audience
       // existe » sans deviner par une jointure heuristique. La nature de la
       // procédure (nature_procedure/precision) est aussi reportée : même
-      // affaire, même nature, d'un renvoi à l'autre.
+      // affaire, même nature, d'un renvoi à l'autre. 23/09/2026 — idem pour
+      // motif_renvoi_precision -> dernier_motif_precision (motif "Autre
+      // (préciser)").
       const nouvelleAudience = await client.query(
         `INSERT INTO audiences
            (dossier_id, avocat_id, juridiction, date_audience, type,
-            nature_procedure, nature_precision, audience_prec_id, dernier_motif_id, cree_par)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+            nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
+            dernier_motif_precision, cree_par)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
         [a.dossier_id, a.avocat_id, a.juridiction, b.prochaine_date, a.type,
-         a.nature_procedure, a.nature_precision, a.id, a.motif_renvoi_id, req.user.sub]
+         a.nature_procedure, a.nature_precision, a.id, a.motif_renvoi_id,
+         a.motif_renvoi_precision, req.user.sub]
       );
       const ligne = await client.query(
         `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
@@ -268,6 +280,22 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
     res.status(400).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// GET /api/roles-audience/:id/pdf
+// 23/09/2026 — remplace l'impression HTML/navigateur (@page landscape,
+// suggestion que Safari n'honore pas de façon fiable) par un vrai PDF
+// généré côté serveur (voir rolePdf.js), orientation paysage garantie.
+// ":id" est l'id de "roles_audience" (celui renvoyé par GET / dans
+// "role.id"), pas une date — le front le connaît déjà (role().id).
+router.get("/:id/pdf", requirePermission("audiences.consulter"), async (req, res) => {
+  try {
+    const trouve = await envoyerRolePdf(pool, req.params.id, res);
+    if (!trouve) res.status(404).json({ error: "Rôle introuvable" });
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
