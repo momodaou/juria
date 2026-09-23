@@ -793,13 +793,24 @@ export class RoleAudienceComponent implements OnInit {
   // parenthèses (au lieu d'une étiquette en préfixe) ; la référence
   // (".reference") reçoit plus d'espace au-dessus pour se détacher
   // visuellement du bloc parties+"c/", qui lui reste resserré.
+  // 9e passe (23/09/2026) — le découpage forcé en 3 lignes (nom client /
+  // "c/" seul / nom adverse) est abandonné au profit d'un texte qui suit
+  // naturellement, comme sur l'écran (7e passe côté écran, même
+  // raisonnement) : même un nom court occupait 3 lignes fixes avec
+  // l'ancien découpage, alors qu'en texte fluide 1-2 lignes suffisent
+  // souvent — l'objectif de tout ce chantier était justement de gagner de
+  // la place. C'est aussi le traitement qu'avait la colonne "Dossier"
+  // combinée avant toute cette refonte (des mois sans qu'il ait posé
+  // problème). Seul compromis : "c/" n'est plus isolé sur sa propre
+  // ligne, redevient un mot dans le texte, là où il tombe au retour à la
+  // ligne — jugé acceptable (reste lisible : "Société X c/ Coopérative
+  // Y"), sur avis explicite de l'utilisateur.
   private partiesHtmlImpression(l: any): string {
     const gauche = this.echapper(this.partiesGauche(l.dossier_intitule));
     const droite = this.partiesDroite(l.dossier_intitule);
-    const ligneClient = `<div class="partie-l"><b>${gauche}</b> <span class="etq-client">(client)</span></div>`;
     const parties = droite
-      ? `${ligneClient}<div class="c-barre">c/</div><div class="partie-l"><b>${this.echapper(droite)}</b></div>`
-      : ligneClient;
+      ? `<b>${gauche} <span class="etq-client">(client)</span> c/ ${this.echapper(droite)}</b>`
+      : `<b>${gauche} <span class="etq-client">(client)</span></b>`;
     return `${parties}<div class="reference">${this.echapper(l.dossier_numero)}</div>`;
   }
 
@@ -849,25 +860,16 @@ export class RoleAudienceComponent implements OnInit {
       table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px;table-layout:fixed}
       /* 23/09/2026 — alignement uniformisé à gauche (constaté "désorganisé"
          avec le mélange centré/gauche du 21/09/2026), inchangé pour toutes
-         les colonnes. 7e passe : le centrage de la colonne Parties
-         (5e/6e passes) est abandonné — un texte réparti sur plusieurs
-         lignes de longueurs inégales (ex. "Coopérative Agricole du
-         Wassoulou et Autres" sur 2 lignes) rendu centré crée un bloc aux
-         2 bords en dents de scie, sans repère fixe pour l'œil ; l'alignement
-         à gauche (déjà la norme pour tout le reste de ce document) est le
-         choix standard pour du texte multi-lignes de longueur variable.
-         Le bloc parties+"c/" reste resserré verticalement (".partie-l"/
-         ".c-barre", marges réduites au minimum) et la référence
-         (".reference") continue de s'en détacher par un espacement plus
-         généreux au-dessus — seul l'alignement horizontal change, pas
-         l'espacement vertical. "(client)" en italique/petit à la suite
-         du nom (".etq-client"). */
+         les colonnes. 9e passe : Parties en texte fluide (voir
+         partiesHtmlImpression()) — plus de lignes forcées ".partie-l"/
+         ".c-barre" (retirées), le texte s'enroule naturellement comme
+         n'importe quel paragraphe. La référence (".reference") continue
+         de s'en détacher par un espacement plus généreux au-dessus.
+         "(client)" en italique/petit à la suite du nom (".etq-client"). */
       th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top;overflow-wrap:break-word}
       th{background:#1F2A44;color:#fff}
-      .partie-l{line-height:1.2;margin:0}
       .etq-client{font-size:9px;font-style:italic;color:#6B7280}
-      .c-barre{font-size:10px;color:#6B7280;line-height:1;margin:0}
-      .reference{color:#6B7280;font-size:11px;font-style:italic;margin-top:8px}
+      .reference{display:block;color:#6B7280;font-size:11px;font-style:italic;margin-top:8px}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
