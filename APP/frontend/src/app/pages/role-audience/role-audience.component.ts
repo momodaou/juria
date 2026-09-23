@@ -36,14 +36,26 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
         @if (r.lignes?.length) {
           <div class="table-scroll">
-          <table class="table-role">
-            <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Procédure</th><th>Resp dossier</th><th>Juridiction</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Résultat</th><th>Audiencier</th><th></th></tr>
+          <table class="table-role" #tableRole>
+            <!-- 23/09/2026 — 3e passe : Heure recollée à Date (retour sur la
+                 2e passe, qui la collait à Juridiction — nouvelle demande
+                 explicite de l'utilisateur). 4 colonnes figées désormais
+                 (Date/Heure/Référence/Parties, voir "styles" plus bas). -->
+            <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
-                <td>{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
-                <td>{{ formaterHeure(l.heure) }}</td>
-                <td>
-                  <a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a>
+                <td class="col-date">{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
+                <td class="col-heure">{{ formaterHeure(l.heure) }}</td>
+                <td class="col-ref"><a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }}</a></td>
+                <td class="cell-dossier col-parties">
+                  <!-- 23/09/2026 (5e passe) — retour sur le bloc "c/" centré
+                       entre 2 lignes empilées (4e passe) : jugé trop large
+                       une fois vu en vrai (le "c/" centré forçait chaque
+                       partie sur sa propre ligne pleine largeur, gonflant
+                       la colonne). Texte libre qui suit naturellement
+                       (wrap normal, comme n'importe quel paragraphe) —
+                       coupe où besoin, pas seulement après "c/". -->
+                  <a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_intitule }}</a>
                   @if (libelleStatutPartie(l.instance_statut_partie, l.instance_degre, l.instance_statut_partie_precision); as sp) {
                     <div class="muted" style="font-size:var(--fs-xs)">({{ sp }})</div>
                   }
@@ -55,28 +67,49 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     </div>
                   }
                 </td>
-                <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
-                <td>{{ l.responsable_dossier_code || '—' }}</td>
                 <td>{{ abregeJuridiction(l.juridiction) }}</td>
+                <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
                 <td>{{ libelleTypeAudience(l.type) }}</td>
                 <td>{{ l.motif_dernier_renvoi || '—' }}</td>
                 <td>{{ l.instructions || '—' }}</td>
+                <td>{{ l.responsable_dossier_code || '—' }}</td>
+                <td>{{ l.avocat_code || '—' }}</td>
                 <td>
                   @if (l.resultat) {
                     <span class="tag">{{ l.resultat }}</span>
                     @if (l.motif_renvoi) { <span class="muted"> · {{ l.motif_renvoi }}</span> }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
-                <td>{{ l.avocat_code || '—' }}</td>
                 <td><app-menu-actions [actions]="actionsPourLigne(l)" /></td>
               </tr>
               @if (editionAudienceId() === l.audience_id) {
                 <tr class="edition">
-                  <td colspan="12">
+                  <td colspan="13">
+                    <!-- 23/09/2026 — 3e passe : ordre réaligné sur le nouvel
+                         ordre des colonnes du tableau (Date, Heure,
+                         [Référence/Parties], Juridiction, Procédure, Type
+                         audience, [Motif renvoi], Instructions, [Resp
+                         dossier], Audiencier, [Résultat] — entre crochets :
+                         non éditables ici). Comme avant, Instructions
+                         (col2, pleine largeur) est reléguée en dernier
+                         plutôt qu'à sa place stricte (avant Audiencier),
+                         pour que la grille 2 colonnes se remplisse sans
+                         case vide (Type d'audience/Audiencier resteraient
+                         sinon seuls sur leur ligne). -->
                     <div class="grid2">
                       <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
                       <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
                       <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
+                      <div>
+                        <label>Procédure</label>
+                        <select class="in" [(ngModel)]="editAudience.nature_procedure" name="eaNature">
+                          <option value="">—</option>
+                          @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
+                        </select>
+                      </div>
+                      @if (editAudience.nature_procedure === 'autre') {
+                        <div><label>Préciser</label><input class="in" [(ngModel)]="editAudience.nature_precision" name="eaNaturePrecision" /></div>
+                      }
                       <div>
                         <label>Type d'audience</label>
                         <select class="in" [(ngModel)]="editAudience.type" name="eaType">
@@ -95,16 +128,6 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                           @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
                         </select>
                       </div>
-                      <div>
-                        <label>Procédure</label>
-                        <select class="in" [(ngModel)]="editAudience.nature_procedure" name="eaNature">
-                          <option value="">—</option>
-                          @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
-                        </select>
-                      </div>
-                      @if (editAudience.nature_procedure === 'autre') {
-                        <div><label>Préciser</label><input class="in" [(ngModel)]="editAudience.nature_precision" name="eaNaturePrecision" /></div>
-                      }
                       <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
                     </div>
                     <div class="actions">
@@ -293,49 +316,68 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}
     tr.facturation-alerte td{background:#fdf6e8}
-    /* 21/09/2026 — centrage général demandé par l'utilisateur pour une
-       meilleure présentation, sauf les 4 colonnes à texte long (Dossier,
-       Procédure, Motif dernier renvoi, Instructions) qui restent alignées
-       à gauche — centrer plusieurs lignes de texte nuirait à la lecture.
-       Scopé à cette table précise (.table-role) : ne touche pas le
-       tableau Diligences plus bas dans cet écran, ni aucun autre écran.
-       ⚠️ 1er essai en "table-layout:fixed" + largeurs en % : les en-têtes
-       courts ("Resp dossier", "Audiencier"...) cassaient au milieu d'un
-       mot dans les colonnes étroites, illisible. 2e essai en layout "auto"
-       + "white-space:nowrap" sur toutes les colonnes étroites : Juridiction
-       gonflait à plus de 200px dès qu'un nom réel (non abrégeable, ex.
-       "Tribunal de Commerce de Bamako") ne tenait pas sur une ligne —
-       retirée du groupe "nowrap" ci-dessous, elle peut de nouveau passer
-       sur 2 lignes comme les autres colonnes sans contrainte. Les 4
-       colonnes larges reçoivent en plus un "min-width" explicite : sans
-       lui, le layout auto ne leur donnait pas mécaniquement plus de place
-       qu'aux autres malgré un contenu plus long.
-       ⚠️ 3e essai signalé par l'utilisateur comme « très mal affiché,
-       colonnes qui sortent du cadre » : avec 12 colonnes (6 "nowrap" + 4
-       "min-width") la largeur minimale totale de la table dépasse ce que
-       certaines fenêtres/écrans peuvent afficher — table-layout:auto ne
-       la comprime pas en dessous de ce plancher, elle déborde alors
-       visuellement du panneau au lieu de rétrécir. Corrigé en enveloppant
-       la table dans ".table-scroll" (overflow-x:auto, déjà utilisé sur la
-       Matrice de permissions le 11/09/2026) — le tableau reste maintenant
-       toujours contenu dans le panneau, quitte à défiler horizontalement
-       sur un écran étroit, plutôt que de casser la mise en page. Largeurs
-       minimales aussi réduites (140/90/90/110 au lieu de 170/110/110/130)
-       pour que le défilement horizontal reste l'exception, pas la règle,
-       sur un écran de bureau standard. */
+    /* 23/09/2026 — 2e passe, sur nouvelle demande de l'utilisateur : Dossier
+       (référence + intitulé combinés) scindé en 2 colonnes figées séparées
+       — Référence (courte, nowrap, "incompressible" comme Date) et Parties
+       (client/partie adverse empilés avec "c/" centré, WRAP autorisé —
+       n'a plus besoin d'une seule ligne, cf. ".col-parties" plus bas).
+       Corrige au passage le vrai défaut de la 1re passe : forcer Dossier en
+       nowrap pour le figer pouvait rendre le bloc figé démesurément large
+       sur un intitulé long.
+       3e passe (23/09/2026) : Heure revient se coller à Date (2e colonne
+       figée) — la 2e passe l'avait recollée à Juridiction sur demande
+       explicite de l'utilisateur, qui est finalement revenu dessus. 4
+       colonnes figées désormais (Date/Heure/Référence/Parties,
+       position:sticky, même technique que la colonne Action de la
+       Matrice le 11/09/2026), le reste (Juridiction→Résultat, 8
+       colonnes) défile horizontalement dans ".table-scroll", chacune sur
+       une seule ligne (nowrap, largeur naturelle). */
+    .cell-dossier > *{margin-top:5px}
+    .cell-dossier > *:first-child{margin-top:0}
     table.table-role th,table.table-role td{text-align:center}
-    table.table-role th:nth-child(1),table.table-role td:nth-child(1),
-    table.table-role th:nth-child(2),table.table-role td:nth-child(2),
-    table.table-role th:nth-child(5),table.table-role td:nth-child(5),
-    table.table-role th:nth-child(7),table.table-role td:nth-child(7),
-    table.table-role th:nth-child(10),table.table-role td:nth-child(10),
-    table.table-role th:nth-child(11),table.table-role td:nth-child(11){white-space:nowrap}
-    table.table-role th:nth-child(3),table.table-role td:nth-child(3){min-width:140px}
-    table.table-role th:nth-child(4),table.table-role td:nth-child(4){min-width:90px}
-    table.table-role th:nth-child(8),table.table-role td:nth-child(8){min-width:90px}
-    table.table-role th:nth-child(9),table.table-role td:nth-child(9){min-width:110px}
-    table.table-role th:nth-child(3),table.table-role td:nth-child(3),
-    table.table-role th:nth-child(4),table.table-role td:nth-child(4),
+    /* ⚠️ Colonnes figées par CLASSE (.col-date/.col-heure/.col-ref/
+       .col-parties), jamais par ":nth-child" : la ligne d'édition
+       (tr.edition) n'a qu'une seule cellule ("colspan=13"), qui est
+       structurellement son 1er enfant — un sélecteur "td:nth-child(1)"
+       la ciblerait aussi et lui collerait à tort "position:sticky"/
+       largeur fixe (même piège déjà rencontré sur la colonne Action de
+       la Matrice le 11/09/2026, ici évité dès le départ plutôt que
+       corrigé après coup). Les colonnes défilantes (Juridiction→Résultat)
+       restent en ":nth-child", sans risque : cette ligne d'édition n'a
+       jamais de 5e cellule ou plus. */
+    /* ⚠️ "border-collapse:collapse" (hérité du global styles.css) rend
+       "position:sticky" sur des cellules de tableau peu fiable dans
+       Chromium — "separate" + "border-spacing:0" scopé à cette seule
+       table, sans changement visuel notable (bordures 1px déjà fines).
+       ⚠️ Piège plus sérieux (1re passe, toujours valable ici) : des
+       offsets "left" codés en dur supposaient qu'un "width" en px sur une
+       colonne produirait exactement la largeur rendue — faux, notamment
+       pour une colonne "compressible" (wrap autorisé, comme Parties ici)
+       face à des colonnes voisines nowrap qui, elles, ne cèdent jamais
+       de largeur. Les offsets "left" restent donc calculés en JS après
+       rendu ("recalculerColonnesFigees()", variables CSS "--left-heure"/
+       "--left-ref"/"--left-parties") — robuste quel que soit le résultat
+       réel de la négociation de largeurs entre colonnes. Parties reçoit
+       en plus un "min-width" (pas un "width" simple, qui avait échoué
+       pareil en 1re passe) : un "min-width" est un plancher réellement
+       respecté par le moteur de rendu, contrairement à "width" qui n'est
+       qu'une suggestion pour l'algorithme de layout auto des tableaux. */
+    table.table-role{border-collapse:separate;border-spacing:0}
+    table.table-role .col-date,table.table-role .col-heure,table.table-role .col-ref{white-space:nowrap}
+    table.table-role .col-ref,table.table-role .col-parties{text-align:left}
+    table.table-role .col-parties{min-width:150px;max-width:280px}
+    table.table-role .col-date,table.table-role .col-heure,table.table-role .col-ref,table.table-role .col-parties{position:sticky;background:#fff}
+    table.table-role .col-date{left:0}
+    table.table-role .col-heure{left:var(--left-heure, 90px)}
+    table.table-role .col-ref{left:var(--left-ref, 140px)}
+    table.table-role .col-parties{left:var(--left-parties, 270px);box-shadow:2px 0 4px rgba(16,24,40,.06)}
+    table.table-role th.col-date,table.table-role th.col-heure,table.table-role th.col-ref,table.table-role th.col-parties{z-index:3}
+    table.table-role td.col-date,table.table-role td.col-heure,table.table-role td.col-ref,table.table-role td.col-parties{z-index:1}
+    tr.urgent td.col-date,tr.urgent td.col-heure,tr.urgent td.col-ref,tr.urgent td.col-parties{background:#fff5f4}
+    tr.facturation-alerte td.col-date,tr.facturation-alerte td.col-heure,tr.facturation-alerte td.col-ref,tr.facturation-alerte td.col-parties{background:#fdf6e8}
+    table.table-role th:nth-child(n+5):nth-child(-n+12),
+    table.table-role td:nth-child(n+5):nth-child(-n+12){white-space:nowrap}
+    table.table-role th:nth-child(6),table.table-role td:nth-child(6),
     table.table-role th:nth-child(8),table.table-role td:nth-child(8),
     table.table-role th:nth-child(9),table.table-role td:nth-child(9){text-align:left}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
@@ -355,6 +397,7 @@ export class RoleAudienceComponent implements OnInit {
   readonly ligneRetour = signal<any | null>(null);
   readonly erreur = signal('');
   @ViewChild('panneauRetour') panneauRetour?: ElementRef<HTMLElement>;
+  @ViewChild('tableRole') tableRoleEl?: ElementRef<HTMLTableElement>;
 
   // 21/09/2026 — gap comblé : édition d'une audience déjà inscrite au rôle
   // (date/heure/juridiction/type/avocat), jamais le résultat (voir
@@ -410,6 +453,23 @@ export class RoleAudienceComponent implements OnInit {
     return this.naturesProcedure().find((n) => n.code === code)?.libelle ?? code;
   }
 
+  // 23/09/2026 — découpage de l'intitulé du dossier ("Client c/ Partie
+  // adverse", convention du cabinet depuis le 31/08/2026) pour la colonne
+  // Parties du Rôle d'audience — pas de champ structuré côté API, simple
+  // partage sur le séparateur littéral. Un dossier Conseil (pas de "c/")
+  // retombe sur une seule ligne via partiesGauche() seul.
+  partiesGauche(intitule: string | null | undefined): string {
+    if (!intitule) return '—';
+    const i = intitule.indexOf(' c/ ');
+    return i === -1 ? intitule : intitule.slice(0, i);
+  }
+
+  partiesDroite(intitule: string | null | undefined): string | null {
+    if (!intitule) return null;
+    const i = intitule.indexOf(' c/ ');
+    return i === -1 ? null : intitule.slice(i + 4);
+  }
+
   // 21/09/2026 — abrégé d'affichage uniquement (jamais écrit en base, la
   // saisie reste en texte libre) : ne couvre que le motif décrit par
   // l'utilisateur (« TGI CI, CII... TGI Kati ») — toute autre juridiction
@@ -462,7 +522,37 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   charger(): void {
-    this.api.roleAudience(this.semaine).subscribe({ next: (r) => this.role.set(r) });
+    this.api.roleAudience(this.semaine).subscribe({
+      next: (r) => {
+        this.role.set(r);
+        // 23/09/2026 — laisser le DOM peindre les nouvelles lignes avant de
+        // mesurer (setTimeout, même patron que le défilement automatique
+        // du 13/09/2026) : sans ce délai, la table pourrait ne pas encore
+        // exister au moment de la lecture.
+        setTimeout(() => this.recalculerColonnesFigees());
+      },
+    });
+  }
+
+  // 23/09/2026 — offsets "left" des colonnes figées (Date/Heure/Référence/
+  // Parties) calculés à partir des largeurs RÉELLEMENT rendues (pas de px
+  // codés en dur — voir le commentaire détaillé dans "styles" sur pourquoi
+  // une valeur fixe s'est révélée fausse). Recalculé à chaque chargement de
+  // rôle (changement de semaine compris) puisque le contenu — donc les
+  // largeurs — change.
+  recalculerColonnesFigees(): void {
+    const table = this.tableRoleEl?.nativeElement;
+    if (!table) return;
+    const dateCell = table.querySelector('th.col-date') as HTMLElement | null;
+    const heureCell = table.querySelector('th.col-heure') as HTMLElement | null;
+    const refCell = table.querySelector('th.col-ref') as HTMLElement | null;
+    if (!dateCell || !heureCell || !refCell) return;
+    const largeurDate = dateCell.getBoundingClientRect().width;
+    const largeurHeure = heureCell.getBoundingClientRect().width;
+    const largeurRef = refCell.getBoundingClientRect().width;
+    table.style.setProperty('--left-heure', `${largeurDate}px`);
+    table.style.setProperty('--left-ref', `${largeurDate + largeurHeure}px`);
+    table.style.setProperty('--left-parties', `${largeurDate + largeurHeure + largeurRef}px`);
   }
 
   chargerDiligences(): void {
@@ -633,13 +723,60 @@ export class RoleAudienceComponent implements OnInit {
     return String(v ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // 23/09/2026 — fusion demandée par l'utilisateur pour que l'impression
+  // tienne sur une seule ligne par audience : Motif dernier renvoi +
+  // Instructions (texte libre tous les deux, même nature — « notes sur
+  // cette audience ») regroupés sous un même intitulé « Notes (audience
+  // du jour) ». Type audience reste volontairement sa PROPRE colonne
+  // (court, catégoriel, utile à balayer d'un coup d'œil) — pas fusionné,
+  // contrairement à la proposition initiale de l'utilisateur, sur mon
+  // conseil qu'il a retenu. Chaque ligne n'apparaît que si renseignée
+  // (pas de "—" répété deux fois quand les deux champs sont vides).
+  private notesAudienceHtml(l: any): string {
+    const lignes: string[] = [];
+    if (l.motif_dernier_renvoi) lignes.push(`<div><b>Motif dernier renvoi :</b> ${this.echapper(l.motif_dernier_renvoi)}</div>`);
+    if (l.instructions) lignes.push(`<div><b>Instructions :</b> ${this.echapper(l.instructions)}</div>`);
+    return lignes.length ? lignes.join('') : '—';
+  }
+
+  // 23/09/2026 (4e passe) — sur retour explicite de l'utilisateur, la
+  // Référence rejoint de nouveau la cellule Parties à l'impression
+  // uniquement (l'écran, lui, garde 2 colonnes séparées — inchangé) :
+  // parties en gras (+ "c/" centré s'il y en a 2), référence en petit
+  // italique en dessous — repli sur le traitement du 21/09/2026, avant la
+  // scission en 2 colonnes de la passe précédente.
+  // 5e passe (23/09/2026) — colonne centrée dans son ensemble (voir la
+  // classe "parties-impr" posée sur la <td> plus bas) + interlignage
+  // resserré entre les 2 parties et le "c/" (voir "styles", ".partie-l"/
+  // ".c-barre") ; mention "(client)" en italique/petit à la suite du nom
+  // de notre client (toujours le "gauche" — convention du cabinet, client
+  // cité en premier, établie le 31/08/2026) pour lever l'ambiguïté sans
+  // supposer que le lecteur connaît cette convention.
+  // 6e passe (23/09/2026) — "(client)" déplacé en suffixe entre
+  // parenthèses (au lieu d'une étiquette en préfixe) ; la référence
+  // (".reference") reçoit plus d'espace au-dessus pour se détacher
+  // visuellement du bloc parties+"c/", qui lui reste resserré.
+  private partiesHtmlImpression(l: any): string {
+    const gauche = this.echapper(this.partiesGauche(l.dossier_intitule));
+    const droite = this.partiesDroite(l.dossier_intitule);
+    const ligneClient = `<div class="partie-l"><b>${gauche}</b> <span class="etq-client">(client)</span></div>`;
+    const parties = droite
+      ? `${ligneClient}<div class="c-barre">c/</div><div class="partie-l"><b>${this.echapper(droite)}</b></div>`
+      : ligneClient;
+    return `${parties}<div class="reference">${this.echapper(l.dossier_numero)}</div>`;
+  }
+
   imprimerRole(): void {
     const r = this.role();
     if (!r?.lignes?.length) return;
-    // 21/09/2026 : les lignes d'un même jour partagent désormais une seule
-    // cellule Date (rowspan), précédée du nom du jour — reprend la mise en
-    // forme du rôle papier du cabinet (fourni en référence par
-    // l'utilisateur, "LUNDI 21/09/26" fusionné sur ses 2 audiences).
+    // 23/09/2026 (4e passe) — retour sur la 3e passe (ligne diviseur pleine
+    // largeur par jour) : l'utilisateur préfère finalement la colonne Date
+    // "à l'ancienne" (en rowspan, une cellule par jour) — MAIS avec Heure
+    // comme colonne autonome collée à Date (une valeur par ligne, jamais
+    // rowspannée : c'est justement ce qui varie d'une audience à l'autre
+    // au sein d'un même jour). 9 colonnes : Date, Heure, Parties (+
+    // référence en italique dessous), Juridiction, Procédure, Type
+    // audience, Notes, Resp dossier, Audiencier.
     // r.lignes est déjà trié par date_prevue côté serveur (ORDER BY dans
     // GET /api/roles-audience), donc les lignes d'un même jour sont déjà
     // consécutives — un simple compteur de span suffit, pas de tri à refaire.
@@ -655,13 +792,12 @@ export class RoleAudienceComponent implements OnInit {
       lignesHtml.push(`<tr>
         ${premiereDuJour ? `<td rowspan="${span}">${this.echapper(this.formaterJour(l.date_prevue))}</td>` : ''}
         <td>${this.echapper(this.formaterHeure(l.heure))}</td>
-        <td><b>${this.echapper(l.dossier_intitule)}</b><br><span class="reference">${this.echapper(l.dossier_numero)}</span></td>
-        <td>${this.echapper(this.libelleNatureProcedure(l.nature_procedure, l.nature_precision))}</td>
-        <td>${this.echapper(l.responsable_dossier_code)}</td>
+        <td class="parties-impr">${this.partiesHtmlImpression(l)}</td>
         <td>${this.echapper(this.abregeJuridiction(l.juridiction))}</td>
+        <td>${this.echapper(this.libelleNatureProcedure(l.nature_procedure, l.nature_precision))}</td>
         <td>${this.echapper(this.libelleTypeAudience(l.type))}</td>
-        <td>${this.echapper(l.motif_dernier_renvoi)}</td>
-        <td>${this.echapper(l.instructions)}</td>
+        <td>${this.notesAudienceHtml(l)}</td>
+        <td>${this.echapper(l.responsable_dossier_code)}</td>
         <td>${this.echapper(l.avocat_code)}</td>
       </tr>`);
     }
@@ -674,23 +810,36 @@ export class RoleAudienceComponent implements OnInit {
       h1{font-size:18px;color:#1F2A44;border-bottom:2px solid #B08D57;padding-bottom:6px}
       .sub{color:#6B7280;font-size:12px;margin:2px 0 16px}
       table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px;table-layout:fixed}
-      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:center;vertical-align:top;overflow-wrap:break-word}
+      /* 23/09/2026 — alignement uniformisé à gauche (constaté "désorganisé"
+         avec le mélange centré/gauche du 21/09/2026), inchangé pour les
+         autres colonnes. Parties reprend le "c/" centré entre client et
+         partie adverse (partiesHtmlImpression()), avec la référence du
+         dossier en petit italique dessous. 5e/6e passes : colonne Parties
+         centrée dans son ensemble (".parties-impr", sur la <td>, pas
+         globalement — les autres colonnes restent à gauche) ; le bloc
+         parties+"c/" reste resserré (".partie-l"/".c-barre", marges
+         réduites au minimum) tandis que la référence (".reference") s'en
+         détache par un espacement plus généreux au-dessus — 2 blocs
+         visuellement distincts plutôt qu'un seul empilement uniforme.
+         "(client)" en italique/petit à la suite du nom, pas en préfixe
+         (".etq-client"). */
+      th,td{border:1px solid #C7CDD6;padding:5px 8px;text-align:left;vertical-align:top;overflow-wrap:break-word}
       th{background:#1F2A44;color:#fff}
-      /* 21/09/2026 — centré par défaut (demande utilisateur), sauf les 4
-         colonnes à texte long qui restent lisibles alignées à gauche. */
-      th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4),
-      th:nth-child(8),td:nth-child(8),th:nth-child(9),td:nth-child(9){text-align:left}
-      .reference{color:#6B7280;font-size:11px;font-style:italic}
+      .parties-impr{text-align:center}
+      .partie-l{line-height:1.2;margin:0}
+      .etq-client{font-size:9px;font-style:italic;color:#6B7280}
+      .c-barre{text-align:center;font-size:10px;color:#6B7280;line-height:1;margin:0}
+      .reference{color:#6B7280;font-size:11px;font-style:italic;margin-top:8px}
     </style></head><body>
     <h1>${this.echapper(this.raisonSociale)} — Rôle d'audience</h1>
     <div class="sub">Semaine du ${this.formaterDate(r.semaine_debut)} au ${this.formaterDate(r.semaine_fin)} — édité le ${new Date().toLocaleString('fr-FR')}</div>
     <table>
       <colgroup>
-        <col style="width:7%"><col style="width:5%"><col style="width:18%"><col style="width:13%">
-        <col style="width:6%"><col style="width:9%"><col style="width:7%"><col style="width:13%">
-        <col style="width:15%"><col style="width:7%">
+        <col style="width:8%"><col style="width:6%"><col style="width:25%"><col style="width:10%">
+        <col style="width:11%"><col style="width:8%"><col style="width:21%">
+        <col style="width:6%"><col style="width:5%">
       </colgroup>
-      <tr><th>Date</th><th>Heure</th><th>Dossier</th><th>Procédure</th><th>Resp dossier</th><th>Juridiction</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Audiencier</th></tr>
+      <tr><th>Date</th><th>Heure</th><th>Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Notes (audience du jour)</th><th>Resp dossier</th><th>Audiencier</th></tr>
       ${lignes}
     </table>
     </body></html>`);
