@@ -51,6 +51,12 @@ export interface DashboardData {
   // si factures.consulter absent.
   dossiers_non_rentables: number | null;
   non_rentables_apercu: { dossier_id: string; numero: string; intitule: string; marge_ht: number; marge_pct: number }[];
+  // "Retours en attente" (24/09/2026) — audiences + diligences dont la date
+  // est passée sans résultat/statut définitif (question directe de
+  // l'utilisateur : « quelle solution existe-t-il lorsqu'une audience n'a
+  // pas eu de retour »). `null` si le rôle n'a pas audiences.consulter.
+  retours_manquants_n: number | null;
+  retours_manquants_apercu: { type: 'audience' | 'diligence'; id: string; dossier_id: string | null; dossier_numero: string | null; date: string; libelle: string | null }[];
 }
 
 export interface Dossier {
@@ -523,7 +529,7 @@ export class ApiService {
   }
 
   // Registre du courrier
-  courriers(filtres: { sens?: string; dossier_id?: string; statut?: string; q?: string } = {}): Observable<any[]> {
+  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';

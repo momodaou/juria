@@ -44,6 +44,9 @@ interface TuileConfig { titre: string; cols: Colonne[]; sorts: TriSpec[]; }
 
 const PERMISSION_TUILE: Record<string, string | null> = {
   actifs: null, urgents: null, audiences: null, impayes: 'factures.consulter',
+  // "Retours en attente" (24/09/2026) — même permission que le module Rôle
+  // d'audience, qui porte à la fois les audiences et les diligences.
+  retours_manquants: 'audiences.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
   // Discipline de facturation, Bloc B (18/09/2026) — même permission que
@@ -120,6 +123,24 @@ const CONFIG: Record<string, TuileConfig> = {
       { key: 'date_echeance', label: 'Date', format: 'date' },
     ],
     sorts: [{ label: 'Date (la plus proche)', key: 'date_echeance', dir: 'asc' }],
+  },
+  // "Retours en attente" (24/09/2026) — mélange volontairement audiences et
+  // diligences (même risque d'omission, même e-mail de relance quotidien) :
+  // "detail" porte la juridiction (audience) ou le lieu/type (diligence).
+  retours_manquants: {
+    titre: 'Retours en attente',
+    cols: [
+      { key: 'type', label: 'Type' },
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'dossier_intitule', label: 'Intitulé' },
+      { key: 'date', label: 'Date', format: 'date' },
+      { key: 'detail', label: 'Détail' },
+      { key: 'jours_retard', label: 'Jours de retard', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours de retard (le plus urgent)', key: 'jours_retard', dir: 'desc' },
+      { label: 'Date (la plus ancienne)', key: 'date', dir: 'asc' },
+    ],
   },
   impayes: {
     titre: 'Impayés',
@@ -351,6 +372,31 @@ const CONFIG: Record<string, TuileConfig> = {
           }
           @if (peutVoirDetail('audiences')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.audiences_semaine }}</span> }
         </button>
+        @if (d.retours_manquants_n !== null) {
+          <!-- 24/09/2026 — gap signalé par l'utilisateur : aucun garde-fou
+               contre l'omission d'un retour d'audience/diligence. tier-critique
+               (comme "urgents") : une audience tenue sans retour saisi est un
+               vrai risque procédural, pas une simple vigilance. -->
+          <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'retours_manquants'" (click)="clic('retours_manquants')">
+            <span class="tico" [innerHTML]="icons['audiences']"></span>
+            <span class="n">{{ d.retours_manquants_n }}</span><span class="l">Retours en attente</span>
+            @if (d.retours_manquants_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.retours_manquants_apercu; track l.id) {
+                  <div class="mini-ligne">
+                    @if (l.dossier_id) {
+                      <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.dossier_numero }} — {{ l.libelle }}</a>
+                    } @else {
+                      <span class="principal">{{ l.libelle }}</span>
+                    }
+                    <span class="secondaire">{{ l.date | date:'dd/MM' }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.retours_manquants_n }}</span>
+          </button>
+        }
         <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
           <span class="tico" [innerHTML]="icons['dormants']"></span>
           <span class="n">{{ d.dossiers_dormants }}</span><span class="l">Dossiers dormants</span>

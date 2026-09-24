@@ -69,12 +69,15 @@ async function appliquerDeclencheurs(client, courrier, utilisateurId) {
   return { type: "tache", ...ins.rows[0] };
 }
 
-// GET /api/courriers?sens=&dossier_id=&statut=&q=
+// GET /api/courriers?sens=&type=&dossier_id=&statut=&q=
 router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
-  const { sens, dossier_id, statut, q } = req.query;
+  const { sens, type, dossier_id, statut, q } = req.query;
   const params = [];
   const clauses = [];
   if (sens) { params.push(sens); clauses.push(`c.sens = $${params.length}`); }
+  // 24/09/2026 — gap signalé par l'utilisateur : aucun filtre par type de
+  // courrier, seulement par sens + recherche libre.
+  if (type) { params.push(type); clauses.push(`c.type = $${params.length}`); }
   if (dossier_id) { params.push(dossier_id); clauses.push(`c.dossier_id = $${params.length}`); }
   if (statut) { params.push(statut); clauses.push(`c.statut = $${params.length}`); }
   if (q) { params.push(`%${q}%`); clauses.push(`(c.correspondant ILIKE $${params.length} OR c.objet ILIKE $${params.length} OR c.reference ILIKE $${params.length})`); }

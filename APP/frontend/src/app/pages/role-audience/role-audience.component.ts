@@ -57,7 +57,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                  (Date/Heure/Référence/Parties, voir "styles" plus bas). -->
             <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th>Suite programmée</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
-              <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
+              <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation" [class.retour-en-retard]="estEnRetardSansRetour(l)">
                 <td class="col-date">{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
                 <td class="col-heure">{{ formaterHeure(l.heure) }}</td>
                 <td class="col-ref"><a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }}</a></td>
@@ -276,7 +276,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <table>
           <tr><th>Date</th><th>Heure</th><th>Type</th><th>Dossier</th><th>Membre</th><th>Lieu</th><th>Objet</th><th></th></tr>
           @for (dl of diligences(); track dl.id) {
-            <tr>
+            <tr [class.retour-en-retard]="estDiligenceEnRetard(dl)">
               <td>{{ dl.date_diligence | date:'dd/MM/yyyy' }}</td>
               <td>{{ dl.heure || '—' }}</td>
               <td>{{ libelleTypeDiligence(dl.type_diligence) }}@if (dl.type_diligence === 'autre' && dl.type_precision) { : {{ dl.type_precision }} }</td>
@@ -408,6 +408,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
        pour se distinguer d'une ligne normale sans reprendre le ton d'alerte
        (ambre) déjà utilisé par .facturation-alerte. */
     tr.apercu-suite td{background:#f6f8fb;text-align:left}
+    /* 24/09/2026 — surlignage "retour manquant" (audience/diligence dont la
+       date est passée sans résultat/statut). Rouge assez marqué (pas le
+       ton ambre déjà pris par .facturation-alerte) : c'est un risque
+       procédural, pas une simple vigilance financière. */
+    tr.retour-en-retard td{background:#fdeceb}
     /* 23/09/2026 — 2e passe, sur nouvelle demande de l'utilisateur : Dossier
        (référence + intitulé combinés) scindé en 2 colonnes figées séparées
        — Référence (courte, nowrap, "incompressible" comme Date) et Parties
@@ -530,6 +535,26 @@ export class RoleAudienceComponent implements OnInit {
 
   libelleStatut(s: string): string {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
+  }
+
+  // 24/09/2026 — gap signalé par l'utilisateur (« quelle solution existe-t-il
+  // lorsqu'une audience n'a pas eu de retour ») : surlignage direct sur la
+  // ligne dès que sa date est déjà passée sans résultat saisi — complète la
+  // tuile Tableau de bord (visibilité proactive) et l'e-mail de relance
+  // (escalade) par un repère immédiat quand on regarde une semaine passée.
+  // Comparaison sur la partie date seule (YYYY-MM-DD), pas d'objet Date
+  // complet, pour éviter tout piège de fuseau horaire.
+  estEnRetardSansRetour(l: any): boolean {
+    if (l.resultat || !l.date_prevue) return false;
+    return new Date(l.date_prevue).toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10);
+  }
+
+  // Même logique pour les diligences — la liste ci-dessous est déjà
+  // filtrée à statut "a_faire" (chargerDiligences()), il suffit donc de
+  // comparer la date.
+  estDiligenceEnRetard(dl: any): boolean {
+    if (!dl.date_diligence) return false;
+    return new Date(dl.date_diligence).toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10);
   }
 
   // 21/09/2026 — a.heure (TIME Postgres) revient sérialisé avec les secondes

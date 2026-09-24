@@ -18,6 +18,7 @@ const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
 const { executerJobAlertesHonoraires } = require("../jobs/alertesHonoraires");
 const { executerJobMessagerieNotifications } = require("../jobs/messagerieNotifications");
 const { executerJobAlertesFacturationDiscipline } = require("../jobs/alertesFacturationDiscipline");
+const { executerJobAlertesRetoursManquants } = require("../jobs/alertesRetoursManquants");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -68,6 +69,18 @@ router.post("/messagerie-notifications", requireSchedulerSecret, async (req, res
 router.post("/alertes-facturation-discipline", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobAlertesFacturationDiscipline(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 24/09/2026 — audiences/diligences dont la date est passée sans retour
+// saisi. Cadence recommandée : quotidienne (fenêtre glissante de 7 jours,
+// pas de colonne de suivi côté schéma — voir jobs/alertesRetoursManquants.js).
+router.post("/alertes-retours-manquants", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobAlertesRetoursManquants(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

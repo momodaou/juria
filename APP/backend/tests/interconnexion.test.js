@@ -56,6 +56,24 @@ describe("Courrier -> GED (courriers.document_id)", () => {
   });
 });
 
+// 24/09/2026 — gap signalé par l'utilisateur (« faut-il prévoir une ligne
+// 'type de courrier' ? ») : le champ existait déjà (formulaire + colonne),
+// mais aucun filtre par type — comblé ici.
+describe("GET /api/courriers?type= — filtre par type de courrier", () => {
+  test("ne renvoie que les courriers du type demandé", async () => {
+    const dossierId = await creerClientEtDossier();
+    const lettre = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Correspondant lettre", dossier_id: dossierId });
+    const decision = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "decision_justice", correspondant: "Correspondant décision", dossier_id: dossierId });
+
+    const filtre = await request(app).get(`/api/courriers?dossier_id=${dossierId}&type=decision_justice`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(filtre.body.some((c) => c.id === decision.body.id)).toBe(true);
+    expect(filtre.body.some((c) => c.id === lettre.body.id)).toBe(false);
+  });
+});
+
 describe("Diligences (planning des rendez-vous/démarches de terrain)", () => {
   test("création sans dossier acceptée (formalité générale)", async () => {
     const res = await request(app).post("/api/diligences").set("Authorization", `Bearer ${token}`)

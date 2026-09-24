@@ -90,6 +90,13 @@ router.get("/", async (req, res) => {
     // disparaît en silence.
     const voitFactures = await estAutorise(req.user.role, "factures.consulter");
     const voitCabinet = await estAutorise(req.user.role, "cabinet.consulter");
+    // 24/09/2026 — gap signalé par l'utilisateur (« quelle solution existe-t-il
+    // lorsqu'une audience n'a pas eu de retour ») : aucun mécanisme ne
+    // repérait jusqu'ici une audience/diligence dont la date est déjà
+    // passée sans qu'un résultat ait été saisi (omission). Même permission
+    // que le module qui porte ces deux tables (audiences.consulter — Rôle
+    // d'audience gère aussi bien les audiences que les diligences).
+    const voitAudiencesModule = await estAutorise(req.user.role, "audiences.consulter");
     const impayes = voitFactures
       ? await one(
           `SELECT COALESCE(SUM(montant_ttc),0) AS total
@@ -123,6 +130,32 @@ router.get("/", async (req, res) => {
     const conges = voitCabinet
       ? await one(`SELECT count(*) AS n FROM conges WHERE statut = 'demande'`)
       : null;
+    // Retours en attente (audiences + diligences dont la date est déjà
+    // passée sans résultat/statut définitif) — combinées dans une seule
+    // tuile, pas deux, parce que le risque (omission) et l'e-mail
+    // d'escalade quotidien les traitent ensemble.
+    let retoursManquantsN = null, retoursManquantsApercu = [];
+    if (voitAudiencesModule) {
+      const rm = await one(`
+        SELECT
+          (SELECT count(*) FROM audiences a WHERE a.resultat IS NULL AND a.date_audience < current_date)
+          + (SELECT count(*) FROM diligences dl WHERE dl.statut = 'a_faire' AND dl.date_diligence < current_date) AS n
+      `);
+      retoursManquantsN = Number(rm.n);
+      const rma = await pool.query(`
+        SELECT 'audience' AS type, a.id, a.dossier_id, d.numero AS dossier_numero,
+               a.date_audience AS date, d.intitule AS libelle
+        FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE a.resultat IS NULL AND a.date_audience < current_date
+        UNION ALL
+        SELECT 'diligence' AS type, dl.id, dl.dossier_id, d.numero AS dossier_numero,
+               dl.date_diligence AS date, COALESCE(dl.objet, dl.type_diligence) AS libelle
+        FROM diligences dl LEFT JOIN dossiers d ON d.id = dl.dossier_id
+        WHERE dl.statut = 'a_faire' AND dl.date_diligence < current_date
+        ORDER BY date ASC LIMIT 2
+      `);
+      retoursManquantsApercu = rma.rows;
+    }
     // Dossiers dormants : aucun mouvement (pièce, facture, événement,
     // communication, temps) depuis 30 jours — public, aucune donnée
     // financière ni RH, juste un signal de suivi opérationnel.
@@ -419,6 +452,8 @@ router.get("/", async (req, res) => {
       taches_urgentes_apercu: tachesUrgentesApercu,
       dossiers_non_rentables: dossiersNonRentablesN,
       non_rentables_apercu: nonRentablesApercu,
+      retours_manquants_n: retoursManquantsN,
+      retours_manquants_apercu: retoursManquantsApercu,
       recettes_mois: recettesMois,
       depenses_mois: depensesMois,
       resultat_mois: resultatMois,
@@ -725,6 +760,28 @@ router.get("/detail/:type", async (req, res) => {
              AND (t.priorite = 'urgente' OR (t.echeance IS NOT NULL AND t.echeance < current_date))
            ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`
         );
+        return res.json(rows);
+      }
+      // 24/09/2026 — "Retours en attente" : audiences + diligences dont la
+      // date est déjà passée sans résultat/statut définitif (voir la note
+      // sur la tuile agrégée plus haut dans ce fichier).
+      case "retours_manquants": {
+        if (!(await estAutorise(req.user.role, "audiences.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(`
+          SELECT 'audience' AS type, a.id, a.dossier_id, d.numero AS dossier_numero, d.intitule AS dossier_intitule,
+                 a.date_audience AS date, a.juridiction AS detail, (current_date - a.date_audience) AS jours_retard
+          FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+          WHERE a.resultat IS NULL AND a.date_audience < current_date
+          UNION ALL
+          SELECT 'diligence' AS type, dl.id, dl.dossier_id, d.numero AS dossier_numero, d.intitule AS dossier_intitule,
+                 dl.date_diligence AS date, COALESCE(dl.lieu, dl.type_diligence) AS detail,
+                 (current_date - dl.date_diligence) AS jours_retard
+          FROM diligences dl LEFT JOIN dossiers d ON d.id = dl.dossier_id
+          WHERE dl.statut = 'a_faire' AND dl.date_diligence < current_date
+          ORDER BY date ASC LIMIT 300
+        `);
         return res.json(rows);
       }
       case "non_rentables": {

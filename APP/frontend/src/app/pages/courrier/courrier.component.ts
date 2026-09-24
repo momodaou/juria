@@ -113,6 +113,21 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <option value="arrivee">Arrivée</option>
           <option value="depart">Départ</option>
         </select>
+        <!-- 24/09/2026 — gap signalé par l'utilisateur : aucun filtre par
+             type de courrier jusqu'ici (seulement sens + recherche libre). -->
+        <select class="in filtre" [(ngModel)]="filtreType" (ngModelChange)="charger()">
+          <option value="">Tous types</option>
+          <option value="lettre">Lettre</option>
+          <option value="assignation">Assignation</option>
+          <option value="convocation">Convocation</option>
+          <option value="acte_huissier">Acte d'huissier</option>
+          <option value="acte_notaire">Acte de notaire</option>
+          <option value="decision_justice">Décision de justice</option>
+          <option value="conclusions">Conclusions</option>
+          <option value="courrier_officiel">Courrier officiel</option>
+          <option value="administratif">Administratif</option>
+          <option value="autre">Autre</option>
+        </select>
         <input class="search" placeholder="Rechercher (référence, correspondant, objet)…"
                [(ngModel)]="recherche" (ngModelChange)="charger()" />
       </div>
@@ -123,7 +138,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <tr>
               <td>{{ c.reference }}</td>
               <td><span class="tag" [class.ok]="c.sens === 'arrivee'">{{ c.sens === 'arrivee' ? 'Arrivée' : 'Départ' }}</span></td>
-              <td>{{ c.type }}</td>
+              <td>{{ libelleType(c.type) }}</td>
               <td>{{ c.date_courrier | date:'dd/MM/yyyy' }}</td>
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
@@ -191,6 +206,7 @@ export class CourrierComponent implements OnInit {
 
   recherche = '';
   filtreSens = '';
+  filtreType = '';
   dossierRecherche = '';
   dossierLabel = '';
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
@@ -205,7 +221,7 @@ export class CourrierComponent implements OnInit {
 
   charger(): void {
     const dossierId = this.filtreDossierId();
-    this.api.courriers({ sens: this.filtreSens, q: this.recherche, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (c) => this.courriers.set(c) });
+    this.api.courriers({ sens: this.filtreSens, type: this.filtreType, q: this.recherche, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (c) => this.courriers.set(c) });
   }
 
   rechercherDossiers(): void {
@@ -224,6 +240,19 @@ export class CourrierComponent implements OnInit {
   viderDossier(): void {
     this.form.dossier_id = null;
     this.dossierLabel = '';
+  }
+
+  // 24/09/2026 — gap signalé par l'utilisateur : la colonne Type affichait
+  // le code ENUM brut ("acte_huissier") au lieu d'un libellé français,
+  // contrairement à la colonne Sens juste à côté (déjà traduite). Mêmes
+  // intitulés que le <select> de création/filtre ci-dessus.
+  libelleType(code: string): string {
+    return ({
+      lettre: 'Lettre', assignation: 'Assignation', convocation: 'Convocation',
+      acte_huissier: "Acte d'huissier", acte_notaire: 'Acte de notaire',
+      decision_justice: 'Décision de justice', conclusions: 'Conclusions',
+      courrier_officiel: 'Courrier officiel', administratif: 'Administratif', autre: 'Autre',
+    } as Record<string, string>)[code] ?? code;
   }
 
   libelleDeclenchement(d: any): string {
