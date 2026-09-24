@@ -34,7 +34,16 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
   const semaine = lundiDeSemaine(req.query.semaine || new Date().toISOString().slice(0, 10));
   try {
     const role = await pool.query("SELECT * FROM roles_audience WHERE semaine_debut = $1", [semaine]);
-    if (!role.rows[0]) return res.json({ semaine_debut: semaine, statut: null, lignes: [] });
+    if (!role.rows[0]) {
+      // 24/09/2026 — gap signalé par l'utilisateur (« l'en-tête ne délimite
+      // pas la semaine, X au [rien] ») : sur une semaine encore vide (aucune
+      // ligne `roles_audience` créée), cette réponse omettait `semaine_fin`
+      // — calculée ici comme `trouverOuCreerRole()` le fait déjà pour une
+      // semaine qui a une ligne (lundi + 6 jours).
+      const fin = new Date(semaine + "T00:00:00Z");
+      fin.setUTCDate(fin.getUTCDate() + 6);
+      return res.json({ semaine_debut: semaine, semaine_fin: fin.toISOString().slice(0, 10), statut: null, lignes: [] });
+    }
 
     const lignes = await pool.query(
       `SELECT l.id, l.date_prevue, l.juridiction, l.type, l.avocat_id, d.numero AS dossier_numero,
@@ -46,6 +55,9 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               a.nature_procedure, a.nature_precision,
               a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
               a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
+              suite.date_audience AS suite_date, suite.heure AS suite_heure,
+              suite.juridiction AS suite_juridiction, suite.type AS suite_type,
+              suite.instructions AS suite_instructions, sa.code AS suite_avocat_code,
               ${SELECT_STATUT_FACTURATION},
               ${SELECT_INSTANCE_ACTUELLE}
        FROM role_audience_lignes l
@@ -55,6 +67,12 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
        LEFT JOIN audiences a ON a.id = l.audience_id
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
        LEFT JOIN motifs_renvoi mrd ON mrd.id = a.dernier_motif_id
+       -- 24/09/2026 — « Suite programmée » (aperçu inline, gap signalé par
+       -- l'utilisateur) : l'audience déjà chaînée par un retour (renvoi OU
+       -- mise en délibéré avec date de prononcé) est jointe directement ici
+       -- pour affichage sur place, sans changer de semaine.
+       LEFT JOIN audiences suite ON suite.audience_prec_id = a.id
+       LEFT JOIN utilisateurs sa ON sa.id = suite.avocat_id
        ${JOIN_STATUT_FACTURATION}
        ${JOIN_INSTANCE_ACTUELLE}
        WHERE l.role_id = $1
@@ -222,7 +240,80 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
   }
 });
 
-// POST /api/roles-audience/audiences/:id/retour
+// Crée OU DÉPLACE l'audience "suivante" chaînée à `audienceOriginale`
+// (renvoi) sur `prochaineDate` — 24/09/2026, extrait de l'ancien corps de
+// POST /retour pour être réutilisé par la correction (PUT /retour
+// ci-dessous) sans jamais dupliquer l'audience suivante déjà créée : si
+// elle existe (audience_prec_id = audienceOriginale.id), on la DÉPLACE
+// (nouvelle date + rôle de la semaine cible, recréé si besoin) plutôt que
+// d'en recréer une deuxième.
+async function synchroniserProchaineAudience(client, audienceOriginale, prochaineDate, creePar) {
+  const role = await trouverOuCreerRole(client, lundiDeSemaine(prochaineDate), creePar);
+  const existante = await client.query(
+    `SELECT a.id, l.id AS ligne_id FROM audiences a
+     LEFT JOIN role_audience_lignes l ON l.audience_id = a.id
+     WHERE a.audience_prec_id = $1`,
+    [audienceOriginale.id]
+  );
+  if (existante.rows[0]) {
+    const a2 = existante.rows[0];
+    await client.query(`UPDATE audiences SET date_audience = $1 WHERE id = $2`, [prochaineDate, a2.id]);
+    if (a2.ligne_id) {
+      await client.query(
+        `UPDATE role_audience_lignes SET role_id = $1, date_prevue = $2 WHERE id = $3`,
+        [role.id, prochaineDate, a2.ligne_id]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [role.id, a2.id, audienceOriginale.dossier_id, prochaineDate, audienceOriginale.juridiction, audienceOriginale.type, audienceOriginale.avocat_id]
+      );
+    }
+    return { role_id: role.id, ligne_id: a2.ligne_id, audience_id: a2.id, deplacee: true };
+  }
+
+  // 21/09/2026 — chaînage vers l'audience précédente (audience_prec_id) et
+  // report de son motif de renvoi (dernier_motif_id) : colonnes prévues
+  // au schéma depuis longtemps mais jamais câblées (aucune route ne les
+  // lisait/écrivait) — permet d'afficher « pourquoi cette audience
+  // existe » sans deviner par une jointure heuristique. La nature de la
+  // procédure (nature_procedure/precision) est aussi reportée : même
+  // affaire, même nature, d'un renvoi à l'autre. 23/09/2026 — idem pour
+  // motif_renvoi_precision -> dernier_motif_precision (motif "Autre
+  // (préciser)").
+  const nouvelleAudience = await client.query(
+    `INSERT INTO audiences
+       (dossier_id, avocat_id, juridiction, date_audience, type,
+        nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
+        dernier_motif_precision, cree_par)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, audienceOriginale.type,
+     audienceOriginale.nature_procedure, audienceOriginale.nature_precision, audienceOriginale.id, audienceOriginale.motif_renvoi_id,
+     audienceOriginale.motif_renvoi_precision, creePar]
+  );
+  const ligne = await client.query(
+    `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [role.id, nouvelleAudience.rows[0].id, audienceOriginale.dossier_id, prochaineDate, audienceOriginale.juridiction, audienceOriginale.type, audienceOriginale.avocat_id]
+  );
+  return { role_id: role.id, ligne_id: ligne.rows[0].id, audience_id: nouvelleAudience.rows[0].id, deplacee: false };
+}
+
+// POST /api/roles-audience/audiences/:id/retour — première saisie du
+// retour uniquement (voir PUT ci-dessous pour corriger un retour déjà
+// enregistré).
+// 24/09/2026 — gap signalé par l'utilisateur (« aucune action ou
+// constatation de report... de sorte à ce que les rôles des semaines qui
+// suivent aient matérialisé ces informations ») : "prochaine_date" devient
+// OBLIGATOIRE quand resultat = 'renvoi' — jusqu'ici facultative, rien
+// n'empêchait d'enregistrer un renvoi sans reprogrammer l'audience
+// suivante nulle part (ni rôle futur, ni fiche dossier), le dossier
+// disparaissant alors silencieusement du suivi. Un second appel sur une
+// audience déjà pourvue d'un retour est désormais refusé (409) — voir PUT
+// /retour pour corriger (jusqu'ici un second POST était accepté et
+// dupliquait l'audience suivante déjà créée, bug latent jamais rencontré
+// faute d'UI de correction).
 // body : { resultat, motif_renvoi_id?, motif_renvoi_precision?, prochaine_date?,
 //          observations? }
 // Si prochaine_date est fourni, inscrit automatiquement l'audience suivante au rôle
@@ -230,9 +321,18 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
 router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
   const b = req.body || {};
   if (!b.resultat) return res.status(400).json({ error: "resultat requis" });
+  if (b.resultat === "renvoi" && !b.prochaine_date) {
+    return res.status(400).json({ error: "La prochaine date est obligatoire pour un renvoi." });
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const existante = await client.query("SELECT resultat FROM audiences WHERE id = $1", [req.params.id]);
+    if (!existante.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
+    if (existante.rows[0].resultat) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Un retour est déjà saisi pour cette audience — utilisez la correction (« Modifier le retour »)." });
+    }
     const maj = await client.query(
       `UPDATE audiences SET resultat = $1, motif_renvoi_id = $2, motif_renvoi_precision = $3,
          prochaine_date = $4, observations = $5
@@ -240,37 +340,67 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
       [b.resultat, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
        b.prochaine_date || null, b.observations || null, req.params.id]
     );
-    if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
 
     let prochaine = null;
     if (b.prochaine_date) {
-      const role = await trouverOuCreerRole(client, lundiDeSemaine(b.prochaine_date), req.user.sub);
-      // 21/09/2026 — chaînage vers l'audience précédente (audience_prec_id) et
-      // report de son motif de renvoi (dernier_motif_id) : colonnes prévues
-      // au schéma depuis longtemps mais jamais câblées (aucune route ne les
-      // lisait/écrivait) — permet d'afficher « pourquoi cette audience
-      // existe » sans deviner par une jointure heuristique. La nature de la
-      // procédure (nature_procedure/precision) est aussi reportée : même
-      // affaire, même nature, d'un renvoi à l'autre. 23/09/2026 — idem pour
-      // motif_renvoi_precision -> dernier_motif_precision (motif "Autre
-      // (préciser)").
-      const nouvelleAudience = await client.query(
-        `INSERT INTO audiences
-           (dossier_id, avocat_id, juridiction, date_audience, type,
-            nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
-            dernier_motif_precision, cree_par)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        [a.dossier_id, a.avocat_id, a.juridiction, b.prochaine_date, a.type,
-         a.nature_procedure, a.nature_precision, a.id, a.motif_renvoi_id,
-         a.motif_renvoi_precision, req.user.sub]
-      );
-      const ligne = await client.query(
-        `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [role.id, nouvelleAudience.rows[0].id, a.dossier_id, b.prochaine_date, a.juridiction, a.type, a.avocat_id]
-      );
-      prochaine = { role_id: role.id, ligne_id: ligne.rows[0].id, audience_id: nouvelleAudience.rows[0].id };
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub);
+    }
+    await client.query("COMMIT");
+    res.json({ audience: a, prochaine_inscrite: prochaine });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/roles-audience/audiences/:id/retour — corrige un retour déjà
+// saisi (24/09/2026, demande explicite de l'utilisateur : « modifiable
+// dans Audience du dossier et le Rôle d'audience à la fois » en cas
+// d'erreur sur la date/le motif). Si la prochaine date change, l'audience
+// déjà créée par le renvoi initial (chaînée via audience_prec_id) est
+// DÉPLACÉE vers la nouvelle date/semaine par synchroniserProchaineAudience
+// ci-dessus — jamais dupliquée.
+// body : { resultat?, motif_renvoi_id?, motif_renvoi_precision?, prochaine_date?,
+//          observations? } — tous facultatifs (COALESCE, ne touche que ce
+// qui est fourni), sauf motif_renvoi_id/precision qui suivent le même
+// déclencheur explicite que dans PUT /audiences/:id (un seul geste, une
+// clé absente = "ne pas toucher", présente avec valeur vide = "effacer").
+router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existante = await client.query("SELECT resultat FROM audiences WHERE id = $1", [req.params.id]);
+    if (!existante.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
+    if (!existante.rows[0].resultat) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Aucun retour encore saisi pour cette audience — utilisez d'abord « Saisir le retour »." });
+    }
+    const toucheMotif = Object.prototype.hasOwnProperty.call(b, "motif_renvoi_id");
+    const maj = await client.query(
+      `UPDATE audiences SET
+         resultat = COALESCE($1::resultat_audience, resultat),
+         motif_renvoi_id = CASE WHEN $2::boolean THEN $3::uuid ELSE motif_renvoi_id END,
+         motif_renvoi_precision = CASE WHEN $2::boolean THEN $4 ELSE motif_renvoi_precision END,
+         prochaine_date = COALESCE($5, prochaine_date),
+         observations = COALESCE($6, observations)
+       WHERE id = $7 RETURNING *`,
+      [b.resultat || null, toucheMotif, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
+       b.prochaine_date || null, b.observations || null, req.params.id]
+    );
+    const a = maj.rows[0];
+    if (a.resultat === "renvoi" && !a.prochaine_date) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "La prochaine date est obligatoire pour un renvoi." });
+    }
+
+    let prochaine = null;
+    if (b.prochaine_date) {
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub);
     }
     await client.query("COMMIT");
     res.json({ audience: a, prochaine_inscrite: prochaine });

@@ -493,6 +493,12 @@ export class ApiService {
   retourAudience(audienceId: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/retour`, payload);
   }
+  // 24/09/2026 — corrige un retour déjà saisi (date de renvoi/motif erronés).
+  // Distincte de retourAudience() ci-dessus (1re saisie uniquement, refusée
+  // en double par le serveur) — voir CLAUDE.md pour le détail.
+  corrigerRetourAudience(audienceId: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/retour`, payload);
+  }
   // 21/09/2026 — gap comblé : corrige une audience (date/heure/juridiction/
   // type/avocat), jamais le résultat (réservé à retourAudience ci-dessus).
   // Appelable depuis le Rôle d'audience ET depuis le panneau Audiences de

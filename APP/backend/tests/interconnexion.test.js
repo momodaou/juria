@@ -166,3 +166,152 @@ describe("PUT /api/roles-audience/audiences/:id — correction d'une audience", 
     expect(res.status).toBe(404);
   });
 });
+
+// 24/09/2026 — gap signalé par l'utilisateur (« aucune action... de sorte à
+// ce que les rôles des semaines qui suivent aient matérialisé ces
+// informations ») : "prochaine_date" devient obligatoire pour un renvoi, et
+// un retour déjà saisi devient corrigeable (PUT dédié) sans dupliquer
+// l'audience suivante déjà créée.
+describe("POST/PUT /api/roles-audience/audiences/:id/retour — obligation + correction", () => {
+  test("renvoi sans prochaine_date refusé (400)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-04", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi" });
+    expect(retour.status).toBe(400);
+  });
+
+  test("renvoi avec prochaine_date inscrit l'audience suivante sur le rôle de la semaine cible", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-05", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-02-15" });
+    expect(retour.status).toBe(200);
+    expect(retour.body.prochaine_inscrite).toBeTruthy();
+
+    const roleFutur = await request(app).get("/api/roles-audience?semaine=2027-02-15").set("Authorization", `Bearer ${token}`);
+    const ligne = roleFutur.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne).toBeTruthy();
+    expect(ligne.date_prevue.slice(0, 10)).toBe("2027-02-15");
+  });
+
+  test("un second POST /retour sur la même audience est refusé (409) — corrige la duplication silencieuse", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-06", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere" });
+    const second = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "plaide" });
+    expect(second.status).toBe(409);
+  });
+
+  test("PUT /retour refusé si aucun retour n'a encore été saisi (409)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-07", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const res = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere" });
+    expect(res.status).toBe(409);
+  });
+
+  test("PUT /retour corrige la prochaine date en DÉPLAÇANT l'audience suivante (pas de doublon)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-08", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-02-16" });
+
+    const correction = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ prochaine_date: "2027-03-22" });
+    expect(correction.status).toBe(200);
+
+    const ancienRole = await request(app).get("/api/roles-audience?semaine=2027-02-16").set("Authorization", `Bearer ${token}`);
+    expect(ancienRole.body.lignes.find((l) => l.dossier_id === dossierId)).toBeFalsy();
+
+    const nouveauRole = await request(app).get("/api/roles-audience?semaine=2027-03-22").set("Authorization", `Bearer ${token}`);
+    const lignes = nouveauRole.body.lignes.filter((l) => l.dossier_id === dossierId);
+    expect(lignes.length).toBe(1); // pas de doublon
+    expect(lignes[0].date_prevue.slice(0, 10)).toBe("2027-03-22");
+
+    // Historique du dossier reflète aussi le déplacement (une seule audience future).
+    const fiche = await request(app).get(`/api/dossiers/${dossierId}/audiences`).set("Authorization", `Bearer ${token}`);
+    const futures = fiche.body.filter((a) => a.date_audience && a.date_audience.slice(0, 10) === "2027-03-22");
+    expect(futures.length).toBe(1);
+  });
+
+  test("PUT /retour refuse de repasser en renvoi sans prochaine date (400)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-09", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere" });
+
+    const correction = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi" });
+    expect(correction.status).toBe(400);
+  });
+});
+
+// 24/09/2026 — suite de la même discussion : (i) en-tête "au [rien]" sur une
+// semaine encore vide (semaine_fin manquante dans le repli du GET), (ii)
+// "Suite programmée" (aperçu inline) alimentée pour un renvoi ET une mise en
+// délibéré avec date de prononcé (le backend chaîne déjà l'audience suivante
+// pour tout résultat dès que prochaine_date est fournie — seul le formulaire
+// écran restreignait jusqu'ici l'affichage du champ au seul renvoi).
+describe("GET /api/roles-audience — semaine_fin toujours présente + Suite programmée", () => {
+  test("semaine_fin calculée même sur une semaine sans aucun rôle créé", async () => {
+    const res = await request(app).get("/api/roles-audience?semaine=2028-06-05").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.semaine_debut).toBe("2028-06-05"); // déjà un lundi
+    expect(res.body.semaine_fin).toBe("2028-06-11"); // + 6 jours
+  });
+
+  test("renvoi : la ligne d'origine expose suite_date/suite_juridiction/suite_avocat_code (reportés depuis l'audience d'origine)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-10", juridiction: "TGI Bamako", type: "mise_en_etat", avocat_id: userId });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-02-08" });
+
+    const role = await request(app).get("/api/roles-audience?semaine=2027-01-04").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne.suite_date.slice(0, 10)).toBe("2027-02-08");
+    expect(ligne.suite_juridiction).toBe("TGI Bamako");
+    expect(ligne.suite_avocat_code).toBeTruthy(); // reporté depuis l'audience d'origine (même audiencier tant que non redispatché)
+  });
+
+  test("mise en délibéré avec date de prononcé : même mécanique de chaînage qu'un renvoi", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-11", juridiction: "TGI Bamako", type: "plaidoirie" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere", prochaine_date: "2027-02-09" });
+    expect(retour.status).toBe(200); // facultative pour "delibere" : acceptée même si techniquement pas "requise"
+    expect(retour.body.prochaine_inscrite).toBeTruthy();
+
+    const role = await request(app).get("/api/roles-audience?semaine=2027-01-11").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne.resultat).toBe("delibere");
+    expect(ligne.suite_date.slice(0, 10)).toBe("2027-02-09");
+
+    const roleFutur = await request(app).get("/api/roles-audience?semaine=2027-02-08").set("Authorization", `Bearer ${token}`);
+    expect(roleFutur.body.lignes.find((l) => l.dossier_id === dossierId)).toBeTruthy();
+  });
+
+  test("mise en délibéré SANS date de prononcé reste acceptée (facultative, pas de chaînage)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-12", juridiction: "TGI Bamako", type: "plaidoirie" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere" });
+    expect(retour.status).toBe(200);
+    expect(retour.body.prochaine_inscrite).toBeNull();
+
+    const role = await request(app).get("/api/roles-audience?semaine=2027-01-11").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne.suite_date).toBeNull();
+  });
+});

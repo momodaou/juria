@@ -677,6 +677,9 @@ import { libelleRole } from '../../core/roles';
                 </td>
                 <td>
                   @if (auth.peut('audiences.ligne.creer')) { <button class="lien" (click)="commencerEditionAudience(a)">Modifier</button> }
+                  @if (auth.peut('audiences.retour.saisir')) {
+                    <button class="lien" (click)="commencerCorrectionRetour(a)">{{ a.resultat ? 'Corriger le retour' : 'Saisir le retour' }}</button>
+                  }
                 </td>
               </tr>
               @if (editionAudienceId() === a.id) {
@@ -711,6 +714,59 @@ import { libelleRole } from '../../core/roles';
                       <button class="btn ghost" (click)="editionAudienceId.set(null)">Annuler</button>
                     </div>
                     @if (erreurEditionAudience()) { <p class="err">{{ erreurEditionAudience() }}</p> }
+                  </td>
+                </tr>
+              }
+              @if (correctionRetourId() === a.id) {
+                <!-- 24/09/2026 — même formulaire que "Saisir/Corriger le
+                     retour" du Rôle d'audience, réutilise la même route
+                     POST/PUT (corrigerRetourAudience appelle toujours PUT
+                     — le serveur distingue lui-même 1re saisie/correction
+                     via /retour d'un côté, l'existence préalable d'un
+                     resultat de l'autre ; voir CLAUDE.md). -->
+                <tr class="edition">
+                  <td colspan="6">
+                    <div class="grid2">
+                      <div>
+                        <label>Résultat</label>
+                        <select class="in" [(ngModel)]="retourCorrection.resultat" name="rcResultat">
+                          <option value="renvoi">Renvoi</option>
+                          <option value="delibere">Mise en délibéré</option>
+                          <option value="plaide">Plaidée</option>
+                          <option value="radiation">Radiation</option>
+                          <option value="conciliation">Conciliation</option>
+                          <option value="autre">Autre</option>
+                        </select>
+                      </div>
+                      @if (retourCorrection.resultat === 'renvoi') {
+                        <div>
+                          <label>Motif du renvoi</label>
+                          <select class="in" [(ngModel)]="retourCorrection.motif_renvoi_id" name="rcMotif">
+                            <option value="">—</option>
+                            @for (m of motifsRenvoi(); track m.id) { <option [value]="m.id">{{ m.libelle }}</option> }
+                          </select>
+                        </div>
+                        @if (motifEstAutre(retourCorrection.motif_renvoi_id)) {
+                          <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.motif_renvoi_precision" name="rcMotifPrecision" /></div>
+                        }
+                      }
+                      @if (retourCorrection.resultat === 'renvoi' || retourCorrection.resultat === 'delibere') {
+                        <!-- 24/09/2026 — étendue à "Mise en délibéré" (date de
+                             prononcé, facultative), même règle que le Rôle
+                             d'audience — voir CLAUDE.md. -->
+                        <div>
+                          <label>{{ retourCorrection.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
+                            <span class="muted">{{ retourCorrection.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
+                          <input class="in" type="date" [(ngModel)]="retourCorrection.prochaine_date" name="rcProchaine" />
+                        </div>
+                      }
+                      <div class="col2"><label>Observations</label><input class="in" [(ngModel)]="retourCorrection.observations" name="rcObs" /></div>
+                    </div>
+                    <div class="actions">
+                      <button class="btn" (click)="enregistrerCorrectionRetour(a)">Enregistrer</button>
+                      <button class="btn ghost" (click)="correctionRetourId.set(null)">Annuler</button>
+                    </div>
+                    @if (erreurCorrectionRetour()) { <p class="err">{{ erreurCorrectionRetour() }}</p> }
                   </td>
                 </tr>
               }
@@ -902,6 +958,15 @@ export class DossierDetailComponent implements OnInit {
   readonly editionAudienceId = signal<string | null>(null);
   readonly erreurEditionAudience = signal('');
   editAudience: any = {};
+  // 24/09/2026 — gap signalé par l'utilisateur (« aucune constatation de
+  // report ») : correction du RETOUR déjà saisi (résultat/motif/prochaine
+  // date/observations) depuis la fiche dossier aussi, pas seulement les
+  // champs de planification ci-dessus (editAudience, qui ne touche jamais
+  // le résultat). Même route/formulaire que Rôle d'audience.
+  readonly correctionRetourId = signal<string | null>(null);
+  readonly erreurCorrectionRetour = signal('');
+  readonly motifsRenvoi = signal<{ id: string; libelle: string }[]>([]);
+  retourCorrection: any = {};
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
 
@@ -1488,6 +1553,52 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
+  // 24/09/2026 — motif "Autre (préciser)" du catalogue motifs_renvoi, même
+  // logique que role-audience.component.ts (aucun code stable, repérage
+  // par libellé exact).
+  motifEstAutre(id: string | null | undefined): boolean {
+    return !!id && this.motifsRenvoi().find((m) => m.id === id)?.libelle === 'Autre (préciser)';
+  }
+
+  commencerCorrectionRetour(a: any): void {
+    this.erreurCorrectionRetour.set('');
+    this.retourCorrection = {
+      resultat: a.resultat || 'renvoi',
+      motif_renvoi_id: a.motif_renvoi_id || '',
+      motif_renvoi_precision: a.motif_renvoi_precision || '',
+      prochaine_date: a.prochaine_date ? new Date(a.prochaine_date).toISOString().slice(0, 10) : '',
+      observations: a.observations || '',
+    };
+    this.correctionRetourId.set(a.id);
+  }
+
+  enregistrerCorrectionRetour(a: any): void {
+    this.erreurCorrectionRetour.set('');
+    if (this.retourCorrection.resultat === 'renvoi' && !this.retourCorrection.prochaine_date) {
+      this.erreurCorrectionRetour.set('La prochaine date est obligatoire pour un renvoi.');
+      return;
+    }
+    const precisionValide = this.motifEstAutre(this.retourCorrection.motif_renvoi_id);
+    const payload = {
+      ...this.retourCorrection,
+      prochaine_date: this.retourCorrection.prochaine_date || null,
+      motif_renvoi_id: this.retourCorrection.motif_renvoi_id || null,
+      motif_renvoi_precision: precisionValide ? (this.retourCorrection.motif_renvoi_precision || null) : null,
+    };
+    // 24/09/2026 — a.resultat (état AU MOMENT DE L'OUVERTURE du formulaire,
+    // non muté entre-temps) distingue la 1re saisie (POST, refusée en
+    // double par le serveur) de la correction (PUT, refusée si aucun
+    // retour n'est encore saisi) — même règle que role-audience.component.ts.
+    const appel = a.resultat ? this.api.corrigerRetourAudience(a.id, payload) : this.api.retourAudience(a.id, payload);
+    appel.subscribe({
+      next: () => {
+        this.correctionRetourId.set(null);
+        this.api.dossierAudiences(this.id).subscribe({ next: (aud) => this.audiences.set(aud), error: () => {} });
+      },
+      error: (e) => this.erreurCorrectionRetour.set(e?.error?.error ?? 'Correction impossible.'),
+    });
+  }
+
   supprimerDossier(): void {
     if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
     this.erreur.set('');
@@ -1512,6 +1623,7 @@ export class DossierDetailComponent implements OnInit {
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
     this.rafraichirDelais();
     this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
+    this.api.motifsRenvoi().subscribe({ next: (m) => this.motifsRenvoi.set(m) });
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();

@@ -20,6 +20,16 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </div>
       <div class="actions">
         <button class="btn ghost" (click)="semaineDecalage(-7)">← Semaine précédente</button>
+        <!-- 24/09/2026 — gap signalé par l'utilisateur (cliquer 5-6 fois pour
+             retrouver un dossier renvoyé plusieurs semaines plus loin) :
+             sélecteur de date natif pour sauter directement à n'importe
+             quelle semaine, en plus des boutons ← → (conservés pour parcourir
+             semaine par semaine). [ngModel]/(ngModelChange) plutôt qu'un
+             [(ngModel)] classique : le champ doit aussi refléter la position
+             courante après un clic sur ← →, pas seulement piloter la
+             navigation dans l'autre sens. -->
+        <input class="in-semaine" type="date" [ngModel]="semaine" (ngModelChange)="allerASemaine($event)"
+               name="semaineChoisie" title="Aller à la semaine du…" />
         <button class="btn ghost" (click)="semaineDecalage(7)">Semaine suivante →</button>
       </div>
     </header>
@@ -45,7 +55,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                  2e passe, qui la collait à Juridiction — nouvelle demande
                  explicite de l'utilisateur). 4 colonnes figées désormais
                  (Date/Heure/Référence/Parties, voir "styles" plus bas). -->
-            <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
+            <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th>Suite programmée</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation">
                 <td class="col-date">{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
@@ -84,11 +94,38 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     @if (l.motif_renvoi) { <span class="muted"> · {{ libelleMotif(l.motif_renvoi, l.motif_renvoi_precision) }}</span> }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
+                <td>
+                  <!-- 24/09/2026 — « Suite programmée » séparée du Résultat
+                       (gap signalé par l'utilisateur : information noyée,
+                       invisible), avec aperçu déplié sur place plutôt qu'une
+                       navigation vers une autre semaine (2e gap signalé :
+                       on se perdait entre les 2 vues). Couvre aussi bien un
+                       renvoi qu'une mise en délibéré avec date de prononcé
+                       connue ("suite_date" vient de la même jointure côté
+                       serveur, sans distinction de résultat). -->
+                  @if (l.suite_date) {
+                    <button class="lien" (click)="toggleApercuSuite(l)">
+                      {{ apercuSuiteId() === l.audience_id ? '▾' : '▸' }} {{ l.suite_date | date:'dd/MM/yyyy' }}
+                    </button>
+                  } @else { <span class="muted">—</span> }
+                </td>
                 <td><app-menu-actions [actions]="actionsPourLigne(l)" /></td>
               </tr>
+              @if (apercuSuiteId() === l.audience_id) {
+                <tr class="apercu-suite">
+                  <td colspan="14">
+                    <strong>Prochaine audience programmée :</strong>
+                    {{ l.suite_date | date:'dd/MM/yyyy' }}@if (l.suite_heure) { à {{ formaterHeure(l.suite_heure) }} }
+                    — {{ abregeJuridiction(l.suite_juridiction) }} — {{ libelleTypeAudience(l.suite_type) }}
+                    @if (l.suite_avocat_code) { — Audiencier : {{ l.suite_avocat_code }} }
+                    @if (l.suite_instructions) { <div class="muted">Instructions : {{ l.suite_instructions }}</div> }
+                    <div><button class="lien" (click)="allerASemaine(l.suite_date)">Aller à cette semaine →</button></div>
+                  </td>
+                </tr>
+              }
               @if (editionAudienceId() === l.audience_id) {
                 <tr class="edition">
-                  <td colspan="13">
+                  <td colspan="14">
                     <!-- 23/09/2026 — 3e passe : ordre réaligné sur le nouvel
                          ordre des colonnes du tableau (Date, Heure,
                          [Référence/Parties], Juridiction, Procédure, Type
@@ -172,7 +209,14 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 
       @if (ligneRetour(); as l) {
         <section class="panel" #panneauRetour>
-          <h3>Retour d'audience — {{ l.dossier_numero }} — {{ l.dossier_intitule }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})</h3>
+          <!-- 24/09/2026 — guillemets doubles pour "Retour d'audience" :
+               une chaîne Angular entre apostrophes contenant elle-même une
+               apostrophe ('Retour d\'audience') casse le parseur
+               d'expression du template (Angular affiche alors tout
+               l'interpolation en texte brut au lieu de l'évaluer, sans
+               erreur de build ni de runtime — bug trouvé par vérification
+               visuelle réelle, pas seulement par la compilation). -->
+          <h3>{{ correctionRetour() ? 'Corriger le retour' : "Retour d'audience" }} — {{ l.dossier_numero }} — {{ l.dossier_intitule }} ({{ l.date_prevue | date:'dd/MM/yyyy' }})</h3>
           <div class="grid2">
             <div>
               <label>Résultat</label>
@@ -196,8 +240,18 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               @if (motifEstAutre(retourForm.motif_renvoi_id)) {
                 <div><label>Préciser</label><input class="in" [(ngModel)]="retourForm.motif_renvoi_precision" name="motifPrecision" /></div>
               }
+            }
+            @if (retourForm.resultat === 'renvoi' || retourForm.resultat === 'delibere') {
               <div>
-                <label>Prochaine date</label>
+                <!-- 24/09/2026 — obligatoire pour un renvoi (gap signalé par
+                     l'utilisateur : sans elle, aucune audience future
+                     n'était jamais programmée nulle part) ; étendue à
+                     « Mise en délibéré » (facultative — date de prononcé
+                     pas toujours connue le jour même), décision explicite
+                     de l'utilisateur. Validée côté client (voir
+                     enregistrerRetour()) ET côté serveur. -->
+                <label>{{ retourForm.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
+                  <span class="muted">{{ retourForm.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
                 <input class="in" type="date" [(ngModel)]="retourForm.prochaine_date" name="prochaine" />
               </div>
             }
@@ -207,9 +261,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             </div>
           </div>
           <div class="actions">
-            <button class="btn" (click)="enregistrerRetour(l.audience_id)">Enregistrer le retour</button>
+            <button class="btn" (click)="enregistrerRetour(l.audience_id)">{{ correctionRetour() ? 'Enregistrer la correction' : 'Enregistrer le retour' }}</button>
             <button class="btn ghost" (click)="ligneRetour.set(null)">Annuler</button>
           </div>
+          @if (erreur()) { <p class="err">{{ erreur() }}</p> }
         </section>
       }
     }
@@ -335,6 +390,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
   `,
   styles: [`
     .actions{display:flex;gap:8px}
+    /* 24/09/2026 — sélecteur "Aller à la semaine du…" : dimensions alignées
+       sur les boutons ghost voisins, sans reprendre .in (pensée pour un
+       champ de formulaire pleine largeur avec marge basse, inadaptée dans
+       une barre d'actions flex). */
+    .in-semaine{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:var(--fs-sm)}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn.sm{padding:6px 11px;font-size:var(--fs-sm)}
@@ -343,6 +403,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}
     tr.facturation-alerte td{background:#fdf6e8}
+    /* 24/09/2026 — aperçu inline "Suite programmée" : texte à gauche
+       (contrairement au reste du tableau, centré), fond légèrement teinté
+       pour se distinguer d'une ligne normale sans reprendre le ton d'alerte
+       (ambre) déjà utilisé par .facturation-alerte. */
+    tr.apercu-suite td{background:#f6f8fb;text-align:left}
     /* 23/09/2026 — 2e passe, sur nouvelle demande de l'utilisateur : Dossier
        (référence + intitulé combinés) scindé en 2 colonnes figées séparées
        — Référence (courte, nowrap, "incompressible" comme Date) et Parties
@@ -423,7 +488,16 @@ export class RoleAudienceComponent implements OnInit {
   readonly motifs = signal<{ id: string; libelle: string }[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly ligneRetour = signal<any | null>(null);
+  // 24/09/2026 — distingue la 1re saisie (POST, panneau vierge) de la
+  // correction d'un retour déjà enregistré (PUT, panneau pré-rempli) —
+  // même panneau, même formulaire, seule la cible de l'appel change.
+  readonly correctionRetour = signal(false);
   readonly erreur = signal('');
+  // 24/09/2026 — aperçu inline de la « Suite programmée » (colonne dédiée) :
+  // affiche la prochaine audience directement sous sa ligne d'origine, sans
+  // changer de semaine (gap signalé par l'utilisateur — on se perdait entre
+  // les 2 vues en cliquant sur l'ancien lien « Renvoyée au... »).
+  readonly apercuSuiteId = signal<string | null>(null);
   @ViewChild('panneauRetour') panneauRetour?: ElementRef<HTMLElement>;
   @ViewChild('tableRole') tableRoleEl?: ElementRef<HTMLTableElement>;
 
@@ -682,6 +756,8 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   ouvrirRetour(l: any): void {
+    this.erreur.set('');
+    this.correctionRetour.set(false);
     this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', observations: '' };
     this.ligneRetour.set(l);
     // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
@@ -689,7 +765,35 @@ export class RoleAudienceComponent implements OnInit {
     setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
+  // 24/09/2026 — corrige un retour déjà saisi (date de renvoi erronée,
+  // motif faux…), demande explicite de l'utilisateur. Pré-remplit le même
+  // panneau depuis les valeurs déjà connues de la ligne (l.resultat/
+  // l.motif_renvoi_id/l.motif_renvoi_precision/l.prochaine_date/
+  // l.observations, toutes déjà exposées par GET /roles-audience).
+  ouvrirCorrectionRetour(l: any): void {
+    this.erreur.set('');
+    this.correctionRetour.set(true);
+    this.retourForm = {
+      resultat: l.resultat || 'renvoi',
+      motif_renvoi_id: l.motif_renvoi_id || '',
+      motif_renvoi_precision: l.motif_renvoi_precision || '',
+      prochaine_date: l.prochaine_date ? new Date(l.prochaine_date).toISOString().slice(0, 10) : '',
+      observations: l.observations || '',
+    };
+    this.ligneRetour.set(l);
+    setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
   enregistrerRetour(audienceId: string): void {
+    this.erreur.set('');
+    // 24/09/2026 — validation côté client de la même règle que le serveur
+    // (prochaine date obligatoire pour un renvoi) : évite un aller-retour
+    // réseau pour une erreur déjà détectable ici, message affiché
+    // directement dans le panneau (pas seulement tout en bas de l'écran).
+    if (this.retourForm.resultat === 'renvoi' && !this.retourForm.prochaine_date) {
+      this.erreur.set('La prochaine date est obligatoire pour un renvoi.');
+      return;
+    }
     // 23/09/2026 — motif_renvoi_precision n'est envoyée que si le motif
     // sélectionné est bien "Autre (préciser)" : évite qu'un texte tapé
     // puis abandonné (sélection changée vers un motif normal, le champ
@@ -703,18 +807,45 @@ export class RoleAudienceComponent implements OnInit {
       motif_renvoi_id: this.retourForm.motif_renvoi_id || null,
       motif_renvoi_precision: precisionValide ? (this.retourForm.motif_renvoi_precision || null) : null,
     };
-    this.api.retourAudience(audienceId, payload).subscribe({
+    const appel = this.correctionRetour()
+      ? this.api.corrigerRetourAudience(audienceId, payload)
+      : this.api.retourAudience(audienceId, payload);
+    appel.subscribe({
       next: () => { this.ligneRetour.set(null); this.charger(); },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Enregistrement du retour impossible.'),
     });
   }
 
+  // 24/09/2026 — jump direct vers une semaine donnée : réutilisée par le
+  // sélecteur de date de l'en-tête, par le lien "Aller à cette semaine" de
+  // l'aperçu "Suite programmée", et par le "onChange" du champ date lui-même
+  // — un seul point d'entrée, plutôt que de naviguer semaine par semaine
+  // avec "Semaine suivante →" (toujours disponible en complément, jamais
+  // retirée).
+  allerASemaine(date: string): void {
+    this.semaine = new Date(date).toISOString().slice(0, 10);
+    this.charger();
+  }
+
+  // 24/09/2026 — déplie/replie l'aperçu inline de la "Suite programmée"
+  // (colonne dédiée) sous la ligne d'origine, sans changer de semaine.
+  toggleApercuSuite(l: any): void {
+    this.apercuSuiteId.set(this.apercuSuiteId() === l.audience_id ? null : l.audience_id);
+  }
+
   // Menu "⋮" (19/09/2026) — Modifier toujours proposée (avec la permission),
-  // Saisir le retour seulement tant qu'aucun résultat n'est encore enregistré.
+  // Saisir le retour tant qu'aucun résultat n'est encore enregistré, sinon
+  // Modifier le retour (24/09/2026, gap comblé : aucun moyen de corriger un
+  // retour déjà saisi sans risquer de dupliquer l'audience suivante — voir
+  // PUT /audiences/:id/retour côté serveur).
   actionsPourLigne(l: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [];
     if (this.auth.peut('audiences.ligne.creer')) items.push({ label: 'Modifier', action: () => this.commencerEditionAudience(l) });
-    if (!l.resultat && this.auth.peut('audiences.retour.saisir')) items.push({ label: 'Saisir le retour', action: () => this.ouvrirRetour(l) });
+    if (this.auth.peut('audiences.retour.saisir')) {
+      items.push(l.resultat
+        ? { label: 'Modifier le retour', action: () => this.ouvrirCorrectionRetour(l) }
+        : { label: 'Saisir le retour', action: () => this.ouvrirRetour(l) });
+    }
     return items;
   }
 
