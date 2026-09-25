@@ -49,7 +49,6 @@ describe("Garde du module Accès & permissions — associe_fondateur exclu (29/0
 describe("Visibilité de module par profil — 4 onglets masqués pour associe_fondateur (29/08/2026)", () => {
   test.each([
     ["/api/evenements", "echeancier.consulter"],
-    ["/api/roles-audience", "audiences.consulter"],
     ["/api/courriers", "courriers.consulter"],
     ["/api/cabinet/equipe", "cabinet.consulter"],
     ["/api/cabinet/echeances", "cabinet.consulter"],
@@ -62,6 +61,10 @@ describe("Visibilité de module par profil — 4 onglets masqués pour associe_f
   test.each([
     ["/api/evenements", "associe"],
     ["/api/roles-audience", "collaborateur"],
+    // Rôle d'audience de nouveau visible pour l'associé-fondateur : réactivé
+    // à la main dans la Matrice le 29/08/2026, confirmé par l'utilisateur
+    // lors de l'audit du 25/09/2026.
+    ["/api/roles-audience", "associe_fondateur"],
     ["/api/courriers", "juriste"],
     ["/api/cabinet/equipe", "comptable"],
   ])("%s toujours autorisé (200) pour %s — les 12 autres profils sont inchangés", async (route, role) => {
@@ -83,7 +86,9 @@ describe("Visibilité de module par profil — 4 onglets masqués pour associe_f
 // d'équipe expose le taux horaire de chacun — décision explicite de
 // l'utilisateur de la réserver, congés/présence restant en libre-service.
 describe("Cabinet (RH) — vue d'équipe réservée à la direction/finance (29/08/2026)", () => {
-  test.each(["of_counsel", "collaborateur", "avocat_stagiaire", "stagiaire", "juriste", "assistante", "assistant_comptable"])(
+  // admin_it : retiré à la main dans la Matrice le 29/08/2026 (état de
+  // production aligné dans schema.sql lors de l'audit du 25/09/2026).
+  test.each(["of_counsel", "collaborateur", "avocat_stagiaire", "stagiaire", "juriste", "assistante", "assistant_comptable", "admin_it"])(
     "%s : GET /api/cabinet/equipe refusé (403)",
     async (role) => {
       const token = await creerUtilisateurRole(role);
@@ -92,7 +97,7 @@ describe("Cabinet (RH) — vue d'équipe réservée à la direction/finance (29/
     }
   );
 
-  test.each(["associe", "admin_general", "admin_it", "comptable"])(
+  test.each(["associe", "admin_general", "comptable"])(
     "%s : GET /api/cabinet/equipe toujours autorisé (200)",
     async (role) => {
       const token = await creerUtilisateurRole(role);

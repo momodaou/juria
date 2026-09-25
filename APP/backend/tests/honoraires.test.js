@@ -117,26 +117,19 @@ describe("Déclaration pro bono — dossiers.pro_bono.declarer (qui peut soumett
     }
   );
 
-  test("collaborateur peut soumettre (a la permission), mais le dossier doit être attribué à un associé", async () => {
+  // Le collaborateur a perdu dossiers.pro_bono.declarer (retiré à la main
+  // dans la Matrice le 04/09/2026, état de production aligné dans
+  // schema.sql lors de l'audit du 25/09/2026) : seuls associé et
+  // associé-fondateur peuvent déclarer un pro bono, même en désignant un
+  // associé comme responsable.
+  test("collaborateur ne peut plus déclarer un pro bono, même avec un associé responsable", async () => {
     const clientId = await creerClient();
     const collaborateur = await creerUtilisateurRole("collaborateur");
-    // Responsable = lui-même (collaborateur) -> refusé. Intercepté par la
-    // garde générale d'imputation (30/08/2026, un profil subordonné ne
-    // peut jamais être son propre responsable sans passer par un associé)
-    // avant même d'atteindre la vérification spécifique au pro bono.
-    const refuse = await creerDossier(collaborateur.token, {
-      client_id: clientId, responsable_id: collaborateur.id, pro_bono: true,
-    });
-    expect(refuse.status).toBe(403);
-
-    // Responsable = un associé (instruction reçue de sa part) -> accepté,
-    // même si c'est le collaborateur qui soumet le formulaire.
     const associe = await creerUtilisateurRole("associe");
-    const accepte = await creerDossier(collaborateur.token, {
+    const refuse = await creerDossier(collaborateur.token, {
       client_id: clientId, responsable_id: associe.id, pro_bono: true,
     });
-    expect(accepte.status).toBe(201);
-    expect(accepte.body.pro_bono).toBe(true);
+    expect(refuse.status).toBe(403);
   });
 });
 

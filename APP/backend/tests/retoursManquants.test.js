@@ -203,8 +203,10 @@ describe("Tableau de bord — tuile 'Retours en attente'", () => {
     expect(detail.body.some((l) => l.dossier_id === dossierId && l.type === "audience")).toBe(true);
   });
 
-  test("null/403 pour un rôle sans audiences.consulter (associé-fondateur)", async () => {
-    const fondateur = await creerUtilisateurRole("associe_fondateur");
+  // Comptable : sans audiences.consulter en production (l'associé-fondateur,
+  // utilisé à l'origine, a retrouvé ce droit — audit du 25/09/2026).
+  test("null/403 pour un rôle sans audiences.consulter (comptable)", async () => {
+    const fondateur = await creerUtilisateurRole("comptable");
     const agg = await request(app).get("/api/dashboard").set("Authorization", `Bearer ${fondateur.token}`);
     expect(agg.body.retours_manquants_n).toBeNull();
 
