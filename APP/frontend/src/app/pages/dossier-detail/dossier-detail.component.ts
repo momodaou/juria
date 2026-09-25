@@ -645,13 +645,37 @@ import { libelleRole } from '../../core/roles';
         }
         @if (evenements().length) {
           <table>
-            <tr><th>Type</th><th>Intitulé</th><th>Échéance</th><th>Jours</th></tr>
+            <tr><th>Type</th><th>Intitulé</th><th>Échéance</th><th>Jours</th><th></th></tr>
             @for (e of evenements(); track e.id) {
               <tr>
                 <td>{{ libelleType(e.type) }}@if (e.type === 'autre' && e.precision) { : {{ e.precision }} }</td><td>{{ e.titre }}</td>
                 <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
-                <td><span class="tag" [class.haute]="e.jours_restants <= 7">J-{{ e.jours_restants }}</span></td>
+                <td>
+                  @if (e.statut === 'a_venir') {
+                    <span class="tag" [class.haute]="e.jours_restants <= 7">{{ e.jours_restants < 0 ? 'dépassé' : 'J-' + e.jours_restants }}</span>
+                  } @else {
+                    <span class="tag">{{ e.statut === 'traite' ? 'traité' : 'annulé' }}</span>
+                  }
+                </td>
+                <td><app-menu-actions [actions]="actionsPourDelai(e)" /></td>
               </tr>
+              @if (editionDelaiId() === e.id) {
+                <tr class="edition">
+                  <td colspan="5">
+                    <div class="upload">
+                      <select [(ngModel)]="delaiForm.type" name="edDType" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
+                        @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+                      </select>
+                      @if (delaiForm.type === 'autre') { <input [(ngModel)]="delaiForm.precision" name="edDPrec" placeholder="Préciser…" style="min-width:120px"> }
+                      <input [(ngModel)]="delaiForm.titre" name="edDTitre" placeholder="Intitulé" style="flex:1;min-width:150px">
+                      <input type="date" [(ngModel)]="delaiForm.date_echeance" name="edDDate">
+                    </div>
+                    <span class="hint">Changer la date vaut report : les alertes repartent sur la nouvelle date.</span>
+                    <button class="lien" (click)="enregistrerDelai()" [disabled]="!delaiForm.date_echeance">Enregistrer</button>
+                    <button class="lien" (click)="editionDelaiId.set(null)">Annuler</button>
+                  </td>
+                </tr>
+              }
             }
           </table>
         } @else { <p class="muted">Aucun délai enregistré.</p> }
@@ -1683,6 +1707,39 @@ export class DossierDetailComponent implements OnInit {
 
   private rafraichirDelais(): void {
     this.api.dossierEvenements(this.id).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
+  }
+  // Échéances : traiter / modifier-reporter / annuler (25/09/2026) — voir
+  // echeancier.component.ts, même logique.
+  readonly editionDelaiId = signal<string | null>(null);
+  delaiForm: any = {};
+  actionsPourDelai(e: any): ActionMenuItem[] {
+    if (e.statut !== 'a_venir' || !this.auth.peut('evenements.creer')) return [];
+    return [
+      { label: 'Marquer traité', action: () => this.statutDelai(e, 'traite') },
+      { label: 'Modifier / reporter', action: () => {
+        this.erreur.set('');
+        this.delaiForm = { type: e.type, titre: e.titre, precision: e.precision ?? '', date_echeance: String(e.date_echeance).slice(0, 10) };
+        this.editionDelaiId.set(e.id);
+      } },
+      { label: 'Annuler', action: () => this.statutDelai(e, 'annule'), danger: true },
+    ];
+  }
+  enregistrerDelai(): void {
+    const id = this.editionDelaiId();
+    if (!id) return;
+    const f = this.delaiForm;
+    this.api.majEvenement(id, { ...f, precision: f.type === 'autre' ? f.precision : null }).subscribe({
+      next: () => { this.editionDelaiId.set(null); this.rafraichirDelais(); },
+      error: (err) => this.erreur.set(err?.error?.error ?? 'Modification impossible'),
+    });
+  }
+  statutDelai(e: any, statut: 'traite' | 'annule'): void {
+    if (statut === 'annule' && !confirm(`Annuler le délai « ${e.titre} » ? Il ne déclenchera plus d'alerte.`)) return;
+    this.erreur.set('');
+    this.api.statutEvenement(e.id, statut).subscribe({
+      next: () => this.rafraichirDelais(),
+      error: (err) => this.erreur.set(err?.error?.error ?? 'Action impossible'),
+    });
   }
   ajouterDelai(): void {
     if (!this.dDate) return;

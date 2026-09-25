@@ -54,16 +54,23 @@ import { libelleRole } from '../../core/roles';
       <h3>Mon pointage — {{ presences()?.total_heures ?? 0 }} h ce mois ({{ presences()?.jours_pointes ?? 0 }} jours)</h3>
       @if (auth.peut('cabinet.presence.pointer')) {
         <div class="upload">
+          <input class="sel" type="date" [(ngModel)]="pointageDate" name="pdate" [max]="aujourdhui" title="Jour pointé" />
           <input class="sel" type="time" [(ngModel)]="pointageArrivee" name="arr" placeholder="Arrivée" />
           <input class="sel" type="time" [(ngModel)]="pointageDepart" name="dep" placeholder="Départ" />
-          <button class="btn sm" (click)="enregistrerPointage()">Enregistrer</button>
+          <button class="btn sm" (click)="enregistrerPointage()">{{ pointageCorrection ? 'Enregistrer la correction' : 'Enregistrer' }}</button>
+          @if (pointageCorrection) { <button class="lien" (click)="reinitialiserPointage()">Annuler</button> }
         </div>
+        @if (pointageCorrection) { <p class="muted">Correction du {{ pointageDate | date:'dd/MM/yyyy' }} : les heures saisies remplacent celles du jour.</p> }
+        @if (erreurPointage()) { <p class="err">{{ erreurPointage() }}</p> }
       }
       @if (presences()?.jours?.length) {
         <table>
-          <tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Heures</th></tr>
+          <tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Heures</th><th></th></tr>
           @for (j of presences().jours; track j.date_jour) {
-            <tr><td>{{ j.date_jour | date:'dd/MM/yyyy' }}</td><td>{{ j.heure_arrivee || '—' }}</td><td>{{ j.heure_depart || '—' }}</td><td>{{ j.heures || '—' }}</td></tr>
+            <tr>
+              <td>{{ j.date_jour | date:'dd/MM/yyyy' }}</td><td>{{ heure(j.heure_arrivee) }}</td><td>{{ heure(j.heure_depart) }}</td><td>{{ j.heures || '—' }}</td>
+              <td><app-menu-actions [actions]="actionsPourPointage(j)" /></td>
+            </tr>
           }
         </table>
       }
@@ -90,12 +97,13 @@ import { libelleRole } from '../../core/roles';
             <tr>
               <td>{{ c.membre }}</td><td>{{ c.type }}</td>
               <td>{{ c.date_debut | date:'dd/MM/yyyy' }}</td><td>{{ c.date_fin | date:'dd/MM/yyyy' }}</td>
-              <td><span class="tag" [class.ok]="c.statut==='approuve'" [class.haute]="c.statut==='refuse'">{{ c.statut }}</span></td>
+              <td><span class="tag" [class.ok]="c.statut==='approuve'" [class.haute]="c.statut==='refuse'">{{ c.statut === 'annule' ? 'annulé' : c.statut }}</span></td>
               <td><app-menu-actions [actions]="actionsPourConge(c)" /></td>
             </tr>
           }
         </table>
       } @else { <p class="muted">Aucune demande.</p> }
+      @if (erreurConge()) { <p class="err">{{ erreurConge() }}</p> }
     </section>
 
     @if (auth.peut('echeances_admin.consulter')) {
@@ -178,6 +186,12 @@ export class CabinetComponent implements OnInit {
 
   pointageArrivee = '';
   pointageDepart = '';
+  // Pointage d'un autre jour / correction (25/09/2026).
+  readonly aujourdhui = new Date().toISOString().slice(0, 10);
+  pointageDate = this.aujourdhui;
+  pointageCorrection = false;
+  readonly erreurPointage = signal('');
+  readonly erreurConge = signal('');
   nouveauConge: any = { type: 'annuel' };
   nouveauBulletin: any = { mois: new Date().toISOString().slice(0, 8) + '01' };
 
@@ -307,8 +321,52 @@ export class CabinetComponent implements OnInit {
   }
 
   enregistrerPointage(): void {
-    this.api.pointer({ heure_arrivee: this.pointageArrivee || undefined, heure_depart: this.pointageDepart || undefined })
-      .subscribe({ next: () => this.api.presencesMois().subscribe({ next: (p) => this.presences.set(p) }) });
+    this.erreurPointage.set('');
+    this.api.pointer({
+      date_jour: this.pointageDate || undefined,
+      heure_arrivee: this.pointageArrivee || undefined, heure_depart: this.pointageDepart || undefined,
+      remplacer: this.pointageCorrection || undefined,
+    }).subscribe({
+      next: () => { this.reinitialiserPointage(); this.rechargerPointage(); },
+      error: (e) => this.erreurPointage.set(e?.error?.error ?? 'Pointage impossible'),
+    });
+  }
+
+  private rechargerPointage(): void {
+    this.api.presencesMois().subscribe({ next: (p) => this.presences.set(p) });
+  }
+
+  reinitialiserPointage(): void {
+    this.pointageDate = this.aujourdhui;
+    this.pointageArrivee = '';
+    this.pointageDepart = '';
+    this.pointageCorrection = false;
+  }
+
+  heure(h: string | null): string {
+    return h ? h.slice(0, 5) : '—';
+  }
+
+  actionsPourPointage(j: any): ActionMenuItem[] {
+    if (!this.auth.peut('cabinet.presence.pointer')) return [];
+    return [
+      { label: 'Modifier', action: () => {
+        this.erreurPointage.set('');
+        this.pointageDate = String(j.date_jour).slice(0, 10);
+        this.pointageArrivee = j.heure_arrivee ? j.heure_arrivee.slice(0, 5) : '';
+        this.pointageDepart = j.heure_depart ? j.heure_depart.slice(0, 5) : '';
+        this.pointageCorrection = true;
+      } },
+      { label: 'Retirer', danger: true, action: () => {
+        const d = String(j.date_jour).slice(0, 10);
+        if (!confirm(`Retirer le pointage du ${d.split('-').reverse().join('/')} ?`)) return;
+        this.erreurPointage.set('');
+        this.api.retirerPointage(d).subscribe({
+          next: () => this.rechargerPointage(),
+          error: (e) => this.erreurPointage.set(e?.error?.error ?? 'Retrait impossible'),
+        });
+      } },
+    ];
   }
 
   demander(): void {
@@ -318,7 +376,11 @@ export class CabinetComponent implements OnInit {
   }
 
   decider(c: any, statut: 'approuve' | 'refuse'): void {
-    this.api.decisionConge(c.id, statut).subscribe({ next: () => this.chargerConges() });
+    this.erreurConge.set('');
+    this.api.decisionConge(c.id, statut).subscribe({
+      next: () => this.chargerConges(),
+      error: (e) => this.erreurConge.set(e?.error?.error ?? 'Décision impossible'),
+    });
   }
 
   // Menu "⋮" (19/09/2026).
@@ -331,12 +393,30 @@ export class CabinetComponent implements OnInit {
     if (c.statut === 'demande' && (c.utilisateur_id === this.auth.utilisateur()?.id || this.auth.peut('cabinet.conge.decision'))) {
       items.push({ label: 'Retirer', action: () => this.retirerConge(c.id), danger: true });
     }
+    // Congé déjà approuvé : annulation réservée à qui peut décider (25/09/2026).
+    if (c.statut === 'approuve' && this.auth.peut('cabinet.conge.decision')) {
+      items.push({ label: 'Annuler le congé', action: () => this.annulerConge(c), danger: true });
+    }
     return items;
+  }
+
+  annulerConge(c: any): void {
+    const motif = window.prompt(`Annuler le congé approuvé de ${c.membre} ? Motif (facultatif) :`, '');
+    if (motif === null) return;
+    this.erreurConge.set('');
+    this.api.annulerConge(c.id, motif || undefined).subscribe({
+      next: () => this.chargerConges(),
+      error: (e) => this.erreurConge.set(e?.error?.error ?? 'Annulation impossible'),
+    });
   }
 
   retirerConge(id: string): void {
     if (!window.confirm('Retirer cette demande de congé ?')) return;
-    this.api.retirerConge(id).subscribe({ next: () => this.chargerConges() });
+    this.erreurConge.set('');
+    this.api.retirerConge(id).subscribe({
+      next: () => this.chargerConges(),
+      error: (e) => this.erreurConge.set(e?.error?.error ?? 'Retrait impossible'),
+    });
   }
 
   archiverBulletin(): void {

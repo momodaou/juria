@@ -115,6 +115,33 @@ router.delete("/conges/:id", requirePermission("cabinet.conge.demander"), async 
   }
 });
 
+// POST /api/cabinet/conges/:id/annuler  { motif? } — annuler un congé déjà
+// APPROUVÉ (25/09/2026 : la personne renonce, ou erreur de décision).
+// Réservé à qui peut décider (cabinet.conge.decision) : un congé approuvé
+// engage l'organisation du cabinet. Jamais supprimé (statut 'annule', trace
+// de qui a annulé dans approuve_par/approuve_le, motif ajouté).
+router.post("/conges/:id/annuler", requirePermission("cabinet.conge.decision"), async (req, res) => {
+  const motif = (req.body?.motif || "").trim();
+  try {
+    const { rows } = await pool.query(
+      `UPDATE conges SET statut = 'annule', approuve_par = $1, approuve_le = now(),
+         motif = CASE WHEN $2::text = '' THEN motif ELSE concat_ws(' — ', motif, 'Annulé : ' || $2::text) END
+       WHERE id = $3 AND statut = 'approuve' RETURNING id, statut`,
+      [req.user.sub, motif, req.params.id]
+    );
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM conges WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Seul un congé approuvé peut être annulé (déjà annulé entre-temps ?)" : "Demande introuvable",
+      });
+    }
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/cabinet/conges/:id/decision  { statut: 'approuve'|'refuse' }  (associé/admin)
 router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"), async (req, res) => {
   const { statut } = req.body || {};
@@ -142,6 +169,12 @@ router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"),
 // GET /api/cabinet/presences?utilisateur_id=&mois=YYYY-MM-01
 router.get("/presences", async (req, res) => {
   const uid = req.query.utilisateur_id || req.user.sub;
+  // Voir le pointage de quelqu'un d'autre exige la vue de supervision RH
+  // (25/09/2026 — même contournement ?utilisateur_id= que celui corrigé sur
+  // les bulletins le 18/08/2026, jamais repris ici jusqu'à présent).
+  if (uid !== req.user.sub && !(await estAutorise(req.user.role, "cabinet.consulter"))) {
+    return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+  }
   const mois = req.query.mois || new Date().toISOString().slice(0, 8) + "01";
   try {
     const jours = await pool.query(
@@ -162,26 +195,60 @@ router.get("/presences", async (req, res) => {
   }
 });
 
-// POST /api/cabinet/presences  { date_jour?, heure_arrivee?, heure_depart?, heures? }
+// POST /api/cabinet/presences  { date_jour?, heure_arrivee?, heure_depart?, heures?, remplacer? }
 // Pointage pour soi-même ; upsert sur (utilisateur_id, date_jour).
+// 25/09/2026 :
+//  - date_jour exposée à l'écran (correction d'un jour passé) — refusée dans
+//    le futur ;
+//  - remplacer=true : correction, les valeurs fournies remplacent celles du
+//    jour (sinon un champ laissé vide ne peut jamais être effacé, COALESCE) ;
+//  - heures calculées à partir de l'arrivée/départ quand elles ne sont pas
+//    saisies : jusqu'ici l'écran n'envoyait jamais « heures », le compteur
+//    mensuel (SUM(heures)) restait donc toujours à 0 h.
+const HEURES_CALCULEES = `CASE WHEN heure_arrivee IS NOT NULL AND heure_depart IS NOT NULL AND heure_depart > heure_arrivee
+  THEN round((extract(epoch FROM heure_depart - heure_arrivee) / 3600)::numeric, 2) ELSE NULL END`;
 router.post("/presences", requirePermission("cabinet.presence.pointer"), async (req, res) => {
   const b = req.body || {};
   const date = b.date_jour || new Date().toISOString().slice(0, 10);
+  if (date > new Date().toISOString().slice(0, 10)) return res.status(400).json({ error: "Impossible de pointer une date future." });
+  const remplacer = b.remplacer === true;
   try {
     const { rows } = await pool.query(
       `INSERT INTO presences (utilisateur_id, date_jour, heure_arrivee, heure_depart, heures, source)
        VALUES ($1,$2,$3,$4,$5,'saisie')
        ON CONFLICT (utilisateur_id, date_jour) DO UPDATE SET
-         heure_arrivee = COALESCE(EXCLUDED.heure_arrivee, presences.heure_arrivee),
-         heure_depart  = COALESCE(EXCLUDED.heure_depart, presences.heure_depart),
-         heures        = COALESCE(EXCLUDED.heures, presences.heures)
-       RETURNING id, date_jour, heure_arrivee, heure_depart, heures`,
-      [req.user.sub, date, b.heure_arrivee || null, b.heure_depart || null, b.heures || null]
+         heure_arrivee = CASE WHEN $6::boolean THEN EXCLUDED.heure_arrivee ELSE COALESCE(EXCLUDED.heure_arrivee, presences.heure_arrivee) END,
+         heure_depart  = CASE WHEN $6::boolean THEN EXCLUDED.heure_depart  ELSE COALESCE(EXCLUDED.heure_depart, presences.heure_depart) END,
+         heures        = CASE WHEN $6::boolean THEN EXCLUDED.heures        ELSE COALESCE(EXCLUDED.heures, presences.heures) END
+       RETURNING id`,
+      [req.user.sub, date, b.heure_arrivee || null, b.heure_depart || null, b.heures ?? null, remplacer]
     );
-    res.status(201).json(rows[0]);
+    // Heures saisies explicitement → respectées ; sinon recalculées.
+    const { rows: [p] } = await pool.query(
+      `UPDATE presences SET heures = CASE WHEN $2::boolean THEN heures ELSE ${HEURES_CALCULEES} END
+       WHERE id = $1 RETURNING id, date_jour, heure_arrivee, heure_depart, heures`,
+      [rows[0].id, b.heures !== undefined && b.heures !== null && b.heures !== ""]
+    );
+    res.status(201).json(p);
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/cabinet/presences/:date  (YYYY-MM-DD) — retirer SON pointage
+// d'un jour saisi par erreur (25/09/2026). Uniquement le sien.
+router.delete("/presences/:date", requirePermission("cabinet.presence.pointer"), async (req, res) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) return res.status(400).json({ error: "Date invalide" });
+  try {
+    const { rowCount } = await pool.query(
+      "DELETE FROM presences WHERE utilisateur_id = $1 AND date_jour = $2::date", [req.user.sub, req.params.date]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Aucun pointage ce jour-là" });
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 

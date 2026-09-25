@@ -225,6 +225,29 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 </td>
               </tr>
             }
+            @if (paiementsOuvertsId() === f.id) {
+              <tr class="edition">
+                <td colspan="9">
+                  <b>Paiements enregistrés</b>
+                  @if (paiements().length) {
+                    <table class="paiements">
+                      @for (p of paiements(); track p.id) {
+                        <tr>
+                          <td>{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
+                          <td>{{ p.montant | number }} {{ p.devise }}</td>
+                          <td>{{ p.mode }}</td>
+                          <td>{{ p.reference || '—' }}</td>
+                          <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
+                        </tr>
+                      }
+                    </table>
+                    <p class="hint">Supprimer un paiement saisi par erreur recalcule le statut de la facture. Action tracée dans le journal d'audit.</p>
+                  } @else { <p class="muted">Aucun paiement.</p> }
+                  <button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
         </div>
@@ -238,6 +261,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);min-width:150px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
+    .paiements{margin:8px 0;width:auto}
+    .paiements td{padding:4px 14px 4px 0}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .hint{font-weight:400;color:var(--slate);font-size:var(--fs-xs);white-space:normal;max-width:220px}
     .desc{font-size:var(--fs-sm);color:var(--slate);max-width:640px;margin:0 0 10px}
@@ -299,6 +324,9 @@ export class FacturationComponent implements OnInit {
 
   // Correction d'une facture émise avant tout règlement (05/09/2026).
   readonly editionId = signal<string | null>(null);
+  // Historique / suppression des paiements (25/09/2026).
+  readonly paiementsOuvertsId = signal<string | null>(null);
+  readonly paiements = signal<any[]>([]);
   edit: any = {};
 
   ngOnInit(): void {
@@ -379,11 +407,30 @@ export class FacturationComponent implements OnInit {
   }
 
   // Menu "⋮" (19/09/2026).
+  ouvrirPaiements(f: any): void {
+    this.erreur.set('');
+    this.paiements.set([]);
+    this.paiementsOuvertsId.set(f.id);
+    this.api.paiementsFacture(f.id).subscribe({ next: (p) => this.paiements.set(p), error: () => {} });
+  }
+
+  supprimerPaiement(f: any, p: any): void {
+    if (!confirm(`Supprimer le paiement de ${Number(p.montant).toLocaleString('fr-FR')} ${p.devise} sur la facture ${f.numero} ?`)) return;
+    this.erreur.set('');
+    this.api.supprimerPaiement(f.id, p.id).subscribe({
+      next: () => { this.ouvrirPaiements(f); this.rafraichir(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible'),
+    });
+  }
+
   actionsPourFacture(f: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [
       { label: 'Aperçu', action: () => this.apercuPdf(f) },
       { label: 'Télécharger', action: () => this.ouvrirPdf(f) },
     ];
+    if (f.statut === 'partielle' || f.statut === 'payee') {
+      items.push({ label: 'Paiements', action: () => this.ouvrirPaiements(f) });
+    }
     if (this.auth.peut('factures.annuler') && f.statut === 'emise') {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(f) });
       items.push({ label: 'Annuler', action: () => this.annuler(f), danger: true });

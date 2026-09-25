@@ -3363,3 +3363,21 @@ CREATE TYPE statut_partie_instance AS ENUM
 ALTER TABLE instances ADD COLUMN statut_partie statut_partie_instance;
 ALTER TABLE instances ADD COLUMN statut_partie_precision TEXT;
 -- ============ FIN STATUT DE LA PARTIE DANS L'INSTANCE ============
+
+-- =====================================================================
+--  ACTIONS DE CORRECTION MANQUANTES (25/09/2026)
+--  Audit « modifier / supprimer / annuler » demandé par l'utilisateur :
+--  échéances (traiter/annuler/modifier/reporter), tâches (modifier),
+--  pointage (date + correction + calcul des heures), dépenses (retirer),
+--  paiements (supprimer), congés approuvés (annuler). Seuls ces 2 points
+--  touchent la base — le reste est purement applicatif.
+-- =====================================================================
+-- Congé approuvé puis annulé (la personne renonce) : jamais supprimé.
+ALTER TYPE statut_conge ADD VALUE IF NOT EXISTS 'annule';
+
+-- Les heures de pointage n'étaient jamais calculées (l'écran n'envoyait
+-- que arrivée/départ, le compteur mensuel restait à 0 h) : rattrapage des
+-- pointages déjà enregistrés.
+UPDATE presences SET heures = round((extract(epoch FROM heure_depart - heure_arrivee) / 3600)::numeric, 2)
+WHERE heures IS NULL AND heure_arrivee IS NOT NULL AND heure_depart IS NOT NULL AND heure_depart > heure_arrivee;
+-- ============ FIN ACTIONS DE CORRECTION MANQUANTES ============

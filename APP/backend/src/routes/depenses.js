@@ -124,6 +124,27 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
   }
 });
 
+// DELETE /api/depenses/:id — retirer une dépense soumise par erreur, avant
+// toute décision (25/09/2026 — le déposant pouvait la corriger mais pas la
+// retirer, contrairement aux congés/rétrocessions). Même contrôle que le PUT :
+// déposant lui-même OU personne habilitée à décider ; verrouillé dès qu'une
+// décision est prise (une dépense validée/rejetée reste tracée).
+router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
+  try {
+    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [req.params.id]);
+    if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
+    if (actuelle.soumis_par !== req.user.sub && !(await estAutorise(req.user.role, "depenses.decision"))) {
+      return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut retirer cette dépense." });
+    }
+    const { rowCount } = await pool.query("DELETE FROM depenses WHERE id = $1 AND statut = 'soumise'", [req.params.id]);
+    if (!rowCount) return res.status(409).json({ error: "Dépense déjà traitée — non retirable." });
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/depenses/:id/decision  { statut: 'validee'|'rejetee', motif_rejet? }  (gérant : associé/admin)
 router.post("/:id/decision", requirePermission("depenses.decision"), async (req, res) => {
   const { statut, motif_rejet } = req.body || {};

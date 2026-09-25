@@ -356,9 +356,10 @@ router.put("/:id/lettre-mission-retour", requirePermission("courriers.creer"), a
 router.get("/:id/evenements", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, type, precision, titre, date_echeance, statut,
+      `SELECT id, type, precision, titre, date_echeance, statut, responsable_id,
               (date_echeance::date - current_date) AS jours_restants
-       FROM evenements WHERE dossier_id = $1 ORDER BY date_echeance`,
+       FROM evenements WHERE dossier_id = $1
+       ORDER BY (statut = 'a_venir') DESC, date_echeance`,
       [req.params.id]
     );
     res.json(rows);

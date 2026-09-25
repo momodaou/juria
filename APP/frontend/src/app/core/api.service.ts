@@ -391,6 +391,13 @@ export class ApiService {
   ajouterPaiement(id: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/${id}/paiements`, payload);
   }
+  paiementsFacture(id: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/factures/${id}/paiements`);
+  }
+  supprimerPaiement(factureId: string, paiementId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/factures/${factureId}/paiements/${paiementId}`);
+  }
+
   annulerFacture(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/${id}/annuler`, {});
   }
@@ -412,6 +419,12 @@ export class ApiService {
   }
   creerEvenement(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/evenements`, payload);
+  }
+  majEvenement(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/evenements/${id}`, payload);
+  }
+  statutEvenement(id: string, statut: 'traite' | 'annule'): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/evenements/${id}/statut`, { statut });
   }
 
   // Échéances administratives du cabinet (fiscal/social/ordinal…), sans
@@ -445,6 +458,10 @@ export class ApiService {
   majTache(id: string, statut: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/taches/${id}`, { statut });
   }
+  majDetailsTache(id: string, payload: { titre?: string; echeance?: string | null; responsable_id?: string; priorite?: string }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/taches/${id}/details`, payload);
+  }
+
   validerTache(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/taches/${id}/valider`, {});
   }
@@ -632,6 +649,10 @@ export class ApiService {
   majDepense(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/depenses/${id}`, payload);
   }
+  retirerDepense(id: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/depenses/${id}`);
+  }
+
   comptesBancaires(): Observable<{ id: string; intitule: string; type: string }[]> {
     return this.http.get<{ id: string; intitule: string; type: string }[]>(`${this.base}/api/depenses/comptes`);
   }
@@ -776,13 +797,21 @@ export class ApiService {
   retirerConge(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/cabinet/conges/${id}`);
   }
+  annulerConge(id: string, motif?: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/annuler`, { motif });
+  }
+
   presencesMois(mois?: string): Observable<any> {
     const q = mois ? `?mois=${mois}` : '';
     return this.http.get<any>(`${this.base}/api/cabinet/presences${q}`);
   }
-  pointer(payload: { heure_arrivee?: string; heure_depart?: string; heures?: number }): Observable<any> {
+  pointer(payload: { date_jour?: string; heure_arrivee?: string; heure_depart?: string; heures?: number; remplacer?: boolean }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/cabinet/presences`, payload);
   }
+  retirerPointage(date: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/cabinet/presences/${date}`);
+  }
+
   bulletinsPaie(utilisateurId?: string): Observable<any[]> {
     const q = utilisateurId ? `?utilisateur_id=${utilisateurId}` : '';
     return this.http.get<any[]>(`${this.base}/api/cabinet/bulletins${q}`);

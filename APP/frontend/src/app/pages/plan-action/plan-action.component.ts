@@ -106,6 +106,26 @@ const COLONNES = [
           <h4>{{ col.titre }} <span class="compte">{{ parStatut(col.statut).length }}</span></h4>
           @for (t of parStatut(col.statut); track t.id) {
             <div class="carte" [class.urgente]="t.priorite === 'urgente'">
+              @if (editionId() === t.id) {
+                <!-- Correction d'une tâche (25/09/2026) -->
+                <div class="carte-edition">
+                  <input class="in" [(ngModel)]="editForm.titre" name="edTitre" placeholder="Titre" />
+                  <input class="in" type="date" [(ngModel)]="editForm.echeance" name="edEch" />
+                  <select class="in" [(ngModel)]="editForm.priorite" name="edPrio">
+                    <option value="basse">Basse</option><option value="normale">Normale</option>
+                    <option value="haute">Haute</option><option value="urgente">Urgente</option>
+                  </select>
+                  <select class="in" [(ngModel)]="editForm.responsable_id" name="edResp">
+                    <option value="">Responsable…</option>
+                    @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                  </select>
+                  <div class="carte-actions">
+                    <button class="lien" (click)="enregistrerEdition()" [disabled]="!editForm.titre">Enregistrer</button>
+                    <button class="lien" (click)="editionId.set(null)">Annuler</button>
+                  </div>
+                  @if (erreurEdition()) { <p class="err">{{ erreurEdition() }}</p> }
+                </div>
+              } @else {
               <div class="carte-titre">{{ t.titre }}</div>
               <div class="carte-meta">
                 <span class="tag">{{ t.type }}</span>
@@ -125,6 +145,7 @@ const COLONNES = [
                 @if (col.statut !== 'annule' && col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
                 <app-menu-actions [actions]="actionsPourTache(t, col)" />
               </div>
+              }
             </div>
           } @empty {
             <p class="muted vide">Aucune tâche.</p>
@@ -153,6 +174,7 @@ const COLONNES = [
     .carte-info{color:var(--grey);font-size:var(--fs-xs);margin-top:2px}
     .carte-actions{display:flex;gap:10px;margin-top:8px}
     .vide{font-size:var(--fs-sm)}
+    .carte-edition .in{margin:0 0 6px;padding:6px 8px;font-size:var(--fs-sm)}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .entete-actions{display:flex;gap:14px;align-items:center}
@@ -169,6 +191,9 @@ export class PlanActionComponent implements OnInit {
   readonly afficherForm = signal(false);
   readonly afficherAnciennes = signal(false);
   readonly erreur = signal('');
+  readonly editionId = signal<string | null>(null);
+  readonly erreurEdition = signal('');
+  editForm: any = {};
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -238,8 +263,30 @@ export class PlanActionComponent implements OnInit {
     }
     const items: ActionMenuItem[] = [];
     if (col.statut === 'a_valider' && this.auth.peut('taches.valider')) items.push({ label: 'Valider', action: () => this.valider(t) });
+    if (col.statut !== 'termine' && this.auth.peut('taches.creer')) items.push({ label: 'Modifier', action: () => this.commencerEdition(t) });
     if (col.statut !== 'termine' && this.auth.peut('taches.statut.modifier')) items.push({ label: 'Annuler', action: () => this.annulerTache(t), danger: true });
     return items;
+  }
+
+  commencerEdition(t: any): void {
+    this.erreurEdition.set('');
+    this.editForm = {
+      titre: t.titre, echeance: t.echeance ? String(t.echeance).slice(0, 10) : '',
+      priorite: t.priorite, responsable_id: t.responsable_id ?? '',
+    };
+    this.editionId.set(t.id);
+  }
+
+  enregistrerEdition(): void {
+    const id = this.editionId();
+    if (!id) return;
+    const f = this.editForm;
+    this.api.majDetailsTache(id, {
+      titre: f.titre, echeance: f.echeance || null, priorite: f.priorite, responsable_id: f.responsable_id || undefined,
+    }).subscribe({
+      next: () => { this.editionId.set(null); this.charger(); },
+      error: (e) => this.erreurEdition.set(e?.error?.error ?? 'Modification impossible'),
+    });
   }
 
   deplacer(t: any, sens: 1 | -1): void {

@@ -29,7 +29,7 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.titre, t.type, t.priorite, t.statut, t.echeance, t.validation_requise,
-              t.dossier_id, d.numero AS dossier_numero,
+              t.dossier_id, t.responsable_id, d.numero AS dossier_numero,
               u.prenom || ' ' || u.nom AS responsable
        FROM taches t
        LEFT JOIN dossiers d ON d.id = t.dossier_id
@@ -82,6 +82,42 @@ router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res)
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/taches/:id/details  { titre?, echeance?, responsable_id?, priorite?, type? }
+// Correction d'une tâche (25/09/2026) — jusqu'ici seul le statut était
+// modifiable : une faute de frappe, une échéance ou un responsable erroné
+// obligeait à annuler puis recréer la tâche. Route distincte de PUT /:id
+// (statut) : corriger le contenu relève de la même habilitation que créer
+// (taches.creer), pas du simple déplacement de carte. Verrouillé une fois
+// la tâche terminée ou annulée. echeance: null explicite = retirer l'échéance.
+router.put("/:id/details", requirePermission("taches.creer"), async (req, res) => {
+  const b = req.body || {};
+  if (b.titre !== undefined && !String(b.titre).trim()) return res.status(400).json({ error: "titre requis" });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE taches SET
+         titre = COALESCE($1, titre),
+         echeance = CASE WHEN $3::boolean THEN $2::date ELSE echeance END,
+         responsable_id = COALESCE($4::uuid, responsable_id),
+         priorite = COALESCE($5::priorite_tache, priorite),
+         type = COALESCE($6::type_tache, type)
+       WHERE id = $7 AND statut NOT IN ('termine','annule')
+       RETURNING id, titre, echeance, responsable_id, priorite, type, statut`,
+      [b.titre ? String(b.titre).trim() : null, b.echeance || null, b.echeance !== undefined,
+       b.responsable_id || null, b.priorite || null, b.type || null, req.params.id]
+    );
+    if (!rows[0]) {
+      const existe = await pool.query("SELECT 1 FROM taches WHERE id = $1", [req.params.id]);
+      return res.status(existe.rows[0] ? 409 : 404).json({
+        error: existe.rows[0] ? "Tâche terminée ou annulée — réactivez-la avant de la modifier." : "Tâche introuvable",
+      });
+    }
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 

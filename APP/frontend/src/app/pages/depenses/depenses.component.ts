@@ -116,6 +116,10 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <option value="ponctuelle">Ponctuelle</option>
         </select>
       </div>
+      <!-- Erreurs des actions de la liste (décision, décaissement, retrait) :
+           jusqu'ici affichées seulement dans le formulaire de création,
+           souvent fermé — donc invisibles (25/09/2026). -->
+      @if (erreur() && !editionId() && !afficherForm()) { <p class="err">{{ erreur() }}</p> }
       @if (depenses().length) {
         <table>
           <tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Dossier</th><th>Statut</th><th></th></tr>
@@ -275,8 +279,19 @@ export class DepensesComponent implements OnInit {
     }
     if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });
+      items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
     }
     return items;
+  }
+
+  // Retirer une dépense soumise par erreur, avant décision (25/09/2026).
+  retirer(d: any): void {
+    if (!confirm(`Retirer la dépense « ${d.libelle} » ?`)) return;
+    this.erreur.set('');
+    this.api.retirerDepense(d.id).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
   }
 
   decision(d: any, statut: 'validee' | 'rejetee'): void {

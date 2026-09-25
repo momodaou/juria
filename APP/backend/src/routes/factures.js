@@ -3,6 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
+const { logAudit } = require("../audit");
 const router = express.Router();
 
 // Recalcule et met à jour le statut d'une facture selon les paiements reçus.
@@ -443,6 +444,55 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/factures/:id/paiements — historique des règlements d'une facture
+// (25/09/2026 : jusqu'ici aucun écran ne listait les paiements enregistrés).
+router.get("/:id/paiements", requirePermission("factures.consulter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, montant, mode, date_paiement, reference, devise, cree_le
+       FROM paiements WHERE facture_id = $1 ORDER BY date_paiement, cree_le`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// DELETE /api/factures/:id/paiements/:paiementId — supprimer un paiement
+// saisi par erreur (25/09/2026). Même palier que factures.annuler (même
+// sensibilité : touche au statut d'une facture émise). Le statut de la
+// facture est recalculé (payée → partielle/émise). Refusé si une
+// rétrocession liée à cette facture a déjà été décaissée : la règle « tout
+// ou rien » reposait sur cet encaissement. Tracé dans journal_audit.
+router.delete("/:id/paiements/:paiementId", requirePermission("factures.annuler"), async (req, res) => {
+  try {
+    const { rows: [p] } = await pool.query(
+      "SELECT id, montant, mode, date_paiement, reference FROM paiements WHERE id = $1 AND facture_id = $2",
+      [req.params.paiementId, req.params.id]
+    );
+    if (!p) return res.status(404).json({ error: "Paiement introuvable" });
+    const { rows: [retro] } = await pool.query(
+      "SELECT 1 FROM retrocessions WHERE facture_id = $1 AND statut = 'decaissee' LIMIT 1", [req.params.id]
+    );
+    if (retro) {
+      return res.status(409).json({ error: "Une rétrocession liée à cette facture a déjà été décaissée sur la base de cet encaissement — suppression refusée." });
+    }
+    await pool.query("DELETE FROM paiements WHERE id = $1", [p.id]);
+    const statut = await majStatut(req.params.id);
+    await logAudit({
+      utilisateurId: req.user.sub, action: "supprimer_paiement", entite: "factures", entiteId: req.params.id,
+      details: { paiement_id: p.id, montant: p.montant, mode: p.mode, date_paiement: p.date_paiement, reference: p.reference },
+      ip: req.ip,
+    });
+    res.json({ facture_id: req.params.id, statut });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
