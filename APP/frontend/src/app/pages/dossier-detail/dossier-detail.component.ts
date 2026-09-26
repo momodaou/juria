@@ -695,8 +695,11 @@ import { libelleRole } from '../../core/roles';
                 <td>{{ a.avocat_nom || '—' }}</td>
                 <td>
                   @if (a.resultat) {
-                    {{ a.resultat }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
+                    {{ libelleResultat(a.resultat) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
                     @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }} }
+                    @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
+                      <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
+                    }
                   } @else { <span class="muted">à venir</span> }
                 </td>
                 <td><app-menu-actions [actions]="actionsPourAudience(a)" /></td>
@@ -749,14 +752,23 @@ import { libelleRole } from '../../core/roles';
                       <div>
                         <label>Résultat</label>
                         <select class="in" [(ngModel)]="retourCorrection.resultat" name="rcResultat">
-                          <option value="renvoi">Renvoi</option>
-                          <option value="delibere">Mise en délibéré</option>
-                          <option value="plaide">Plaidée</option>
-                          <option value="radiation">Radiation</option>
-                          <option value="conciliation">Conciliation</option>
-                          <option value="autre">Autre</option>
+                          @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
                         </select>
                       </div>
+                      @if (retourCorrection.resultat === 'avant_dire_droit') {
+                        <div class="col2"><p class="muted">Décision intermédiaire — aucune audience suivante n'est programmée automatiquement. Le dossier apparaît dans la tuile « En attente de réenrôlement » du Tableau de bord jusqu'à la demande de réenrôlement auprès du tribunal.</p></div>
+                      }
+                      @if (retourCorrection.resultat === 'decision_rendue') {
+                        <div class="col2">
+                          <label>Document de la décision (jugement/arrêt/ordonnance)</label>
+                          @if (a.decision_document_id) {
+                            <p class="muted">Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(a)">{{ a.decision_document_nom }}</button> — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).</p>
+                          }
+                          <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
+                          <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(a)">Joindre le document</button>
+                          @if (erreurDecision) { <p class="err">{{ erreurDecision }}</p> }
+                        </div>
+                      }
                       @if (retourCorrection.resultat === 'renvoi') {
                         <div>
                           <label>Motif du renvoi</label>
@@ -985,6 +997,11 @@ export class DossierDetailComponent implements OnInit {
   readonly correctionRetourId = signal<string | null>(null);
   readonly erreurCorrectionRetour = signal('');
   readonly motifsRenvoi = signal<{ id: string; libelle: string }[]>([]);
+  // 26/09/2026 — même catalogue que Rôle d'audience (listes_valeurs
+  // domaine=resultat_audience), pour le même menu Résultat.
+  readonly resultats = signal<{ code: string; libelle: string }[]>([]);
+  decisionFichier: File | null = null;
+  erreurDecision = '';
   retourCorrection: any = {};
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
@@ -1285,6 +1302,13 @@ export class DossierDetailComponent implements OnInit {
     opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
   };
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
+
+  // 26/09/2026 — le tableau Audiences affichait le code ENUM brut du
+  // résultat, gap trouvé en câblant la distinction délibéré/délibéré vidé.
+  libelleResultat(code: string | null | undefined): string {
+    if (!code) return '—';
+    return this.resultats().find((r) => r.code === code)?.libelle ?? code;
+  }
 
   // Instance la plus récente (19/09/2026) — même tri que le backend
   // (date_debut croissant, nulls en dernier), donc le dernier élément du
@@ -1641,6 +1665,28 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
+  // 26/09/2026 — même mécanique que role-audience.component.ts (voir
+  // CLAUDE.md) : joindre le document de la décision (jugement/arrêt/
+  // ordonnance) directement depuis le retour, ici via `a.id` (l'audience
+  // elle-même, contrairement au Rôle d'audience qui manipule `l.audience_id`).
+  selectionnerDecisionFichier(ev: Event): void {
+    this.decisionFichier = (ev.target as HTMLInputElement).files?.[0] ?? null;
+  }
+
+  televerserDecision(a: any): void {
+    if (!this.decisionFichier) return;
+    this.erreurDecision = '';
+    this.api.joindreDecisionAudience(a.id, this.decisionFichier).subscribe({
+      next: () => { this.decisionFichier = null; this.api.dossierAudiences(this.id).subscribe({ next: (aud) => this.audiences.set(aud), error: () => {} }); },
+      error: (e) => this.erreurDecision = e?.error?.error ?? 'Téléversement impossible.',
+    });
+  }
+
+  ouvrirDecision(a: any): void {
+    if (!a.decision_document_id) return;
+    this.preview.ouvrir(a.decision_document_nom || 'Décision', this.api.telechargerDocument(a.decision_document_id));
+  }
+
   supprimerDossier(): void {
     if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
     this.erreur.set('');
@@ -1666,6 +1712,7 @@ export class DossierDetailComponent implements OnInit {
     this.rafraichirDelais();
     this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifsRenvoi.set(m) });
+    this.api.listesValeurs('resultat_audience').subscribe({ next: (v) => this.resultats.set(v) });
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();

@@ -57,6 +57,11 @@ export interface DashboardData {
   // pas eu de retour »). `null` si le rôle n'a pas audiences.consulter.
   retours_manquants_n: number | null;
   retours_manquants_apercu: { type: 'audience' | 'diligence'; id: string; dossier_id: string | null; dossier_numero: string | null; date: string; libelle: string | null }[];
+  // "En attente de réenrôlement" (26/09/2026) — dernière audience du dossier
+  // à « Avant dire droit » (ADD), qui ne donne aucune date de suite
+  // automatique (démarche externe requise). `null` si audiences.consulter absent.
+  reenrolement_n: number | null;
+  reenrolement_apercu: { dossier_id: string; dossier_numero: string; dossier_intitule: string; date_audience: string }[];
 }
 
 export interface Dossier {
@@ -533,6 +538,13 @@ export class ApiService {
   // serveur si un retour est déjà saisi ou si une suite a déjà été chaînée).
   retirerAudience(audienceId: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/roles-audience/audiences/${audienceId}`);
+  }
+  // 26/09/2026 — joint le document de la décision (jugement/arrêt/
+  // ordonnance) à l'audience où elle a été rendue (categorie GED "decision").
+  joindreDecisionAudience(audienceId: string, fichier: File): Observable<{ decision_document_id: string; nom: string; type_mime: string }> {
+    const form = new FormData();
+    form.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/roles-audience/audiences/${audienceId}/decision-document`, form);
   }
 
   // Diligences (11/09/2026) — planning des rendez-vous/démarches de

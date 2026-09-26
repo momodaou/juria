@@ -1,12 +1,24 @@
 // JURIA — Rôle d'audience : agenda hebdomadaire, diffusion à l'équipe,
 // planning des diligences, retours d'audience (renvoi -> rôle de la semaine suivante).
 const express = require("express");
+const multer = require("multer");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
 const { envoyerRolePdf } = require("../rolePdf");
+const { saveObject } = require("../storage");
+const { filtreTypeFichier } = require("../uploadFilter");
 const router = express.Router();
+
+// 26/09/2026 — joindre le document de la décision (jugement/arrêt/
+// ordonnance) directement depuis le retour d'audience, même patron que
+// "Courrier -> GED" du 11/09/2026 (courriers.js).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 Mo, même limite que documents.js/courriers.js
+  fileFilter: filtreTypeFichier,
+});
 
 // Lundi de la semaine contenant la date donnée (chaîne YYYY-MM-DD).
 function lundiDeSemaine(dateStr) {
@@ -55,6 +67,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               a.nature_procedure, a.nature_precision,
               a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
               a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
+              a.decision_document_id, dd.nom AS decision_document_nom, dd.type_mime AS decision_document_mime,
               suite.date_audience AS suite_date, suite.heure AS suite_heure,
               suite.juridiction AS suite_juridiction, suite.type AS suite_type,
               suite.instructions AS suite_instructions, sa.code AS suite_avocat_code,
@@ -67,6 +80,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
        LEFT JOIN audiences a ON a.id = l.audience_id
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
        LEFT JOIN motifs_renvoi mrd ON mrd.id = a.dernier_motif_id
+       LEFT JOIN documents dd ON dd.id = a.decision_document_id
        -- 24/09/2026 — « Suite programmée » (aperçu inline, gap signalé par
        -- l'utilisateur) : l'audience déjà chaînée par un retour (renvoi OU
        -- mise en délibéré avec date de prononcé) est jointe directement ici
@@ -247,7 +261,12 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
 // elle existe (audience_prec_id = audienceOriginale.id), on la DÉPLACE
 // (nouvelle date + rôle de la semaine cible, recréé si besoin) plutôt que
 // d'en recréer une deuxième.
-async function synchroniserProchaineAudience(client, audienceOriginale, prochaineDate, creePar) {
+// `resultat` (26/09/2026) : distingue l'audience de mise en délibéré de
+// celle du jour du prononcé (« délibéré vidé », demande explicite de
+// l'utilisateur) — la nouvelle audience créée pour un `delibere` porte
+// désormais le type `prononce`, plutôt que de recopier bêtement le type de
+// l'audience d'origine (une mise en délibéré n'a souvent pas ce type).
+async function synchroniserProchaineAudience(client, audienceOriginale, prochaineDate, creePar, resultat) {
   const role = await trouverOuCreerRole(client, lundiDeSemaine(prochaineDate), creePar);
   const existante = await client.query(
     `SELECT a.id, l.id AS ligne_id FROM audiences a
@@ -282,20 +301,21 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
   // affaire, même nature, d'un renvoi à l'autre. 23/09/2026 — idem pour
   // motif_renvoi_precision -> dernier_motif_precision (motif "Autre
   // (préciser)").
+  const typeSuite = resultat === "delibere" ? "prononce" : audienceOriginale.type;
   const nouvelleAudience = await client.query(
     `INSERT INTO audiences
        (dossier_id, avocat_id, juridiction, date_audience, type,
         nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
         dernier_motif_precision, cree_par)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, audienceOriginale.type,
+    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, typeSuite,
      audienceOriginale.nature_procedure, audienceOriginale.nature_precision, audienceOriginale.id, audienceOriginale.motif_renvoi_id,
      audienceOriginale.motif_renvoi_precision, creePar]
   );
   const ligne = await client.query(
     `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [role.id, nouvelleAudience.rows[0].id, audienceOriginale.dossier_id, prochaineDate, audienceOriginale.juridiction, audienceOriginale.type, audienceOriginale.avocat_id]
+    [role.id, nouvelleAudience.rows[0].id, audienceOriginale.dossier_id, prochaineDate, audienceOriginale.juridiction, typeSuite, audienceOriginale.avocat_id]
   );
   return { role_id: role.id, ligne_id: ligne.rows[0].id, audience_id: nouvelleAudience.rows[0].id, deplacee: false };
 }
@@ -344,7 +364,7 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
 
     let prochaine = null;
     if (b.prochaine_date) {
-      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub);
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
     }
     await client.query("COMMIT");
     res.json({ audience: a, prochaine_inscrite: prochaine });
@@ -400,7 +420,7 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
 
     let prochaine = null;
     if (b.prochaine_date) {
-      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub);
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
     }
     await client.query("COMMIT");
     res.json({ audience: a, prochaine_inscrite: prochaine });
@@ -410,6 +430,40 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
     res.status(400).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// POST /api/roles-audience/audiences/:id/decision-document (multipart,
+// champ "fichier") — joint le document de la décision (jugement/arrêt/
+// ordonnance) à la GED du dossier, catégorie « decision ». 26/09/2026 —
+// répond au constat de l'utilisateur (« une décision rendue doit pouvoir
+// être consignée et enregistrée quelque part ») : même patron que
+// « Courrier -> GED » du 11/09/2026 (courriers.js, POST /:id/document).
+router.post("/audiences/:id/decision-document", requirePermission("audiences.retour.saisir"), upload.single("fichier"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
+  try {
+    const { rows } = await pool.query("SELECT dossier_id FROM audiences WHERE id = $1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Audience introuvable" });
+    const dossierId = rows[0].dossier_id;
+    const nom = req.file.originalname;
+    const v = await pool.query(
+      "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM documents WHERE dossier_id = $1 AND nom = $2",
+      [dossierId, nom]
+    );
+    const dest = `${dossierId}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
+    const chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
+    const doc = await pool.query(
+      `INSERT INTO documents
+         (dossier_id, nom, categorie, version, statut, confidentialite, chemin_storage, type_mime, taille_octets, auteur_id)
+       VALUES ($1,$2,'decision',$3,'signe','dossier',$4,$5,$6,$7)
+       RETURNING id, nom, type_mime`,
+      [dossierId, nom, v.rows[0].v, chemin, req.file.mimetype, req.file.size, req.user.sub]
+    );
+    await pool.query("UPDATE audiences SET decision_document_id = $1 WHERE id = $2", [doc.rows[0].id, req.params.id]);
+    res.status(201).json({ decision_document_id: doc.rows[0].id, nom: doc.rows[0].nom, type_mime: doc.rows[0].type_mime });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 

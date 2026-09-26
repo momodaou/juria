@@ -4436,3 +4436,48 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
 ('archiviste','parametres.honoraires.modifier',FALSE),
 ('archiviste','parametres.cabinet.modifier',FALSE);
 -- ============ FIN ALIGNEMENT MATRICE DE PERMISSIONS ============
+
+-- =====================================================================
+--  26/09/2026 — Rôle d'audience : distinction « délibéré » (décision
+--  réservée, date de prononcé connue) / « délibéré vidé » (décision
+--  effectivement rendue le jour du prononcé) + avant dire droit (ADD).
+--  Demande de l'utilisateur : le résultat d'une audience de prononcé ne
+--  doit pas se confondre avec la mise en délibéré qui l'a programmée, et
+--  une décision intermédiaire (ADD, ex. expertise ordonnée) qui ne donne
+--  aucune date automatique — il faut réenrôler le dossier, démarche
+--  externe — doit être distinguée d'un renvoi/délibéré classiques.
+-- =====================================================================
+-- resultat_audience élargi : les 2 valeurs demandées explicitement, PLUS
+-- 10 valeurs trouvées en creusant : déjà présentes dans
+-- listes_valeurs('resultat_audience') depuis le tout premier schéma
+-- (systeme=FALSE, libellés déjà prêts en français — jonction, sursis à
+-- statuer, désistement, expertise ordonnée...) mais jamais ajoutées à
+-- l'ENUM lui-même, donc jamais réellement sélectionnables malgré leur
+-- présence dans le catalogue — même famille de gap que temps.facture_id/
+-- echeances_administratives (prévu au schéma, jamais câblé). Activées ici
+-- plutôt que laissées mortes, puisqu'elles répondent directement au
+-- constat de l'utilisateur (« ce n'est pas exhaustif »).
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'jonction';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'disjonction';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'sursis';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'desistement';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'incompetence';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'reouverture';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'comparution_perso';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'expertise';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'mise_en_etat';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'retenue';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'decision_rendue';
+ALTER TYPE resultat_audience ADD VALUE IF NOT EXISTS 'avant_dire_droit';
+
+INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
+ ('resultat_audience','decision_rendue','Décision rendue',16,TRUE),
+ ('resultat_audience','avant_dire_droit','Avant dire droit (ADD)',17,TRUE)
+ON CONFLICT (domaine, code) DO NOTHING;
+
+-- Document de la décision (jugement/arrêt/ordonnance), joint directement
+-- depuis le retour d'audience quand resultat = 'decision_rendue' — la
+-- catégorie 'decision' existe dans categorie_document depuis le premier
+-- schéma mais n'était reliée à rien de précis (voir
+-- POST /api/roles-audience/audiences/:id/decision-document).
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS decision_document_id UUID REFERENCES documents(id) ON DELETE SET NULL;

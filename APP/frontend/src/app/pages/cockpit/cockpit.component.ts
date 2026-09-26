@@ -47,6 +47,8 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // "Retours en attente" (24/09/2026) — même permission que le module Rôle
   // d'audience, qui porte à la fois les audiences et les diligences.
   retours_manquants: 'audiences.consulter',
+  // "En attente de réenrôlement" (26/09/2026) — même permission, même module.
+  reenrolement: 'audiences.consulter',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
   // Discipline de facturation, Bloc B (18/09/2026) — même permission que
@@ -140,6 +142,22 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours de retard (le plus urgent)', key: 'jours_retard', dir: 'desc' },
       { label: 'Date (la plus ancienne)', key: 'date', dir: 'asc' },
+    ],
+  },
+  // "En attente de réenrôlement" (26/09/2026) — dernière audience du dossier
+  // à "Avant dire droit" (ADD) : aucune date de suite automatique, il faut
+  // réenrôler auprès du tribunal (démarche externe à JURIA).
+  reenrolement: {
+    titre: 'En attente de réenrôlement',
+    cols: [
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'dossier_intitule', label: 'Intitulé' },
+      { key: 'date_audience', label: 'Décision (ADD) du', format: 'date' },
+      { key: 'jours_attente', label: 'Jours d\'attente', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
+      { label: 'Date (la plus récente)', key: 'date_audience', dir: 'desc' },
     ],
   },
   impayes: {
@@ -395,6 +413,31 @@ const CONFIG: Record<string, TuileConfig> = {
               </div>
             }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.retours_manquants_n }}</span>
+          </button>
+        }
+        @if (d.reenrolement_n !== null) {
+          <!-- 26/09/2026 — question de l'utilisateur sur les hypothèses au-delà
+               du renvoi/délibéré classiques : un « avant dire droit » (ADD) ne
+               donne aucune date de suite automatique, contrairement aux deux
+               autres — sans cette tuile, le dossier disparaîtrait du suivi
+               exactement comme le bug corrigé le 24/09/2026 (Retours en
+               attente), mais pour une raison différente (démarche externe
+               requise, pas un oubli). tier-vigilance : pas un retard en soi,
+               juste un rappel qu'une action (réenrôlement) reste à faire. -->
+          <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'reenrolement'" (click)="clic('reenrolement')">
+            <span class="tico" [innerHTML]="icons['audiences']"></span>
+            <span class="n">{{ d.reenrolement_n }}</span><span class="l">En attente de réenrôlement</span>
+            @if (d.reenrolement_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.reenrolement_apercu; track l.dossier_id) {
+                  <div class="mini-ligne">
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.dossier_numero }} — {{ l.dossier_intitule }}</a>
+                    <span class="secondaire">{{ l.date_audience | date:'dd/MM' }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.reenrolement_n }}</span>
           </button>
         }
         <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">

@@ -90,8 +90,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <td>{{ l.avocat_code || '—' }}</td>
                 <td>
                   @if (l.resultat) {
-                    <span class="tag">{{ l.resultat }}</span>
+                    <span class="tag">{{ libelleResultat(l.resultat) }}</span>
                     @if (l.motif_renvoi) { <span class="muted"> · {{ libelleMotif(l.motif_renvoi, l.motif_renvoi_precision) }}</span> }
+                    @if (l.resultat === 'decision_rendue' && l.decision_document_id) {
+                      <br><button type="button" class="lien" (click)="ouvrirDecision(l)">📄 Décision</button>
+                    }
                   } @else { <span class="muted">à saisir</span> }
                 </td>
                 <td>
@@ -221,14 +224,33 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <div>
               <label>Résultat</label>
               <select class="in" [(ngModel)]="retourForm.resultat" name="resultat">
-                <option value="renvoi">Renvoi</option>
-                <option value="delibere">Mise en délibéré</option>
-                <option value="plaide">Plaidée</option>
-                <option value="radiation">Radiation</option>
-                <option value="conciliation">Conciliation</option>
-                <option value="autre">Autre</option>
+                @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
               </select>
             </div>
+            @if (retourForm.resultat === 'avant_dire_droit') {
+              <!-- 26/09/2026 — ADD (avant dire droit) : décision
+                   intermédiaire, aucune date de suite automatique (il faut
+                   réenrôler le dossier auprès du tribunal — démarche
+                   externe). Signalé via la tuile Tableau de bord « En
+                   attente de réenrôlement », pas de courrier automatique
+                   dans cette passe (scope validé avec l'utilisateur). -->
+              <div class="col2"><p class="muted">Décision intermédiaire — aucune audience suivante n'est programmée automatiquement. Le dossier apparaît dans la tuile « En attente de réenrôlement » du Tableau de bord jusqu'à la demande de réenrôlement auprès du tribunal.</p></div>
+            }
+            @if (retourForm.resultat === 'decision_rendue') {
+              <!-- 26/09/2026 — « une décision rendue doit pouvoir être
+                   consignée et enregistrée quelque part » (question directe
+                   de l'utilisateur) : jointe en GED (catégorie Décision),
+                   pas seulement décrite en observations. -->
+              <div class="col2">
+                <label>Document de la décision (jugement/arrêt/ordonnance)</label>
+                @if (l.decision_document_id) {
+                  <p class="muted">Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(l)">{{ l.decision_document_nom }}</button> — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).</p>
+                }
+                <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
+                <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(l)">Joindre le document</button>
+                @if (erreurDecision) { <p class="err">{{ erreurDecision }}</p> }
+              </div>
+            }
             @if (retourForm.resultat === 'renvoi') {
               <div>
                 <label>Motif du renvoi</label>
@@ -523,6 +545,13 @@ export class RoleAudienceComponent implements OnInit {
   // `listes_valeurs('nature_procedure')`, déjà seedé : Bail/expulsion,
   // Divorce, Recouvrement…) mais jamais câblée à aucune route ni écran.
   readonly naturesProcedure = signal<{ code: string; libelle: string }[]>([]);
+  // 26/09/2026 — « Résultat » enfin alimenté par le catalogue déjà en base
+  // (`listes_valeurs('resultat_audience')`, 18 valeurs après ce jour, dont
+  // 12 nouvellement activées — voir CLAUDE.md) au lieu d'une liste figée à
+  // 6 options codées en dur dans le template.
+  readonly resultats = signal<{ code: string; libelle: string }[]>([]);
+  decisionFichier: File | null = null;
+  erreurDecision = '';
   dlDossierRecherche = '';
   dlDossierLabel = '';
   nouvelleDiligence: any = { type_diligence: 'diligence' };
@@ -577,6 +606,14 @@ export class RoleAudienceComponent implements OnInit {
     if (!code) return '—';
     if (code === 'autre') return precision || 'Autre';
     return this.naturesProcedure().find((n) => n.code === code)?.libelle ?? code;
+  }
+
+  // 26/09/2026 — le tableau affichait jusqu'ici le code ENUM brut (ex.
+  // "delibere") au lieu d'un libellé français, gap trouvé en câblant la
+  // distinction délibéré/délibéré vidé demandée par l'utilisateur.
+  libelleResultat(code: string | null | undefined): string {
+    if (!code) return '—';
+    return this.resultats().find((r) => r.code === code)?.libelle ?? code;
   }
 
   // 23/09/2026 — "motifs_renvoi" est un catalogue de base (id + libelle),
@@ -654,6 +691,7 @@ export class RoleAudienceComponent implements OnInit {
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifs.set(m) });
     this.api.listesValeurs('type_diligence').subscribe({ next: (v) => this.typesDiligence.set(v) });
     this.api.listesValeurs('nature_procedure').subscribe({ next: (v) => this.naturesProcedure.set(v) });
+    this.api.listesValeurs('resultat_audience').subscribe({ next: (v) => this.resultats.set(v) });
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u) });
     this.chargerDiligences();
   }
@@ -1000,5 +1038,36 @@ export class RoleAudienceComponent implements OnInit {
       },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Téléchargement impossible.'),
     });
+  }
+
+  // 26/09/2026 — « une décision rendue doit pouvoir être consignée et
+  // enregistrée quelque part » (question directe de l'utilisateur) : le
+  // jugement/arrêt/ordonnance est joint directement depuis le retour,
+  // classé en GED sous la catégorie « Décision » du dossier.
+  selectionnerDecisionFichier(ev: Event): void {
+    this.decisionFichier = (ev.target as HTMLInputElement).files?.[0] ?? null;
+  }
+
+  televerserDecision(l: any): void {
+    if (!this.decisionFichier) return;
+    this.erreurDecision = '';
+    this.api.joindreDecisionAudience(l.audience_id, this.decisionFichier).subscribe({
+      next: (res) => {
+        this.decisionFichier = null;
+        // Pas de zone.js dans ce projet (voir CLAUDE.md) : le panneau de
+        // retour reste ouvert sur `l` après ce succès — il faut réécrire le
+        // signal `ligneRetour` avec un nouvel objet pour que le badge
+        // "Déjà joint" apparaisse tout de suite, muter `l` en place ne
+        // déclencherait aucun nouveau rendu.
+        this.ligneRetour.set({ ...l, decision_document_id: res.decision_document_id, decision_document_nom: res.nom });
+        this.charger();
+      },
+      error: (e) => this.erreurDecision = e?.error?.error ?? 'Téléversement impossible.',
+    });
+  }
+
+  ouvrirDecision(l: any): void {
+    if (!l.decision_document_id) return;
+    this.preview.ouvrir(l.decision_document_nom || 'Décision', this.api.telechargerDocument(l.decision_document_id));
   }
 }

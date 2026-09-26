@@ -156,6 +156,31 @@ router.get("/", async (req, res) => {
       `);
       retoursManquantsApercu = rma.rows;
     }
+    // Dossiers en attente de réenrôlement (26/09/2026) — un « avant dire
+    // droit » (ADD) et assimilés ne donnent aucune date de suite
+    // automatique (contrairement à renvoi/délibéré) : il faut réenrôler le
+    // dossier auprès du tribunal, démarche externe à JURIA. Signal =
+    // l'audience la plus récente du dossier (par date) a ce résultat, et
+    // aucune date n'a encore matérialisé de retour. Même permission que
+    // "Retours en attente" (le module Rôle d'audience porte les deux).
+    let reenrolementN = null, reenrolementApercu = [];
+    if (voitAudiencesModule) {
+      const derniereAudienceParDossier = `
+        SELECT DISTINCT ON (a.dossier_id) a.dossier_id, a.resultat, a.date_audience,
+               d.numero AS dossier_numero, d.intitule AS dossier_intitule
+        FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+        WHERE d.statut IN ('ouvert','en_cours')
+        ORDER BY a.dossier_id, a.date_audience DESC`;
+      const re = await one(`
+        SELECT count(*) AS n FROM (${derniereAudienceParDossier}) der WHERE der.resultat = 'avant_dire_droit'
+      `);
+      reenrolementN = Number(re.n);
+      const rea = await pool.query(`
+        SELECT * FROM (${derniereAudienceParDossier}) der WHERE der.resultat = 'avant_dire_droit'
+        ORDER BY der.date_audience ASC LIMIT 2
+      `);
+      reenrolementApercu = rea.rows;
+    }
     // Dossiers dormants : aucun mouvement (pièce, facture, événement,
     // communication, temps) depuis 30 jours — public, aucune donnée
     // financière ni RH, juste un signal de suivi opérationnel.
@@ -454,6 +479,8 @@ router.get("/", async (req, res) => {
       non_rentables_apercu: nonRentablesApercu,
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
+      reenrolement_n: reenrolementN,
+      reenrolement_apercu: reenrolementApercu,
       recettes_mois: recettesMois,
       depenses_mois: depensesMois,
       resultat_mois: resultatMois,
@@ -781,6 +808,25 @@ router.get("/detail/:type", async (req, res) => {
           FROM diligences dl LEFT JOIN dossiers d ON d.id = dl.dossier_id
           WHERE dl.statut = 'a_faire' AND dl.date_diligence < current_date
           ORDER BY date ASC LIMIT 300
+        `);
+        return res.json(rows);
+      }
+      // 26/09/2026 — "Dossiers en attente de réenrôlement" (voir la note sur
+      // la tuile agrégée plus haut dans ce fichier).
+      case "reenrolement": {
+        if (!(await estAutorise(req.user.role, "audiences.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(`
+          SELECT * FROM (
+            SELECT DISTINCT ON (a.dossier_id) a.dossier_id, a.resultat, a.date_audience,
+                   d.numero AS dossier_numero, d.intitule AS dossier_intitule,
+                   (current_date - a.date_audience) AS jours_attente
+            FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+            WHERE d.statut IN ('ouvert','en_cours')
+            ORDER BY a.dossier_id, a.date_audience DESC
+          ) der WHERE der.resultat = 'avant_dire_droit'
+          ORDER BY der.date_audience ASC LIMIT 200
         `);
         return res.json(rows);
       }

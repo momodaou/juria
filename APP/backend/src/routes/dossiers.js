@@ -381,10 +381,12 @@ router.get("/:id/audiences", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT a.id, a.date_audience, a.type, a.juridiction, a.heure, a.avocat_id, a.instructions,
               a.resultat, a.urgente, a.prochaine_date, a.observations,
+              a.decision_document_id, dd.nom AS decision_document_nom, dd.type_mime AS decision_document_mime,
               mr.libelle AS motif_renvoi, u.prenom || ' ' || u.nom AS avocat_nom
        FROM audiences a
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
        LEFT JOIN utilisateurs u ON u.id = a.avocat_id
+       LEFT JOIN documents dd ON dd.id = a.decision_document_id
        WHERE a.dossier_id = $1
        ORDER BY a.date_audience DESC`,
       [req.params.id]
