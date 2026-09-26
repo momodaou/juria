@@ -699,12 +699,7 @@ import { libelleRole } from '../../core/roles';
                     @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }} }
                   } @else { <span class="muted">à venir</span> }
                 </td>
-                <td>
-                  @if (auth.peut('audiences.ligne.creer')) { <button class="lien" (click)="commencerEditionAudience(a)">Modifier</button> }
-                  @if (auth.peut('audiences.retour.saisir')) {
-                    <button class="lien" (click)="commencerCorrectionRetour(a)">{{ a.resultat ? 'Corriger le retour' : 'Saisir le retour' }}</button>
-                  }
-                </td>
+                <td><app-menu-actions [actions]="actionsPourAudience(a)" /></td>
               </tr>
               @if (editionAudienceId() === a.id) {
                 <tr class="edition">
@@ -1549,6 +1544,29 @@ export class DossierDetailComponent implements OnInit {
     this.api.basculerProBono(this.id, activer).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (nd) => this.dossier.set(nd) }),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+    });
+  }
+
+  // 26/09/2026 — menu "⋮" (aligné sur role-audience.component.ts) : gap
+  // comblé, aucun moyen de retirer une audience en doublon/erronée (le bug
+  // corrigé le 24/09/2026 — un second POST /retour dupliquait l'audience
+  // suivante — avait pu en laisser en production avant le correctif).
+  actionsPourAudience(a: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (this.auth.peut('audiences.ligne.creer')) items.push({ label: 'Modifier', action: () => this.commencerEditionAudience(a) });
+    if (this.auth.peut('audiences.retour.saisir')) {
+      items.push({ label: a.resultat ? 'Corriger le retour' : 'Saisir le retour', action: () => this.commencerCorrectionRetour(a) });
+    }
+    if (this.auth.peut('audiences.ligne.creer')) items.push({ label: 'Retirer du rôle', action: () => this.retirerAudience(a), danger: true });
+    return items;
+  }
+
+  retirerAudience(a: any): void {
+    this.erreur.set('');
+    if (!window.confirm('Retirer cette audience du rôle ? Cette audience programmée sera définitivement supprimée.')) return;
+    this.api.retirerAudience(a.id).subscribe({
+      next: () => this.api.dossierAudiences(this.id).subscribe({ next: (aud) => this.audiences.set(aud), error: () => {} }),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
     });
   }
 

@@ -871,7 +871,22 @@ export class RoleAudienceComponent implements OnInit {
         ? { label: 'Modifier le retour', action: () => this.ouvrirCorrectionRetour(l) }
         : { label: 'Saisir le retour', action: () => this.ouvrirRetour(l) });
     }
+    // 26/09/2026 — gap comblé (constat de l'utilisateur : un dossier en
+    // doublon sur le rôle, aucun moyen de le retirer). Réutilise la
+    // permission de création/correction, pas une nouvelle action cataloguée
+    // — même famille que « Modifier » ci-dessus. Le serveur refuse déjà
+    // (409) si un retour est saisi ou si une suite a été chaînée.
+    if (this.auth.peut('audiences.ligne.creer')) items.push({ label: 'Retirer du rôle', action: () => this.retirerLigne(l), danger: true });
     return items;
+  }
+
+  retirerLigne(l: any): void {
+    this.erreur.set('');
+    if (!confirm(`Retirer « ${l.dossier_numero} » du rôle ? Cette audience programmée sera définitivement supprimée.`)) return;
+    this.api.retirerAudience(l.audience_id).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
+    });
   }
 
   commencerEditionAudience(l: any): void {

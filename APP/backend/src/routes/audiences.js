@@ -413,6 +413,52 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
   }
 });
 
+// DELETE /api/roles-audience/audiences/:id — retire une ligne du rôle
+// (et l'audience sous-jacente) après coup.
+// 26/09/2026 — gap signalé par l'utilisateur (« il est possible d'avoir des
+// dossiers en doublon dans le rôle d'audience... je n'ai vu nulle part la
+// possibilité de supprimer le dossier intrus ») : le bug corrigé le
+// 24/09/2026 (un second POST /retour dupliquait l'audience suivante) avait
+// pu laisser de vrais doublons en production AVANT le correctif — sans
+// aucune route pour les retirer. Clé = l'id de la table `audiences`
+// (`audience_id` côté front), pas celui de `role_audience_lignes` : c'est
+// le seul identifiant déjà exposé par les 2 écrans qui affichent une ligne
+// de rôle (Rôle d'audience et le panneau Audiences de la fiche dossier),
+// même choix que PUT /audiences/:id.
+// Bloqué (409) si un retour a déjà été saisi (protège l'historique réel —
+// utiliser la correction plutôt que la suppression) ou si une suite
+// (renvoi/mise en délibéré) a déjà été chaînée depuis cette audience
+// (retirer d'abord la suite, sans quoi son `audience_prec_id` empêcherait
+// de toute façon la suppression au niveau de la contrainte de clé
+// étrangère).
+router.delete("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const existante = await client.query("SELECT id, resultat FROM audiences WHERE id = $1", [req.params.id]);
+    if (!existante.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
+    if (existante.rows[0].resultat) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Un retour a déjà été saisi pour cette audience — corrigez-la plutôt que de la supprimer." });
+    }
+    const suite = await client.query("SELECT id FROM audiences WHERE audience_prec_id = $1", [req.params.id]);
+    if (suite.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Une suite (renvoi ou mise en délibéré) a déjà été programmée à partir de cette audience — retirez-la d'abord." });
+    }
+    await client.query("DELETE FROM role_audience_lignes WHERE audience_id = $1", [req.params.id]);
+    await client.query("DELETE FROM audiences WHERE id = $1", [req.params.id]);
+    await client.query("COMMIT");
+    res.status(204).end();
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/roles-audience/:id/pdf
 // 23/09/2026 — remplace l'impression HTML/navigateur (@page landscape,
 // suggestion que Safari n'honore pas de façon fiable) par un vrai PDF

@@ -134,6 +134,55 @@ describe("Historique des audiences sur la fiche dossier", () => {
   });
 });
 
+// 26/09/2026 — gap comblé (constat de l'utilisateur : « il est possible
+// d'avoir des dossiers en doublon dans le rôle d'audience... je n'ai vu
+// nulle part la possibilité de supprimer le dossier intrus »). Le bug
+// corrigé le 24/09/2026 (un second POST /retour dupliquait l'audience
+// suivante) avait pu en laisser en production avant le correctif, sans
+// aucune route pour les retirer.
+describe("DELETE /api/roles-audience/audiences/:id — retirer une ligne en doublon/erronée", () => {
+  test("retire l'audience et sa ligne de rôle", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2026-12-20", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const suppression = await request(app).delete(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppression.status).toBe(204);
+    const role = await request(app).get("/api/roles-audience?semaine=2026-12-14").set("Authorization", `Bearer ${token}`);
+    expect(role.body.lignes.some((l) => l.id === creation.body.id)).toBe(false);
+    // le dossier n'a plus d'activité "audiences" — la suppression redevient possible
+    const suppressionDossier = await request(app).delete(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(suppressionDossier.status).toBe(204);
+  });
+
+  test("refuse si un retour a déjà été saisi (409)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2026-12-21", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "plaide" });
+    const suppression = await request(app).delete(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppression.status).toBe(409);
+  });
+
+  test("refuse si une autre audience est déjà chaînée sur celle-ci (audience_prec_id) même sans résultat (409)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2026-12-22", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    // Simule une audience "suite" déjà chaînée sur l'audience d'origine
+    // (ex. laissée par le bug corrigé le 24/09/2026), sans passer par
+    // /retour — pour vérifier la 2e garde isolément de la 1re (résultat).
+    await pool.query(
+      "INSERT INTO audiences (dossier_id, date_audience, type, audience_prec_id) VALUES ($1,'2027-01-05','mise_en_etat',$2)",
+      [dossierId, creation.body.audience_id]
+    );
+    const suppression = await request(app).delete(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(suppression.status).toBe(409);
+  });
+});
+
 // 21/09/2026 — gap comblé (constat de l'utilisateur : « impossible de
 // modifier les informations du rôle ou d'une audience à venir »). Route
 // unique ancrée sur audiences.id, appelable depuis le Rôle d'audience

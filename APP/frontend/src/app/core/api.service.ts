@@ -529,6 +529,11 @@ export class ApiService {
   majAudience(audienceId: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/roles-audience/audiences/${audienceId}`, payload);
   }
+  // 26/09/2026 — retire une ligne en doublon/erronée du rôle (bloqué côté
+  // serveur si un retour est déjà saisi ou si une suite a déjà été chaînée).
+  retirerAudience(audienceId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/roles-audience/audiences/${audienceId}`);
+  }
 
   // Diligences (11/09/2026) — planning des rendez-vous/démarches de
   // terrain, distinct du rôle hebdomadaire d'audience.
