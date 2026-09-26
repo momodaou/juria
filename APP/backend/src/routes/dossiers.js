@@ -827,6 +827,28 @@ router.delete("/:id/clients/:clientId", requirePermission("dossiers.clients_addi
 // POST /api/dossiers/:id/instances — ajouter un degré (ex. passage en
 // appel après une première instance). Table `instances` déjà en base
 // (voir GET /:id) mais jamais utilisée avant ce jour.
+// GET /api/dossiers/:id/instances/verifier-doublon?degre=&juridiction=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une instance
+// déjà enregistrée pour ce dossier au même degré et la même juridiction. Un
+// vrai doublon existe (ressaisie manuelle), mais un 2e passage identique
+// reste parfois légitime (réouverture) — jamais bloqué en dur.
+router.get("/:id/instances/verifier-doublon", requirePermission("dossiers.instances.gerer"), async (req, res) => {
+  const { degre, juridiction } = req.query;
+  if (!degre) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, degre, juridiction, date_debut FROM instances
+       WHERE dossier_id = $1 AND degre = $2::degre_instance
+         AND ($3::varchar IS NULL OR juridiction ILIKE $3)`,
+      [req.params.id, degre, juridiction || null]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), async (req, res) => {
   const b = req.body || {};
   try {
@@ -892,6 +914,28 @@ router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instance
 // les clients additionnels/instances ci-dessus. `dossier_parties` (déjà en
 // base) n'est pas une fiche client — aucun champ KYC n'y est rattaché, ces
 // routes ne touchent jamais la table `clients`/`client_pieces_kyc`.
+// GET /api/dossiers/:id/parties/verifier-doublon?role=&denomination=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une partie
+// déjà enregistrée sur ce dossier avec le même rôle et un nom identique à
+// l'espace/tiret près (même normalisation que GET /api/clients/verifier-doublon).
+router.get("/:id/parties/verifier-doublon", requirePermission("dossiers.parties.gerer"), async (req, res) => {
+  const { role, denomination } = req.query;
+  if (!denomination) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, role, denomination FROM dossier_parties
+       WHERE dossier_id = $1 AND ($2::role_partie IS NULL OR role = $2::role_partie)
+         AND regexp_replace(lower(denomination), '[\\s\\-.,]', '', 'g')
+           = regexp_replace(lower($3), '[\\s\\-.,]', '', 'g')`,
+      [req.params.id, role || null, denomination]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.post("/:id/parties", requirePermission("dossiers.parties.gerer"), async (req, res) => {
   const b = req.body || {};
   if (!b.denomination) return res.status(400).json({ error: "denomination requise" });

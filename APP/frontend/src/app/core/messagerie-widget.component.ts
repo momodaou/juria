@@ -59,7 +59,7 @@ import { MessagerieService, Conversation } from './messagerie.service';
                   }
                 </select>
                 <input class="mw-input" [(ngModel)]="titreChoisi" name="mwTitre" placeholder="Titre (facultatif, groupe)" />
-                <button type="button" class="mw-btn" (click)="creer()" [disabled]="!participantsChoisis.length">Créer</button>
+                <button type="button" class="mw-btn" (click)="creer()" [disabled]="!participantsChoisis.length || creationEnCours()">{{ creationEnCours() ? 'Création…' : 'Créer' }}</button>
               </div>
             }
             @if (afficherMasquees()) {
@@ -255,6 +255,9 @@ export class MessagerieWidgetComponent implements OnInit {
   readonly vue = signal<'liste' | 'fil'>('liste');
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);
+  // 26/09/2026 — audit doublons : garde anti-double-clic, même correctif
+  // que messagerie.component.ts (écran plein page).
+  readonly creationEnCours = signal(false);
   readonly afficherMasquees = signal(false);
   readonly conversationsMasquees = signal<Conversation[]>([]);
   readonly menuOuvertId = signal<string | null>(null);
@@ -376,14 +379,17 @@ export class MessagerieWidgetComponent implements OnInit {
   }
 
   creer(): void {
+    this.creationEnCours.set(true);
     this.messagerie.creerConversation(this.participantsChoisis, this.titreChoisi).subscribe({
       next: (c) => {
+        this.creationEnCours.set(false);
         this.afficherNouvelle.set(false);
         this.participantsChoisis = [];
         this.titreChoisi = '';
         this.messagerie.rafraichirConversations();
         this.ouvrir(c);
       },
+      error: () => this.creationEnCours.set(false),
     });
   }
 

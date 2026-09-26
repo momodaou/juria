@@ -75,6 +75,26 @@ router.get("/conges", async (req, res) => {
 
 // POST /api/cabinet/conges  { utilisateur_id?, type, date_debut, date_fin, motif? }
 // Sans utilisateur_id : demande pour soi-même.
+// GET /api/cabinet/conges/verifier-doublon?date_debut=&date_fin=&utilisateur_id=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une demande
+// déjà faite pour les mêmes dates par la même personne (utilisateur_id
+// défaut = l'appelant, comme POST /conges ci-dessous).
+router.get("/conges/verifier-doublon", requirePermission("cabinet.conge.demander"), async (req, res) => {
+  const { date_debut, date_fin, utilisateur_id } = req.query;
+  if (!date_debut || !date_fin) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, type, date_debut, date_fin, statut FROM conges
+       WHERE utilisateur_id = COALESCE($3::uuid, $4::uuid) AND date_debut = $1 AND date_fin = $2`,
+      [date_debut, date_fin, utilisateur_id || null, req.user.sub]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.post("/conges", requirePermission("cabinet.conge.demander"), async (req, res) => {
   const b = req.body || {};
   if (!b.date_debut || !b.date_fin) return res.status(400).json({ error: "date_debut et date_fin requises" });

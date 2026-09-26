@@ -87,8 +87,18 @@ import { libelleRole } from '../../core/roles';
           </select>
           <input class="sel" type="date" [(ngModel)]="nouveauConge.date_debut" name="debut" />
           <input class="sel" type="date" [(ngModel)]="nouveauConge.date_fin" name="fin" />
-          <button class="btn sm" (click)="demander()" [disabled]="!nouveauConge.date_debut || !nouveauConge.date_fin">Demander</button>
+          <button class="btn sm" (click)="demander()" [disabled]="!nouveauConge.date_debut || !nouveauConge.date_fin || ajoutCongeEnCours()">{{ ajoutCongeEnCours() ? 'Envoi…' : 'Demander' }}</button>
         </div>
+        @if (doublonsConge().length) {
+          <div class="doublon">
+            <b>⚠ Une demande existe déjà pour ces dates :</b>
+            @for (d of doublonsConge(); track d.id) { <p>{{ d.type }} — {{ d.date_debut | date:'dd/MM/yyyy' }} au {{ d.date_fin | date:'dd/MM/yyyy' }} ({{ d.statut }})</p> }
+            <div class="btns">
+              <button class="btn ghost" (click)="doublonsConge.set([])">Annuler, je vérifie</button>
+              <button class="btn" (click)="demanderQuandMeme()" [disabled]="ajoutCongeEnCours()">Demander quand même</button>
+            </div>
+          </div>
+        }
       }
       @if (conges().length) {
         <table>
@@ -125,9 +135,19 @@ import { libelleRole } from '../../core/roles';
               <button class="btn sm" (click)="enregistrerModificationEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate">Enregistrer</button>
               <button class="lien" (click)="annulerEditionEcheanceAdmin()">Annuler</button>
             } @else {
-              <button class="btn sm" (click)="ajouterEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate">Ajouter</button>
+              <button class="btn sm" (click)="ajouterEcheanceAdmin()" [disabled]="!eaLibelle || !eaDate || ajoutEcheanceAdminEnCours()">{{ ajoutEcheanceAdminEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
             }
           </div>
+          @if (doublonsEcheanceAdmin().length) {
+            <div class="doublon">
+              <b>⚠ Une échéance très proche existe déjà :</b>
+              @for (d of doublonsEcheanceAdmin(); track d.id) { <p>{{ d.libelle }} — {{ d.categorie }} — prochaine le {{ d.prochaine_date | date:'dd/MM/yyyy' }}</p> }
+              <div class="btns">
+                <button class="btn ghost" (click)="doublonsEcheanceAdmin.set([])">Annuler, je vérifie</button>
+                <button class="btn" (click)="ajouterEcheanceAdminQuandMeme()" [disabled]="ajoutEcheanceAdminEnCours()">Ajouter quand même</button>
+              </div>
+            </div>
+          }
           @if (erreurEcheanceAdmin()) { <p class="err">{{ erreurEcheanceAdmin() }}</p> }
         }
         @if (echeancesAdmin().length) {
@@ -166,6 +186,10 @@ import { libelleRole } from '../../core/roles';
     }
   `,
   styles: [`
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-bottom:14px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:var(--fs-base)}
@@ -192,6 +216,10 @@ export class CabinetComponent implements OnInit {
   pointageCorrection = false;
   readonly erreurPointage = signal('');
   readonly erreurConge = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
+  // ressaisie (même patron que clients.component.ts).
+  readonly ajoutCongeEnCours = signal(false);
+  readonly doublonsConge = signal<any[]>([]);
   nouveauConge: any = { type: 'annuel' };
   nouveauBulletin: any = { mois: new Date().toISOString().slice(0, 8) + '01' };
 
@@ -203,6 +231,8 @@ export class CabinetComponent implements OnInit {
   readonly categoriesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
   readonly periodicitesEcheanceAdmin = signal<{ code: string; libelle: string }[]>([]);
   readonly erreurEcheanceAdmin = signal('');
+  readonly ajoutEcheanceAdminEnCours = signal(false);
+  readonly doublonsEcheanceAdmin = signal<any[]>([]);
   eaCategorie = 'fiscale'; eaLibelle = ''; eaPeriodicite = 'ponctuelle'; eaDate = '';
   // Le même formulaire sert à la création ET à la modification (pas de 2e
   // formulaire dupliqué) : non-null quand une ligne est en cours d'édition.
@@ -239,12 +269,30 @@ export class CabinetComponent implements OnInit {
 
   ajouterEcheanceAdmin(): void {
     this.erreurEcheanceAdmin.set('');
+    this.doublonsEcheanceAdmin.set([]);
+    this.api.verifierDoublonEcheanceAdmin(this.eaLibelle, this.eaCategorie).subscribe({
+      next: (d) => { if (d.length) this.doublonsEcheanceAdmin.set(d); else this.ajouterEcheanceAdminReellement(); },
+      error: () => this.ajouterEcheanceAdminReellement(),
+    });
+  }
+
+  ajouterEcheanceAdminQuandMeme(): void {
+    this.doublonsEcheanceAdmin.set([]);
+    this.ajouterEcheanceAdminReellement();
+  }
+
+  private ajouterEcheanceAdminReellement(): void {
+    this.ajoutEcheanceAdminEnCours.set(true);
     this.api.creerEcheanceAdmin({
       categorie: this.eaCategorie, libelle: this.eaLibelle,
       periodicite: this.eaPeriodicite, prochaine_date: this.eaDate,
     }).subscribe({
-      next: () => { this.eaLibelle = ''; this.eaDate = ''; this.chargerEcheancesAdmin(); },
-      error: (e) => this.erreurEcheanceAdmin.set(e?.error?.error ?? 'Ajout impossible'),
+      next: () => {
+        this.ajoutEcheanceAdminEnCours.set(false);
+        this.eaLibelle = ''; this.eaDate = ''; this.doublonsEcheanceAdmin.set([]);
+        this.chargerEcheancesAdmin();
+      },
+      error: (e) => { this.ajoutEcheanceAdminEnCours.set(false); this.erreurEcheanceAdmin.set(e?.error?.error ?? 'Ajout impossible'); },
     });
   }
 
@@ -370,8 +418,29 @@ export class CabinetComponent implements OnInit {
   }
 
   demander(): void {
+    this.erreurConge.set('');
+    this.doublonsConge.set([]);
+    this.api.verifierDoublonConge(this.nouveauConge.date_debut, this.nouveauConge.date_fin).subscribe({
+      next: (d) => { if (d.length) this.doublonsConge.set(d); else this.demanderReellement(); },
+      error: () => this.demanderReellement(),
+    });
+  }
+
+  demanderQuandMeme(): void {
+    this.doublonsConge.set([]);
+    this.demanderReellement();
+  }
+
+  private demanderReellement(): void {
+    this.ajoutCongeEnCours.set(true);
     this.api.demanderConge(this.nouveauConge).subscribe({
-      next: () => { this.nouveauConge = { type: 'annuel' }; this.chargerConges(); },
+      next: () => {
+        this.ajoutCongeEnCours.set(false);
+        this.nouveauConge = { type: 'annuel' };
+        this.doublonsConge.set([]);
+        this.chargerConges();
+      },
+      error: (e) => { this.ajoutCongeEnCours.set(false); this.erreurConge.set(e?.error?.error ?? 'Demande impossible.'); },
     });
   }
 

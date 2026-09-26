@@ -158,8 +158,18 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               }
             </select>
             <input class="sel" [(ngModel)]="nouveauLien.nature" name="lienNature" placeholder="Nature (ex. filiale, dirigeant, bénéficiaire effectif…)" />
-            <button class="btn" (click)="ajouterLien()" [disabled]="!nouveauLien.lie_a_id || !nouveauLien.nature">Ajouter</button>
+            <button class="btn" (click)="ajouterLien()" [disabled]="!nouveauLien.lie_a_id || !nouveauLien.nature || ajoutLienEnCours()">{{ ajoutLienEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           </div>
+          @if (doublonsLien().length) {
+            <div class="doublon">
+              <b>⚠ Ce lien existe déjà :</b>
+              @for (d of doublonsLien(); track d.id) { <p>{{ d.nature }}</p> }
+              <div class="btns">
+                <button class="btn ghost" (click)="doublonsLien.set([])">Annuler, je vérifie</button>
+                <button class="btn" (click)="ajouterLienQuandMeme()" [disabled]="ajoutLienEnCours()">Ajouter quand même</button>
+              </div>
+            </div>
+          }
           @if (erreurLien()) { <p class="err">{{ erreurLien() }}</p> }
         }
       </section>
@@ -209,7 +219,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             </select>
             <input class="sel" [(ngModel)]="nouvelOriginal.description" name="description" placeholder="Description" />
             <input class="sel" [(ngModel)]="nouvelOriginal.emplacement" name="emplacement" placeholder="Emplacement (coffre, armoire…)" />
-            <button class="btn" (click)="ajouterOriginal()" [disabled]="!nouvelOriginal.description">Ajouter</button>
+            <button class="btn" (click)="ajouterOriginal()" [disabled]="!nouvelOriginal.description || ajoutOriginalEnCours()">{{ ajoutOriginalEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           </div>
         }
       </section>
@@ -218,6 +228,10 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     }
   `,
   styles: [`
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
@@ -270,6 +284,13 @@ export class ClientDetailComponent implements OnInit {
   // jusqu'ici aucun écran ni aucune route d'écriture (voir clients.js).
   readonly clientsTous = signal<any[]>([]);
   readonly erreurLien = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
+  // ressaisie pour les liens (deux fois le même client lié avec la même
+  // nature n'a jamais de sens légitime, mais on reste sur un avertissement
+  // plutôt qu'un blocage dur, cohérent avec le reste de cette passe).
+  readonly ajoutLienEnCours = signal(false);
+  readonly doublonsLien = signal<any[]>([]);
+  readonly ajoutOriginalEnCours = signal(false);
   nouveauLien: { lie_a_id: string; nature: string } = { lie_a_id: '', nature: '' };
 
   // Combine les deux sens (liens saisis depuis cette fiche + liens saisis
@@ -286,9 +307,23 @@ export class ClientDetailComponent implements OnInit {
   ajouterLien(): void {
     if (!this.nouveauLien.lie_a_id || !this.nouveauLien.nature) return;
     this.erreurLien.set('');
+    this.doublonsLien.set([]);
+    this.api.verifierDoublonLien(this.clientId, this.nouveauLien.lie_a_id, this.nouveauLien.nature).subscribe({
+      next: (d) => { if (d.length) this.doublonsLien.set(d); else this.ajouterLienReellement(); },
+      error: () => this.ajouterLienReellement(),
+    });
+  }
+
+  ajouterLienQuandMeme(): void {
+    this.doublonsLien.set([]);
+    this.ajouterLienReellement();
+  }
+
+  private ajouterLienReellement(): void {
+    this.ajoutLienEnCours.set(true);
     this.api.ajouterLienClient(this.clientId, this.nouveauLien).subscribe({
-      next: () => { this.nouveauLien = { lie_a_id: '', nature: '' }; this.charger(); },
-      error: (e) => this.erreurLien.set(e?.error?.error ?? 'Ajout impossible.'),
+      next: () => { this.ajoutLienEnCours.set(false); this.nouveauLien = { lie_a_id: '', nature: '' }; this.doublonsLien.set([]); this.charger(); },
+      error: (e) => { this.ajoutLienEnCours.set(false); this.erreurLien.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 
@@ -444,9 +479,10 @@ export class ClientDetailComponent implements OnInit {
 
   ajouterOriginal(): void {
     this.erreur.set('');
+    this.ajoutOriginalEnCours.set(true);
     this.api.creerOriginal({ client_id: this.clientId, ...this.nouvelOriginal }).subscribe({
-      next: () => { this.nouvelOriginal = { type_piece: '', description: '', emplacement: '' }; this.charger(); },
-      error: () => this.erreur.set('Ajout de l’original impossible.'),
+      next: () => { this.ajoutOriginalEnCours.set(false); this.nouvelOriginal = { type_piece: '', description: '', emplacement: '' }; this.charger(); },
+      error: () => { this.ajoutOriginalEnCours.set(false); this.erreur.set('Ajout de l’original impossible.'); },
     });
   }
 

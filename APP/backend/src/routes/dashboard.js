@@ -66,6 +66,88 @@ const MARGE_DOSSIER_SELECT = `
   ROUND(100.0 * (facture_ht - depenses - retro) / facture_ht) AS marge_pct
 `;
 
+// 26/09/2026 — audit doublons, phase 5 (filet de sécurité) : rassemble, en
+// une seule requête, les groupes de lignes probablement identiques déjà
+// entrées dans les 8 tables couvertes par les avertissements de doublon
+// (phases 1-4). Calculé en direct (pas de job planifié) — voir la note sur
+// `voitDoublons` plus haut. `factures` en est volontairement absente
+// (aucune clé naturelle fiable, voir l'audit d'origine). Normalisation
+// espace/tiret sur les noms de parties, même règle que
+// GET /api/clients/verifier-doublon.
+const DOUBLONS_CTE = `
+  WITH doublons AS (
+    SELECT 'Partie de dossier'::text AS categorie, dp.dossier_id, d.numero AS dossier_numero,
+           (dp.role::text || ' — ' || MIN(dp.denomination)) AS description, count(*) AS nb
+    FROM dossier_parties dp JOIN dossiers d ON d.id = dp.dossier_id
+    GROUP BY dp.dossier_id, d.numero, dp.role, regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g')
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Instance', i.dossier_id, d.numero,
+           (i.degre::text || ' — ' || COALESCE(i.juridiction, '—')), count(*)
+    FROM instances i JOIN dossiers d ON d.id = i.dossier_id
+    GROUP BY i.dossier_id, d.numero, i.degre, i.juridiction
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Audience', l.dossier_id, d.numero,
+           ('Le ' || to_char(l.date_prevue, 'DD/MM/YYYY') || ' — ' || COALESCE(l.juridiction, '—')), count(*)
+    FROM role_audience_lignes l JOIN dossiers d ON d.id = l.dossier_id
+    GROUP BY l.dossier_id, d.numero, l.date_prevue, l.juridiction
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Dépense', dep.dossier_id, dos.numero,
+           (dep.libelle || ' — ' || dep.montant::text || ' FCFA'), count(*)
+    FROM depenses dep LEFT JOIN dossiers dos ON dos.id = dep.dossier_id
+    GROUP BY dep.dossier_id, dos.numero, dep.libelle, dep.montant, dep.date_depense
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Rétrocession', r.dossier_id, d2.numero,
+           (r.qualite::text || ' — ' || r.base_ht::text || ' FCFA'), count(*)
+    FROM retrocessions r LEFT JOIN dossiers d2 ON d2.id = r.dossier_id
+    GROUP BY r.dossier_id, d2.numero, r.beneficiaire_id, r.qualite, r.base_ht, r.facture_id
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Lien client', NULL::uuid, NULL::varchar,
+           ('Lien client — ' || cl.nature), count(*)
+    FROM client_liens cl
+    GROUP BY cl.client_id, cl.lie_a_id, cl.nature
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Compte bancaire', NULL::uuid, NULL::varchar, cb.intitule, count(*)
+    FROM comptes_bancaires cb
+    GROUP BY cb.intitule
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Congé', NULL::uuid, NULL::varchar,
+           (u.prenom || ' ' || u.nom || ' — du ' || to_char(c.date_debut, 'DD/MM/YYYY') || ' au ' || to_char(c.date_fin, 'DD/MM/YYYY')), count(*)
+    FROM conges c JOIN utilisateurs u ON u.id = c.utilisateur_id
+    GROUP BY c.utilisateur_id, u.prenom, u.nom, c.date_debut, c.date_fin
+    HAVING count(*) > 1
+    UNION ALL
+    -- 26/09/2026 — vérifié sur données réalistes : les 3 échéances IS
+    -- (acomptes provisionnels, même libellé/catégorie par design — voir
+    -- CLAUDE.md 11/09/2026) ressortaient comme un faux positif permanent.
+    -- prochaine_date (colonne brute, pas recalculée à la lecture comme le
+    -- fait l'écran via calculerProchaineEcheance()) s'est révélée peu
+    -- fiable pour les distinguer — 2 des 3 échéances IS réelles partagent
+    -- la même valeur brute en base malgré des ancrages différents. Utilise
+    -- plutôt jour_echeance/mois_echeance, le véritable ancrage saisi par
+    -- l'utilisateur (un vrai doublon partage presque toujours aussi son
+    -- ancrage, contrairement à des échéances récurrentes légitimement
+    -- homonymes).
+    SELECT 'Échéance administrative', NULL::uuid, NULL::varchar,
+           (ea.libelle || ' — ' || ea.categorie), count(*)
+    FROM echeances_administratives ea WHERE ea.actif = TRUE
+    GROUP BY ea.libelle, ea.categorie, ea.jour_echeance, ea.mois_echeance
+    HAVING count(*) > 1
+    UNION ALL
+    SELECT 'Diligence', dl.dossier_id, d3.numero,
+           (dl.type_diligence || ' — ' || to_char(dl.date_diligence, 'DD/MM/YYYY')), count(*)
+    FROM diligences dl LEFT JOIN dossiers d3 ON d3.id = dl.dossier_id
+    GROUP BY dl.dossier_id, d3.numero, dl.date_diligence, dl.type_diligence
+    HAVING count(*) > 1
+  )
+`;
+
 // GET /api/dashboard  -> indicateurs agrégés (les nombres affichés sur les tuiles)
 router.get("/", async (req, res) => {
   try {
@@ -97,6 +179,18 @@ router.get("/", async (req, res) => {
     // que le module qui porte ces deux tables (audiences.consulter — Rôle
     // d'audience gère aussi bien les audiences que les diligences).
     const voitAudiencesModule = await estAutorise(req.user.role, "audiences.consulter");
+    // 26/09/2026 — audit doublons, phase 5 (filet de sécurité) : les phases
+    // 1-4 préviennent la saisie (garde anti-double-clic + avertissement non
+    // bloquant), mais rien ne repère un doublon déjà entré AVANT ces
+    // correctifs, ni un doublon créé malgré l'avertissement (l'utilisateur
+    // reste toujours libre de continuer). Calculée en direct à chaque
+    // chargement (pas de job planifié — comme "Retours en attente"/
+    // "Dossiers dormants", toujours à jour, aucune infrastructure
+    // supplémentaire). Réservée au même cluster que la gestion des comptes
+    // bancaires (direction/admin IT) — la tuile agrège des données de
+    // plusieurs modules (dépenses/rétrocessions inclus), pas seulement le
+    // module qui la porte.
+    const voitDoublons = await estAutorise(req.user.role, "parametres.cabinet.modifier");
     const impayes = voitFactures
       ? await one(
           `SELECT COALESCE(SUM(montant_ttc),0) AS total
@@ -180,6 +274,14 @@ router.get("/", async (req, res) => {
         ORDER BY der.date_audience ASC LIMIT 2
       `);
       reenrolementApercu = rea.rows;
+    }
+    // Doublons potentiels (26/09/2026) — voir DOUBLONS_CTE ci-dessus.
+    let doublonsN = null, doublonsApercu = [];
+    if (voitDoublons) {
+      const dn = await one(`${DOUBLONS_CTE} SELECT count(*) AS n FROM doublons`);
+      doublonsN = Number(dn.n);
+      const da = await pool.query(`${DOUBLONS_CTE} SELECT * FROM doublons ORDER BY categorie LIMIT 2`);
+      doublonsApercu = da.rows;
     }
     // Dossiers dormants : aucun mouvement (pièce, facture, événement,
     // communication, temps) depuis 30 jours — public, aucune donnée
@@ -481,6 +583,8 @@ router.get("/", async (req, res) => {
       retours_manquants_apercu: retoursManquantsApercu,
       reenrolement_n: reenrolementN,
       reenrolement_apercu: reenrolementApercu,
+      doublons_n: doublonsN,
+      doublons_apercu: doublonsApercu,
       recettes_mois: recettesMois,
       depenses_mois: depensesMois,
       resultat_mois: resultatMois,
@@ -828,6 +932,14 @@ router.get("/detail/:type", async (req, res) => {
           ) der WHERE der.resultat = 'avant_dire_droit'
           ORDER BY der.date_audience ASC LIMIT 200
         `);
+        return res.json(rows);
+      }
+      // 26/09/2026 — "Doublons potentiels" (voir DOUBLONS_CTE plus haut).
+      case "doublons": {
+        if (!(await estAutorise(req.user.role, "parametres.cabinet.modifier"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(`${DOUBLONS_CTE} SELECT * FROM doublons ORDER BY categorie LIMIT 200`);
         return res.json(rows);
       }
       case "non_rentables": {

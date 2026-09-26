@@ -36,7 +36,8 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
               }
             </select>
             <input class="sel" [(ngModel)]="titreChoisi" name="titre" placeholder="Titre (optionnel, groupe)" />
-            <button class="btn sm" (click)="creer()" [disabled]="participantsChoisis.length === 0">Créer</button>
+            <button class="btn sm" (click)="creer()" [disabled]="participantsChoisis.length === 0 || creationEnCours()">{{ creationEnCours() ? 'Création…' : 'Créer' }}</button>
+            @if (erreurCreation()) { <p class="err">{{ erreurCreation() }}</p> }
           </div>
         }
 
@@ -243,6 +244,10 @@ export class MessagerieComponent implements OnInit, OnDestroy {
 
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);
+  // 26/09/2026 — audit doublons : garde anti-double-clic (impact mineur —
+  // une conversation en double se remarque et se masque facilement).
+  readonly creationEnCours = signal(false);
+  readonly erreurCreation = signal('');
   readonly afficherMasquees = signal(false);
   readonly conversationsMasquees = signal<Conversation[]>([]);
   /** Menu "⋮" ouvert pour cette conversation (13/09/2026) — un seul à la fois. */
@@ -315,14 +320,18 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   }
 
   creer(): void {
+    this.erreurCreation.set('');
+    this.creationEnCours.set(true);
     this.messagerie.creerConversation(this.participantsChoisis, this.titreChoisi).subscribe({
       next: (c) => {
+        this.creationEnCours.set(false);
         this.afficherNouvelle.set(false);
         this.participantsChoisis = [];
         this.titreChoisi = '';
         this.messagerie.rafraichirConversations();
         this.messagerie.ouvrirConversation(c.id);
       },
+      error: (e) => { this.creationEnCours.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }
 

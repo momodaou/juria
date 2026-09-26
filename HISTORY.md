@@ -3055,3 +3055,43 @@ Vérifié : **369/369 tests** (20 nouveaux, `tests/actionsCorrection.test.js`), 
 - Aucune erreur JavaScript sur l'ensemble des parcours testés.
 
 **Déploiement** : **déployé et vérifié en production le 26/09/2026** (accord utilisateur, `./scripts/deploy.sh both` lancé par lui via `!`) — aucune migration nécessaire. API `juria-00111-qmq` (précédente `juria-00110-s45`), frontend `juria-web-00142-7lx` (précédente `juria-web-00141-997`), `/health` et `/` en `200`, les 3 nouvelles routes `verifier-doublon` (roles-audience/depenses/retrocessions) confirmées présentes (`401` sans jeton, pas `404`).
+
+## 26/09/2026 — Audit doublons, phases 3 à 5 (même session)
+
+**Contexte** : l'utilisateur demande de poursuivre l'audit doublons avec les phases 3 à 5 du plan présenté (garde anti-double-clic sur le reste des écrans de création, avertissement de doublon sur le reste des routes métier, filet de sécurité).
+
+**Phase 3 — garde anti-double-clic, reste de la Famille A** : même patron que les phases 1-2 (signal `xxxEnCours`, bouton désactivé + libellé "…en cours" pendant l'envoi), appliqué à :
+- Rôle d'audience : `ajouterDiligence()`.
+- Échéances : `ajouter()` (événement/délai) et `ajouterTache()` — pas d'avertissement de doublon ici (titres/objets souvent légitimement répétés, priorité basse confirmée par l'audit d'origine).
+- Fiche dossier : `ajouterDelai()`, `ajouterTemps()`, `ajouterComm()` — même raisonnement, garde seule.
+- Fiche client : `ajouterLien()` (+ avertissement de doublon, voir phase 4) et `ajouterOriginal()` (garde seule).
+- Accès & permissions : `ajouterCompte()` (comptes bancaires, + avertissement de doublon).
+- Administratif & RH : `demander()` (congé, + avertissement de doublon) — **gap trouvé au passage** : cette méthode n'avait strictement aucune gestion d'erreur (`.subscribe({ next: ... })` sans `error:`), une demande refusée par le serveur passait silencieusement inaperçue ; corrigé en même temps que la garde. Et `ajouterEcheanceAdmin()` (+ avertissement de doublon).
+- Plan d'action : `creer()`.
+- Messagerie : `creer()` (conversation) dans **les deux** implémentations qui existent en parallèle — l'écran plein page (`messagerie.component.ts`) et le widget flottant (`core/messagerie-widget.component.ts`, présent sur toute l'appli) — chacune avait sa propre copie du code de création, donc son propre gap à corriger séparément.
+
+**Phase 4 — avertissement de doublon, reste de la Famille B** : même patron que `GET /api/clients/verifier-doublon` (signale, ne bloque jamais) sur les 7 routes/tables restantes identifiées par l'audit d'origine :
+- `GET /api/dossiers/:id/parties/verifier-doublon?role=&denomination=` — même normalisation espace/tiret que le contrôle de doublon client (21/08/2026).
+- `GET /api/dossiers/:id/instances/verifier-doublon?degre=&juridiction=` — signalé mais jamais bloqué : un 2e passage au même degré peut être une vraie réouverture, pas systématiquement une erreur de saisie.
+- `GET /api/clients/:id/liens/verifier-doublon?lie_a_id=&nature=`.
+- `GET /api/parametres/comptes-bancaires/verifier-doublon?intitule=&numero=` — aucune contrainte n'existait jusqu'ici, même pas sur `numero`.
+- `GET /api/cabinet/conges/verifier-doublon?date_debut=&date_fin=&utilisateur_id=` (défaut : l'appelant lui-même, comme `POST /conges`).
+- `GET /api/echeances-administratives/verifier-doublon?libelle=&categorie=` — restreint aux échéances actives (`actif = TRUE`), sans quoi une échéance déjà désactivée (13/09/2026, `DELETE` = désactivation) aurait continué à déclencher un faux avertissement indéfiniment.
+- `GET /api/diligences/verifier-doublon?dossier_id=&date_diligence=&type_diligence=`.
+
+Les 8 tables identifiées par l'audit d'origine (Famille B) ont désormais toutes un contrôle — plus aucun gap connu dans cette liste.
+
+**Phase 5 — filet de sécurité, tuile Tableau de bord « Doublons potentiels »** : les phases 1-4 préviennent la saisie, mais ne détectent rien de ce qui a déjà été entré avant ces correctifs, ni ce qui serait créé sciemment malgré un avertissement. Calculée **en direct** à chaque chargement du Tableau de bord (pas de job Cloud Scheduler — même principe que « Retours en attente »/« Dossiers dormants », toujours à jour sans infrastructure supplémentaire). `DOUBLONS_CTE` (`backend/src/routes/dashboard.js`) : un `UNION ALL` de 9 sous-requêtes (une par table de la Famille B, `factures` volontairement exclue — aucune clé naturelle fiable identifiée par l'audit d'origine), chacune un `GROUP BY ... HAVING count(*) > 1` sur la même clé naturelle que sa route `verifier-doublon` correspondante. Réservée au cluster direction/admin IT (`parametres.cabinet.modifier`, même palier que la gestion des comptes bancaires) plutôt qu'à la permission de chaque module d'origine — la tuile agrège des données de plusieurs modules (dépenses/rétrocessions inclus), une permission par module n'aurait pas de sens ici.
+
+**3 bugs SQL trouvés et corrigés, tous en testant sur des données réelles/réalistes plutôt qu'en relisant le code** :
+1. `dossier_parties` : `dp.denomination` sélectionné en clair alors que le `GROUP BY` le normalise (`regexp_replace` espace/tiret) — Postgres refuse (« must appear in the GROUP BY clause »). Corrigé en `MIN(dp.denomination)`.
+2. `retrocessions` : `r.qualite` sélectionné sans figurer dans le `GROUP BY` — ajouté.
+3. **Faux positif réel, trouvé en testant contre les données seedées du cabinet** (pas une donnée de test artificielle) : les 3 échéances IS (acomptes provisionnels de l'Impôt sur les Sociétés, même libellé/catégorie **par construction délibérée** — voir l'entrée du 11/09/2026, « IS scindé en 3 lignes annuelles, dates fiscales réelles inégales ») ressortaient comme un « doublon » permanent avec un simple `GROUP BY libelle, categorie`. Première tentative de correctif (`GROUP BY ..., prochaine_date`) insuffisante : vérifié par une requête SQL directe que 2 des 3 lignes réelles partagent la même valeur brute de `prochaine_date` en base malgré des ancrages différents (`jour_echeance`/`mois_echeance` = 31/7, 31/3, 30/11) — cette colonne n'est qu'un ancien instantané, pas la date recalculée à la volée par `calculerProchaineEcheance()` (11/09/2026) que l'écran affiche réellement. Corrigé en regroupant sur `jour_echeance`/`mois_echeance`, le véritable ancrage saisi par l'utilisateur — distingue correctement les 3 échéances IS tout en détectant un vrai doublon (testé : même ancrage exact → détecté ; ancrages différents → pas détecté).
+
+**Piège méthodologique retombé 2 fois pendant cette correction** (déjà documenté à plusieurs reprises ce mois-ci — voir les entrées du 19/09/2026 et 20/09/2026) : un commentaire SQL contenant un backtick, à l'intérieur du template literal JS `DOUBLONS_CTE`, a cassé la compilation du fichier entier (`SyntaxError: Unexpected identifier`, l'API refusant de démarrer — confirmé par `docker logs`, pas juste un test qui échoue). Corrigé une première fois, puis **retombé dans le même piège en écrivant le commentaire du correctif suivant** (un backtick autour du même mot, par réflexe d'écriture). Deux itérations de `docker compose up -d --build api` + lecture des logs avant que le fichier compile enfin — la vérification systématique du solde de backticks (`grep` du fichier avant tout redémarrage) redevient un réflexe nécessaire chaque fois que ce genre de commentaire est modifié dans ce projet.
+
+**Vérification** :
+- Suite complète **388/388 tests** (6 nouveaux dans `backend/tests/doublonsAudit.test.js` — détection réelle sur 2 catégories distinctes, non-détection explicite du cas IS après correctif, détection d'un vrai doublon d'échéance au même ancrage exact, confidentialité de la tuile pour un rôle sans `parametres.cabinet.modifier`). Build Angular production OK (1 correctif TypeScript au passage : `verifierDoublonCompteBancaire` acceptait `numero?: string` mais recevait `string | null` depuis le formulaire — élargi à `string | null | undefined`).
+- **Vérification visuelle et fonctionnelle réelle** (Playwright headless + appels API directs contre une stack Docker locale complète, démontée après coup, aucune donnée de production touchée) : tuile « Doublons potentiels » confirmée visible et cliquable sur le Tableau de bord ; un vrai doublon créé pour l'occasion (compte bancaire) retrouvé dans le détail ; absence confirmée du faux positif IS dans le même détail ; boutons de garde anti-double-clic confirmés présents sur Rôle d'audience. Aucune erreur JavaScript.
+
+**Déploiement** : **déployé et vérifié en production le 26/09/2026** (accord utilisateur) — aucune migration nécessaire (uniquement du code : nouvelles routes GET, nouvelle tuile calculée en direct).

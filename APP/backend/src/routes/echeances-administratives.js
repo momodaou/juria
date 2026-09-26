@@ -163,6 +163,25 @@ function deriverFormule(prochaineDate, periodicite) {
   return { jourEcheance, moisEcheance };
 }
 
+// GET /api/echeances-administratives/verifier-doublon?libelle=&categorie=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une
+// échéance active déjà enregistrée avec le même libellé/catégorie.
+router.get("/verifier-doublon", requirePermission("echeances_admin.gerer"), async (req, res) => {
+  const { libelle, categorie } = req.query;
+  if (!libelle) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, libelle, categorie, prochaine_date FROM echeances_administratives
+       WHERE actif = TRUE AND libelle ILIKE $1 AND ($2::varchar IS NULL OR categorie = $2::varchar)`,
+      [libelle, categorie || null]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.post("/", requirePermission("echeances_admin.gerer"), async (req, res) => {
   const b = req.body || {};
   if (!b.libelle || !b.prochaine_date) {

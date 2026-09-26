@@ -115,6 +115,28 @@ router.get("/comptes-bancaires", requirePermission("parametres.cabinet.modifier"
   }
 });
 
+// GET /api/parametres/comptes-bancaires/verifier-doublon?intitule=&numero=
+// (26/09/2026, audit doublons) — aucune contrainte n'empêche deux comptes
+// identiques (même pas sur `numero`) ; signale sans jamais bloquer.
+router.get("/comptes-bancaires/verifier-doublon", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
+  const { intitule, numero } = req.query;
+  if (!intitule && !numero) return res.json([]);
+  try {
+    const clauses = [];
+    const params = [];
+    if (intitule) { params.push(intitule); clauses.push(`intitule ILIKE $${params.length}`); }
+    if (numero) { params.push(numero); clauses.push(`numero = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT id, intitule, banque, numero FROM comptes_bancaires WHERE ${clauses.join(" OR ")}`,
+      params
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/parametres/comptes-bancaires
 router.post("/comptes-bancaires", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
   const b = req.body || {};

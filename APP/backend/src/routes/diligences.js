@@ -43,6 +43,28 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
   }
 });
 
+// GET /api/diligences/verifier-doublon?dossier_id=&date_diligence=&type_diligence=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une diligence
+// déjà programmée le même jour pour le même dossier et le même type.
+router.get("/verifier-doublon", requirePermission("audiences.diligence.gerer"), async (req, res) => {
+  const { dossier_id, date_diligence, type_diligence } = req.query;
+  if (!date_diligence) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT dl.id, dl.type_diligence, dl.objet, dl.heure
+       FROM diligences dl
+       WHERE dl.date_diligence = $1
+         AND ($2::uuid IS NULL OR dl.dossier_id = $2)
+         AND ($3::varchar IS NULL OR dl.type_diligence = $3)`,
+      [date_diligence, dossier_id || null, type_diligence || null]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/diligences
 // { type_diligence?, type_precision?, dossier_id?, membre_id?, date_diligence,
 //   heure?, lieu?, objet?, observations? } — dossier_id optionnel : une

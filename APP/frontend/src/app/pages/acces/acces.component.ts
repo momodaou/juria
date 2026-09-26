@@ -214,7 +214,17 @@ import { ROLES } from '../../core/roles';
             <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
             <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
           </div>
-          <button class="btn" (click)="ajouterCompte()">Ajouter</button>
+          <button class="btn" (click)="ajouterCompte()" [disabled]="ajoutCompteEnCours()">{{ ajoutCompteEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
+          @if (doublonsCompte().length) {
+            <div class="doublon">
+              <b>⚠ Un compte très proche existe déjà :</b>
+              @for (d of doublonsCompte(); track d.id) { <p>{{ d.intitule }}@if (d.banque) { — {{ d.banque }} }@if (d.numero) { — {{ d.numero }} }</p> }
+              <div class="btns">
+                <button class="btn ghost" (click)="doublonsCompte.set([])">Annuler, je vérifie</button>
+                <button class="btn" (click)="ajouterCompteQuandMeme()" [disabled]="ajoutCompteEnCours()">Ajouter quand même</button>
+              </div>
+            </div>
+          }
           @if (compteMessage()) { <p class="muted" style="margin-top:8px">{{ compteMessage() }}</p> }
         </section>
       }
@@ -273,6 +283,10 @@ import { ROLES } from '../../core/roles';
     }
   `,
   styles: [`
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .edition td{background:var(--light);padding:12px 14px}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
@@ -344,6 +358,10 @@ export class AccesComponent implements OnInit {
   readonly erreurGlobale = signal('');
   readonly afficherFormCompte = signal(false);
   readonly erreurCompte = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
+  // ressaisie (aucune contrainte en base, même pas sur `numero`).
+  readonly ajoutCompteEnCours = signal(false);
+  readonly doublonsCompte = signal<any[]>([]);
   readonly dernierMotDePasse = signal<{ nom: string; mdp: string; creation: boolean } | null>(null);
 
   // Identité du cabinet + comptes bancaires (28/08/2026, facture PDF enrichie)
@@ -435,10 +453,30 @@ export class AccesComponent implements OnInit {
 
   ajouterCompte(): void {
     this.compteMessage.set('');
+    this.doublonsCompte.set([]);
     if (!this.compteEdit.intitule || !this.compteEdit.type) { this.compteMessage.set('Intitulé et type requis.'); return; }
+    this.api.verifierDoublonCompteBancaire(this.compteEdit.intitule, this.compteEdit.numero).subscribe({
+      next: (d) => { if (d.length) this.doublonsCompte.set(d); else this.ajouterCompteReellement(); },
+      error: () => this.ajouterCompteReellement(),
+    });
+  }
+
+  ajouterCompteQuandMeme(): void {
+    this.doublonsCompte.set([]);
+    this.ajouterCompteReellement();
+  }
+
+  private ajouterCompteReellement(): void {
+    this.ajoutCompteEnCours.set(true);
     this.api.creerCompteBancaire(this.compteEdit).subscribe({
-      next: () => { this.compteEdit = { type: 'fonctionnement' }; this.compteMessage.set('Compte ajouté.'); this.chargerComptes(); },
-      error: (e) => this.compteMessage.set(e?.error?.error ?? 'Ajout impossible.'),
+      next: () => {
+        this.ajoutCompteEnCours.set(false);
+        this.compteEdit = { type: 'fonctionnement' };
+        this.compteMessage.set('Compte ajouté.');
+        this.doublonsCompte.set([]);
+        this.chargerComptes();
+      },
+      error: (e) => { this.ajoutCompteEnCours.set(false); this.compteMessage.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 

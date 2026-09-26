@@ -62,6 +62,12 @@ export interface DashboardData {
   // automatique (démarche externe requise). `null` si audiences.consulter absent.
   reenrolement_n: number | null;
   reenrolement_apercu: { dossier_id: string; dossier_numero: string; dossier_intitule: string; date_audience: string }[];
+  // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
+  // doublons, calculé en direct (pas de job planifié). `null` si
+  // parametres.cabinet.modifier absent (réservé direction/admin IT, la
+  // tuile agrège des données de plusieurs modules).
+  doublons_n: number | null;
+  doublons_apercu: { categorie: string; dossier_id: string | null; dossier_numero: string | null; description: string; nb: number }[];
 }
 
 export interface Dossier {
@@ -226,6 +232,12 @@ export class ApiService {
   ajouterInstance(dossierId: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances`, payload);
   }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonInstance(dossierId: string, degre: string, juridiction?: string): Observable<any[]> {
+    const params = new URLSearchParams({ degre });
+    if (juridiction) params.set('juridiction', juridiction);
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${dossierId}/instances/verifier-doublon?${params.toString()}`);
+  }
   majInstance(dossierId: string, instanceId: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}`, payload);
   }
@@ -245,6 +257,10 @@ export class ApiService {
   // Parties adverses (20/08/2026) — rectification après la création.
   ajouterPartieDossier(dossierId: string, payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/parties`, payload);
+  }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonPartie(dossierId: string, role: string, denomination: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${dossierId}/parties/verifier-doublon?role=${role}&denomination=${encodeURIComponent(denomination)}`);
   }
   majPartieDossier(dossierId: string, partieId: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/dossiers/${dossierId}/parties/${partieId}`, payload);
@@ -292,6 +308,10 @@ export class ApiService {
   // dirigeants… (table déjà en base, jusqu'ici inaccessible depuis l'écran).
   ajouterLienClient(clientId: string, payload: { lie_a_id: string; nature: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/clients/${clientId}/liens`, payload);
+  }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonLien(clientId: string, lieAId: string, nature: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/clients/${clientId}/liens/verifier-doublon?lie_a_id=${lieAId}&nature=${encodeURIComponent(nature)}`);
   }
   retirerLienClient(clientId: string, lienId: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/clients/${clientId}/liens/${lienId}`);
@@ -440,6 +460,12 @@ export class ApiService {
   creerEcheanceAdmin(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/echeances-administratives`, payload);
   }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonEcheanceAdmin(libelle: string, categorie?: string): Observable<any[]> {
+    const params = new URLSearchParams({ libelle });
+    if (categorie) params.set('categorie', categorie);
+    return this.http.get<any[]>(`${this.base}/api/echeances-administratives/verifier-doublon?${params.toString()}`);
+  }
   // montantDecaisse (11/09/2026, optionnel) : si fourni, crée la dépense
   // réellement payée dans Dépenses & caisse et la lie à cette échéance.
   traiterEcheanceAdmin(id: string, montantDecaisse?: number | null): Observable<any> {
@@ -563,6 +589,12 @@ export class ApiService {
   }
   creerDiligence(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/diligences`, payload);
+  }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonDiligence(payload: { dossier_id?: string; date_diligence: string; type_diligence?: string }): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    return this.http.get<any[]>(`${this.base}/api/diligences/verifier-doublon?${params.toString()}`);
   }
   majStatutDiligence(id: string, statut: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/diligences/${id}/statut`, { statut });
@@ -806,6 +838,13 @@ export class ApiService {
   creerCompteBancaire(payload: Partial<CompteBancaire>): Observable<{ id: string }> {
     return this.http.post<{ id: string }>(`${this.base}/api/parametres/comptes-bancaires`, payload);
   }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonCompteBancaire(intitule: string, numero?: string | null): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (intitule) params.set('intitule', intitule);
+    if (numero) params.set('numero', numero);
+    return this.http.get<any[]>(`${this.base}/api/parametres/comptes-bancaires/verifier-doublon?${params.toString()}`);
+  }
   majCompteBancaire(id: string, payload: Partial<CompteBancaire>): Observable<{ id: string }> {
     return this.http.put<{ id: string }>(`${this.base}/api/parametres/comptes-bancaires/${id}`, payload);
   }
@@ -825,6 +864,10 @@ export class ApiService {
   }
   demanderConge(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/cabinet/conges`, payload);
+  }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonConge(dateDebut: string, dateFin: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/cabinet/conges/verifier-doublon?date_debut=${dateDebut}&date_fin=${dateFin}`);
   }
   decisionConge(id: string, statut: 'approuve' | 'refuse'): Observable<any> {
     return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut });

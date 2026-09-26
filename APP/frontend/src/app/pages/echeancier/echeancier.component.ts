@@ -33,7 +33,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           }
           <input [(ngModel)]="nvTitre" name="ti" placeholder="Intitulé" />
           <input type="date" [(ngModel)]="nvDate" name="da" />
-          <button class="btn" (click)="ajouter()" [disabled]="!nvDossier || !nvDate">Ajouter</button>
+          <button class="btn" (click)="ajouter()" [disabled]="!nvDossier || !nvDate || ajoutEvEnCours()">{{ ajoutEvEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
         </div>
       }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -90,7 +90,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <div class="add">
           <input [(ngModel)]="ntTitre" name="nt" placeholder="Nouvelle tâche" style="flex:1;min-width:200px" />
           <input type="date" [(ngModel)]="ntEch" name="ne" />
-          <button class="btn" (click)="ajouterTache()" [disabled]="!ntTitre">Ajouter</button>
+          <button class="btn" (click)="ajouterTache()" [disabled]="!ntTitre || ajoutTacheEnCours()">{{ ajoutTacheEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
         </div>
       }
       @if (taches().length) {
@@ -153,6 +153,12 @@ export class EcheancierComponent implements OnInit {
   readonly dossiers = signal<Dossier[]>([]);
   readonly erreur = signal('');
   readonly afficherAnciennesTaches = signal(false);
+  // 26/09/2026 — audit doublons : garde anti-double-clic (priorité basse
+  // pour ce module, titres/objets souvent légitimement répétés — pas
+  // d'avertissement de doublon métier ici, contrairement à Facturation/
+  // Rôle d'audience/Dépenses/Rétrocessions).
+  readonly ajoutEvEnCours = signal(false);
+  readonly ajoutTacheEnCours = signal(false);
   readonly membres = signal<any[]>([]);
 
   // Correction des échéances et des tâches (25/09/2026).
@@ -225,19 +231,21 @@ export class EcheancierComponent implements OnInit {
   }
 
   ajouter(): void {
+    this.ajoutEvEnCours.set(true);
     this.api.creerEvenement({
       dossier_id: this.nvDossier, type: this.nvType, titre: this.nvTitre,
       date_echeance: this.nvDate, precision: this.nvType === 'autre' ? this.nvPrecision : null,
     }).subscribe({
-      next: () => { this.nvTitre = ''; this.nvDate = ''; this.nvPrecision = ''; this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
+      next: () => { this.ajoutEvEnCours.set(false); this.nvTitre = ''; this.nvDate = ''; this.nvPrecision = ''; this.charger(); },
+      error: (e) => { this.ajoutEvEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible'); },
     });
   }
 
   ajouterTache(): void {
+    this.ajoutTacheEnCours.set(true);
     this.api.creerTache({ titre: this.ntTitre, echeance: this.ntEch || null }).subscribe({
-      next: () => { this.ntTitre = ''; this.ntEch = ''; this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
+      next: () => { this.ajoutTacheEnCours.set(false); this.ntTitre = ''; this.ntEch = ''; this.charger(); },
+      error: (e) => { this.ajoutTacheEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible'); },
     });
   }
 

@@ -95,7 +95,7 @@ const COLONNES = [
           </div>
           <div><label><input type="checkbox" [(ngModel)]="form.validation_requise" name="validation" /> Validation associé requise</label></div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="!form.titre">Ajouter</button>
+        <button class="btn" (click)="creer()" [disabled]="!form.titre || creationEnCours()">{{ creationEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
         @if (erreur()) { <p class="err">{{ erreur() }}</p> }
       </section>
     }
@@ -191,6 +191,10 @@ export class PlanActionComponent implements OnInit {
   readonly afficherForm = signal(false);
   readonly afficherAnciennes = signal(false);
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic (priorité basse,
+  // pas d'avertissement de doublon métier — titres de tâche souvent
+  // légitimement répétés, même traitement qu'Échéances).
+  readonly creationEnCours = signal(false);
   readonly editionId = signal<string | null>(null);
   readonly erreurEdition = signal('');
   editForm: any = {};
@@ -244,14 +248,16 @@ export class PlanActionComponent implements OnInit {
 
   creer(): void {
     this.erreur.set('');
+    this.creationEnCours.set(true);
     this.api.creerTache(this.form).subscribe({
       next: () => {
+        this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'autre', priorite: 'normale', validation_requise: false };
         this.dossierLabel = '';
         this.charger();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+      error: (e) => { this.creationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 

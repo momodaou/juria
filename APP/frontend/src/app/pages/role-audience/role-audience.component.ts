@@ -349,7 +349,17 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div><label>Lieu</label><input class="in" [(ngModel)]="nouvelleDiligence.lieu" name="dllieu" /></div>
           <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="nouvelleDiligence.objet" name="dlobjet" /></div>
         </div>
-        <button class="btn" (click)="ajouterDiligence()" [disabled]="!nouvelleDiligence.date_diligence">Ajouter</button>
+        <button class="btn" (click)="ajouterDiligence()" [disabled]="!nouvelleDiligence.date_diligence || ajoutDiligenceEnCours()">{{ ajoutDiligenceEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
+        @if (doublonsDiligence().length) {
+          <div class="doublon">
+            <b>⚠ Une diligence existe déjà à cette date :</b>
+            @for (d of doublonsDiligence(); track d.id) { <p>{{ d.type_diligence }}@if (d.objet) { — {{ d.objet }} }@if (d.heure) { à {{ formaterHeure(d.heure) }} }</p> }
+            <div class="btns">
+              <button class="btn ghost" (click)="doublonsDiligence.set([])">Annuler, je vérifie</button>
+              <button class="btn" (click)="ajouterDiligenceQuandMeme()" [disabled]="ajoutDiligenceEnCours()">Ajouter quand même</button>
+            </div>
+          </div>
+        }
       }
     </section>
 
@@ -545,6 +555,8 @@ export class RoleAudienceComponent implements OnInit {
   // l'appli.
   readonly ajoutLigneEnCours = signal(false);
   readonly doublonsAudience = signal<{ audience_id: string; juridiction: string | null; type: string; heure: string | null }[]>([]);
+  readonly ajoutDiligenceEnCours = signal(false);
+  readonly doublonsDiligence = signal<{ id: string; type_diligence: string; objet: string | null; heure: string | null }[]>([]);
   // 24/09/2026 — aperçu inline de la « Suite programmée » (colonne dédiée) :
   // affiche la prochaine audience directement sous sa ligne d'origine, sans
   // changer de semaine (gap signalé par l'utilisateur — on se perdait entre
@@ -779,13 +791,29 @@ export class RoleAudienceComponent implements OnInit {
 
   ajouterDiligence(): void {
     this.erreur.set('');
+    this.doublonsDiligence.set([]);
+    this.api.verifierDoublonDiligence(this.nouvelleDiligence).subscribe({
+      next: (d) => { if (d.length) this.doublonsDiligence.set(d); else this.ajouterDiligenceReellement(); },
+      error: () => this.ajouterDiligenceReellement(),
+    });
+  }
+
+  ajouterDiligenceQuandMeme(): void {
+    this.doublonsDiligence.set([]);
+    this.ajouterDiligenceReellement();
+  }
+
+  private ajouterDiligenceReellement(): void {
+    this.ajoutDiligenceEnCours.set(true);
     this.api.creerDiligence(this.nouvelleDiligence).subscribe({
       next: () => {
+        this.ajoutDiligenceEnCours.set(false);
         this.nouvelleDiligence = { type_diligence: 'diligence' };
         this.dlDossierLabel = '';
+        this.doublonsDiligence.set([]);
         this.chargerDiligences();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+      error: (e) => { this.ajoutDiligenceEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 

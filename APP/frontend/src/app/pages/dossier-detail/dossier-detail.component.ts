@@ -539,6 +539,16 @@ import { libelleRole } from '../../core/roles';
             <button class="btn" (click)="ajouterInstance()" [disabled]="ajoutInstanceEnCours()">
               {{ ajoutInstanceEnCours() ? 'Ajout…' : '+ Ajouter cette instance' }}
             </button>
+            @if (doublonsInstance().length) {
+              <div class="doublon">
+                <b>⚠ Une instance existe déjà à ce degré pour ce dossier :</b>
+                @for (d of doublonsInstance(); track d.id) { <p>{{ libelleDegre(d.degre) }} — {{ d.juridiction || '—' }}</p> }
+                <div class="upload">
+                  <button class="btn ghost" (click)="doublonsInstance.set([])">Annuler, je vérifie</button>
+                  <button class="btn" (click)="ajouterInstanceQuandMeme()" [disabled]="ajoutInstanceEnCours()">Ajouter quand même</button>
+                </div>
+              </div>
+            }
             @if (erreurInstance()) { <p class="err">{{ erreurInstance() }}</p> }
           }
         </section>
@@ -588,6 +598,16 @@ import { libelleRole } from '../../core/roles';
               {{ ajoutPartieEnCours() ? 'Ajout…' : '+ Ajouter une partie' }}
             </button>
           </div>
+          @if (doublonsPartie().length) {
+            <div class="doublon">
+              <b>⚠ Une partie très proche existe déjà sur ce dossier :</b>
+              @for (d of doublonsPartie(); track d.id) { <p>{{ libelleRolePartie(d.role) }} — {{ d.denomination }}</p> }
+              <div class="upload">
+                <button class="btn ghost" (click)="doublonsPartie.set([])">Annuler, je vérifie</button>
+                <button class="btn" (click)="ajouterPartieQuandMeme()" [disabled]="ajoutPartieEnCours()">Ajouter quand même</button>
+              </div>
+            </div>
+          }
           @if (erreurPartie()) { <p class="err">{{ erreurPartie() }}</p> }
         }
       </section>
@@ -640,7 +660,7 @@ import { libelleRole } from '../../core/roles';
             }
             <input [(ngModel)]="dTitre" name="dtitre" placeholder="Intitulé" style="flex:1;min-width:150px">
             <input type="date" [(ngModel)]="dDate" name="ddate">
-            <button class="btn" (click)="ajouterDelai()" [disabled]="!dDate">Ajouter</button>
+            <button class="btn" (click)="ajouterDelai()" [disabled]="!dDate || ajoutDelaiEnCours()">{{ ajoutDelaiEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           </div>
         }
         @if (evenements().length) {
@@ -847,7 +867,7 @@ import { libelleRole } from '../../core/roles';
           <div class="upload">
             <input type="number" placeholder="Durée (min)" [(ngModel)]="dureeMin" name="duree" style="width:130px" />
             <input type="text" placeholder="Description" [(ngModel)]="descTemps" name="desc" style="flex:1;min-width:180px" />
-            <button class="btn" (click)="ajouterTemps()" [disabled]="!dureeMin">Ajouter</button>
+            <button class="btn" (click)="ajouterTemps()" [disabled]="!dureeMin || ajoutTempsEnCours()">{{ ajoutTempsEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           </div>
         }
         @if (temps().length) {
@@ -879,7 +899,7 @@ import { libelleRole } from '../../core/roles';
             </select>
             <input [(ngModel)]="cSujet" name="csujet" placeholder="Sujet" style="min-width:150px">
             <input [(ngModel)]="cResume" name="cresume" placeholder="Résumé" style="flex:1;min-width:180px">
-            <button class="btn" (click)="ajouterComm()" [disabled]="!cSujet">Enregistrer</button>
+            <button class="btn" (click)="ajouterComm()" [disabled]="!cSujet || ajoutCommEnCours()">{{ ajoutCommEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
           </div>
         }
         @if (communications().length) {
@@ -1005,6 +1025,13 @@ export class DossierDetailComponent implements OnInit {
   retourCorrection: any = {};
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic sur les 3
+  // formulaires de la fiche dossier (priorité basse, pas d'avertissement
+  // de doublon métier ici — titres/durées/objets souvent légitimement
+  // répétés, voir CLAUDE.md).
+  readonly ajoutDelaiEnCours = signal(false);
+  readonly ajoutTempsEnCours = signal(false);
+  readonly ajoutCommEnCours = signal(false);
 
   // Liens rapides inter-modules (06/09/2026) — la fiche dossier n'affichait
   // jusqu'ici aucune visibilité sur sa Facturation/Dépenses/Rétrocessions/
@@ -1199,6 +1226,8 @@ export class DossierDetailComponent implements OnInit {
   // base mais jamais branchée avant ce jour (voir plan de la session).
   readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
   readonly ajoutInstanceEnCours = signal(false);
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  readonly doublonsInstance = signal<any[]>([]);
   readonly erreurInstance = signal('');
   nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '' };
   // Modifier une instance déjà créée (19/09/2026, gap comblé — la route PUT
@@ -1356,11 +1385,25 @@ export class DossierDetailComponent implements OnInit {
 
   ajouterInstance(): void {
     this.erreurInstance.set('');
+    this.doublonsInstance.set([]);
+    this.api.verifierDoublonInstance(this.id, this.nouvelleInstance.degre, this.nouvelleInstance.juridiction).subscribe({
+      next: (d) => { if (d.length) this.doublonsInstance.set(d); else this.ajouterInstanceReellement(); },
+      error: () => this.ajouterInstanceReellement(),
+    });
+  }
+
+  ajouterInstanceQuandMeme(): void {
+    this.doublonsInstance.set([]);
+    this.ajouterInstanceReellement();
+  }
+
+  private ajouterInstanceReellement(): void {
     this.ajoutInstanceEnCours.set(true);
     this.api.ajouterInstance(this.id, this.nouvelleInstance).subscribe({
       next: () => {
         this.ajoutInstanceEnCours.set(false);
         this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '' };
+        this.doublonsInstance.set([]);
         this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
       },
       error: (e) => { this.ajoutInstanceEnCours.set(false); this.erreurInstance.set(e?.error?.error ?? 'Ajout impossible.'); },
@@ -1385,6 +1428,8 @@ export class DossierDetailComponent implements OnInit {
   nouvellePartie: any = { role: 'adverse', denomination: '', conseil: '' };
   readonly ajoutPartieEnCours = signal(false);
   readonly erreurPartie = signal('');
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  readonly doublonsPartie = signal<any[]>([]);
 
   // Rôles de partie (20/08/2026, diagnostic utilisateur) — les 5 valeurs
   // réellement utilisées de l'enum role_partie ; ministere_public/
@@ -1426,11 +1471,25 @@ export class DossierDetailComponent implements OnInit {
   ajouterPartie(): void {
     if (!this.nouvellePartie.denomination) return;
     this.erreurPartie.set('');
+    this.doublonsPartie.set([]);
+    this.api.verifierDoublonPartie(this.id, this.nouvellePartie.role, this.nouvellePartie.denomination).subscribe({
+      next: (d) => { if (d.length) this.doublonsPartie.set(d); else this.ajouterPartieReellement(); },
+      error: () => this.ajouterPartieReellement(),
+    });
+  }
+
+  ajouterPartieQuandMeme(): void {
+    this.doublonsPartie.set([]);
+    this.ajouterPartieReellement();
+  }
+
+  private ajouterPartieReellement(): void {
     this.ajoutPartieEnCours.set(true);
     this.api.ajouterPartieDossier(this.id, this.nouvellePartie).subscribe({
       next: () => {
         this.ajoutPartieEnCours.set(false);
         this.nouvellePartie = { role: 'adverse', denomination: '', conseil: '' };
+        this.doublonsPartie.set([]);
         this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
       },
       error: (e) => { this.ajoutPartieEnCours.set(false); this.erreurPartie.set(e?.error?.error ?? 'Ajout impossible.'); },
@@ -1809,12 +1868,13 @@ export class DossierDetailComponent implements OnInit {
   ajouterDelai(): void {
     if (!this.dDate) return;
     this.erreur.set('');
+    this.ajoutDelaiEnCours.set(true);
     this.api.creerEvenement({
       dossier_id: this.id, type: this.dType, titre: this.dTitre, date_echeance: this.dDate,
       precision: this.dType === 'autre' ? this.dPrecision : null,
     }).subscribe({
-      next: () => { this.dTitre = ''; this.dDate = ''; this.dPrecision = ''; this.rafraichirDelais(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible'),
+      next: () => { this.ajoutDelaiEnCours.set(false); this.dTitre = ''; this.dDate = ''; this.dPrecision = ''; this.rafraichirDelais(); },
+      error: (e) => { this.ajoutDelaiEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible'); },
     });
   }
   libelleType(code: string): string {
@@ -1827,9 +1887,10 @@ export class DossierDetailComponent implements OnInit {
   ajouterComm(): void {
     if (!this.cSujet) return;
     this.erreur.set('');
+    this.ajoutCommEnCours.set(true);
     this.api.creerCommunication({ dossier_id: this.id, type: this.cType, sujet: this.cSujet, resume: this.cResume }).subscribe({
-      next: () => { this.cSujet = ''; this.cResume = ''; this.rafraichirComms(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Enregistrement impossible'),
+      next: () => { this.ajoutCommEnCours.set(false); this.cSujet = ''; this.cResume = ''; this.rafraichirComms(); },
+      error: (e) => { this.ajoutCommEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Enregistrement impossible'); },
     });
   }
 
@@ -1858,9 +1919,10 @@ export class DossierDetailComponent implements OnInit {
   ajouterTemps(): void {
     if (!this.dureeMin) return;
     this.erreur.set('');
+    this.ajoutTempsEnCours.set(true);
     this.api.creerTemps({ dossier_id: this.id, duree_minutes: this.dureeMin, description: this.descTemps }).subscribe({
-      next: () => { this.dureeMin = null; this.descTemps = ''; this.rafraichirTemps(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Saisie impossible'),
+      next: () => { this.ajoutTempsEnCours.set(false); this.dureeMin = null; this.descTemps = ''; this.rafraichirTemps(); },
+      error: (e) => { this.ajoutTempsEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Saisie impossible'); },
     });
   }
 

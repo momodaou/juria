@@ -366,6 +366,24 @@ router.delete("/:id/kyc-pieces/:pieceId", requirePermission("clients.kyc_piece.s
 // une nouvelle action dédiée) : relier un client à un autre fait partie de
 // l'édition de sa fiche identité/KYC, même niveau que le statut KYC déjà
 // modifiable sous ce même droit.
+// GET /api/clients/:id/liens/verifier-doublon?lie_a_id=&nature=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, un lien déjà
+// enregistré entre ces deux clients avec la même nature.
+router.get("/:id/liens/verifier-doublon", requirePermission("clients.modifier"), async (req, res) => {
+  const { lie_a_id, nature } = req.query;
+  if (!lie_a_id || !nature) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nature FROM client_liens WHERE client_id = $1 AND lie_a_id = $2 AND nature = $3`,
+      [req.params.id, lie_a_id, nature]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.post("/:id/liens", requirePermission("clients.modifier"), async (req, res) => {
   const { lie_a_id, nature } = req.body || {};
   if (!lie_a_id || !nature) return res.status(400).json({ error: "lie_a_id et nature requis" });

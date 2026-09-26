@@ -49,6 +49,9 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   retours_manquants: 'audiences.consulter',
   // "En attente de réenrôlement" (26/09/2026) — même permission, même module.
   reenrolement: 'audiences.consulter',
+  // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
+  // doublons, réservé direction/admin IT (agrège plusieurs modules).
+  doublons: 'parametres.cabinet.modifier',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
   // Discipline de facturation, Bloc B (18/09/2026) — même permission que
@@ -158,6 +161,22 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
       { label: 'Date (la plus récente)', key: 'date_audience', dir: 'desc' },
+    ],
+  },
+  // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
+  // doublons : groupes de lignes probablement identiques déjà entrées
+  // (avant les correctifs de prévention, ou créées malgré l'avertissement).
+  doublons: {
+    titre: 'Doublons potentiels',
+    cols: [
+      { key: 'categorie', label: 'Catégorie' },
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'description', label: 'Détail' },
+      { key: 'nb', label: 'Occurrences', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Occurrences (le plus élevé)', key: 'nb', dir: 'desc' },
+      { label: 'Catégorie (A → Z)', key: 'categorie', dir: 'asc' },
     ],
   },
   impayes: {
@@ -438,6 +457,32 @@ const CONFIG: Record<string, TuileConfig> = {
               </div>
             }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.reenrolement_n }}</span>
+          </button>
+        }
+        @if (d.doublons_n !== null) {
+          <!-- 26/09/2026 — filet de sécurité de l'audit doublons (phase 5) :
+               les phases 1-4 préviennent la saisie, cette tuile repère ce qui
+               serait malgré tout déjà en double (avant les correctifs, ou
+               créé sciemment malgré l'avertissement). Réservée direction/
+               admin IT — agrège des données de plusieurs modules. -->
+          <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'doublons'" (click)="clic('doublons')">
+            <span class="tico" [innerHTML]="icons['doublons']"></span>
+            <span class="n">{{ d.doublons_n }}</span><span class="l">Doublons potentiels</span>
+            @if (d.doublons_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.doublons_apercu; track l.categorie + l.description) {
+                  <div class="mini-ligne">
+                    @if (l.dossier_id) {
+                      <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.categorie }} — {{ l.description }}</a>
+                    } @else {
+                      <span class="principal">{{ l.categorie }} — {{ l.description }}</span>
+                    }
+                    <span class="secondaire">×{{ l.nb }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.doublons_n }}</span>
           </button>
         }
         <button type="button" class="kpi tier-vigilance" [class.active]="ouvert() === 'dormants'" (click)="clic('dormants')">
@@ -929,6 +974,11 @@ export class CockpitComponent implements OnInit {
     ),
     conges: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="7.5" y1="2.5" x2="7.5" y2="6.5"/><line x1="16.5" y1="2.5" x2="16.5" y2="6.5"/><path d="M8.5 15l2 2 4.5-4.5"/></svg>',
+    ),
+    // Doublons potentiels (26/09/2026) — deux rectangles superposés,
+    // symbole courant de duplication.
+    doublons: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
     ),
     dormants: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 1 0 10.5 10.5Z"/></svg>',
