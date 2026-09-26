@@ -504,6 +504,12 @@ export class ApiService {
   ajouterLigneRole(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/roles-audience/lignes`, payload);
   }
+  // 26/09/2026 — audit doublons : signale (sans jamais bloquer) une
+  // audience déjà programmée pour ce dossier ce jour-là, même patron que
+  // verifierDoublonClient.
+  verifierDoublonAudience(dossierId: string, datePrevue: string): Observable<{ audience_id: string; juridiction: string | null; type: string; heure: string | null }[]> {
+    return this.http.get<any[]>(`${this.base}/api/roles-audience/verifier-doublon?dossier_id=${dossierId}&date_prevue=${datePrevue}`);
+  }
   validerRole(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/roles-audience/${id}/valider`, {});
   }
@@ -657,6 +663,12 @@ export class ApiService {
   creerDepense(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses`, payload);
   }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonDepense(payload: { libelle: string; montant: number; date_depense?: string; dossier_id?: string }): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    return this.http.get<any[]>(`${this.base}/api/depenses/verifier-doublon?${params.toString()}`);
+  }
   decisionDepense(id: string, payload: { statut: 'validee' | 'rejetee'; motif_rejet?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decision`, payload);
   }
@@ -699,6 +711,12 @@ export class ApiService {
   }
   creerRetrocession(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/retrocessions`, payload);
+  }
+  // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
+  verifierDoublonRetrocession(payload: { beneficiaire_id: string; base_ht: number; dossier_id?: string; facture_id?: string }): Observable<any[]> {
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    return this.http.get<any[]>(`${this.base}/api/retrocessions/verifier-doublon?${params.toString()}`);
   }
   decaisserRetrocession(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/retrocessions/${id}/decaisser`, {});

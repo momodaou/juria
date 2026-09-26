@@ -122,8 +122,8 @@ import { libelleRole } from '../../core/roles';
                   <p><a class="lien" [routerLink]="['/clients', d.id]" target="_blank">{{ d.denomination || (d.prenom + ' ' + d.nom) }}</a> — {{ d.motifs.join(', ') }}</p>
                 }
                 <div class="upload">
-                  <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
-                  <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                  <button class="btn ghost" type="button" (click)="doublonsClient.set([])" [disabled]="creationClientEnCours()">Annuler, je vérifie</button>
+                  <button class="btn" type="button" (click)="creerClientInline(true)" [disabled]="creationClientEnCours()">{{ creationClientEnCours() ? 'Création…' : 'Créer quand même' }}</button>
                 </div>
               </div>
             } @else {

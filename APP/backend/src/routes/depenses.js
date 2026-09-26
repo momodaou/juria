@@ -51,6 +51,28 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   }
 });
 
+// GET /api/depenses/verifier-doublon?libelle=&montant=&date_depense=&dossier_id=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une dépense
+// déjà soumise avec le même libellé/montant/date (2 dépenses réellement
+// identiques le même jour restent possibles — l'utilisateur décide).
+router.get("/verifier-doublon", requirePermission("depenses.creer"), async (req, res) => {
+  const { libelle, montant, date_depense, dossier_id } = req.query;
+  if (!libelle || montant == null) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id, d.libelle, d.montant, d.date_depense, d.statut
+       FROM depenses d
+       WHERE d.libelle ILIKE $1 AND d.montant = $2 AND d.date_depense = COALESCE($3, current_date)
+         AND ($4::uuid IS NULL OR d.dossier_id = $4)`,
+      [libelle, montant, date_depense || null, dossier_id || null]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/depenses
 // { type, categorie, libelle, montant, date_depense?, mode_paiement?, compte_id?,
 //   petite_caisse?, justificatif?, refacturable_client?, dossier_id?, recurrente? }

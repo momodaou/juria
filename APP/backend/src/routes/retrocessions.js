@@ -86,6 +86,28 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/retrocessions/verifier-doublon?beneficiaire_id=&base_ht=&dossier_id=&facture_id=
+// (26/09/2026, audit doublons) — signale, sans jamais bloquer, une
+// rétrocession déjà créée pour le même bénéficiaire/montant de base sur le
+// même dossier ou la même facture.
+router.get("/verifier-doublon", requirePermission("retrocessions.creer"), async (req, res) => {
+  const { beneficiaire_id, base_ht, dossier_id, facture_id } = req.query;
+  if (!beneficiaire_id || base_ht == null || (!dossier_id && !facture_id)) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id, r.qualite, r.base_ht, r.montant, r.statut
+       FROM retrocessions r
+       WHERE r.beneficiaire_id = $1 AND r.base_ht = $2
+         AND ($3::uuid IS NULL OR r.dossier_id = $3) AND ($4::uuid IS NULL OR r.facture_id = $4)`,
+      [beneficiaire_id, base_ht, dossier_id || null, facture_id || null]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/retrocessions
 // { beneficiaire_id, qualite, base_ht, taux?, dossier_id?, facture_id? }
 router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {

@@ -185,8 +185,8 @@ import { libelleRole } from '../../core/roles';
                         <p><a class="lien" [routerLink]="['/clients', dbl.id]" target="_blank">{{ dbl.denomination || (dbl.prenom + ' ' + dbl.nom) }}</a> — {{ dbl.motifs.join(', ') }}</p>
                       }
                       <div class="upload">
-                        <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
-                        <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                        <button class="btn ghost" type="button" (click)="doublonsClient.set([])" [disabled]="creationClientEnCours()">Annuler, je vérifie</button>
+                        <button class="btn" type="button" (click)="creerClientInline(true)" [disabled]="creationClientEnCours()">{{ creationClientEnCours() ? 'Création…' : 'Créer quand même' }}</button>
                       </div>
                     </div>
                   } @else {
@@ -416,8 +416,8 @@ import { libelleRole } from '../../core/roles';
                     <p><a class="lien" [routerLink]="['/clients', dbl.id]" target="_blank">{{ dbl.denomination || (dbl.prenom + ' ' + dbl.nom) }}</a> — {{ dbl.motifs.join(', ') }}</p>
                   }
                   <div class="upload">
-                    <button class="btn ghost" type="button" (click)="doublonsClient.set([])">Annuler, je vérifie</button>
-                    <button class="btn" type="button" (click)="creerClientInline(true)">Créer quand même</button>
+                    <button class="btn ghost" type="button" (click)="doublonsClient.set([])" [disabled]="creationClientEnCours()">Annuler, je vérifie</button>
+                    <button class="btn" type="button" (click)="creerClientInline(true)" [disabled]="creationClientEnCours()">{{ creationClientEnCours() ? 'Création…' : 'Créer quand même' }}</button>
                   </div>
                 </div>
               } @else {

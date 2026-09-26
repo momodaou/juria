@@ -100,6 +100,30 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
   }
 });
 
+// GET /api/roles-audience/verifier-doublon?dossier_id=&date_prevue=
+// (26/09/2026, audit doublons demandé par l'utilisateur) — aucune
+// contrainte n'empêche de programmer deux fois la même audience pour le
+// même dossier le même jour (ressaisie manuelle, pas un double-clic — voir
+// POST /lignes ci-dessous pour la garde anti-double-clic côté écran).
+// Même principe que GET /api/clients/verifier-doublon : signale, ne bloque
+// jamais (un dossier peut légitimement avoir 2 audiences le même jour,
+// pour 2 juridictions ou 2 instances différentes).
+router.get("/verifier-doublon", requirePermission("audiences.ligne.creer"), async (req, res) => {
+  const { dossier_id, date_prevue } = req.query;
+  if (!dossier_id || !date_prevue) return res.json([]);
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id AS audience_id, a.juridiction, a.type, a.heure
+       FROM audiences a WHERE a.dossier_id = $1 AND a.date_audience = $2`,
+      [dossier_id, date_prevue]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/roles-audience/lignes
 // { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente?,
 //   nature_procedure?, nature_precision? }

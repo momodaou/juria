@@ -77,7 +77,17 @@ import { libelleRole } from '../../core/roles';
             @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
           </div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="!form.beneficiaire_id || !form.qualite || !form.base_ht">Créer</button>
+        <button class="btn" (click)="creer()" [disabled]="!form.beneficiaire_id || !form.qualite || !form.base_ht || creationEnCours()">{{ creationEnCours() ? 'Création…' : 'Créer' }}</button>
+        @if (doublonsRetro().length) {
+          <div class="doublon">
+            <b>⚠ Une rétrocession très proche existe déjà :</b>
+            @for (d of doublonsRetro(); track d.id) { <p>{{ d.qualite }} — base {{ d.base_ht | number }} FCFA — {{ d.montant | number }} FCFA ({{ d.statut }})</p> }
+            <div class="btns">
+              <button class="btn ghost" (click)="doublonsRetro.set([])">Annuler, je vérifie</button>
+              <button class="btn" (click)="creerQuandMeme()" [disabled]="creationEnCours()">Créer quand même</button>
+            </div>
+          </div>
+        }
         @if (erreur()) { <p class="err">{{ erreur() }}</p> }
       </section>
     }
@@ -126,6 +136,10 @@ import { libelleRole } from '../../core/roles';
     </section>
   `,
   styles: [`
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px;max-width:680px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
@@ -154,6 +168,10 @@ export class RetrocessionsComponent implements OnInit {
   readonly dossierResultats = signal<Dossier[]>([]);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
+  // ressaisie, même patron que clients.component.ts.
+  readonly creationEnCours = signal(false);
+  readonly doublonsRetro = signal<any[]>([]);
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -218,14 +236,30 @@ export class RetrocessionsComponent implements OnInit {
 
   creer(): void {
     this.erreur.set('');
+    this.doublonsRetro.set([]);
+    this.api.verifierDoublonRetrocession(this.form).subscribe({
+      next: (d) => { if (d.length) this.doublonsRetro.set(d); else this.creerReellement(); },
+      error: () => this.creerReellement(),
+    });
+  }
+
+  creerQuandMeme(): void {
+    this.doublonsRetro.set([]);
+    this.creerReellement();
+  }
+
+  private creerReellement(): void {
+    this.creationEnCours.set(true);
     this.api.creerRetrocession(this.form).subscribe({
       next: () => {
+        this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { qualite: 'associe' };
         this.dossierLabel = '';
+        this.doublonsRetro.set([]);
         this.charger();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Création impossible.'),
+      error: (e) => { this.creationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }
 

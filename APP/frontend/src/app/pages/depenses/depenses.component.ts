@@ -96,7 +96,17 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label>
           </div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant">Soumettre</button>
+        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
+        @if (doublonsDepense().length) {
+          <div class="doublon">
+            <b>⚠ Une dépense très proche existe déjà :</b>
+            @for (d of doublonsDepense(); track d.id) { <p>{{ d.libelle }} — {{ d.montant | number }} FCFA — {{ d.date_depense | date:'dd/MM/yyyy' }} ({{ d.statut }})</p> }
+            <div class="btns">
+              <button class="btn ghost" (click)="doublonsDepense.set([])">Annuler, je vérifie</button>
+              <button class="btn" (click)="creerQuandMeme()" [disabled]="creationEnCours()">Soumettre quand même</button>
+            </div>
+          </div>
+        }
         @if (erreur()) { <p class="err">{{ erreur() }}</p> }
       </section>
     }
@@ -192,6 +202,10 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     </section>
   `,
   styles: [`
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px;max-width:680px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .edition td{background:var(--light);padding:12px 14px}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
@@ -221,6 +235,10 @@ export class DepensesComponent implements OnInit {
   readonly stockVignettes = signal(0);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
+  // ressaisie, même patron que clients.component.ts.
+  readonly creationEnCours = signal(false);
+  readonly doublonsDepense = signal<any[]>([]);
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -256,14 +274,30 @@ export class DepensesComponent implements OnInit {
 
   creer(): void {
     this.erreur.set('');
+    this.doublonsDepense.set([]);
+    this.api.verifierDoublonDepense(this.form).subscribe({
+      next: (d) => { if (d.length) this.doublonsDepense.set(d); else this.creerReellement(); },
+      error: () => this.creerReellement(),
+    });
+  }
+
+  creerQuandMeme(): void {
+    this.doublonsDepense.set([]);
+    this.creerReellement();
+  }
+
+  private creerReellement(): void {
+    this.creationEnCours.set(true);
     this.api.creerDepense(this.form).subscribe({
       next: () => {
+        this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'ponctuelle', categorie: 'autre' };
+        this.doublonsDepense.set([]);
         this.charger();
         this.chargerCaisse();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Soumission impossible.'),
+      error: (e) => { this.creationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Soumission impossible.'); },
     });
   }
 

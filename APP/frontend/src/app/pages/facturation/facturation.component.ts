@@ -81,7 +81,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         </label>
       </div>
       @if (auth.peut('factures.creer')) {
-        <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt">Émettre</button>
+        <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt || creationFactureEnCours()">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre' }}</button>
       }
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -154,7 +154,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @if (deboursARefacturer().length) { <strong> — Débours sélectionnés : {{ totalDeboursSelectionnes() | number }} FCFA</strong> }
         </p>
         @if (auth.peut('factures.creer')) {
-          <button class="btn" (click)="facturerTemps()" [disabled]="!tempsSelectionnes().size && !deboursSelectionnes().size">Émettre la facture</button>
+          <button class="btn" (click)="facturerTemps()" [disabled]="(!tempsSelectionnes().size && !deboursSelectionnes().size) || creationFactureEnCours()">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre la facture' }}</button>
         }
       } @else if (dossierTempsId) {
         <p class="muted">Rien en attente de facturation pour ce dossier (ni temps facturable, ni débours décaissé refacturable).</p>
@@ -291,6 +291,13 @@ export class FacturationComponent implements OnInit {
   readonly comptes = signal<{ id: string; intitule: string; type: string; banque?: string }[]>([]);
   readonly message = signal('');
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : "Émettre" restait cliquable pendant
+  // l'envoi, un double-clic (ou un réseau lent) pouvait émettre deux
+  // factures identiques avec deux numéros différents. Même patron déjà
+  // utilisé ailleurs dans l'appli (ex. creationClientEnCours). Un seul
+  // signal partagé par les 2 formulaires de création de facture (`creer()`
+  // et `facturerTemps()`, jamais actifs en même temps).
+  readonly creationFactureEnCours = signal(false);
 
   dossierId = '';
   // Choisi quand dossierId === '__autre__' (facturer un client sans dossier,
@@ -400,9 +407,10 @@ export class FacturationComponent implements OnInit {
     if (this.tempsSelectionnes().size) payload.temps_ids = Array.from(this.tempsSelectionnes());
     if (this.deboursSelectionnes().size) payload.depense_ids = Array.from(this.deboursSelectionnes());
     this.ajouterInfosReglement(payload);
+    this.creationFactureEnCours.set(true);
     this.api.creerFacture(payload).subscribe({
-      next: (f) => { this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
+      next: (f) => { this.creationFactureEnCours.set(false); this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
+      error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
     });
   }
 
@@ -510,13 +518,15 @@ export class FacturationComponent implements OnInit {
     if (this.tva !== null) payload.taux_tva = this.tva;
     if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
     this.ajouterInfosReglement(payload);
+    this.creationFactureEnCours.set(true);
     this.api.creerFacture(payload).subscribe({
       next: (f) => {
+        this.creationFactureEnCours.set(false);
         this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`);
         this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null;
         this.rafraichir();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Émission impossible'),
+      error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
     });
   }
 

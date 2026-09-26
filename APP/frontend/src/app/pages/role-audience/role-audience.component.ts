@@ -405,13 +405,32 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <div class="col2"><label>Instructions à l'audiencier</label><input class="in" [(ngModel)]="nouvelleLigne.instructions" name="instr" /></div>
         <div><label><input type="checkbox" [(ngModel)]="nouvelleLigne.urgente" name="urgente" /> Urgente / dernière minute</label></div>
       </div>
-      <button class="btn" (click)="ajouter()" [disabled]="!nouvelleLigne.dossier_id || !nouvelleLigne.date_prevue">Ajouter au rôle</button>
+      <button class="btn" (click)="ajouter()" [disabled]="!nouvelleLigne.dossier_id || !nouvelleLigne.date_prevue || ajoutLigneEnCours()">{{ ajoutLigneEnCours() ? 'Ajout…' : 'Ajouter au rôle' }}</button>
+      @if (doublonsAudience().length) {
+        <!-- 26/09/2026 — audit doublons : signale, sans jamais bloquer, une
+             audience déjà programmée pour ce dossier ce jour-là (2 audiences
+             le même jour pour 2 juridictions différentes reste légitime). -->
+        <div class="doublon">
+          <b>⚠ Une audience existe déjà pour ce dossier à cette date :</b>
+          @for (d of doublonsAudience(); track d.audience_id) {
+            <p>{{ d.juridiction || '—' }} — {{ libelleTypeAudience(d.type) }}@if (d.heure) { à {{ formaterHeure(d.heure) }} }</p>
+          }
+          <div class="btns">
+            <button class="btn ghost" (click)="doublonsAudience.set([])">Annuler, je vérifie</button>
+            <button class="btn" (click)="ajouterQuandMeme()" [disabled]="ajoutLigneEnCours()">Ajouter quand même</button>
+          </div>
+        </div>
+      }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
     </section>
     }
   `,
   styles: [`
     .actions{display:flex;gap:8px}
+    /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
+    .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
+    .doublon p{margin:4px 0;font-size:var(--fs-base)}
+    .doublon .btns{display:flex;gap:8px;margin-top:10px}
     /* 24/09/2026 — sélecteur "Aller à la semaine du…" : dimensions alignées
        sur les boutons ghost voisins, sans reprendre .in (pensée pour un
        champ de formulaire pleine largeur avec marge basse, inadaptée dans
@@ -520,6 +539,12 @@ export class RoleAudienceComponent implements OnInit {
   // même panneau, même formulaire, seule la cible de l'appel change.
   readonly correctionRetour = signal(false);
   readonly erreur = signal('');
+  // 26/09/2026 — audit doublons : "Ajouter au rôle" restait cliquable
+  // pendant l'envoi (même mécanisme que le doublon "Issa Sidibé", sous une
+  // forme différente). Même patron que creationClientEnCours ailleurs dans
+  // l'appli.
+  readonly ajoutLigneEnCours = signal(false);
+  readonly doublonsAudience = signal<{ audience_id: string; juridiction: string | null; type: string; heure: string | null }[]>([]);
   // 24/09/2026 — aperçu inline de la « Suite programmée » (colonne dédiée) :
   // affiche la prochaine audience directement sous sa ligne d'origine, sans
   // changer de semaine (gap signalé par l'utilisateur — on se perdait entre
@@ -800,13 +825,28 @@ export class RoleAudienceComponent implements OnInit {
 
   ajouter(): void {
     this.erreur.set('');
+    this.doublonsAudience.set([]);
+    this.api.verifierDoublonAudience(this.nouvelleLigne.dossier_id, this.nouvelleLigne.date_prevue).subscribe({
+      next: (d) => { if (d.length) this.doublonsAudience.set(d); else this.ajouterReellement(); },
+      error: () => this.ajouterReellement(), // le contrôle échoue → ne bloque pas l'ajout
+    });
+  }
+
+  ajouterQuandMeme(): void {
+    this.doublonsAudience.set([]);
+    this.ajouterReellement();
+  }
+
+  private ajouterReellement(): void {
+    this.ajoutLigneEnCours.set(true);
     this.api.ajouterLigneRole(this.nouvelleLigne).subscribe({
       next: () => {
+        this.ajoutLigneEnCours.set(false);
         this.nouvelleLigne = { type: 'mise_en_etat', urgente: false };
         this.dossierLabel = '';
         this.charger();
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Ajout impossible.'),
+      error: (e) => { this.ajoutLigneEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
 
