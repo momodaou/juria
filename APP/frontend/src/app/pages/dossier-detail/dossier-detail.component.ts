@@ -1174,7 +1174,7 @@ export class DossierDetailComponent implements OnInit {
       // sur le module lui-même si .default est absent (robuste aux deux cas).
       const mod: any = await import('qrcode');
       const QRCode = mod.default?.toDataURL ? mod.default : mod;
-      const qr = await QRCode.toDataURL(this.urlDossier(d), { width: 140, margin: 1 });
+      const qr = await QRCode.toDataURL(this.urlDossier(d), { width: 100, margin: 1 });
       this.etiquette.set({ qr, couleurHex: this.couleurCss(d.couleur_chemise) });
     } catch (e) {
       console.error('[étiquette] génération échouée', e);
@@ -1191,20 +1191,24 @@ export class DossierDetailComponent implements OnInit {
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
     const sousTitre = [d.client_nom, d.responsable_nom].filter(Boolean).map((t) => this.echapperHtml(t)).join(' · ');
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
-      @page { size: 90mm 40mm; margin: 4mm; }
+      /* Format aligné sur la charte physique JFC (imprimante d'étiquettes
+         thermique, ex. Brother QL-820NWB) : 62x40mm, cf. "JFC - Charte
+         supports physiques.pdf", §3.2 "Format d'étiquette". */
+      @page { size: 62mm 40mm; margin: 2mm; }
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0}
-      .etq{display:flex;border:2px dashed #B08D57;border-radius:6px;overflow:hidden;width:fit-content}
-      .bande{width:10px;background:${etq.couleurHex}}
-      .corps{display:flex;gap:10px;align-items:center;padding:8px 10px}
-      .qr{width:70px;height:70px}
-      .num{font-size:15px;font-weight:700;letter-spacing:.5px;color:#1F2A44;font-family:ui-monospace,monospace}
-      .intitule{font-size:11px;font-weight:600;margin-top:2px}
-      .sub{font-size:10px;color:#6B7280;margin-top:1px}
-      .chemise{font-size:9px;margin-top:3px}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:5px;overflow:hidden;width:100%;box-sizing:border-box}
+      .bande{width:6px;flex:none;background:${etq.couleurHex}}
+      .corps{display:flex;gap:6px;align-items:center;padding:4px 6px;min-width:0;flex:1}
+      .qr{width:48px;height:48px;flex:none}
+      .texte{min-width:0;overflow:hidden}
+      .num{font-size:10px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .intitule{font-size:8px;font-weight:600;margin-top:1px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.15}
+      .sub{font-size:7px;color:#6B7280;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .chemise{font-size:7px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     </style></head><body>
       <div class="etq"><div class="bande"></div><div class="corps">
         <img class="qr" src="${etq.qr}" alt="QR" />
-        <div>
+        <div class="texte">
           <div class="num">${this.echapperHtml(d.numero)}</div>
           <div class="intitule">${this.echapperHtml(d.intitule)}</div>
           <div class="sub">${sousTitre}</div>
