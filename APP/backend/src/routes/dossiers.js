@@ -10,6 +10,7 @@ const { saveObject } = require("../storage");
 const { construireContexte, applatirContexte, fusionner } = require("./actes");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
+const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const router = express.Router();
 
 // Discipline de facturation — Bloc A (18/09/2026, voir CLAUDE.md/HISTORY.md
@@ -398,15 +399,22 @@ router.get("/:id/audiences", async (req, res) => {
   }
 });
 
-// GET /api/dossiers/:id/documents  -> pièces (GED) du dossier
+// GET /api/dossiers/:id/documents?vue=client  -> pièces (GED) du dossier
+// `vue=client` : appelé par l'aperçu Portail client (« Documents partagés »)
+// — seuls les documents au niveau de confidentialité par défaut ('dossier')
+// y apparaissent, jamais 'interne'/'equipe'/'restreint' (28/09/2026, voir
+// confidentialiteDocuments.js).
 router.get("/:id/documents", async (req, res) => {
+  const vueClient = req.query.vue === "client";
   try {
     const { rows } = await pool.query(
       `SELECT id, nom, categorie, version, statut, confidentialite, cree_le
        FROM documents WHERE dossier_id = $1 ORDER BY cree_le DESC`,
       [req.params.id]
     );
-    res.json(rows);
+    const contexte = await chargerContexteDossier(pool, req.params.id);
+    const visibles = rows.filter((d) => estDocumentVisible(d.confidentialite, contexte, req.user, vueClient));
+    res.json(visibles);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

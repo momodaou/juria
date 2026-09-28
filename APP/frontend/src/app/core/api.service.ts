@@ -179,8 +179,12 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/audiences`);
   }
 
-  dossierDocuments(id: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/documents`);
+  // `vueClient` (28/09/2026) : true depuis l'aperçu Portail client — ne
+  // renvoie alors que les documents au niveau de confidentialité par
+  // défaut (voir confidentialiteDocuments.js côté backend).
+  dossierDocuments(id: string, vueClient = false): Observable<any[]> {
+    const q = vueClient ? '?vue=client' : '';
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/documents${q}`);
   }
 
   // GED — téléverser une pièce dans un dossier
@@ -616,6 +620,10 @@ export class ApiService {
   majStatutCourrier(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/courriers/${id}/statut`, payload);
   }
+  // Correction des champs de base d'un courrier déjà enregistré (28/09/2026).
+  majCourrier(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courriers/${id}`, payload);
+  }
   // Joindre le scan du courrier à la GED (11/09/2026, gap comblé — le
   // courrier doit déjà être rattaché à un dossier, voir courriers.js).
   joindreDocumentCourrier(id: string, fichier: File): Observable<any> {
@@ -879,8 +887,14 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/annuler`, { motif });
   }
 
-  presencesMois(mois?: string): Observable<any> {
-    const q = mois ? `?mois=${mois}` : '';
+  // 27/09/2026 — audit Cabinet (RH) : accepte désormais utilisateur_id
+  // (consultation du pointage d'un membre de l'équipe, cabinet.consulter
+  // côté serveur) et une plage explicite debut/fin (vue par semaine), en
+  // plus de mois (comportement historique, inchangé par défaut).
+  presencesMois(filtres: { mois?: string; debut?: string; fin?: string; utilisateur_id?: string } = {}): Observable<any> {
+    const params = new URLSearchParams();
+    Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any>(`${this.base}/api/cabinet/presences${q}`);
   }
   pointer(payload: { date_jour?: string; heure_arrivee?: string; heure_depart?: string; heures?: number; remplacer?: boolean }): Observable<any> {

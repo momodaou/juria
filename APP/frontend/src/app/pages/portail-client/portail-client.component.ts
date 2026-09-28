@@ -100,7 +100,7 @@ export class PortailClientComponent {
     this.dossierResultats.set([]);
     this.dossierRecherche = '';
     this.api.dossier(d.id).subscribe({ next: (full) => this.dossier.set(full) });
-    this.api.dossierDocuments(d.id).subscribe({ next: (docs) => this.documents.set(docs) });
+    this.api.dossierDocuments(d.id, true).subscribe({ next: (docs) => this.documents.set(docs) });
     this.api.factures('', { dossier_id: d.id }).subscribe({ next: (f) => this.factures.set(f) });
   }
 }

@@ -51,8 +51,31 @@ import { libelleRole } from '../../core/roles';
     </section>
 
     <section class="panel">
-      <h3>Mon pointage — {{ presences()?.total_heures ?? 0 }} h ce mois ({{ presences()?.jours_pointes ?? 0 }} jours)</h3>
-      @if (auth.peut('cabinet.presence.pointer')) {
+      <h3>{{ estSoiMemeVue() ? 'Mon pointage' : 'Pointage — ' + nomMembre(pointageMembreId()) }}
+        — {{ presences()?.total_heures ?? 0 }} h ({{ presences()?.jours_pointes ?? 0 }} jour(s) pointé(s))</h3>
+      <div class="upload">
+        @if (auth.peut('cabinet.consulter')) {
+          <select class="sel" [ngModel]="pointageMembreId()" (ngModelChange)="changerMembrePointage($event)" name="pointMembre" title="Voir le pointage de…">
+            <option value="">Moi-même</option>
+            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+          </select>
+        }
+        <select class="sel" [ngModel]="periodeType()" (ngModelChange)="changerPeriodeType($event)" name="periodeType" title="Période">
+          <option value="mois">Par mois</option>
+          <option value="semaine">Par semaine</option>
+        </select>
+        @if (periodeType() === 'mois') {
+          <input class="sel" type="month" [ngModel]="periodeMois" (ngModelChange)="changerPeriodeMois($event)" name="periodeMoisSel" />
+        } @else {
+          <input class="sel" type="week" [ngModel]="periodeSemaine" (ngModelChange)="changerPeriodeSemaine($event)" name="periodeSemaineSel" />
+        }
+      </div>
+      @if (presences()?.debut) {
+        <p class="muted">Période affichée : du {{ presences().debut | date:'dd/MM/yyyy' }} au {{ presences().fin | date:'dd/MM/yyyy' }}.</p>
+      }
+      @if (!estSoiMemeVue()) {
+        <p class="muted">Lecture seule — seul le titulaire peut pointer ou corriger son propre pointage.</p>
+      } @else if (auth.peut('cabinet.presence.pointer')) {
         <div class="upload">
           <input class="sel" type="date" [(ngModel)]="pointageDate" name="pdate" [max]="aujourdhui" title="Jour pointé" />
           <input class="sel" type="time" [(ngModel)]="pointageArrivee" name="arr" placeholder="Arrivée" />
@@ -73,7 +96,7 @@ import { libelleRole } from '../../core/roles';
             </tr>
           }
         </table>
-      }
+      } @else { <p class="muted">Aucun pointage sur cette période.</p> }
     </section>
 
     <section class="panel">
@@ -105,7 +128,7 @@ import { libelleRole } from '../../core/roles';
           <tr><th>Membre</th><th>Type</th><th>Du</th><th>Au</th><th>Statut</th><th></th></tr>
           @for (c of conges(); track c.id) {
             <tr>
-              <td>{{ c.membre }}</td><td>{{ c.type }}</td>
+              <td>{{ c.membre }}</td><td>{{ libelleTypeConge(c.type) }}</td>
               <td>{{ c.date_debut | date:'dd/MM/yyyy' }}</td><td>{{ c.date_fin | date:'dd/MM/yyyy' }}</td>
               <td><span class="tag" [class.ok]="c.statut==='approuve'" [class.haute]="c.statut==='refuse'">{{ c.statut === 'annule' ? 'annulé' : c.statut }}</span></td>
               <td><app-menu-actions [actions]="actionsPourConge(c)" /></td>
@@ -169,21 +192,47 @@ import { libelleRole } from '../../core/roles';
       </section>
     }
 
-    @if (auth.peut('cabinet.bulletin.generer')) {
-      <section class="panel">
-        <h3>Bulletins de paie (option légère — archivage indicatif)</h3>
+    <section class="panel">
+      <h3>Bulletins de paie (option légère — archivage indicatif)
+        — {{ bulletinMembreId() ? nomMembre(bulletinMembreId()) : 'les miens' }}</h3>
+      @if (auth.peut('cabinet.bulletins.consulter')) {
+        <div class="upload">
+          <select class="sel" [ngModel]="bulletinMembreId()" (ngModelChange)="changerMembreBulletin($event)" name="bulVoir" title="Voir les bulletins de…">
+            <option value="">Moi-même</option>
+            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+          </select>
+        </div>
+      }
+      @if (bulletins().length) {
+        <table>
+          <tr><th>Mois</th><th>Brut</th><th>Net</th><th>Primes</th><th>Versé le</th></tr>
+          @for (b of bulletins(); track b.id) {
+            <tr>
+              <td>{{ b.mois | date:'MM/yyyy' }}</td>
+              <td>@if (b.salaire_brut) { {{ b.salaire_brut | number }} FCFA } @else { — }</td>
+              <td>@if (b.salaire_net) { {{ b.salaire_net | number }} FCFA } @else { — }</td>
+              <td>@if (b.primes) { {{ b.primes | number }} FCFA } @else { — }</td>
+              <td>{{ b.verse_le ? (b.verse_le | date:'dd/MM/yyyy') : '—' }}</td>
+            </tr>
+          }
+        </table>
+      } @else { <p class="muted">Aucun bulletin archivé.</p> }
+
+      @if (auth.peut('cabinet.bulletin.generer')) {
+        <h4 style="margin:18px 0 10px">Archiver un bulletin</h4>
         <div class="upload">
           <select class="sel" [(ngModel)]="nouveauBulletin.utilisateur_id" name="bulUser">
             <option value="">Membre…</option>
-            @for (m of equipe(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
           </select>
           <input class="sel" type="date" [(ngModel)]="nouveauBulletin.mois" name="bulMois" />
           <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_brut" name="bulBrut" placeholder="Brut" />
           <input class="sel" type="number" [(ngModel)]="nouveauBulletin.salaire_net" name="bulNet" placeholder="Net" />
-          <button class="btn sm" (click)="archiverBulletin()">Archiver</button>
+          <button class="btn sm" (click)="archiverBulletin()" [disabled]="!nouveauBulletin.utilisateur_id || ajoutBulletinEnCours()">{{ ajoutBulletinEnCours() ? 'Archivage…' : 'Archiver' }}</button>
         </div>
-      </section>
-    }
+        @if (erreurBulletin()) { <p class="err">{{ erreurBulletin() }}</p> }
+      }
+    </section>
   `,
   styles: [`
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
@@ -204,6 +253,15 @@ export class CabinetComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly libelleRole = libelleRole;
   readonly equipe = signal<any[]>([]);
+  // Annuaire complet (GET /api/utilisateurs, ouvert à tout le monde) — pour
+  // les sélecteurs "voir/attribuer à un membre" ci-dessous (27/09/2026).
+  // Volontairement DISTINCT de `equipe` (gardée par cabinet.consulter,
+  // expose le taux horaire) : un rôle qui peut générer un bulletin ou voir
+  // le pointage d'autrui n'a pas forcément aussi la vue de supervision
+  // d'équipe — bug trouvé en auditant ce module (admin_it, par exemple, a
+  // cabinet.bulletin.generer mais pas cabinet.consulter : le sélecteur
+  // "Membre…" du formulaire d'archivage était silencieusement vide).
+  readonly membres = signal<any[]>([]);
   readonly echeances = signal<any[]>([]);
   readonly conges = signal<any[]>([]);
   readonly presences = signal<any>(null);
@@ -222,6 +280,17 @@ export class CabinetComponent implements OnInit {
   readonly doublonsConge = signal<any[]>([]);
   nouveauConge: any = { type: 'annuel' };
   nouveauBulletin: any = { mois: new Date().toISOString().slice(0, 8) + '01' };
+
+  // Consultation du pointage/des bulletins d'un autre membre (27/09/2026,
+  // audit Cabinet demandé par l'utilisateur — voir CLAUDE.md/HISTORY.md).
+  readonly pointageMembreId = signal('');
+  readonly periodeType = signal<'mois' | 'semaine'>('mois');
+  periodeMois = new Date().toISOString().slice(0, 7);
+  periodeSemaine = this.semaineISO(new Date());
+  readonly bulletins = signal<any[]>([]);
+  readonly bulletinMembreId = signal('');
+  readonly erreurBulletin = signal('');
+  readonly ajoutBulletinEnCours = signal(false);
 
   // Obligations administratives du cabinet (12/09/2026, déplacées
   // d'Échéances vers Cabinet — voir CLAUDE.md/HISTORY.md : la consultation
@@ -243,11 +312,33 @@ export class CabinetComponent implements OnInit {
   };
   libelleEcheance(t: string): string { return this.libellesEcheance[t] ?? t; }
 
+  private readonly libellesTypeConge: Record<string, string> = {
+    annuel: 'Annuel', maladie: 'Maladie', maternite: 'Maternité', paternite: 'Paternité',
+    sans_solde: 'Sans solde', autre: 'Autre',
+  };
+  libelleTypeConge(t: string): string { return this.libellesTypeConge[t] ?? t; }
+
+  nomMembre(id: string): string {
+    const m = this.membres().find((x) => x.id === id);
+    return m ? `${m.prenom} ${m.nom}` : '';
+  }
+
   ngOnInit(): void {
-    this.api.equipeCabinet().subscribe({ next: (e) => this.equipe.set(e) });
-    this.api.echeancesRh().subscribe({ next: (e) => this.echeances.set(e) });
+    // Ouvert à tout le monde (GET /api/utilisateurs, aucune permission
+    // requise) — voir le commentaire sur `membres` ci-dessus.
+    this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });
+    // error: () => {} (27/09/2026) — ces deux appels sont gardés par
+    // cabinet.consulter côté serveur (403 pour la plupart des rôles) ; sans
+    // gestionnaire d'erreur, chaque 403 remontait comme une exception non
+    // interceptée dans la console (RxJS) pour tout profil sans cette
+    // permission — trouvé en auditant ce module, aucun impact visible pour
+    // l'utilisateur (les tableaux restent vides comme prévu) mais du bruit
+    // silencieux qui aurait pu masquer une vraie erreur.
+    this.api.equipeCabinet().subscribe({ next: (e) => this.equipe.set(e), error: () => {} });
+    this.api.echeancesRh().subscribe({ next: (e) => this.echeances.set(e), error: () => {} });
     this.chargerConges();
-    this.api.presencesMois().subscribe({ next: (p) => this.presences.set(p) });
+    this.rechargerPointage();
+    this.chargerBulletins();
     if (this.auth.peut('echeances_admin.consulter')) {
       this.api.listesValeurs('categorie_echeance').subscribe({ next: (v) => this.categoriesEcheanceAdmin.set(v), error: () => {} });
       this.api.listesValeurs('periodicite').subscribe({ next: (v) => this.periodicitesEcheanceAdmin.set(v), error: () => {} });
@@ -380,8 +471,68 @@ export class CabinetComponent implements OnInit {
     });
   }
 
+  // Vrai si l'écran affiche le pointage de la personne connectée elle-même
+  // (comportement historique) — faux quand un profil autorisé consulte
+  // celui d'un autre membre : seul le titulaire peut pointer/corriger le
+  // sien (27/09/2026).
+  estSoiMemeVue(): boolean {
+    const id = this.pointageMembreId();
+    return !id || id === this.auth.utilisateur()?.id;
+  }
+
+  changerMembrePointage(id: string): void {
+    this.pointageMembreId.set(id);
+    this.rechargerPointage();
+  }
+
+  changerPeriodeType(t: 'mois' | 'semaine'): void {
+    this.periodeType.set(t);
+    this.rechargerPointage();
+  }
+
+  changerPeriodeMois(mois: string): void {
+    this.periodeMois = mois;
+    this.rechargerPointage();
+  }
+
+  changerPeriodeSemaine(semaine: string): void {
+    this.periodeSemaine = semaine;
+    this.rechargerPointage();
+  }
+
+  // Valeur initiale du sélecteur <input type="week"> (format ISO "AAAA-Wnn").
+  private semaineISO(d: Date): string {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const jour = (date.getUTCDay() + 6) % 7; // 0 = lundi
+    date.setUTCDate(date.getUTCDate() - jour + 3); // jeudi de la semaine ISO
+    const jeudiAn1 = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+    const semaine = 1 + Math.round(((date.getTime() - jeudiAn1.getTime()) / 86400000 - 3 + ((jeudiAn1.getUTCDay() + 6) % 7)) / 7);
+    return `${date.getUTCFullYear()}-W${String(semaine).padStart(2, '0')}`;
+  }
+
+  // Bornes lundi→dimanche d'une semaine ISO "AAAA-Wnn" (input type="week").
+  private bornesSemaine(semaineISO: string): { debut: string; fin: string } | null {
+    const m = /^(\d{4})-W(\d{2})$/.exec(semaineISO);
+    if (!m) return null;
+    const annee = Number(m[1]);
+    const semaine = Number(m[2]);
+    const jan4 = new Date(Date.UTC(annee, 0, 4));
+    const lundiSemaine1 = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86400000);
+    const lundi = new Date(lundiSemaine1.getTime() + (semaine - 1) * 7 * 86400000);
+    const dimanche = new Date(lundi.getTime() + 6 * 86400000);
+    return { debut: lundi.toISOString().slice(0, 10), fin: dimanche.toISOString().slice(0, 10) };
+  }
+
   private rechargerPointage(): void {
-    this.api.presencesMois().subscribe({ next: (p) => this.presences.set(p) });
+    const filtres: { mois?: string; debut?: string; fin?: string; utilisateur_id?: string } = {};
+    if (this.pointageMembreId()) filtres.utilisateur_id = this.pointageMembreId();
+    if (this.periodeType() === 'semaine') {
+      const bornes = this.bornesSemaine(this.periodeSemaine);
+      if (bornes) { filtres.debut = bornes.debut; filtres.fin = bornes.fin; }
+    } else {
+      filtres.mois = `${this.periodeMois}-01`;
+    }
+    this.api.presencesMois(filtres).subscribe({ next: (p) => this.presences.set(p) });
   }
 
   reinitialiserPointage(): void {
@@ -396,7 +547,7 @@ export class CabinetComponent implements OnInit {
   }
 
   actionsPourPointage(j: any): ActionMenuItem[] {
-    if (!this.auth.peut('cabinet.presence.pointer')) return [];
+    if (!this.estSoiMemeVue() || !this.auth.peut('cabinet.presence.pointer')) return [];
     return [
       { label: 'Modifier', action: () => {
         this.erreurPointage.set('');
@@ -488,10 +639,41 @@ export class CabinetComponent implements OnInit {
     });
   }
 
+  // Chacun voit toujours SES PROPRES bulletins sans permission particulière
+  // (même règle serveur que les rétrocessions/bulletins depuis le
+  // 18/08/2026) — voir ceux d'un autre membre exige cabinet.bulletins.consulter.
+  chargerBulletins(): void {
+    this.api.bulletinsPaie(this.bulletinMembreId() || undefined).subscribe({
+      next: (b) => this.bulletins.set(b),
+      error: () => this.bulletins.set([]),
+    });
+  }
+
+  changerMembreBulletin(id: string): void {
+    this.bulletinMembreId.set(id);
+    this.chargerBulletins();
+  }
+
   archiverBulletin(): void {
-    if (!this.nouveauBulletin.utilisateur_id) return;
+    if (!this.nouveauBulletin.utilisateur_id || this.ajoutBulletinEnCours()) return;
+    this.erreurBulletin.set('');
+    this.ajoutBulletinEnCours.set(true);
     this.api.creerBulletinPaie(this.nouveauBulletin).subscribe({
-      next: () => { this.nouveauBulletin = { mois: new Date().toISOString().slice(0, 8) + '01' }; },
+      next: () => {
+        this.ajoutBulletinEnCours.set(false);
+        // Bascule la vue sur le membre qui vient de recevoir son bulletin,
+        // pour que le résultat de l'archivage soit visible immédiatement —
+        // seulement si l'appelant est autorisé à le consulter (un rôle peut
+        // avoir cabinet.bulletin.generer sans cabinet.bulletins.consulter,
+        // ex. admin_it : basculer la vue afficherait un 403 pour rien).
+        const cible = this.nouveauBulletin.utilisateur_id;
+        if (cible === this.auth.utilisateur()?.id || this.auth.peut('cabinet.bulletins.consulter')) {
+          this.bulletinMembreId.set(cible);
+        }
+        this.nouveauBulletin = { mois: new Date().toISOString().slice(0, 8) + '01' };
+        this.chargerBulletins();
+      },
+      error: (e) => { this.ajoutBulletinEnCours.set(false); this.erreurBulletin.set(e?.error?.error ?? 'Archivage impossible'); },
     });
   }
 }

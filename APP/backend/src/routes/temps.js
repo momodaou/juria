@@ -1,7 +1,7 @@
 // JURIA — Temps passé (timesheet)
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
 // GET /api/temps?dossier_id=...&non_factures=true   (sinon : mes saisies)
@@ -21,7 +21,7 @@ router.get("/", async (req, res) => {
   const where = `WHERE ${clauses.join(" AND ")}`;
   try {
     const { rows } = await pool.query(
-      `SELECT t.id, t.date_saisie, t.duree_minutes, t.taux_horaire, t.facturable, t.description,
+      `SELECT t.id, t.utilisateur_id, t.date_saisie, t.duree_minutes, t.taux_horaire, t.facturable, t.description,
               t.facture_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS auteur
        FROM temps t
        JOIN dossiers d ON d.id = t.dossier_id
@@ -30,6 +30,24 @@ router.get("/", async (req, res) => {
        ORDER BY t.date_saisie DESC LIMIT 200`,
       params
     );
+    // 28/09/2026 — audit permissions : sur la vue « tout le dossier »
+    // (dossier_id fourni), t.taux_horaire (rémunération individuelle,
+    // même sensibilité que dossiers.montant_convenu_xof/cabinet.consulter)
+    // fuyait à tout le cabinet sans aucun contrôle. Masqué sauf pour
+    // l'auteur de la ligne lui-même ou le cercle déjà habilité à voir des
+    // données financières (factures.creer/consulter — nécessaire pour
+    // construire une facture depuis « Facturer un dossier », qui affiche
+    // ce taux) — durée/description/facturable restent visibles pour tous
+    // (gestion collaborative du dossier, déjà le comportement historique).
+    if (dossier_id) {
+      const peutVoirTaux = (await estAutorise(req.user.role, "factures.creer"))
+        || (await estAutorise(req.user.role, "factures.consulter"));
+      if (!peutVoirTaux) {
+        for (const r of rows) {
+          if (r.utilisateur_id !== req.user.sub) r.taux_horaire = null;
+        }
+      }
+    }
     res.json(rows);
   } catch (e) {
     console.error(e);

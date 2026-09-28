@@ -86,7 +86,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
-              d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
+              c.imputation_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
@@ -102,7 +102,12 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
 });
 
 // GET /api/courriers/:id
-router.get("/:id", async (req, res) => {
+// 28/09/2026 — audit menu par menu (suite de l'audit systématique des
+// routes GET) : cette route n'avait AUCUNE garde, contournant
+// `courriers.consulter` (marquée restreinte) posée sur `GET /` — n'importe
+// quel utilisateur authentifié pouvait lire n'importe quel courrier par id
+// direct. Alignée sur la même permission que la liste.
+router.get("/:id", requirePermission("courriers.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.*, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
@@ -186,6 +191,45 @@ router.post("/:id/document", requirePermission("courriers.creer"), upload.single
     );
     await pool.query("UPDATE courriers SET document_id = $1 WHERE id = $2", [doc.rows[0].id, req.params.id]);
     res.status(201).json({ document_id: doc.rows[0].id, nom: doc.rows[0].nom });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/courriers/:id — corriger les champs de base d'un courrier déjà
+// enregistré (28/09/2026, gap comblé — jusqu'ici seul le statut/imputation
+// pouvaient évoluer, aucune route ne permettait de corriger une faute de
+// frappe sur le correspondant/l'objet/le type/la date, ni de rattacher le
+// courrier à un dossier après coup). Réutilise la même permission que
+// l'évolution du statut (courriers.statut.modifier) plutôt qu'une nouvelle
+// action dédiée : le même cercle (registre + direction/IT) qui fait
+// avancer le cycle de vie d'un courrier peut aussi en corriger une erreur
+// de saisie — cohérent avec l'économie de permissions déjà pratiquée
+// ailleurs dans JURIA plutôt que de multiplier les actions cataloguées.
+// La référence elle-même (générée, unique) n'est jamais modifiable ici.
+// `imputation_id` accepté ici aussi (simple correction de donnée, sans
+// toucher transmis_par/transmis_le — ces 2 colonnes de traçabilité restent
+// l'exclusivité de la transition de statut ci-dessous, PUT /:id/statut).
+router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      `UPDATE courriers SET
+         correspondant = COALESCE($1, correspondant),
+         objet = COALESCE($2, objet),
+         type = COALESCE($3, type),
+         date_courrier = COALESCE($4, date_courrier),
+         acteur_type = COALESCE($5, acteur_type),
+         dossier_id = COALESCE($6::uuid, dossier_id),
+         imputation_id = COALESCE($7::uuid, imputation_id)
+       WHERE id = $8
+       RETURNING id, reference, correspondant, objet, type, date_courrier, acteur_type, dossier_id, imputation_id`,
+      [b.correspondant || null, b.objet || null, b.type || null, b.date_courrier || null,
+       b.acteur_type || null, b.dossier_id || null, b.imputation_id || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
+    res.json(rows[0]);
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

@@ -841,6 +841,12 @@ import { libelleRole } from '../../core/roles';
               <option value="note_interne">Note interne</option>
               <option value="autre">Autre</option>
             </select>
+            <select [(ngModel)]="confidentialiteDoc" name="confidentialiteDoc" title="Confidentialité">
+              <option value="dossier">Confidentialité : dossier (défaut — tout le cabinet, partageable au client)</option>
+              <option value="interne">Confidentialité : interne (tout le cabinet, jamais au client)</option>
+              <option value="equipe">Confidentialité : équipe (responsable + intervenants + direction)</option>
+              <option value="restreint">Confidentialité : restreint (responsable + direction uniquement)</option>
+            </select>
             <button class="btn" (click)="televerser()" [disabled]="!fichier() || envoi()">
               {{ envoi() ? 'Envoi…' : 'Téléverser' }}
             </button>
@@ -849,11 +855,12 @@ import { libelleRole } from '../../core/roles';
 
         @if (documents().length) {
           <table>
-            <tr><th>Nom</th><th>Catégorie</th><th>Version</th><th>Statut</th><th></th></tr>
+            <tr><th>Nom</th><th>Catégorie</th><th>Version</th><th>Statut</th><th>Confidentialité</th><th></th></tr>
             @for (doc of documents(); track doc.id) {
               <tr>
                 <td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td>
                 <td>v{{ doc.version }}</td><td>{{ doc.statut }}</td>
+                <td>@if (doc.confidentialite && doc.confidentialite !== 'dossier') { <span class="tag haute">{{ libelleConfidentialite(doc.confidentialite) }}</span> } @else { — }</td>
                 <td><app-menu-actions [actions]="actionsPourDocument(doc)" /></td>
               </tr>
             }
@@ -1079,6 +1086,8 @@ export class DossierDetailComponent implements OnInit {
   readonly fichier = signal<File | null>(null);
   readonly envoi = signal(false);
   categorie = 'piece_client';
+  // Confidentialité du document GED (28/09/2026) — voir confidentialiteDocuments.js.
+  confidentialiteDoc = 'dossier';
 
   readonly temps = signal<any[]>([]);
   dureeMin: number | null = null;
@@ -1331,6 +1340,15 @@ export class DossierDetailComponent implements OnInit {
     opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
   };
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
+
+  // 28/09/2026 — documents.confidentialite enfin câblée pour de vrai (voir
+  // backend/src/confidentialiteDocuments.js) ; 'dossier' (défaut) n'affiche
+  // rien dans le tableau (comportement historique, rien de particulier à
+  // signaler), les 3 autres niveaux sont signalés explicitement.
+  private readonly libellesConfidentialite: Record<string, string> = {
+    interne: 'Interne (jamais au client)', equipe: 'Équipe du dossier', restreint: 'Restreint',
+  };
+  libelleConfidentialite(code: string): string { return this.libellesConfidentialite[code] ?? code; }
 
   // 26/09/2026 — le tableau Audiences affichait le code ENUM brut du
   // résultat, gap trouvé en câblant la distinction délibéré/délibéré vidé.
@@ -1940,7 +1958,7 @@ export class DossierDetailComponent implements OnInit {
     if (!f) return;
     this.envoi.set(true);
     this.erreur.set('');
-    this.api.televerserDocument(this.id, f, { categorie: this.categorie }).subscribe({
+    this.api.televerserDocument(this.id, f, { categorie: this.categorie, confidentialite: this.confidentialiteDoc }).subscribe({
       next: () => { this.envoi.set(false); this.fichier.set(null); this.rafraichirDocuments(); },
       error: (e) => { this.envoi.set(false); this.erreur.set(e?.error?.error ?? 'Téléversement impossible'); },
     });

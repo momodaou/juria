@@ -242,7 +242,11 @@ router.post("/:id/decaisser", requirePermission("retrocessions.decaisser"), asyn
 
 // GET /api/retrocessions/pro-bono?mois=YYYY-MM-01&associe_id=
 // Suivi du quota (2 dossiers pro bono / mois / associé, non reportable).
-router.get("/pro-bono", async (req, res) => {
+// 28/09/2026 — audit menu par menu : aucune garde jusqu'ici, alors que ce
+// panneau nomme chaque associé et son quota pro bono utilisé/restant —
+// alignée sur retrocessions.consulter, cohérent avec le reste du module
+// (données individuelles réservées au cercle direction/finance).
+router.get("/pro-bono", requirePermission("retrocessions.consulter"), async (req, res) => {
   const mois = req.query.mois || new Date().toISOString().slice(0, 8) + "01";
   try {
     const { rows: [p] } = await pool.query(

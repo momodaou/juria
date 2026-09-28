@@ -5,6 +5,7 @@ const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
+const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -47,13 +48,21 @@ router.post("/", requirePermission("documents.creer"), upload.single("fichier"),
 });
 
 // GET /api/documents/:id/download  -> renvoie le fichier
+// Défense en profondeur (28/09/2026) : la liste (`GET /api/dossiers/:id/
+// documents`) ne renvoie déjà que les documents visibles pour l'appelant,
+// mais l'URL de téléchargement reste directement joignable par id — même
+// contrôle de confidentialité appliqué ici (voir confidentialiteDocuments.js).
 router.get("/:id/download", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT nom, type_mime, chemin_storage FROM documents WHERE id = $1",
+      "SELECT nom, type_mime, chemin_storage, dossier_id, confidentialite FROM documents WHERE id = $1",
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Document introuvable" });
+    const contexte = await chargerContexteDossier(pool, rows[0].dossier_id);
+    if (!estDocumentVisible(rows[0].confidentialite, contexte, req.user, false)) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
     const buf = await readObject(rows[0].chemin_storage);
     res.setHeader("Content-Type", rows[0].type_mime || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${rows[0].nom}"`);

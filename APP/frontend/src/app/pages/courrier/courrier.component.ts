@@ -5,11 +5,12 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-courrier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -90,6 +91,17 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <option value="mixte">Mixte</option>
           </select>
         </div>
+        <div>
+          <!-- 28/09/2026 — audit menu par menu : imputation_id déjà géré
+               côté serveur (POST l'accepte, PUT /:id/statut aussi) mais
+               jamais exposé à l'écran — impossible jusqu'ici de dire
+               concrètement à qui un courrier est imputé. -->
+          <label>Imputer à (optionnel)</label>
+          <select class="in" [(ngModel)]="form.imputation_id" name="imputation">
+            <option value="">—</option>
+            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+          </select>
+        </div>
         <div class="col2">
           <label>Scan / pièce jointe (GED)</label>
           <input class="in" type="file" (change)="fichierChoisi($event)" [disabled]="!form.dossier_id" />
@@ -133,7 +145,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </div>
       @if (courriers().length) {
         <table>
-          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Pièce</th><th>Statut</th></tr>
+          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Imputé à</th><th>Pièce</th><th>Statut</th><th></th></tr>
           @for (c of courriers(); track c.id) {
             <tr>
               <td>{{ c.reference }}</td>
@@ -143,6 +155,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
               <td>@if (c.dossier_id) { <a class="lien" [routerLink]="['/dossiers', c.dossier_id]">{{ c.dossier_numero }}</a> } @else { — }</td>
+              <td>{{ c.impute_a || '—' }}</td>
               <td>
                 @if (c.document_id) {
                   <button class="lien" (click)="apercuPiece(c)">Aperçu</button>
@@ -163,7 +176,45 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                   {{ c.statut }}
                 }
               </td>
+              <td><app-menu-actions [actions]="actionsPour(c)" /></td>
             </tr>
+            @if (editionId() === c.id) {
+              <tr class="edition">
+                <td colspan="11">
+                  <div class="grid2">
+                    <div>
+                      <label>Type</label>
+                      <select class="in" [(ngModel)]="editForm.type" name="edType">
+                        <option value="lettre">Lettre</option>
+                        <option value="assignation">Assignation</option>
+                        <option value="convocation">Convocation</option>
+                        <option value="acte_huissier">Acte d'huissier</option>
+                        <option value="acte_notaire">Acte de notaire</option>
+                        <option value="decision_justice">Décision de justice</option>
+                        <option value="conclusions">Conclusions</option>
+                        <option value="courrier_officiel">Courrier officiel</option>
+                        <option value="administratif">Administratif</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </div>
+                    <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_courrier" name="edDate" /></div>
+                    <div class="col2"><label>Correspondant</label><input class="in" [(ngModel)]="editForm.correspondant" name="edCorrespondant" /></div>
+                    <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="editForm.objet" name="edObjet" /></div>
+                    <div>
+                      <label>Imputer à</label>
+                      <select class="in" [(ngModel)]="editForm.imputation_id" name="edImputation">
+                        <option value="">—</option>
+                        @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+                      </select>
+                    </div>
+                  </div>
+                  <p class="hint">La référence n'est pas modifiable — le dossier rattaché se corrige depuis la fiche du courrier concerné.</p>
+                  <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+                  <button class="lien" (click)="annulerEdition()">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else {
@@ -186,6 +237,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .statut-select{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:var(--fs-sm)}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
+    .edition td{background:var(--light);padding:12px 14px}
+    .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
     .mini-file{max-width:110px;font-size:var(--fs-xs)}
   `],
 })
@@ -199,6 +252,12 @@ export class CourrierComponent implements OnInit {
   readonly dernierDeclenchement = signal<any | null>(null);
   readonly erreur = signal('');
   readonly creation = signal(false);
+  // Annuaire (GET /api/utilisateurs, ouvert à tous) pour le sélecteur
+  // « Imputer à » — 28/09/2026.
+  readonly membres = signal<any[]>([]);
+  readonly editionId = signal<string | null>(null);
+  readonly editionEnCours = signal(false);
+  editForm: any = {};
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -217,6 +276,7 @@ export class CourrierComponent implements OnInit {
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
+    this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });
   }
 
   charger(): void {
@@ -313,5 +373,39 @@ export class CourrierComponent implements OnInit {
 
   changerStatut(c: any, statut: string): void {
     this.api.majStatutCourrier(c.id, { statut }).subscribe({ next: () => this.charger() });
+  }
+
+  // 28/09/2026 — audit menu par menu : jusqu'ici seuls le statut et le
+  // fichier joint pouvaient évoluer après enregistrement — aucune route ni
+  // action pour corriger une faute de frappe (correspondant, objet, type,
+  // date) ou l'imputation.
+  actionsPour(c: any): ActionMenuItem[] {
+    if (!this.auth.peut('courriers.statut.modifier')) return [];
+    return [{ label: 'Modifier', action: () => this.commencerEdition(c) }];
+  }
+
+  commencerEdition(c: any): void {
+    this.erreur.set('');
+    this.editForm = {
+      type: c.type, date_courrier: c.date_courrier?.slice(0, 10), correspondant: c.correspondant,
+      objet: c.objet, imputation_id: c.imputation_id || '',
+    };
+    this.editionId.set(c.id);
+  }
+
+  annulerEdition(): void {
+    this.editionId.set(null);
+    this.editForm = {};
+  }
+
+  enregistrerEdition(): void {
+    const id = this.editionId();
+    if (!id || this.editionEnCours()) return;
+    this.erreur.set('');
+    this.editionEnCours.set(true);
+    this.api.majCourrier(id, this.editForm).subscribe({
+      next: () => { this.editionEnCours.set(false); this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => { this.editionEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Modification impossible.'); },
+    });
   }
 }

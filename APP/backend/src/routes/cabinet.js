@@ -47,8 +47,17 @@ router.get("/echeances", requirePermission("cabinet.consulter"), async (req, res
 });
 
 // GET /api/cabinet/conges?utilisateur_id=&statut=
+// 27/09/2026 — audit Cabinet (RH) : cette route n'avait AUCUNE restriction
+// (ni requirePermission, ni filtre forcé) — un `motif` de congé maladie/
+// maternité est une information de santé, jamais destinée à tout le
+// cabinet. Alignée sur le même principe déjà appliqué aux rétrocessions/
+// bulletins de paie (18/08/2026) : chacun voit toujours SES PROPRES
+// demandes sans permission particulière ; voir celles des autres exige
+// cabinet.conge.decision (même cercle que celui qui les tranche).
 router.get("/conges", async (req, res) => {
-  const { utilisateur_id, statut } = req.query;
+  const { statut } = req.query;
+  const peutTout = await estAutorise(req.user.role, "cabinet.conge.decision");
+  const utilisateur_id = peutTout ? req.query.utilisateur_id : req.user.sub;
   const params = [];
   const clauses = [];
   if (utilisateur_id) { params.push(utilisateur_id); clauses.push(`c.utilisateur_id = $${params.length}`); }
@@ -186,7 +195,23 @@ router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"),
   }
 });
 
+// Bornes [début, fin] d'une période de consultation du pointage : soit un
+// mois entier (paramètre `mois`, comportement historique), soit une plage
+// explicite `debut`/`fin` — 27/09/2026, pour permettre à l'écran de basculer
+// sur une semaine précise sans dépendre de v_heures_mensuelles (vue
+// strictement mensuelle, inutilisable pour une semaine à cheval sur 2 mois).
+function bornesPeriode(query) {
+  if (query.debut && query.fin) return { debut: query.debut, fin: query.fin };
+  const mois = query.mois || new Date().toISOString().slice(0, 8) + "01";
+  const d = new Date(mois + "T00:00:00Z");
+  const debut = d.toISOString().slice(0, 10);
+  const finD = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+  return { debut, fin: finD.toISOString().slice(0, 10) };
+}
+
 // GET /api/cabinet/presences?utilisateur_id=&mois=YYYY-MM-01
+// ou ?utilisateur_id=&debut=YYYY-MM-DD&fin=YYYY-MM-DD (27/09/2026, vue par
+// semaine — voir bornesPeriode ci-dessus).
 router.get("/presences", async (req, res) => {
   const uid = req.query.utilisateur_id || req.user.sub;
   // Voir le pointage de quelqu'un d'autre exige la vue de supervision RH
@@ -195,20 +220,26 @@ router.get("/presences", async (req, res) => {
   if (uid !== req.user.sub && !(await estAutorise(req.user.role, "cabinet.consulter"))) {
     return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
   }
-  const mois = req.query.mois || new Date().toISOString().slice(0, 8) + "01";
+  const { debut, fin } = bornesPeriode(req.query);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(debut) || !/^\d{4}-\d{2}-\d{2}$/.test(fin) || debut > fin) {
+    return res.status(400).json({ error: "Période invalide" });
+  }
   try {
-    const jours = await pool.query(
+    const { rows: jours } = await pool.query(
       `SELECT date_jour, heure_arrivee, heure_depart, heures
-       FROM presences WHERE utilisateur_id = $1 AND date_trunc('month', date_jour) = $2::date
+       FROM presences WHERE utilisateur_id = $1 AND date_jour BETWEEN $2 AND $3
        ORDER BY date_jour DESC`,
-      [uid, mois]
+      [uid, debut, fin]
     );
-    const total = await pool.query(
-      `SELECT total_heures, jours_pointes FROM v_heures_mensuelles
-       WHERE utilisateur_id = $1 AND mois = $2::date`,
-      [uid, mois]
+    // Total calculé directement sur la même plage (plutôt que
+    // v_heures_mensuelles, qui ne connaît que des mois entiers et ne
+    // pourrait pas répondre correctement à une semaine à cheval sur 2 mois).
+    const { rows: [total] } = await pool.query(
+      `SELECT COALESCE(SUM(heures), 0) AS total_heures, COUNT(*) FILTER (WHERE heures IS NOT NULL) AS jours_pointes
+       FROM presences WHERE utilisateur_id = $1 AND date_jour BETWEEN $2 AND $3`,
+      [uid, debut, fin]
     );
-    res.json({ jours: jours.rows, total_heures: total.rows[0]?.total_heures ?? 0, jours_pointes: total.rows[0]?.jours_pointes ?? 0 });
+    res.json({ jours, total_heures: total?.total_heures ?? 0, jours_pointes: total?.jours_pointes ?? 0, debut, fin });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

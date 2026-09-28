@@ -73,7 +73,17 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         </select>
         <input class="search" placeholder="Rechercher (titre, référence)…"
                [(ngModel)]="recherche" (ngModelChange)="charger()" />
+        <!-- 28/09/2026 — audit menu par menu : le filtre matière existait
+             déjà côté API (GET /api/biblio?matiere=) mais n'était jamais
+             exposé à l'écran. -->
+        <input class="search filtre" placeholder="Matière (ex. Sûretés)…"
+               [(ngModel)]="filtreMatiere" (ngModelChange)="charger()" />
       </div>
+      <!-- Erreurs des actions de la liste (suppression) : jusqu'ici
+           affichées seulement dans le formulaire de création ou d'édition,
+           souvent fermés — donc invisibles (même motif déjà corrigé
+           ailleurs le 25/09/2026). -->
+      @if (erreur() && !editionId() && !afficherForm()) { <p class="err">{{ erreur() }}</p> }
 
       @if (ressources().length) {
         <table>
@@ -118,7 +128,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     <div class="col2"><label>Résumé</label><textarea class="in ta" [(ngModel)]="editForm.resume" name="edResume"></textarea></div>
                   </div>
                   <p class="hint">Le fichier joint n'est pas modifiable ici — supprimer et re-téléverser si le document lui-même est erroné.</p>
-                  <button class="lien" (click)="enregistrerEdition()">Enregistrer</button>
+                  <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
                   <button class="lien" (click)="annulerEdition()">Annuler</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
@@ -156,6 +166,7 @@ export class BiblioComponent implements OnInit {
 
   recherche = '';
   filtreType = '';
+  filtreMatiere = '';
   form: any = { type: 'jurisprudence', source: 'OHADA' };
   fichierChoisi: File | null = null;
 
@@ -175,7 +186,7 @@ export class BiblioComponent implements OnInit {
       items.push({ label: 'Télécharger', action: () => this.telecharger(r.id) });
     }
     if (this.auth.peut('biblio.creer')) items.push({ label: 'Modifier', action: () => this.commencerEdition(r) });
-    if (this.auth.peut('biblio.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimer(r.id), danger: true });
+    if (this.auth.peut('biblio.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimer(r), danger: true });
     return items;
   }
 
@@ -200,7 +211,7 @@ export class BiblioComponent implements OnInit {
   }
 
   charger(): void {
-    this.api.biblio({ type: this.filtreType, q: this.recherche }).subscribe({ next: (r) => this.ressources.set(r) });
+    this.api.biblio({ type: this.filtreType, q: this.recherche, matiere: this.filtreMatiere }).subscribe({ next: (r) => this.ressources.set(r) });
   }
 
   onFichierChoisi(event: Event): void {
@@ -224,6 +235,7 @@ export class BiblioComponent implements OnInit {
   }
 
   readonly editionId = signal<string | null>(null);
+  readonly editionEnCours = signal(false);
   editForm: any = {};
   commencerEdition(r: any): void {
     this.erreur.set('');
@@ -239,15 +251,24 @@ export class BiblioComponent implements OnInit {
   }
   enregistrerEdition(): void {
     const id = this.editionId();
-    if (!id) return;
+    if (!id || this.editionEnCours()) return;
     this.erreur.set('');
+    this.editionEnCours.set(true);
     this.api.majRessourceBiblio(id, this.editForm).subscribe({
-      next: () => { this.editionId.set(null); this.editForm = {}; this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+      next: () => { this.editionEnCours.set(false); this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => { this.editionEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Modification impossible.'); },
     });
   }
 
-  supprimer(id: string): void {
-    this.api.supprimerRessourceBiblio(id).subscribe({ next: () => this.charger() });
+  // 28/09/2026 — audit menu par menu : aucune confirmation ni gestion
+  // d'erreur avant une suppression définitive (fichier joint compris),
+  // contraire à la convention suivie ailleurs dans JURIA.
+  supprimer(r: any): void {
+    if (!confirm(`Supprimer définitivement « ${r.titre} » de la bibliothèque${r.a_fichier ? ' (et son fichier joint)' : ''} ?`)) return;
+    this.erreur.set('');
+    this.api.supprimerRessourceBiblio(r.id).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
+    });
   }
 }

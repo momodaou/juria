@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
@@ -10,7 +10,7 @@ import { libelleRole } from '../../core/roles';
 @Component({
   selector: 'app-retrocessions',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <header class="page-head">
       <div>
@@ -28,6 +28,7 @@ import { libelleRole } from '../../core/roles';
       <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir toutes les rétrocessions</a></p>
     }
 
+    @if (auth.peut('retrocessions.consulter')) {
     <section class="panel">
       <h3>Pro Bono — quota mensuel (2 dossiers / associé, non reportable)</h3>
       @if (proBono().length) {
@@ -43,6 +44,7 @@ import { libelleRole } from '../../core/roles';
         </table>
       } @else { <p class="muted">Aucun associé actif.</p> }
     </section>
+    }
 
     @if (afficherForm()) {
       <section class="panel">
@@ -93,26 +95,42 @@ import { libelleRole } from '../../core/roles';
     }
 
     <section class="panel">
+      <!-- 28/09/2026 — audit menu par menu : bug trouvé — un bénéficiaire
+           sans retrocessions.consulter ne voyait JAMAIS ses propres
+           rétrocessions (le backend le permet sans permission particulière,
+           mais l'écran n'envoyait jamais beneficiaire_id=soi-même par
+           défaut, donc 403 silencieux). Corrigé dans charger() ci-dessous ;
+           le sélecteur ci-dessous n'est qu'un complément pour qui peut déjà
+           tout voir. -->
+      @if (auth.peut('retrocessions.consulter')) {
+        <div class="upload">
+          <select class="sel" [ngModel]="beneficiaireFiltreId()" (ngModelChange)="changerBeneficiaireFiltre($event)" name="benefFiltre" title="Filtrer par bénéficiaire">
+            <option value="">Tous les bénéficiaires</option>
+            @for (u of beneficiairesEligibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+          </select>
+        </div>
+      }
       @if (retros().length) {
         <table>
-          <tr><th>Bénéficiaire</th><th>Qualité</th><th>Base HT</th><th>Taux</th><th>Montant</th><th>Dossier</th><th>Statut</th><th></th></tr>
+          <tr><th>Bénéficiaire</th><th>Qualité</th><th>Base HT</th><th>Taux</th><th>Montant</th><th>Dossier</th><th>Statut</th><th>Décaissé le</th><th></th></tr>
           @for (r of retros(); track r.id) {
             <tr>
               <td>{{ r.beneficiaire }}</td>
-              <td>{{ r.qualite }}</td>
+              <td>{{ libelleQualite(r.qualite) }}</td>
               <td>{{ r.base_ht | number }} FCFA</td>
               <td>{{ r.taux }} %</td>
               <td><b>{{ r.montant | number }} FCFA</b></td>
               <td>@if (r.dossier_id) { <a class="lien" [routerLink]="['/dossiers', r.dossier_id]">{{ r.dossier_numero }}</a> } @else { — }</td>
               <td>
-                <span class="tag" [class.ok]="r.statut==='decaissee'">{{ r.statut }}</span>
+                <span class="tag" [class.ok]="r.statut==='decaissee'">{{ libelleStatut(r.statut) }}</span>
                 @if (r.facture_numero && !r.honoraires_encaisses) { <span class="tag haute">non encaissée</span> }
               </td>
+              <td>{{ r.decaisse_le ? (r.decaisse_le | date:'dd/MM/yyyy') : '—' }}</td>
               <td><app-menu-actions [actions]="actionsPour(r)" /></td>
             </tr>
             @if (editionId() === r.id) {
               <tr class="edition">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="grid2">
                     <div>
                       <label>Qualité</label>
@@ -142,6 +160,8 @@ import { libelleRole } from '../../core/roles';
     .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
+    .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
@@ -172,6 +192,9 @@ export class RetrocessionsComponent implements OnInit {
   // ressaisie, même patron que clients.component.ts.
   readonly creationEnCours = signal(false);
   readonly doublonsRetro = signal<any[]>([]);
+  // 28/09/2026 — audit menu par menu : sélecteur de bénéficiaire pour qui a
+  // retrocessions.consulter (voir bug corrigé dans charger()).
+  readonly beneficiaireFiltreId = signal('');
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -188,12 +211,32 @@ export class RetrocessionsComponent implements OnInit {
     this.charger();
     this.api.qualitesRetro().subscribe({ next: (q) => this.qualites.set(q) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
-    this.api.proBono().subscribe({ next: (p) => this.proBono.set(p) });
+    if (this.auth.peut('retrocessions.consulter')) {
+      this.api.proBono().subscribe({ next: (p) => this.proBono.set(p), error: () => {} });
+    }
   }
 
+  // 28/09/2026 — bug trouvé en auditant : un bénéficiaire sans
+  // retrocessions.consulter ne voyait jamais ses propres rétrocessions —
+  // le backend les autorise sans permission particulière quand
+  // beneficiaire_id === soi-même, mais cette route n'envoyait jamais ce
+  // paramètre par défaut. Corrigé : self par défaut pour qui n'a pas la
+  // permission de tout voir ; le sélecteur ci-dessus reste disponible pour
+  // qui l'a déjà.
   charger(): void {
     const dossierId = this.filtreDossierId();
-    this.api.retrocessions(dossierId ? { dossier_id: dossierId } : {}).subscribe({ next: (r) => this.retros.set(r) });
+    const filtres: any = dossierId ? { dossier_id: dossierId } : {};
+    if (this.auth.peut('retrocessions.consulter')) {
+      if (this.beneficiaireFiltreId()) filtres.beneficiaire_id = this.beneficiaireFiltreId();
+    } else {
+      filtres.beneficiaire_id = this.auth.utilisateur()?.id;
+    }
+    this.api.retrocessions(filtres).subscribe({ next: (r) => this.retros.set(r), error: () => this.retros.set([]) });
+  }
+
+  changerBeneficiaireFiltre(id: string): void {
+    this.beneficiaireFiltreId.set(id);
+    this.charger();
   }
 
   // Rétrocessions réservées aux avocats (04/09/2026, décision explicite de
@@ -220,6 +263,15 @@ export class RetrocessionsComponent implements OnInit {
     if (this.ROLES_ASSOCIES.includes(u.role)) this.form.qualite = 'associe';
     else if (this.ROLES_AVOCATS_COLLABORATEURS.includes(u.role)) this.form.qualite = 'collaborateur';
   }
+
+  // 28/09/2026 — audit menu par menu : qualité/statut affichés en code
+  // ENUM brut ("associe", "attente") au lieu d'un libellé français, alors
+  // que qualites() contient déjà {code, libelle}.
+  libelleQualite(code: string): string {
+    return this.qualites().find((q) => q.code === code)?.libelle ?? code;
+  }
+  private readonly libellesStatut: Record<string, string> = { attente: 'En attente', decaissee: 'Décaissée' };
+  libelleStatut(code: string): string { return this.libellesStatut[code] ?? code; }
 
   rechercherDossiers(): void {
     this.form.dossier_id = null;
@@ -279,7 +331,12 @@ export class RetrocessionsComponent implements OnInit {
     return items;
   }
 
+  // 28/09/2026 — audit menu par menu : aucune confirmation avant une
+  // action financière irréversible, contrairement à "Retirer" sur ce même
+  // écran.
   decaisser(r: any): void {
+    if (!confirm(`Décaisser ${r.montant.toLocaleString('fr-FR')} FCFA à ${r.beneficiaire} ?`)) return;
+    this.erreur.set('');
     this.api.decaisserRetrocession(r.id).subscribe({
       next: () => this.charger(),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'),

@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService } from '../../core/api.service';
+import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
@@ -90,6 +90,25 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <option value="wave">Wave</option><option value="moov_money">Moov Money</option>
             </select>
           </div>
+          <div class="col2">
+            <!-- 28/09/2026 — audit menu par menu : aucune dépense ne
+                 pouvait jamais être rattachée à un dossier depuis cet
+                 écran (le champ n'existait tout simplement pas), alors que
+                 le backend l'accepte depuis toujours et l'affiche déjà
+                 dans le tableau (lien vers la fiche, resté silencieusement
+                 toujours vide en pratique). -->
+            <label>Dossier concerné (optionnel)</label>
+            <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
+                   (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
+            @if (dossierResultats().length) {
+              <div class="suggestions">
+                @for (d of dossierResultats(); track d.id) {
+                  <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
+                }
+              </div>
+            }
+            @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }} <button class="lien" (click)="viderDossier()">retirer</button></p> }
+          </div>
           <div class="col2 checks">
             <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse</label>
             <label><input type="checkbox" [(ngModel)]="form.justificatif" name="just" /> Justificatif disponible</label>
@@ -137,19 +156,23 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <tr>
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
               <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }</td>
-              <td>{{ d.categorie }}</td>
+              <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { — }</td>
-              <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ d.statut }}</span></td>
+              <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span></td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
             @if (editionId() === d.id) {
               <tr class="edition">
                 <td colspan="7">
                   <div class="grid2">
-                    <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
-                    <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
-                    <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
+                    <div>
+                      <label>Type</label>
+                      <select class="in" [(ngModel)]="editForm.type" name="edType">
+                        <option value="ponctuelle">Ponctuelle</option>
+                        <option value="fixe">Fixe (charge récurrente)</option>
+                      </select>
+                    </div>
                     <div>
                       <label>Catégorie</label>
                       <select class="in" [(ngModel)]="editForm.categorie" name="edCategorie">
@@ -164,8 +187,32 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         <option value="autre">Autre</option>
                       </select>
                     </div>
+                    <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
+                    <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
+                    <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
+                    <div>
+                      <label>Compte</label>
+                      <select class="in" [(ngModel)]="editForm.compte_id" name="edCompte">
+                        <option value="">—</option>
+                        @for (c of comptes(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }
+                      </select>
+                    </div>
+                    <div>
+                      <label>Mode de paiement</label>
+                      <select class="in" [(ngModel)]="editForm.mode_paiement" name="edMode">
+                        <option value="">—</option>
+                        <option value="virement">Virement</option><option value="especes">Espèces</option>
+                        <option value="cheque">Chèque</option><option value="orange_money">Orange Money</option>
+                        <option value="wave">Wave</option><option value="moov_money">Moov Money</option>
+                      </select>
+                    </div>
+                    <div class="col2 checks">
+                      <label><input type="checkbox" [(ngModel)]="editForm.petite_caisse" name="edPc" /> Sur petite caisse</label>
+                      <label><input type="checkbox" [(ngModel)]="editForm.justificatif" name="edJust" /> Justificatif disponible</label>
+                      <label><input type="checkbox" [(ngModel)]="editForm.refacturable_client" name="edRefact" /> Débours refacturable au client</label>
+                    </div>
                   </div>
-                  <button class="lien" (click)="enregistrerEdition()">Enregistrer</button>
+                  <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
                   <button class="lien" (click)="annulerEdition()">Annuler</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
@@ -182,7 +229,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <div class="upload">
           <input class="sel" type="date" [(ngModel)]="dotationMois" name="dotationMois" />
           <input class="sel" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
-          <button class="btn sm" (click)="definirDotation()">Enregistrer</button>
+          <button class="btn sm" (click)="definirDotation()" [disabled]="!dotationMontant || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
         </div>
       </section>
     }
@@ -196,7 +243,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <option value="utilisation">Utilisation</option>
           </select>
           <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" />
-          <button class="btn sm" (click)="mouvementVignette()">Enregistrer</button>
+          <button class="btn sm" (click)="mouvementVignette()" [disabled]="!vignetteQuantite || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
         </div>
       }
     </section>
@@ -214,6 +261,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .col2{grid-column:1 / -1}
     .checks{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
     .checks label{font-weight:400}
+    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
+    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn:disabled{opacity:.6}
@@ -239,6 +288,7 @@ export class DepensesComponent implements OnInit {
   // ressaisie, même patron que clients.component.ts.
   readonly creationEnCours = signal(false);
   readonly doublonsDepense = signal<any[]>([]);
+  readonly dossierResultats = signal<Dossier[]>([]);
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -247,6 +297,8 @@ export class DepensesComponent implements OnInit {
   filtreStatut = '';
   filtreType = '';
   form: any = { type: 'ponctuelle', categorie: 'autre' };
+  dossierRecherche = '';
+  dossierLabel = '';
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
   dotationMois = this.moisCourant;
   dotationMontant: number | null = null;
@@ -272,6 +324,39 @@ export class DepensesComponent implements OnInit {
     this.api.petiteCaisse(this.moisCourant).subscribe({ next: (c) => this.caisse.set(c) });
   }
 
+  // 28/09/2026 — audit menu par menu : catégorie/statut affichés en code
+  // ENUM brut, motif déjà corrigé sur d'autres modules de l'appli.
+  private readonly libellesCategorie: Record<string, string> = {
+    loyer: 'Loyer', eau: 'Eau', electricite: 'Électricité', nettoyage: 'Nettoyage',
+    carburant: 'Carburant', telephonie: 'Téléphonie', internet: 'Internet', consommables: 'Consommables',
+    fournitures: 'Fournitures', deplacement: 'Déplacement', hebergement: 'Hébergement', restauration: 'Restauration',
+    entretien: 'Entretien', vignette_plaidoirie: 'Vignette de plaidoirie', frais_procedure: 'Frais de procédure',
+    charges_fiscales_sociales: 'Charges fiscales et sociales', autre: 'Autre',
+  };
+  libelleCategorie(c: string): string { return this.libellesCategorie[c] ?? c; }
+  private readonly libellesStatut: Record<string, string> = {
+    soumise: 'Soumise', validee: 'Validée', rejetee: 'Rejetée', decaissee: 'Décaissée',
+  };
+  libelleStatut(s: string): string { return this.libellesStatut[s] ?? s; }
+
+  rechercherDossiers(): void {
+    this.form.dossier_id = null;
+    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
+    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
+  }
+
+  choisirDossier(d: Dossier): void {
+    this.form.dossier_id = d.id;
+    this.dossierLabel = `${d.numero} — ${d.intitule}`;
+    this.dossierResultats.set([]);
+    this.dossierRecherche = '';
+  }
+
+  viderDossier(): void {
+    this.form.dossier_id = null;
+    this.dossierLabel = '';
+  }
+
   creer(): void {
     this.erreur.set('');
     this.doublonsDepense.set([]);
@@ -293,6 +378,7 @@ export class DepensesComponent implements OnInit {
         this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'ponctuelle', categorie: 'autre' };
+        this.dossierLabel = '';
         this.doublonsDepense.set([]);
         this.charger();
         this.chargerCaisse();
@@ -343,10 +429,20 @@ export class DepensesComponent implements OnInit {
   }
 
   readonly editionId = signal<string | null>(null);
+  readonly editionEnCours = signal(false);
   editForm: any = {};
+  // 28/09/2026 — audit menu par menu : le formulaire d'édition n'exposait
+  // que 4 des 11 champs pourtant acceptés par PUT /api/depenses/:id —
+  // corriger un mauvais compte/mode de paiement, ou une case petite
+  // caisse/justificatif/refacturable cochée par erreur, exigeait jusqu'ici
+  // de retirer la dépense et de la ressaisir entièrement.
   commencerEdition(d: any): void {
     this.erreur.set('');
-    this.editForm = { libelle: d.libelle, montant: d.montant, date_depense: d.date_depense, categorie: d.categorie };
+    this.editForm = {
+      type: d.type, categorie: d.categorie, libelle: d.libelle, montant: d.montant,
+      date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '',
+      petite_caisse: d.petite_caisse, justificatif: d.justificatif, refacturable_client: d.refacturable_client,
+    };
     this.editionId.set(d.id);
   }
   annulerEdition(): void {
@@ -355,25 +451,41 @@ export class DepensesComponent implements OnInit {
   }
   enregistrerEdition(): void {
     const id = this.editionId();
-    if (!id) return;
+    if (!id || this.editionEnCours()) return;
     this.erreur.set('');
+    this.editionEnCours.set(true);
     this.api.majDepense(id, this.editForm).subscribe({
-      next: () => { this.editionId.set(null); this.editForm = {}; this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+      next: () => { this.editionEnCours.set(false); this.editionId.set(null); this.editForm = {}; this.charger(); },
+      error: (e) => { this.editionEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Modification impossible.'); },
     });
   }
 
+  // 28/09/2026 — audit menu par menu : aucune gestion d'erreur ni garde
+  // anti-double-clic sur ces 2 formulaires, contrairement à creer() qui
+  // les a reçues le 26/09/2026 dans ce même fichier.
+  readonly dotationEnCours = signal(false);
   definirDotation(): void {
-    if (!this.dotationMontant) return;
+    if (!this.dotationMontant || this.dotationEnCours()) return;
+    this.erreur.set('');
+    this.dotationEnCours.set(true);
     this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant).subscribe({
-      next: () => { this.dotationMontant = null; this.chargerCaisse(); },
+      next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.chargerCaisse(); },
+      error: (e) => { this.dotationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Dotation impossible.'); },
     });
   }
 
+  readonly vignetteEnCours = signal(false);
   mouvementVignette(): void {
-    if (!this.vignetteQuantite) return;
+    if (!this.vignetteQuantite || this.vignetteEnCours()) return;
+    this.erreur.set('');
+    this.vignetteEnCours.set(true);
     this.api.mouvementVignettes({ mouvement: this.vignetteMouvement, quantite: this.vignetteQuantite }).subscribe({
-      next: () => { this.vignetteQuantite = null; this.api.stockVignettes().subscribe({ next: (v) => this.stockVignettes.set(v.stock) }); },
+      next: () => {
+        this.vignetteEnCours.set(false);
+        this.vignetteQuantite = null;
+        this.api.stockVignettes().subscribe({ next: (v) => this.stockVignettes.set(v.stock) });
+      },
+      error: (e) => { this.vignetteEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Mouvement impossible.'); },
     });
   }
 }
