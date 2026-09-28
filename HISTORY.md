@@ -3205,3 +3205,18 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 **Non modifié** : la variante 63,5×38,1mm (Avery L7160, usage en masse) n'a pas été ajoutée en option distincte — un seul format (thermique, recommandé par la charte pour l'usage quotidien) suffit à ce stade ; à reconsidérer si le cabinet a un besoin réel d'impression en masse sur planches A4.
 
 **Déploiement** : **déployé et vérifié en production le 28/09/2026** (accord utilisateur, `./scripts/deploy.sh web` lancé par lui via `!`) — frontend seul, aucune migration nécessaire. Révision `juria-web-00147-gbc` (précédente `juria-web-00146-wzz`), `/` en `200`.
+
+## 28/09/2026 (suite, même jour) — Étiquette imprimable : correctif de taille (108×59mm, sur les maquettes réelles des chemises, pas l'ancienne charte)
+
+**Contexte** : retour direct de l'utilisateur après le déploiement précédent (« ce n'est toujours pas bon. Voir la taille dans les dernières versions transmises des chemises à rabat »). Le correctif du 28/09 (62×40mm) s'appuyait sur `JFC - Charte supports physiques.pdf` (10/08/2026) — mais un fichier bien plus récent existe : `JFC - 4 CHEMISES A RABAT.pdf` (transmis le **24/09/2026**, postérieur de 6 semaines), qui montre les 4 maquettes réelles (bleu/or/bordeaux/vert) avec une zone « Étiquette JURIA · zone réservée » explicitement délimitée en pointillés sur chacune.
+
+**Mesure** : le fichier, exporté depuis Adobe Illustrator (artboard en unités physiques réelles, contrairement à un export brut d'outil de maquettage web), a été inspecté avec PyMuPDF pour extraire les coordonnées vectorielles exactes du rectangle en pointillés orange correspondant à la zone JURIA — **108,3 × 58,9 mm**, rigoureusement identique sur les 4 couleurs (donc pas une approximation visuelle mais une valeur de calage du designer). Quasiment le double de ce que prévoyait l'ancienne charte du 10/08 (62×40mm thermique) — le document plus récent l'a manifestement remplacée sans que `CLAUDE.md` en soit informé (aucune mention antérieure de ce fichier dans le projet).
+
+**Correctif** (confirmé par l'utilisateur via question à choix — 108×59mm exact, plutôt qu'un retrait de sécurité ou une autre taille) :
+- `@page` porté à `108mm 59mm` (marge 3mm).
+- QR généré à 170px (au lieu de 100) puis affiché à 84×84px (au lieu de 48×48px) — la résolution source a été augmentée en proportion pour rester nette à l'impression sur une zone plus grande.
+- Contenu redimensionné à la hausse (bande 10px, paddings 10×14px, polices 10 à 16px) — l'espace disponible étant désormais confortable, plus besoin de tronquer agressivement (ellipse/2-lignes conservées comme filet de sécurité, pas comme contrainte active).
+
+**Vérification** : build Angular production OK (Docker `node:22`). Même méthode de vérification dimensionnelle que le correctif précédent (harnais Playwright headless reproduisant le HTML/CSS exact, viewport calibré sur la zone imprimable réelle 108×59mm − 2×3mm de marge = 102×53mm) : aucun débordement mesuré (`.etq` rendu à 386×108px sur une zone disponible de 386×200px — large marge de confort cette fois), confirmé par capture d'écran avec un intitulé de dossier volontairement long. Harnais et environnement supprimés après vérification.
+
+**Leçon** : avant de se fier à un document de charte/spécification physique, vérifier s'il existe une version plus récente transmise depuis — `DOC/CLAUDE CODE - JURIA/` contient plusieurs itérations dans le temps sur le même sujet (charte texte du 10/08 vs. maquettes finales Illustrator du 24/09), et rien ne signalait dans le nom de fichier lequel faisait autorité en dernier.
