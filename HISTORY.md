@@ -3245,3 +3245,15 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 **Vérification** : build Angular OK. **Vérification dimensionnelle réelle par mesure pixel par pixel** (Playwright headless contre une stack Docker locale dédiée, rendu PDF réel converti en image via `qlmanage` — Quick Look macOS, alternative plus rapide à `pdftoppm`/Docker qui restait bloqué sur un `apt-get update` lent) : bbox non-blanc de l'étiquette mesurée à 296×164px sur une page A4 calibrée à 3,367px/mm → **87,9×48,7mm**, conforme à 88×49mm visé ; centrage confirmé quasi parfait (marges haut/bas identiques à 418px, marges gauche/droite 204/207px). Environnement Docker local démonté après vérification.
 
 **Déploiement** : commité (`0238776`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, « vas-y déploie ») — frontend seul, `./scripts/deploy.sh web`, révision `juria-web-00151-snt`, `/` en `200`.
+
+## 30/09/2026 (suite, même jour) — Test papier réel jugé non concluant + essai à 100×60mm
+
+**Contexte** : sur demande, vérification directe du bundle production (`chunk-D5ucYDt4.js`) confirmant que `width:88mm;height:49mm` et `@page { size: A4; margin: 15mm; }` étaient bien servis (pas un problème de déploiement). L'utilisateur a ensuite testé sur une imprimante réelle et rapporté : « les dimensions n'ont aucunement changées par rapport au précédent format (idem) » — hypothèse proposée (cache navigateur/onglet resté ouvert depuis avant le déploiement, symptôme classique d'une SPA) non confirmée ni infirmée explicitement ; l'utilisateur demande directement un nouvel essai à **10cm × 6cm (100×60mm)** plutôt que de creuser plus avant la cause du test précédent.
+
+**Correctif** : `.etq` porté à `width:100mm;height:60mm`, contenu interne redimensionné en proportion (bande 9px, padding 10×14px, gap 12px, QR 78px, polices num/intitulé/sous-titre 15/11/9px). Note d'instruction mise à jour (« 100 x 60mm »).
+
+**Vérification** : même méthode que les passes précédentes (Playwright headless + rendu PDF réel converti en image via `qlmanage`, stack Docker locale démontée après coup) : bbox mesurée à 335×201px → **99,5×59,7mm** (conforme à 100×60mm visé), centrage quasi parfait (marges gauche/droite 185/187px, haut/bas 400/399px).
+
+**Point non résolu** : la cause exacte du test papier précédent jugé « identique » au format d'avant n'a pas été confirmée (cache navigateur le plus probable, mais pas vérifié par l'utilisateur) — si ce nouvel essai à 100×60mm donne le même résultat « inchangé » sur le papier, il faudra creuser au-delà d'un simple problème de taille CSS (driver d'imprimante, réglage d'échelle du navigateur, etc.).
+
+**Déploiement** : commité (`01c5598`) — à déployer sur confirmation de l'utilisateur.
