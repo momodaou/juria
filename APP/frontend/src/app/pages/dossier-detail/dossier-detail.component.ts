@@ -1202,18 +1202,21 @@ export class DossierDetailComponent implements OnInit {
          30/09/2026 — ramenée de 108x59mm à 88x49mm (retour utilisateur :
          "un peu grande, elle déborde un peu" à l'usage réel) : largeur
          réduite de 5mm de chaque côté (59→49mm), longueur de 1cm de chaque
-         côté (108→88mm). Contenu interne redimensionné en proportion. */
+         côté (108→88mm). Contenu interne redimensionné en proportion.
+         30/09/2026 (suite) — essai à 100x60mm ("Essayons 10 cm sur 6 cm"),
+         après un test papier réel encore jugé non concluant sur le format
+         88x49mm. Contenu redimensionné en proportion. */
       @page { size: A4; margin: 15mm; }
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
-      .etq{display:flex;border:2px dashed #B08D57;border-radius:7px;overflow:hidden;box-sizing:border-box;width:88mm;height:49mm;flex:none}
-      .bande{width:8px;flex:none;background:${etq.couleurHex}}
-      .corps{display:flex;gap:10px;align-items:center;padding:8px 11px;min-width:0;flex:1}
-      .qr{width:68px;height:68px;flex:none}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
+      .bande{width:9px;flex:none;background:${etq.couleurHex}}
+      .corps{display:flex;gap:12px;align-items:center;padding:10px 14px;min-width:0;flex:1}
+      .qr{width:78px;height:78px;flex:none}
       .texte{min-width:0;overflow:hidden}
-      .num{font-size:13px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .intitule{font-size:10px;font-weight:600;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
-      .sub{font-size:8px;color:#6B7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .chemise{font-size:8px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .num{font-size:15px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .intitule{font-size:11px;font-weight:600;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+      .sub{font-size:9px;color:#6B7280;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .chemise{font-size:9px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
     </style></head><body>
@@ -1226,7 +1229,7 @@ export class DossierDetailComponent implements OnInit {
           <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(d.couleur_chemise || '—')}</b></div>
         </div>
       </div></div>
-      <div class="note">Découper le long du pointillé (88 x 49mm) et coller dans la zone réservée de la chemise.</div>
+      <div class="note">Découper le long du pointillé (100 x 60mm) et coller dans la zone réservée de la chemise.</div>
     </body></html>`);
     w.document.close();
     w.focus();
