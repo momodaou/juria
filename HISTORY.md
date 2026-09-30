@@ -3235,3 +3235,13 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 - **rendu PDF réel** (`popup.pdf({format:'A4', printBackground:true})`, converti en image via `pdftoppm`) — méthode plus fidèle qu'un simple `emulateMedia` puisqu'elle matérialise la page telle qu'un moteur d'impression la composerait réellement : étiquette confirmée centrée sur la page A4, dimensions physiques mesurées ~107×58mm (conformes aux 108×59mm visés), ratio largeur/hauteur de `.etq` confirmé indépendant du média (408,19/222,98px en écran ≈ 1,831 ≈ 108/59).
 
 **Déploiement** : commité le 30/09/2026 (`485ccf1`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, `./scripts/deploy.sh web` lancé par lui via `!`) — frontend seul, révision `juria-web-00150-jw2`, `/` en `200`.
+
+## 30/09/2026 (suite, même jour) — Étiquette imprimable : taille réduite à 88×49mm (retour d'usage réel)
+
+**Contexte** : retour direct de l'utilisateur après le déploiement précédent (« étiquette un peu grande, elle déborde un peu ») — demande précise : réduire la largeur de 5mm de chaque côté, la longueur de 1cm de chaque côté.
+
+**Correctif** : 108×59mm → **88×49mm** (largeur/« largeur » 59mm − 2×5mm = 49mm ; longueur/« longueur » 108mm − 2×10mm = 88mm). Contenu interne redimensionné en proportion (bande de couleur 10px→8px, paddings 10×14px→8×11px, gap 12px→10px, QR affiché 84px→68px, polices num/intitulé/sous-titre 16/12/10px→13/10/8px) — évite qu'un contenu dimensionné pour l'ancien format déborde du cadre réduit. Note d'instruction mise à jour (« 88 x 49mm »).
+
+**Vérification** : build Angular OK. **Vérification dimensionnelle réelle par mesure pixel par pixel** (Playwright headless contre une stack Docker locale dédiée, rendu PDF réel converti en image via `qlmanage` — Quick Look macOS, alternative plus rapide à `pdftoppm`/Docker qui restait bloqué sur un `apt-get update` lent) : bbox non-blanc de l'étiquette mesurée à 296×164px sur une page A4 calibrée à 3,367px/mm → **87,9×48,7mm**, conforme à 88×49mm visé ; centrage confirmé quasi parfait (marges haut/bas identiques à 418px, marges gauche/droite 204/207px). Environnement Docker local démonté après vérification.
+
+**Déploiement** : commité (`0238776`) — à déployer sur confirmation de l'utilisateur.
