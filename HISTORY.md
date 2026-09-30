@@ -3222,3 +3222,16 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 **Leçon** : avant de se fier à un document de charte/spécification physique, vérifier s'il existe une version plus récente transmise depuis — `DOC/CLAUDE CODE - JURIA/` contient plusieurs itérations dans le temps sur le même sujet (charte texte du 10/08 vs. maquettes finales Illustrator du 24/09), et rien ne signalait dans le nom de fichier lequel faisait autorité en dernier.
 
 **Déploiement** : **déployé et vérifié en production le 28/09/2026** (accord utilisateur, `./scripts/deploy.sh web` lancé par lui via `!`) — frontend seul, aucune migration nécessaire. Révision `juria-web-00148-5kg` (précédente `juria-web-00147-gbc`), `/` en `200`.
+
+## 29-30/09/2026 — Étiquette imprimable : page A4 fixe, étiquette à taille physique exacte (le format personnalisé déformait à l'impression papier)
+
+**Contexte** : constat fait en réel (impression papier, pas juste PDF) — le format `@page { size: 108mm 59mm }` déployé la veille (28/09/2026) est ignoré par la plupart des imprimantes de bureau chargées en A4 : elles forcent la mise en page sur une feuille A4 standard, ce qui déforme/agrandit tout le contenu de l'étiquette au tirage papier. « Enregistrer en PDF » (qui respecte la taille de page demandée par le navigateur) restait, lui, correct — d'où l'écart passé inaperçu lors des vérifications précédentes (faites par rendu PDF/viewport calibré, jamais par une vraie impression papier).
+
+**Correctif** : abandon de la taille de page personnalisée au profit d'une **page A4 standard** (`@page { size: A4; margin: 15mm; }`, taille universellement gérée par tout pilote d'imprimante), avec l'étiquette dessinée à l'intérieur à sa **taille physique fixe et exacte** (108×59mm, `width`/`height` en `mm` sur `.etq`, `flex:none` pour empêcher tout redimensionnement), centrée horizontalement et verticalement sur la page (`display:flex` sur `body`). Une note d'instruction (« Découper le long du pointillé (108 x 59mm) et coller dans la zone réservée de la chemise. ») ajoutée sous l'étiquette à l'écran, masquée à l'impression (`@media print{ .note{ display:none } }`).
+
+**Vérification** : build Angular production OK. **Vérification visuelle et dimensionnelle réelle** (Playwright headless contre une stack Docker locale dédiée — compte de test + dossier de test créés via l'API, démontés après coup) :
+- cycle complet réel (login → fiche dossier → « Générer l'étiquette » → « Imprimer l'étiquette », popup capturée) ;
+- mode écran : note confirmée visible ; mode impression (`page.emulateMedia({media:'print'})`) : note confirmée masquée, règle `@page { size: A4; margin: 15mm; }` confirmée présente dans le CSS généré ;
+- **rendu PDF réel** (`popup.pdf({format:'A4', printBackground:true})`, converti en image via `pdftoppm`) — méthode plus fidèle qu'un simple `emulateMedia` puisqu'elle matérialise la page telle qu'un moteur d'impression la composerait réellement : étiquette confirmée centrée sur la page A4, dimensions physiques mesurées ~107×58mm (conformes aux 108×59mm visés), ratio largeur/hauteur de `.etq` confirmé indépendant du média (408,19/222,98px en écran ≈ 1,831 ≈ 108/59).
+
+**Déploiement** : commité le 30/09/2026 (`485ccf1`) — **pas encore déployé en production** à ce stade, en attente de confirmation de l'utilisateur.
