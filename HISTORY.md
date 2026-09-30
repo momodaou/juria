@@ -3234,4 +3234,4 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 - mode écran : note confirmée visible ; mode impression (`page.emulateMedia({media:'print'})`) : note confirmée masquée, règle `@page { size: A4; margin: 15mm; }` confirmée présente dans le CSS généré ;
 - **rendu PDF réel** (`popup.pdf({format:'A4', printBackground:true})`, converti en image via `pdftoppm`) — méthode plus fidèle qu'un simple `emulateMedia` puisqu'elle matérialise la page telle qu'un moteur d'impression la composerait réellement : étiquette confirmée centrée sur la page A4, dimensions physiques mesurées ~107×58mm (conformes aux 108×59mm visés), ratio largeur/hauteur de `.etq` confirmé indépendant du média (408,19/222,98px en écran ≈ 1,831 ≈ 108/59).
 
-**Déploiement** : commité le 30/09/2026 (`485ccf1`) — **pas encore déployé en production** à ce stade, en attente de confirmation de l'utilisateur.
+**Déploiement** : commité le 30/09/2026 (`485ccf1`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, `./scripts/deploy.sh web` lancé par lui via `!`) — frontend seul, révision `juria-web-00150-jw2`, `/` en `200`.
