@@ -3244,4 +3244,4 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 
 **Vérification** : build Angular OK. **Vérification dimensionnelle réelle par mesure pixel par pixel** (Playwright headless contre une stack Docker locale dédiée, rendu PDF réel converti en image via `qlmanage` — Quick Look macOS, alternative plus rapide à `pdftoppm`/Docker qui restait bloqué sur un `apt-get update` lent) : bbox non-blanc de l'étiquette mesurée à 296×164px sur une page A4 calibrée à 3,367px/mm → **87,9×48,7mm**, conforme à 88×49mm visé ; centrage confirmé quasi parfait (marges haut/bas identiques à 418px, marges gauche/droite 204/207px). Environnement Docker local démonté après vérification.
 
-**Déploiement** : commité (`0238776`) — à déployer sur confirmation de l'utilisateur.
+**Déploiement** : commité (`0238776`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, « vas-y déploie ») — frontend seul, `./scripts/deploy.sh web`, révision `juria-web-00151-snt`, `/` en `200`.
