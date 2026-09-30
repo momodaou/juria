@@ -1191,13 +1191,20 @@ export class DossierDetailComponent implements OnInit {
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
     const sousTitre = [d.client_nom, d.responsable_nom].filter(Boolean).map((t) => this.echapperHtml(t)).join(' · ');
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
-      /* Format aligné sur la "zone réservée" des maquettes réelles des
-         chemises à rabat ("JFC - 4 CHEMISES A RABAT.pdf", transmis le
-         24/09/2026) : mesurée à 108,3x58,9mm sur les 4 couleurs, arrondie
-         à 108x59mm — remplace le 62x40mm de l'ancienne charte du 10/08. */
-      @page { size: 108mm 59mm; margin: 3mm; }
-      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0}
-      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;width:100%;box-sizing:border-box}
+      /* 29/09/2026 — @page en taille personnalisée (108x59mm) abandonné :
+         constaté en réel que la plupart des imprimantes de bureau chargées
+         en A4 ignorent cette taille et forcent la mise en page sur une
+         feuille A4, ce qui déforme/agrandit tout le contenu (débordement
+         du cadre au tirage papier, alors qu'un "Enregistrer en PDF" restait
+         correct). Solution robuste : imprimer sur une vraie page A4 (taille
+         universellement gérée par tout pilote) et dessiner l'étiquette à
+         l'intérieur à sa taille physique fixe et exacte — mesurée à
+         108,3x58,9mm sur les 4 couleurs des maquettes réelles des chemises
+         à rabat ("JFC - 4 CHEMISES A RABAT.pdf", 24/09/2026), arrondie à
+         108x59mm — centrée, à découper le long du pointillé. */
+      @page { size: A4; margin: 15mm; }
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:108mm;height:59mm;flex:none}
       .bande{width:10px;flex:none;background:${etq.couleurHex}}
       .corps{display:flex;gap:12px;align-items:center;padding:10px 14px;min-width:0;flex:1}
       .qr{width:84px;height:84px;flex:none}
@@ -1206,6 +1213,8 @@ export class DossierDetailComponent implements OnInit {
       .intitule{font-size:12px;font-weight:600;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
       .sub{font-size:10px;color:#6B7280;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .chemise{font-size:10px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .note{margin-top:10px;font-size:11px;color:#6B7280}
+      @media print{ .note{ display:none } }
     </style></head><body>
       <div class="etq"><div class="bande"></div><div class="corps">
         <img class="qr" src="${etq.qr}" alt="QR" />
@@ -1216,6 +1225,7 @@ export class DossierDetailComponent implements OnInit {
           <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(d.couleur_chemise || '—')}</b></div>
         </div>
       </div></div>
+      <div class="note">Découper le long du pointillé (108 x 59mm) et coller dans la zone réservée de la chemise.</div>
     </body></html>`);
     w.document.close();
     w.focus();
