@@ -3256,4 +3256,4 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 
 **Point non résolu** : la cause exacte du test papier précédent jugé « identique » au format d'avant n'a pas été confirmée (cache navigateur le plus probable, mais pas vérifié par l'utilisateur) — si ce nouvel essai à 100×60mm donne le même résultat « inchangé » sur le papier, il faudra creuser au-delà d'un simple problème de taille CSS (driver d'imprimante, réglage d'échelle du navigateur, etc.).
 
-**Déploiement** : commité (`01c5598`) — à déployer sur confirmation de l'utilisateur.
+**Déploiement** : commité (`01c5598`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, « vas-y déploie ») — frontend seul, `./scripts/deploy.sh web`, révision `juria-web-00152-k75`, `/` en `200`.
