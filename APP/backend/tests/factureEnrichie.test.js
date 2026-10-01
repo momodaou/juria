@@ -178,3 +178,68 @@ describe("Facture PDF enrichie — contenu (28/08/2026)", () => {
     expect(texte).not.toContain("Dossier suivi par");
   });
 });
+
+// 01/10/2026 — gap comblé : aucune suppression n'était possible (seule la
+// désactivation), et le formulaire d'ajout ne distinguait pas compte
+// classique/mobile money (le champ `operateur` existait déjà en base,
+// jamais exposé côté écran). Voir CLAUDE.md/HISTORY.md.
+describe("Comptes bancaires — suppression guardée + mobile money (01/10/2026)", () => {
+  function creerCompte(payload) {
+    return request(app).post("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`).send(payload);
+  }
+  function supprimerCompte(id) {
+    return request(app).delete(`/api/parametres/comptes-bancaires/${id}`).set("Authorization", `Bearer ${token}`);
+  }
+
+  test("mobile money : operateur persisté et restitué", async () => {
+    const creation = await creerCompte({
+      intitule: "Mobile Money Test",
+      type: "mobile_money",
+      operateur: "orange_money",
+      numero: "70000000",
+    });
+    expect(creation.status).toBe(201);
+    const liste = await request(app).get("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`);
+    const trouve = liste.body.find((c) => c.id === creation.body.id);
+    expect(trouve.operateur).toBe("orange_money");
+    expect(trouve.banque).toBeNull();
+  });
+
+  test("suppression refusée (409) si le compte est référencé par une facture", async () => {
+    const compte = await creerCompte({ intitule: "Compte référencé test", type: "fonctionnement" });
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        dossier_id: dossierId,
+        client_id: clientId,
+        mode: "forfait",
+        montant_ht: 10000,
+        mode_reglement: "virement",
+        compte_reglement_id: compte.body.id,
+      });
+    expect(facture.status).toBe(201);
+
+    const suppression = await supprimerCompte(compte.body.id);
+    expect(suppression.status).toBe(409);
+
+    const liste = await request(app).get("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`);
+    expect(liste.body.find((c) => c.id === compte.body.id)).toBeDefined();
+  });
+
+  test("suppression réussie (204) pour un compte jamais référencé", async () => {
+    const compte = await creerCompte({ intitule: "Compte libre test", type: "especes" });
+    const suppression = await supprimerCompte(compte.body.id);
+    expect(suppression.status).toBe(204);
+
+    const liste = await request(app).get("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`);
+    expect(liste.body.find((c) => c.id === compte.body.id)).toBeUndefined();
+  });
+
+  test("suppression d'un id inexistant -> 404", async () => {
+    const suppression = await supprimerCompte("00000000-0000-0000-0000-000000000000");
+    expect(suppression.status).toBe(404);
+  });
+});
