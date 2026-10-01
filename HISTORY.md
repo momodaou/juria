@@ -3280,4 +3280,4 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 - formulaire dynamique testé sur les 4 types (mobile money → Opérateur visible/Banque masqué ; espèces → 0 champ bancaire ; virement étranger → IBAN visible/Code banque masqué ; classique → 6 champs RIB) ;
 - cycle de suppression testé via l'interface réelle (pas seulement l'API) : tentative sur un compte référencé par une facture → `409`, message affiché, ligne toujours présente ; tentative sur un compte mobile money non référencé → suppression réussie, ligne disparue.
 
-**Déploiement** : commité (`f4d69aa` + tests `81f56ee`) — à déployer sur confirmation de l'utilisateur.
+**Déploiement** : commité (`f4d69aa` + tests `81f56ee`). **Déployé et vérifié en production le 01/10/2026** (accord utilisateur, « ok deploie ») — API + frontend, `./scripts/deploy.sh both`, révisions `juria-00116-v2k`/`juria-web-00153-sd8`, `/health` et `/` en `200`.
