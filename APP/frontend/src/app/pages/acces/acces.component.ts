@@ -179,18 +179,27 @@ import { ROLES } from '../../core/roles';
           <h3>Comptes bancaires du cabinet</h3>
           <p class="muted">RIB imprimé sur la facture (bloc « informations de paiement »). Un compte désactivé n'apparaît plus dans les sélecteurs de règlement mais reste visible ici (historique).</p>
           @if (comptes().length) {
+            <div class="table-scroll">
             <table>
-              <tr><th>Intitulé</th><th>Banque</th><th>N° compte</th><th>Code banque</th><th>Code guichet</th><th>Clé RIB</th><th>IBAN</th><th>BIC</th><th>Statut</th><th></th></tr>
+              <tr><th>Intitulé</th><th>Type</th><th>Banque</th><th>Opérateur</th><th>N° compte / Tél.</th><th class="nowrap">Code banque</th><th class="nowrap">Code guichet</th><th class="nowrap">Clé RIB</th><th>IBAN</th><th class="nowrap">BIC</th><th>Statut</th><th></th></tr>
               @for (c of comptes(); track c.id) {
                 <tr>
-                  <td>{{ c.intitule }}</td><td>{{ c.banque || '—' }}</td><td>{{ c.numero || '—' }}</td>
-                  <td>{{ c.code_banque || '—' }}</td><td>{{ c.code_guichet || '—' }}</td><td>{{ c.cle_rib || '—' }}</td>
-                  <td>{{ c.iban || '—' }}</td><td>{{ c.bic || '—' }}</td>
+                  <td>{{ c.intitule }}</td>
+                  <td class="nowrap">{{ libelleTypeCompte(c.type) }}</td>
+                  <td>{{ c.banque || '—' }}</td>
+                  <td class="nowrap">{{ c.operateur ? libelleOperateur(c.operateur) : '—' }}</td>
+                  <td>{{ c.numero || '—' }}</td>
+                  <td class="nowrap">{{ c.code_banque || '—' }}</td>
+                  <td class="nowrap">{{ c.code_guichet || '—' }}</td>
+                  <td class="nowrap">{{ c.cle_rib || '—' }}</td>
+                  <td>{{ c.iban || '—' }}</td>
+                  <td class="nowrap">{{ c.bic || '—' }}</td>
                   <td><span class="tag" [class.ok]="c.actif" [class.haute]="!c.actif">{{ c.actif ? 'Actif' : 'Inactif' }}</span></td>
-                  <td><button class="lien" (click)="basculerCompte(c)">{{ c.actif ? 'Désactiver' : 'Réactiver' }}</button></td>
+                  <td><app-menu-actions [actions]="actionsPourCompte(c)" /></td>
                 </tr>
               }
             </table>
+            </div>
           } @else { <p class="muted">Aucun compte bancaire enregistré.</p> }
 
           <h4 style="margin-top:14px">Ajouter un compte</h4>
@@ -206,13 +215,33 @@ import { ROLES } from '../../core/roles';
                 <option value="virement_etranger">Virement étranger</option>
               </select>
             </div>
-            <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
-            <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
-            <div><label>Code banque</label><input class="in" [(ngModel)]="compteEdit.code_banque" name="ctCodeBanque" /></div>
-            <div><label>Code guichet</label><input class="in" [(ngModel)]="compteEdit.code_guichet" name="ctCodeGuichet" /></div>
-            <div><label>Clé RIB</label><input class="in" [(ngModel)]="compteEdit.cle_rib" name="ctCleRib" /></div>
-            <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
-            <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
+            @if (compteEdit.type === 'mobile_money') {
+              <div>
+                <label>Opérateur</label>
+                <select class="in" [(ngModel)]="compteEdit.operateur" name="ctOperateur">
+                  <option value="orange_money">Orange Money</option>
+                  <option value="moov_money">Moov Money</option>
+                  <option value="wave">Wave</option>
+                  <option value="sama_money">Sama Money</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              <div><label>Numéro de téléphone</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" placeholder="Ex. 70 00 00 00" /></div>
+            } @else if (compteEdit.type === 'especes') {
+            } @else if (compteEdit.type === 'virement_etranger') {
+              <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
+              <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
+              <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
+              <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
+            } @else {
+              <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
+              <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
+              <div><label>Code banque</label><input class="in" [(ngModel)]="compteEdit.code_banque" name="ctCodeBanque" /></div>
+              <div><label>Code guichet</label><input class="in" [(ngModel)]="compteEdit.code_guichet" name="ctCodeGuichet" /></div>
+              <div><label>Clé RIB</label><input class="in" [(ngModel)]="compteEdit.cle_rib" name="ctCleRib" /></div>
+              <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
+              <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
+            }
           </div>
           <button class="btn" (click)="ajouterCompte()" [disabled]="ajoutCompteEnCours()">{{ ajoutCompteEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           @if (doublonsCompte().length) {
@@ -486,6 +515,37 @@ export class AccesComponent implements OnInit {
       error: (e) => this.compteMessage.set(e?.error?.error ?? 'Mise à jour impossible.'),
     });
   }
+
+  // 01/10/2026 — gap comblé : aucune suppression n'était possible (seule
+  // la désactivation), et le formulaire d'ajout montrait toujours les
+  // mêmes champs RIB/IBAN/BIC quel que soit le type de compte, y compris
+  // pour mobile money (aucun champ Opérateur/téléphone dédié).
+  actionsPourCompte(c: CompteBancaire): ActionMenuItem[] {
+    return [
+      { label: c.actif ? 'Désactiver' : 'Réactiver', action: () => this.basculerCompte(c) },
+      { label: 'Supprimer', danger: true, action: () => this.supprimerCompte(c) },
+    ];
+  }
+
+  supprimerCompte(c: CompteBancaire): void {
+    if (!confirm(`Supprimer définitivement le compte « ${c.intitule} » ? Cette action est irréversible.`)) return;
+    this.compteMessage.set('');
+    this.api.supprimerCompteBancaire(c.id).subscribe({
+      next: () => this.chargerComptes(),
+      error: (e) => this.compteMessage.set(e?.error?.error ?? "Suppression impossible — désactivez le compte à la place."),
+    });
+  }
+
+  private readonly LIBELLES_TYPE_COMPTE: Record<string, string> = {
+    fonctionnement: 'Fonctionnement', carpa: 'CARPA', especes: 'Espèces',
+    mobile_money: 'Mobile money', virement_etranger: 'Virement étranger',
+  };
+  libelleTypeCompte(t: string): string { return this.LIBELLES_TYPE_COMPTE[t] || t; }
+
+  private readonly LIBELLES_OPERATEUR: Record<string, string> = {
+    orange_money: 'Orange Money', moov_money: 'Moov Money', wave: 'Wave', sama_money: 'Sama Money', autre: 'Autre',
+  };
+  libelleOperateur(o: string): string { return this.LIBELLES_OPERATEUR[o] || o; }
 
   modulesMatrice(): string[] {
     const m = this.matrice();

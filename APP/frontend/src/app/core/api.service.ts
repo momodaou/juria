@@ -856,6 +856,10 @@ export class ApiService {
   majCompteBancaire(id: string, payload: Partial<CompteBancaire>): Observable<{ id: string }> {
     return this.http.put<{ id: string }>(`${this.base}/api/parametres/comptes-bancaires/${id}`, payload);
   }
+  // 01/10/2026 — gap comblé, seule la désactivation existait.
+  supprimerCompteBancaire(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/parametres/comptes-bancaires/${id}`);
+  }
 
   // Cabinet (RH)
   equipeCabinet(): Observable<any[]> {

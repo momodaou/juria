@@ -178,4 +178,35 @@ router.put("/comptes-bancaires/:id", requirePermission("parametres.cabinet.modif
   }
 });
 
+// DELETE /api/parametres/comptes-bancaires/:id (01/10/2026 — gap comblé,
+// seule la désactivation existait) — suppression réelle possible
+// uniquement si le compte n'est référencé nulle part (paiements, dépenses,
+// factures réglées par virement) ; sinon 409, désactivation recommandée
+// à la place (même garde-fou anti-perte de données que les suppressions
+// de dossier/client).
+router.delete("/comptes-bancaires/:id", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
+  const id = req.params.id;
+  try {
+    const refs = await pool.query(
+      `SELECT
+         (SELECT count(*) FROM paiements WHERE compte_id = $1) AS paiements,
+         (SELECT count(*) FROM depenses WHERE compte_id = $1) AS depenses,
+         (SELECT count(*) FROM factures WHERE compte_reglement_id = $1) AS factures`,
+      [id]
+    );
+    const r = refs.rows[0];
+    if (Number(r.paiements) > 0 || Number(r.depenses) > 0 || Number(r.factures) > 0) {
+      return res.status(409).json({
+        error: "Ce compte est déjà référencé (paiement, dépense ou facture) et ne peut pas être supprimé — désactivez-le à la place.",
+      });
+    }
+    const { rows } = await pool.query("DELETE FROM comptes_bancaires WHERE id = $1 RETURNING id", [id]);
+    if (!rows[0]) return res.status(404).json({ error: "Compte introuvable" });
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 module.exports = router;
