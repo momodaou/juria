@@ -3257,3 +3257,27 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 **Point non résolu** : la cause exacte du test papier précédent jugé « identique » au format d'avant n'a pas été confirmée (cache navigateur le plus probable, mais pas vérifié par l'utilisateur) — si ce nouvel essai à 100×60mm donne le même résultat « inchangé » sur le papier, il faudra creuser au-delà d'un simple problème de taille CSS (driver d'imprimante, réglage d'échelle du navigateur, etc.).
 
 **Déploiement** : commité (`01c5598`). **Déployé et vérifié en production le 30/09/2026** (accord utilisateur, « vas-y déploie ») — frontend seul, `./scripts/deploy.sh web`, révision `juria-web-00152-k75`, `/` en `200`.
+
+## 01/10/2026 — Comptes bancaires : débordement de tuile + suppression + champs par type de compte
+
+**Contexte** : 2 observations de l'utilisateur sur l'écran « Comptes bancaires du cabinet » (Accès & permissions, ajouté le 28/08/2026) : (i) impossible de supprimer un compte, et la tuile (panneau) déborde visuellement ; (ii) les champs à renseigner pour un compte mobile money ne sont pas les mêmes que pour un compte bancaire classique — contrairement à ce qu'affichait le formulaire jusqu'ici.
+
+**Diagnostic** (via un agent de lecture seule dédié, backend + frontend) :
+- Le tableau de 10 colonnes (incluant IBAN jusqu'à 40 caractères, BIC) n'était **jamais enveloppé dans `.table-scroll`**, contrairement à `dossiers.component.ts`/`facturation.component.ts`/`role-audience.component.ts` qui utilisent déjà ce patron depuis le 19/09/2026 — le tableau débordait donc du cadre du `.panel` dès qu'un IBAN long était présent.
+- **Aucune route `DELETE`** n'existait pour `comptes_bancaires` — seule la désactivation (`PUT .../actif`) était possible, par un choix de conception documenté (« un compte déjà référencé par des paiements/dépenses/factures ne doit pas disparaître »), mais sans jamais offrir de vraie suppression pour un compte jamais utilisé (doublon, erreur de saisie).
+- Le schéma avait déjà, depuis la création de la table (avant le 28/08/2026), une colonne `operateur` + un ENUM dédié `operateur_mobile` (orange_money/moov_money/wave/sama_money/autre) — **jamais exposés dans le formulaire** : le champ `type=mobile_money` existait dans le sélecteur, mais le formulaire montrait ensuite systématiquement les mêmes champs RIB/IBAN/BIC qu'un compte bancaire classique, sans aucun champ Opérateur ni numéro de téléphone dédié.
+
+**Correctif** :
+- **Backend** (`parametres.js`) : `DELETE /api/parametres/comptes-bancaires/:id` — vérifie l'absence de référence dans `paiements.compte_id`, `depenses.compte_id`, `factures.compte_reglement_id` ; `409` avec message clair si référencé (recommande la désactivation), `204` sinon. Même famille de garde-fou anti-perte de données que les suppressions de dossier/client.
+- **Frontend** (`acces.component.ts`) :
+  - Tableau enveloppé dans `.table-scroll`, `.nowrap` sur les colonnes courtes à format fixe (Type, Opérateur, Code banque, Code guichet, Clé RIB, BIC) — corrige le débordement.
+  - Nouvelle colonne **Opérateur** affichée (libellé français, ex. « Orange Money »), en-tête « N° compte » renommé « N° compte / Tél. ».
+  - Formulaire de création rendu **conditionnel au type** : `mobile_money` → Opérateur (select) + Numéro de téléphone (réutilise la colonne `numero`, relabellisée) ; `especes` → aucun champ bancaire supplémentaire ; `virement_etranger` → Banque/N° de compte/IBAN/BIC (sans Code banque/Code guichet/Clé RIB, propres au RIB domestique) ; `fonctionnement`/`carpa` → inchangé (les 7 champs RIB complets).
+  - Action **« Supprimer »** ajoutée au menu « ⋮ » de chaque ligne (à côté de Désactiver/Réactiver, devenu 2 actions → bascule sur `<app-menu-actions>`, confirmation avant suppression (irréversible), message d'erreur affiché si bloquée par la garde serveur.
+
+**Vérification** : **410/410 tests backend** (4 nouveaux dans `factureEnrichie.test.js` — operateur mobile money persisté, suppression refusée 409 sur compte référencé par une facture, suppression réussie 204 sur compte libre, 404 sur id inexistant ; suite complète relancée via la méthode documentée du README — conteneur `node:22` relié au réseau `docker compose`, pas `docker compose exec api` qui fausse le résultat), build Angular production OK. **Vérification visuelle et fonctionnelle réelle** (Playwright headless, stack Docker locale dédiée, démontée après coup) :
+- absence de débordement de page confirmée (`scrollWidth === clientWidth`) sur l'écran avec un IBAN de test de 29 caractères déjà en base ;
+- formulaire dynamique testé sur les 4 types (mobile money → Opérateur visible/Banque masqué ; espèces → 0 champ bancaire ; virement étranger → IBAN visible/Code banque masqué ; classique → 6 champs RIB) ;
+- cycle de suppression testé via l'interface réelle (pas seulement l'API) : tentative sur un compte référencé par une facture → `409`, message affiché, ligne toujours présente ; tentative sur un compte mobile money non référencé → suppression réussie, ligne disparue.
+
+**Déploiement** : commité (`f4d69aa` + tests `81f56ee`) — à déployer sur confirmation de l'utilisateur.
