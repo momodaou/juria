@@ -132,3 +132,33 @@ describe("Confidentialité des documents (28/09/2026)", () => {
     }
   });
 });
+
+describe("PUT /api/documents/:id/confidentialite (03/10/2026, audit Atelier d'actes)", () => {
+  test("relève le niveau après coup ; le document devient invisible au collègue non affecté", async () => {
+    const associe = await creerUtilisateurRole("associe");
+    const responsable = await creerUtilisateurRole("collaborateur");
+    const dossierId = await creerDossier(associe.token, responsable.id);
+    const docId = await televerser(responsable.token, dossierId, "dossier");
+
+    const tiers = await creerUtilisateurRole("juriste");
+    const avant = await request(app).get(`/api/dossiers/${dossierId}/documents`).set(auth(tiers.token));
+    expect(avant.body.some((d) => d.id === docId)).toBe(true);
+
+    const maj = await request(app).put(`/api/documents/${docId}/confidentialite`).set(auth(responsable.token))
+      .send({ confidentialite: "restreint" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.confidentialite).toBe("restreint");
+
+    const apres = await request(app).get(`/api/dossiers/${dossierId}/documents`).set(auth(tiers.token));
+    expect(apres.body.some((d) => d.id === docId)).toBe(false);
+  });
+
+  test("valeur invalide refusée", async () => {
+    const associe = await creerUtilisateurRole("associe");
+    const dossierId = await creerDossier(associe.token, associe.id);
+    const docId = await televerser(associe.token, dossierId, "dossier");
+    const res = await request(app).put(`/api/documents/${docId}/confidentialite`).set(auth(associe.token))
+      .send({ confidentialite: "public" });
+    expect(res.status).toBe(400);
+  });
+});

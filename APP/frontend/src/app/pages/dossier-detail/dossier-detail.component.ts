@@ -860,7 +860,20 @@ import { libelleRole } from '../../core/roles';
               <tr>
                 <td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td>
                 <td>v{{ doc.version }}</td><td>{{ doc.statut }}</td>
-                <td>@if (doc.confidentialite && doc.confidentialite !== 'dossier') { <span class="tag haute">{{ libelleConfidentialite(doc.confidentialite) }}</span> } @else { — }</td>
+                <td>
+                  @if (confidentialiteEditId() === doc.id) {
+                    <select [(ngModel)]="confidentialiteEdit" [name]="'confEdit'+doc.id">
+                      <option value="dossier">Dossier (défaut)</option>
+                      <option value="interne">Interne</option>
+                      <option value="equipe">Équipe</option>
+                      <option value="restreint">Restreint</option>
+                    </select>
+                    <button class="lien" (click)="enregistrerConfidentialite(doc)">Enregistrer</button>
+                    <button class="lien" (click)="confidentialiteEditId.set(null)">Annuler</button>
+                  } @else {
+                    @if (doc.confidentialite && doc.confidentialite !== 'dossier') { <span class="tag haute">{{ libelleConfidentialite(doc.confidentialite) }}</span> } @else { — }
+                  }
+                </td>
                 <td><app-menu-actions [actions]="actionsPourDocument(doc)" /></td>
               </tr>
             }
@@ -1996,8 +2009,28 @@ export class DossierDetailComponent implements OnInit {
       { label: 'Aperçu', action: () => this.apercu(doc) },
       { label: 'Ouvrir', action: () => this.ouvrir(doc) },
     ];
+    if (this.auth.peut('documents.creer')) items.push({ label: 'Confidentialité', action: () => this.ouvrirEditionConfidentialite(doc) });
     if (this.auth.peut('documents.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimerDocument(doc), danger: true });
     return items;
+  }
+
+  // Modification de la confidentialité après coup (03/10/2026, gap comblé —
+  // voir CLAUDE.md « audit Atelier d'actes ») : même permission que le
+  // téléversement (documents.creer), pas une restriction nouvelle.
+  readonly confidentialiteEditId = signal<string | null>(null);
+  confidentialiteEdit = 'dossier';
+
+  ouvrirEditionConfidentialite(doc: any): void {
+    this.confidentialiteEditId.set(doc.id);
+    this.confidentialiteEdit = doc.confidentialite || 'dossier';
+  }
+
+  enregistrerConfidentialite(doc: any): void {
+    this.erreur.set('');
+    this.api.changerConfidentialiteDocument(doc.id, this.confidentialiteEdit).subscribe({
+      next: () => { this.confidentialiteEditId.set(null); this.rafraichirDocuments(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification de la confidentialité impossible.'),
+    });
   }
 
   ouvrir(doc: any): void {

@@ -233,3 +233,63 @@ describe("Cycle brouillon → édition → validation → PDF", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// 03/10/2026 — audit Atelier d'actes : GET /:id/pdf, PUT /:id et POST
+// /:id/statut ignoraient documents.confidentialite (mécanisme posé le
+// 28/09/2026 pour /api/documents/:id/download) — n'importe quel titulaire
+// de actes.consulter/actes.generer (très largement accordés) pouvait donc
+// lire/modifier/changer le statut de n'importe quel document texte brut,
+// y compris un .txt téléversé en confidentialite='restreint'. Corrigé en
+// y branchant le même contrôle (confidentialiteDocuments.js).
+describe("Confidentialité des documents appliquée à l'Atelier d'actes (03/10/2026)", () => {
+  async function creerActeRestreint() {
+    // responsable = l'associé lui-même (token principal) : évite tout souci
+    // d'imputation (verifierImputationResponsable), pas l'objet du test ici.
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    const gen = await request(app)
+      .post("/api/actes/generer")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "autre" });
+    const docId = gen.body.id;
+    const maj = await request(app)
+      .put(`/api/documents/${docId}/confidentialite`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ confidentialite: "restreint" });
+    expect(maj.status).toBe(200);
+    return docId;
+  }
+
+  test("GET /:id/pdf refusé (403) à un tiers non affecté au dossier", async () => {
+    const docId = await creerActeRestreint();
+    const tiers = await creerUtilisateur("juriste");
+    const res = await request(app).get(`/api/actes/${docId}/pdf`).set("Authorization", `Bearer ${tiers.token}`);
+    expect(res.status).toBe(403);
+  });
+
+  test("GET /:id/pdf reste accessible au responsable (direction)", async () => {
+    const docId = await creerActeRestreint();
+    const res = await request(app).get(`/api/actes/${docId}/pdf`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  test("PUT /:id refusé (403) à un tiers non affecté au dossier", async () => {
+    const docId = await creerActeRestreint();
+    const tiers = await creerUtilisateur("juriste");
+    const res = await request(app)
+      .put(`/api/actes/${docId}`)
+      .set("Authorization", `Bearer ${tiers.token}`)
+      .send({ texte: "Tentative non autorisée" });
+    expect(res.status).toBe(403);
+  });
+
+  test("POST /:id/statut refusé (403) à un tiers non affecté au dossier", async () => {
+    const docId = await creerActeRestreint();
+    const tiers = await creerUtilisateur("juriste");
+    const res = await request(app)
+      .post(`/api/actes/${docId}/statut`)
+      .set("Authorization", `Bearer ${tiers.token}`)
+      .send({ statut: "valide" });
+    expect(res.status).toBe(403);
+  });
+});

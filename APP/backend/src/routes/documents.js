@@ -80,6 +80,32 @@ router.get("/:id/download", async (req, res) => {
   }
 });
 
+// PUT /api/documents/:id/confidentialite  { confidentialite }
+// Gap comblé (03/10/2026, audit Atelier d'actes) : documents.confidentialite
+// (28/09/2026) n'était réglable qu'au moment du téléversement, jamais
+// ensuite — aucun moyen de rendre confidentiel après coup un document déjà
+// en GED (ex. une lettre de mission qui mentionne un montant sensible).
+// Même permission que la création (documents.creer) : qui peut déjà choisir
+// librement n'importe quel niveau à l'upload peut le corriger après coup,
+// pas une nouvelle restriction inventée.
+router.put("/:id/confidentialite", requirePermission("documents.creer"), async (req, res) => {
+  const niveau = req.body?.confidentialite;
+  if (!["dossier", "interne", "equipe", "restreint"].includes(niveau)) {
+    return res.status(400).json({ error: "confidentialite invalide" });
+  }
+  try {
+    const { rows } = await pool.query(
+      "UPDATE documents SET confidentialite = $1::confidentialite WHERE id = $2 RETURNING id, nom, confidentialite",
+      [niveau, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Document introuvable" });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // DELETE /api/documents/:id
 // Constat utilisateur (28/08/2026) : « on ne peut pas supprimer de
 // documents du GED » — confirmé, il n'existait tout simplement aucune

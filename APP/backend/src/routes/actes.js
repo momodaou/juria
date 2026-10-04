@@ -17,7 +17,21 @@ const { saveObject } = require("../storage");
 const { generer } = require("../ia");
 const { requirePermission } = require("../permissions");
 const { envoyerActePdf } = require("../actePdf");
+const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const router = express.Router();
+
+// Audit du 03/10/2026 : GET /:id/pdf, PUT /:id et POST /:id/statut
+// chargeaient jusqu'ici un `documents` par id brut sans jamais appliquer
+// documents.confidentialite (mécanisme posé le 28/09/2026 pour /api/
+// documents/:id/download) — n'importe quel titulaire de actes.consulter/
+// actes.generer (permissions très largement accordées) pouvait donc lire,
+// modifier ou changer le statut de n'importe quel document texte brut de
+// la GED, y compris un .txt téléversé en confidentialite='restreint'.
+// Factorisé ici plutôt que dupliqué 3 fois.
+async function verifierAccesDocument(dossierId, confidentialite, user) {
+  const contexte = await chargerContexteDossier(pool, dossierId);
+  return estDocumentVisible(confidentialite, contexte, user, false);
+}
 
 function fmtDate(d) {
   return new Date(d).toLocaleDateString("fr-FR");
@@ -230,6 +244,9 @@ router.put("/:id", requirePermission("actes.generer"), async (req, res) => {
   try {
     const { rows: [doc] } = await pool.query("SELECT * FROM documents WHERE id = $1", [req.params.id]);
     if (!doc) return res.status(404).json({ error: "Acte introuvable" });
+    if (!(await verifierAccesDocument(doc.dossier_id, doc.confidentialite, req.user))) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
     if (doc.type_mime !== "text/plain") {
       return res.status(400).json({ error: "Cette action ne s'applique qu'aux actes texte générés par l'Atelier d'actes." });
     }
@@ -255,13 +272,21 @@ router.post("/:id/statut", requirePermission("actes.generer"), async (req, res) 
   const statut = req.body?.statut;
   if (!["brouillon", "valide"].includes(statut)) return res.status(400).json({ error: "statut invalide" });
   try {
+    const { rows: [doc] } = await pool.query(
+      "SELECT dossier_id, confidentialite, type_mime FROM documents WHERE id = $1",
+      [req.params.id]
+    );
+    if (!doc) return res.status(404).json({ error: "Acte introuvable" });
+    if (!(await verifierAccesDocument(doc.dossier_id, doc.confidentialite, req.user))) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
+    if (doc.type_mime !== "text/plain") return res.status(404).json({ error: "Acte introuvable" });
     const { rows } = await pool.query(
       `UPDATE documents SET statut = $1::statut_document
        WHERE id = $2 AND type_mime = 'text/plain'
        RETURNING id, nom, statut`,
       [statut, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Acte introuvable" });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -273,6 +298,14 @@ router.post("/:id/statut", requirePermission("actes.generer"), async (req, res) 
 // persisté, régénéré à chaque téléchargement — voir actePdf.js).
 router.get("/:id/pdf", requirePermission("actes.consulter"), async (req, res) => {
   try {
+    const { rows: [doc] } = await pool.query(
+      "SELECT dossier_id, confidentialite FROM documents WHERE id = $1",
+      [req.params.id]
+    );
+    if (!doc) return res.status(404).json({ error: "Acte introuvable" });
+    if (!(await verifierAccesDocument(doc.dossier_id, doc.confidentialite, req.user))) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
     const trouve = await envoyerActePdf(pool, req.params.id, res);
     if (!trouve) res.status(404).json({ error: "Acte introuvable" });
   } catch (e) {

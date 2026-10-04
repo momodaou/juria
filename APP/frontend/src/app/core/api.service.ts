@@ -205,6 +205,11 @@ export class ApiService {
   supprimerDocument(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/api/documents/${id}`);
   }
+  // GED — modifier la confidentialité d'un document après coup (03/10/2026,
+  // gap comblé : jusqu'ici réglable seulement au téléversement).
+  changerConfidentialiteDocument(id: string, confidentialite: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/documents/${id}/confidentialite`, { confidentialite });
+  }
 
   creerDossier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers`, payload);
