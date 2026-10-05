@@ -132,7 +132,7 @@ import { libelleRole } from '../../core/roles';
               <div>
                 <div class="etiquette-num">{{ d.numero }}</div>
                 <div class="etiquette-intitule">{{ d.intitule }}</div>
-                <div class="etiquette-sub">{{ d.client_nom }}{{ d.responsable_nom ? ' · ' + d.responsable_nom : '' }}</div>
+                <div class="etiquette-sub">{{ d.client_nom }}{{ d.juridiction ? ' · ' + abregeJuridiction(d.juridiction) : '' }}</div>
                 <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ d.couleur_chemise || '—' }}</b></div>
               </div>
             </div>
@@ -1176,6 +1176,21 @@ export class DossierDetailComponent implements OnInit {
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
 
+  // 05/10/2026 — étiquette : la juridiction remplace l'avocat responsable
+  // sur la ligne « Client · ... » (demande explicite de l'utilisateur,
+  // « enlever le nom de l'avocat et faire mentionner la juridiction »).
+  // Même règle d'abréviation que role-audience.component.ts (affichage
+  // uniquement, jamais écrite en base) — dupliquée ici plutôt que
+  // partagée, cohérent avec le reste de ces petits helpers d'affichage.
+  abregeJuridiction(j: string | null | undefined): string {
+    if (!j) return '—';
+    let m = j.match(/^Tribunal de Grande Instance de la Commune\s+([IVXLCDM]+)$/i);
+    if (m) return `TGI C${m[1].toUpperCase()}`;
+    m = j.match(/^Tribunal de Grande Instance de\s+(.+)$/i);
+    if (m) return `TGI ${m[1]}`;
+    return j;
+  }
+
   private urlDossier(d: any): string {
     return `${window.location.origin}/dossiers/${d.id}`;
   }
@@ -1202,7 +1217,10 @@ export class DossierDetailComponent implements OnInit {
   imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }): void {
     const w = window.open('', '_print_etiquette', 'width=420,height=260');
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
-    const sousTitre = [d.client_nom, d.responsable_nom].filter(Boolean).map((t) => this.echapperHtml(t)).join(' · ');
+    // 05/10/2026 — juridiction (abrégée) à la place de l'avocat responsable
+    // sur la ligne de sous-titre (demande explicite de l'utilisateur).
+    const sousTitre = [d.client_nom, this.abregeJuridiction(d.juridiction) !== '—' ? this.abregeJuridiction(d.juridiction) : null]
+      .filter(Boolean).map((t) => this.echapperHtml(t as string)).join(' · ');
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
       /* 29/09/2026 — @page en taille personnalisée (108x59mm) abandonné :
          constaté en réel que la plupart des imprimantes de bureau chargées
@@ -1223,13 +1241,13 @@ export class DossierDetailComponent implements OnInit {
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
       .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
       .bande{width:9px;flex:none;background:${etq.couleurHex}}
-      .corps{display:flex;gap:12px;align-items:center;padding:10px 14px;min-width:0;flex:1}
-      .qr{width:78px;height:78px;flex:none}
+      .corps{display:flex;gap:14px;align-items:center;padding:12px 16px;min-width:0;flex:1}
+      .qr{width:86px;height:86px;flex:none}
       .texte{min-width:0;overflow:hidden}
-      .num{font-size:15px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .intitule{font-size:11px;font-weight:600;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
-      .sub{font-size:9px;color:#6B7280;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .chemise{font-size:9px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .num{font-size:19px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .intitule{font-size:15px;font-weight:600;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+      .sub{font-size:13px;color:#6B7280;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .chemise{font-size:12px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
     </style></head><body>
