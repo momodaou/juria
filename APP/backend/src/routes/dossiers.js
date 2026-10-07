@@ -255,7 +255,7 @@ router.get("/meta/abonnements", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT d.id AS dossier_id, d.numero, d.intitule, d.montant_convenu_xof,
+      `SELECT d.id AS dossier_id, d.numero, d.intitule, d.montant_convenu_xof, d.maj_le,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_ABONNEMENT_BRUT}

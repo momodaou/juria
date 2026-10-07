@@ -187,7 +187,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       <p class="desc">Registre des dossiers facturés de façon périodique (mensuelle/trimestrielle/semestrielle/annuelle) — une seule convention-cadre active par client. Statut dérivé automatiquement de la dernière facture réellement émise et liée au dossier, jamais une case à cocher.</p>
       @if (abonnements().length) {
         <table>
-          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th><th>Action</th></tr>
+          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th><th></th></tr>
           @for (a of abonnements(); track a.dossier_id) {
             <tr>
               <td>{{ a.client }}</td>
@@ -200,12 +200,31 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                   <span class="tag" [class.haute]="a.abonnement_statut === 'en_retard'">{{ a.abonnement_statut === 'en_retard' ? 'En retard' : 'À jour' }}</span>
                 } @else { — }
               </td>
-              <td>
-                @if (auth.peut('factures.creer')) {
-                  <button class="lien" (click)="preparerFacturationAbonnement(a)">Facturer</button>
-                }
-              </td>
+              <td><app-menu-actions [actions]="actionsPourAbonnement(a)" /></td>
             </tr>
+            @if (editionAbonnementId() === a.dossier_id) {
+              <tr class="edition">
+                <td colspan="7">
+                  <div class="form">
+                    <label>Périodicité
+                      <select class="in" [(ngModel)]="editAbonnement.abonnement_periodicite" [name]="'edPeriod' + a.dossier_id">
+                        <option value="">— non configurée —</option>
+                        @for (p of periodicitesAbonnement(); track p.code) {
+                          <option [value]="p.code">{{ p.libelle }}</option>
+                        }
+                      </select>
+                    </label>
+                    <label>Date d'ancrage
+                      <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" [name]="'edAncrage' + a.dossier_id" />
+                    </label>
+                  </div>
+                  <p class="hint">Les deux champs doivent être renseignés ensemble (comme sur la fiche dossier).</p>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                  <button class="lien" (click)="enregistrerEditionAbonnement(a)">Enregistrer</button>
+                  <button class="lien" (click)="annulerEditionAbonnement()">Annuler</button>
+                </td>
+              </tr>
+            }
           }
         </table>
       } @else { <p class="muted">Aucun client sous convention-cadre pour l'instant.</p> }
@@ -324,6 +343,10 @@ export class FacturationComponent implements OnInit {
   libellePeriodicite(code: string): string {
     return this.periodicitesAbonnement().find((p) => p.code === code)?.libelle ?? code;
   }
+  // Modification de la périodicité/échéance directement depuis le registre
+  // (07/10/2026) — jusqu'ici seule la fiche dossier le permettait.
+  readonly editionAbonnementId = signal<string | null>(null);
+  editAbonnement: any = {};
   readonly message = signal('');
   readonly erreur = signal('');
   // 26/09/2026 — audit doublons : "Émettre" restait cliquable pendant
@@ -514,6 +537,57 @@ export class FacturationComponent implements OnInit {
     this.objet = a.intitule || '';
     this.montantHt = a.montant_convenu_xof ?? null;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  actionsPourAbonnement(a: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (this.auth.peut('factures.creer')) {
+      items.push({ label: 'Facturer', action: () => this.preparerFacturationAbonnement(a) });
+    }
+    if (this.auth.peut('dossiers.modifier')) {
+      items.push({ label: 'Modifier', action: () => this.commencerEditionAbonnement(a) });
+    }
+    return items;
+  }
+
+  // Reconstruit une date d'ancrage représentative depuis jour/mois stockés
+  // — même patron que dossier-detail.component.ts (seuls jour/mois sont
+  // conservés, pas la date d'origine exacte ; la formule est toujours
+  // re-dérivée côté serveur).
+  private dateAncrageAbonnement(a: any): string {
+    if (!a.abonnement_jour_facturation) return '';
+    const aujourdHui = new Date();
+    const mois = a.abonnement_mois_facturation ?? (aujourdHui.getMonth() + 1);
+    const jour = String(a.abonnement_jour_facturation).padStart(2, '0');
+    return `${aujourdHui.getFullYear()}-${String(mois).padStart(2, '0')}-${jour}`;
+  }
+
+  commencerEditionAbonnement(a: any): void {
+    this.erreur.set('');
+    this.editionAbonnementId.set(a.dossier_id);
+    this.editAbonnement = {
+      abonnement_periodicite: a.abonnement_periodicite || '',
+      abonnement_prochaine_facturation: this.dateAncrageAbonnement(a),
+    };
+  }
+
+  annulerEditionAbonnement(): void {
+    this.editionAbonnementId.set(null);
+  }
+
+  enregistrerEditionAbonnement(a: any): void {
+    this.erreur.set('');
+    if (!!this.editAbonnement.abonnement_periodicite !== !!this.editAbonnement.abonnement_prochaine_facturation) {
+      this.erreur.set("Périodicité et date d'ancrage doivent être renseignées ensemble.");
+      return;
+    }
+    this.api.majDossier(a.dossier_id, { ...this.editAbonnement, maj_le_attendu: a.maj_le }).subscribe({
+      next: () => {
+        this.editionAbonnementId.set(null);
+        this.api.dossiersAbonnements().subscribe({ next: (ab) => this.abonnements.set(ab) });
+      },
+      error: (e) => this.erreur.set(e?.error?.error ?? "Modification impossible (le dossier a peut-être été modifié entre-temps — rechargez la page)."),
+    });
   }
 
   commencerEdition(f: any): void {
