@@ -82,6 +82,19 @@ import { libelleRole } from '../../core/roles';
             @if (d.montant_convenu_xof) {
               <div class="montant-sens">Montant convenu : {{ d.montant_convenu_xof | number }} FCFA</div>
             }
+            @if (d.abonnement_periodicite) {
+              <div class="montant-sens">
+                Abonnement {{ libellePeriodicite(d.abonnement_periodicite) }} —
+                @if (d.abonnement_derniere_facture_le) {
+                  dernière facture le {{ d.abonnement_derniere_facture_le | date:'dd/MM/yyyy' }}
+                } @else { aucune facture encore liée }
+                @if (d.abonnement_prochaine_echeance) {
+                  <span class="tag" [class.haute]="d.abonnement_statut === 'en_retard'">
+                    {{ d.abonnement_statut === 'en_retard' ? 'En retard depuis le ' : 'Prochaine échéance le ' }}{{ d.abonnement_prochaine_echeance | date:'dd/MM/yyyy' }}
+                  </span>
+                }
+              </div>
+            }
             @if (d.lettre_mission_document_id) {
               <div class="montant-sens">
                 Lettre de mission —
@@ -286,6 +299,20 @@ import { libelleRole } from '../../core/roles';
               <div>
                 <label>Montant convenu avec le client (FCFA)</label>
                 <input class="in" type="number" min="0" [(ngModel)]="edit.montant_convenu" name="editMontantConvenu" />
+              </div>
+            }
+            @if (edit.mode_honoraires === 'abonnement') {
+              <div>
+                <label>Périodicité de facturation</label>
+                <select class="in" [(ngModel)]="edit.abonnement_periodicite" name="editAbonnementPeriodicite">
+                  <option value="">— Sélectionner —</option>
+                  @for (p of periodicitesAbonnement(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+                </select>
+              </div>
+              <div>
+                <label>Date d'ancrage du cycle</label>
+                <input class="in" type="date" [(ngModel)]="edit.abonnement_prochaine_facturation" name="editAbonnementProchaineFacturation" />
+                <p class="muted" style="margin:-6px 0 12px">Fixe le jour (et, selon la périodicité, le mois) d'ancrage — les deux champs doivent être renseignés ensemble.</p>
               </div>
             }
             <div>
@@ -1391,6 +1418,23 @@ export class DossierDetailComponent implements OnInit {
   };
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
 
+  // Clients contractuels / abonnement (05/10/2026) — voir CLAUDE.md/HISTORY.md.
+  readonly periodicitesAbonnement = signal<{ code: string; libelle: string }[]>([]);
+  libellePeriodicite(code: string): string {
+    return this.periodicitesAbonnement().find((p) => p.code === code)?.libelle ?? code;
+  }
+  // Reconstruit une date d'ancrage représentative (année/mois courants si
+  // non ancrée) depuis jour/mois stockés — uniquement pour pré-remplir le
+  // champ de modification, jamais la valeur réellement envoyée telle
+  // quelle (la formule est toujours re-dérivée côté serveur).
+  private dateAncrageAbonnement(d: any): string {
+    if (!d.abonnement_jour_facturation) return '';
+    const aujourdHui = new Date();
+    const mois = d.abonnement_mois_facturation ?? (aujourdHui.getMonth() + 1);
+    const jour = String(d.abonnement_jour_facturation).padStart(2, '0');
+    return `${aujourdHui.getFullYear()}-${String(mois).padStart(2, '0')}-${jour}`;
+  }
+
   // 28/09/2026 — documents.confidentialite enfin câblée pour de vrai (voir
   // backend/src/confidentialiteDocuments.js) ; 'dossier' (défaut) n'affiche
   // rien dans le tableau (comportement historique, rien de particulier à
@@ -1836,6 +1880,7 @@ export class DossierDetailComponent implements OnInit {
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
+    this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l.filter((p) => p.code !== 'ponctuelle')) });
     this.rafraichirDelais();
     this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifsRenvoi.set(m) });
@@ -1857,6 +1902,12 @@ export class DossierDetailComponent implements OnInit {
       // Normalisation "YYYY-MM-DD" attendue par <input type="date"> — même
       // patron que edit.date_echeance en Facturation.
       date_ouverture_origine: d.date_ouverture_origine ? String(d.date_ouverture_origine).slice(0, 10) : '',
+      abonnement_periodicite: d.abonnement_periodicite || '',
+      // Pas de date d'ancrage d'origine conservée telle quelle (seuls
+      // jour/mois le sont, voir periodicite.js) — reconstruit une date
+      // représentative pour pré-remplir le champ, l'année/le mois courant
+      // n'ayant pas d'incidence sur la formule qui sera re-dérivée.
+      abonnement_prochaine_facturation: this.dateAncrageAbonnement(d),
     };
     this.chargerMatieres(d.pole);
     this.erreurEdition.set('');
@@ -1872,6 +1923,10 @@ export class DossierDetailComponent implements OnInit {
 
   enregistrerDossier(): void {
     this.erreurEdition.set('');
+    if (!!this.edit.abonnement_periodicite !== !!this.edit.abonnement_prochaine_facturation) {
+      this.erreurEdition.set('Périodicité et date d\'ancrage de l\'abonnement doivent être renseignées ensemble.');
+      return;
+    }
     this.enregistrement.set(true);
     this.api.majDossier(this.id, { ...this.edit, maj_le_attendu: this.dossier()?.maj_le }).subscribe({
       next: () => {

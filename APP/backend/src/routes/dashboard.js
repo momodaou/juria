@@ -20,6 +20,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { estAutorise } = require("../permissions");
 const { STATUT_FACTURATION_EXPR, SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
+const { JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
 const router = express.Router();
 
 const NOM_CLIENT = `COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom)`;
@@ -315,6 +316,34 @@ router.get("/", async (req, res) => {
            WHERE (${STATUT_FACTURATION_EXPR}) IS NOT NULL`
         )
       : null;
+    // Clients contractuels (abonnement), 05/10/2026 — voir abonnements.js.
+    // Compte + aperçu (2 pires retards), même permission que le reste des
+    // tuiles financières. Statut dérivé en JS (calculerStatutAbonnement),
+    // pas en SQL — peu de lignes concernées (une par client sous
+    // convention), pas besoin d'un calcul serveur plus élaboré.
+    let abonnementsRetardN = null, abonnementsRetardApercu = [];
+    if (voitFactures) {
+      const { rows: abonnementsRows } = await pool.query(
+        `SELECT d.id AS dossier_id, d.numero,
+                ${NOM_CLIENT} AS client,
+                ${SELECT_ABONNEMENT_BRUT}
+         FROM dossiers d
+         JOIN clients c ON c.id = d.client_id
+         ${JOIN_ABONNEMENT_FACTURE}
+         WHERE d.mode_honoraires = 'abonnement' AND d.abonnement_periodicite IS NOT NULL
+           AND d.statut NOT IN ('archive')`
+      );
+      const aujourdHuiIso = new Date().toISOString().slice(0, 10);
+      const enRetard = abonnementsRows
+        .map((r) => ({ ...r, ...calculerStatutAbonnement(r, aujourdHuiIso) }))
+        .filter((r) => r.abonnement_statut === "en_retard")
+        .sort((a, b) => (a.abonnement_prochaine_echeance < b.abonnement_prochaine_echeance ? -1 : 1));
+      abonnementsRetardN = enRetard.length;
+      abonnementsRetardApercu = enRetard.slice(0, 2).map((r) => ({
+        dossier_id: r.dossier_id, numero: r.numero, client: r.client,
+        prochaine_echeance: r.abonnement_prochaine_echeance,
+      }));
+    }
     // Taux de réalisation (rentabilité) — heures facturées / heures saisies
     // ce mois, cabinet entier. Dérivé de temps.facture_id (câblé le
     // 25/08/2026) — même permission que les autres données financières.
@@ -558,6 +587,8 @@ router.get("/", async (req, res) => {
       conges_attente: voitCabinet ? Number(conges.n) : null,
       dossiers_dormants: Number(dormants.n),
       dossiers_en_attente_facturation: voitFactures ? Number(enAttenteFacturation.n) : null,
+      abonnements_retard_n: abonnementsRetardN,
+      abonnements_retard_apercu: abonnementsRetardApercu,
       taux_realisation: voitFactures && realisation.taux !== null ? Number(realisation.taux) : null,
       ca_mois: caMois,
       ca_tendance_pct: tendancePct,
@@ -733,6 +764,33 @@ router.get("/detail/:type", async (req, res) => {
            ORDER BY d.date_ouverture ASC LIMIT 200`
         );
         return res.json(rows);
+      }
+      // Clients contractuels (abonnement) en retard de facturation
+      // (05/10/2026) — même donnée que la tuile, triable, pas de LIMIT 2.
+      case "abonnements_retard": {
+        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(
+          `SELECT d.id AS dossier_id, d.numero, d.intitule,
+                  ${NOM_CLIENT} AS client,
+                  ${SELECT_ABONNEMENT_BRUT}
+           FROM dossiers d
+           JOIN clients c ON c.id = d.client_id
+           ${JOIN_ABONNEMENT_FACTURE}
+           WHERE d.mode_honoraires = 'abonnement' AND d.abonnement_periodicite IS NOT NULL
+             AND d.statut NOT IN ('archive')`
+        );
+        const aujourdHui = new Date().toISOString().slice(0, 10);
+        const enRetard = rows
+          .map((r) => ({ ...r, ...calculerStatutAbonnement(r, aujourdHui) }))
+          .filter((r) => r.abonnement_statut === "en_retard")
+          .map((r) => ({
+            dossier_id: r.dossier_id, numero: r.numero, intitule: r.intitule, client: r.client,
+            periodicite: r.abonnement_periodicite, prochaine_echeance: r.abonnement_prochaine_echeance,
+            jours_retard: Math.round((new Date(aujourdHui) - new Date(r.abonnement_prochaine_echeance)) / 86400000),
+          }));
+        return res.json(enRetard);
       }
       case "realisation": {
         if (!(await estAutorise(req.user.role, "factures.consulter"))) {

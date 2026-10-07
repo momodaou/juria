@@ -11,12 +11,50 @@ const { construireContexte, applatirContexte, fusionner } = require("./actes");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
+const { deriverFormule } = require("../periodicite");
+const { PERIODICITES_ABONNEMENT, JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
 const router = express.Router();
 
 // Discipline de facturation — Bloc A (18/09/2026, voir CLAUDE.md/HISTORY.md
 // pour la synthèse de conception complète). Montant convenu réservé aux
 // modes où un chiffre ferme a du sens à l'ouverture.
 const MODES_MONTANT_CONVENU = ["forfait", "consultation", "abonnement"];
+
+// Clients contractuels / abonnement (05/10/2026, voir CLAUDE.md/HISTORY.md).
+// abonnement_periodicite/abonnement_prochaine_facturation doivent être
+// fournis ENSEMBLE (même règle que PUT /api/echeances-administratives/:id)
+// et seulement quand le mode d'honoraires EFFECTIF est 'abonnement' — la
+// formule (jour/mois d'ancrage) est dérivée une fois via deriverFormule(),
+// le statut "à jour/en retard" n'est lui jamais stocké (voir abonnements.js).
+// Retourne { jourEcheance, moisEcheance } ou lève une erreur avec .status.
+// Chaîne vide traitée comme "non fournie" (pas seulement null/undefined) :
+// le formulaire d'édition de la fiche dossier envoie ces 2 champs à chaque
+// « Enregistrer », même pour un dossier qui n'a jamais eu de périodicité
+// configurée (pré-remplis à '' par activerEdition()) — sans cette
+// normalisation, chaque édition d'un dossier non-abonnement échouerait.
+function validerFormuleAbonnement(b, modeEffectif) {
+  const periodicite = b.abonnement_periodicite || null;
+  const prochaineFacturation = b.abonnement_prochaine_facturation || null;
+  const fournie = periodicite != null || prochaineFacturation != null;
+  if (!fournie) return { jourEcheance: undefined, moisEcheance: undefined };
+  if (modeEffectif !== "abonnement") {
+    const e = new Error("Périodicité de facturation réservée au mode d'honoraires « Abonnement ».");
+    e.status = 400;
+    throw e;
+  }
+  if (periodicite == null || prochaineFacturation == null) {
+    const e = new Error("abonnement_periodicite et abonnement_prochaine_facturation doivent être fournis ensemble.");
+    e.status = 400;
+    throw e;
+  }
+  if (!PERIODICITES_ABONNEMENT.includes(periodicite)) {
+    const e = new Error(`Périodicité d'abonnement invalide (attendu : ${PERIODICITES_ABONNEMENT.join(", ")}).`);
+    e.status = 400;
+    throw e;
+  }
+  const { jourEcheance, moisEcheance } = deriverFormule(prochaineFacturation, periodicite);
+  return { jourEcheance, moisEcheance };
+}
 
 // Génère automatiquement le brouillon de lettre de mission à l'ouverture
 // (modèle 'lettre_mission' déjà seedé dans modeles_actes) et le lie au
@@ -202,6 +240,54 @@ router.get("/meta/codes-matiere", async (req, res) => {
   }
 });
 
+// GET /api/dossiers/meta/abonnements — registre des clients sous
+// convention-cadre (05/10/2026, répond à une analyse de l'utilisateur sur
+// le traitement des clients contractuels/périodicité de facturation — voir
+// CLAUDE.md/HISTORY.md). Volontairement PAS un nouveau menu/module : une
+// section de l'écran Facturation, gardée par la même permission
+// (factures.consulter) que le reste des données financières agrégées —
+// jamais un concept de permission propre à ce registre. Préfixé /meta/
+// pour ne jamais entrer en collision avec GET /:id (voir /meta/codes-matiere
+// ci-dessus).
+router.get("/meta/abonnements", async (req, res) => {
+  if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+    return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id AS dossier_id, d.numero, d.intitule, d.montant_convenu_xof,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
+              u.prenom || ' ' || u.nom AS responsable,
+              ${SELECT_ABONNEMENT_BRUT}
+       FROM dossiers d
+       JOIN clients c ON c.id = d.client_id
+       JOIN utilisateurs u ON u.id = d.responsable_id
+       ${JOIN_ABONNEMENT_FACTURE}
+       WHERE d.mode_honoraires = 'abonnement' AND d.statut NOT IN ('archive')
+       ORDER BY d.abonnement_periodicite IS NULL, client`
+    );
+    const aujourdHui = new Date().toISOString().slice(0, 10);
+    const enrichies = rows.map((r) => ({ ...r, ...calculerStatutAbonnement(r, aujourdHui) }));
+    enrichies.sort((a, b) => {
+      // En retard d'abord, puis par prochaine échéance la plus proche, puis
+      // les abonnements sans périodicité configurée encore (à paramétrer).
+      const ra = a.abonnement_statut === "en_retard" ? 0 : 1;
+      const rb = b.abonnement_statut === "en_retard" ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      if (a.abonnement_prochaine_echeance && b.abonnement_prochaine_echeance) {
+        return a.abonnement_prochaine_echeance < b.abonnement_prochaine_echeance ? -1 : 1;
+      }
+      if (a.abonnement_prochaine_echeance) return -1;
+      if (b.abonnement_prochaine_echeance) return 1;
+      return 0;
+    });
+    res.json(enrichies);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/dossiers?statut=&responsable=&q=&masquer_archives=
 // masquer_archives (20/08/2026, diagnostic utilisateur) : ces filtres
 // existaient déjà côté API mais n'étaient jamais exposés à l'écran — la
@@ -261,16 +347,21 @@ router.get("/:id", async (req, res) => {
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               u.prenom || ' ' || u.nom AS responsable_nom,
               ${SELECT_HONORAIRES},
-              ${SELECT_STATUT_FACTURATION}
+              ${SELECT_STATUT_FACTURATION},
+              abf.derniere_facture_le AS abonnement_derniere_facture_le
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
        ${JOIN_HONORAIRES}
        ${JOIN_STATUT_FACTURATION}
+       ${JOIN_ABONNEMENT_FACTURE}
        WHERE d.id = $1`,
       [id]
     );
     if (!d.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+    // Clients contractuels (05/10/2026) : statut de facturation périodique
+    // dérivé (jamais stocké), voir abonnements.js.
+    Object.assign(d.rows[0], calculerStatutAbonnement(d.rows[0], new Date().toISOString().slice(0, 10)));
 
     const parties = await pool.query(
       "SELECT id, role, denomination, conseil FROM dossier_parties WHERE dossier_id = $1",
@@ -454,6 +545,14 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     if (b.montant_convenu != null && !MODES_MONTANT_CONVENU.includes(b.mode_honoraires)) {
       return res.status(400).json({ error: "Montant convenu non applicable à ce mode d'honoraires (réservé à forfait/consultation/abonnement)." });
     }
+    // Clients contractuels (05/10/2026) : périodicité de facturation,
+    // réservée au mode 'abonnement' — voir validerFormuleAbonnement.
+    let formuleAbonnement;
+    try {
+      formuleAbonnement = validerFormuleAbonnement(b, b.mode_honoraires);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
 
     const erreurAvocat = await verifierResponsableEstAvocat(pool, b.responsable_id);
     if (erreurAvocat) return res.status(400).json({ error: erreurAvocat });
@@ -499,15 +598,17 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
           montant_litige, montant_litige_sens, montant_litige_sens_precision, mode_honoraires, urgence, responsable_id, pro_bono,
           objet, statut_procedure, statut_procedure_precision, intermediaire,
           code_matiere, couleur_chemise, date_ouverture_origine,
-          mode_honoraires_precision, montant_convenu_xof)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+          mode_honoraires_precision, montant_convenu_xof,
+          abonnement_periodicite, abonnement_jour_facturation, abonnement_mois_facturation)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.montant_litige_sens || null, b.montant_litige_sens_precision || null, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
        b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
        codeMatiere, couleurChemise, b.date_ouverture_origine || null,
        b.mode_honoraires === "autre" ? b.mode_honoraires_precision.trim() : null,
-       MODES_MONTANT_CONVENU.includes(b.mode_honoraires) ? (b.montant_convenu ?? null) : null]
+       MODES_MONTANT_CONVENU.includes(b.mode_honoraires) ? (b.montant_convenu ?? null) : null,
+       b.abonnement_periodicite || null, formuleAbonnement.jourEcheance ?? null, formuleAbonnement.moisEcheance ?? null]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du
@@ -638,16 +739,33 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // création pour le montant convenu, contre le mode d'honoraires
     // EFFECTIF après cette mise à jour (celui fourni ici, sinon celui déjà
     // en base — un PUT partiel ne renvoie pas forcément mode_honoraires).
-    if (b.montant_convenu != null) {
-      const modeEffectif = b.mode_honoraires
-        || (await pool.query("SELECT mode_honoraires FROM dossiers WHERE id = $1", [req.params.id])).rows[0]?.mode_honoraires;
-      if (!MODES_MONTANT_CONVENU.includes(modeEffectif)) {
-        return res.status(400).json({ error: "Montant convenu non applicable à ce mode d'honoraires (réservé à forfait/consultation/abonnement)." });
+    // Un seul SELECT du mode effectif, réutilisé aussi par la périodicité
+    // d'abonnement ci-dessous (même besoin, pas la peine d'interroger deux
+    // fois pour la même information).
+    let modeEffectif = b.mode_honoraires;
+    if (b.montant_convenu != null || b.abonnement_periodicite || b.abonnement_prochaine_facturation) {
+      if (modeEffectif == null) {
+        modeEffectif = (await pool.query("SELECT mode_honoraires FROM dossiers WHERE id = $1", [req.params.id])).rows[0]?.mode_honoraires;
       }
     }
+    if (b.montant_convenu != null && !MODES_MONTANT_CONVENU.includes(modeEffectif)) {
+      return res.status(400).json({ error: "Montant convenu non applicable à ce mode d'honoraires (réservé à forfait/consultation/abonnement)." });
+    }
+    let formuleAbonnement;
+    try {
+      formuleAbonnement = validerFormuleAbonnement(b, modeEffectif);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+    // Formule fournie ⇒ force l'écriture de abonnement_mois_facturation même
+    // à NULL (cas mensuelle, voir deriverFormule) — un simple COALESCE
+    // garderait à tort l'ancien mois d'ancrage si on bascule depuis une
+    // périodicité trimestrielle/annuelle vers mensuelle. Même piège déjà
+    // rencontré et corrigé sur PUT /api/echeances-administratives/:id.
+    const formuleAbonnementFournie = !!(b.abonnement_periodicite || b.abonnement_prochaine_facturation);
 
     const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $26::timestamptz)"
+      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $30::timestamptz)"
       : "";
     const params = [b.intitule, b.pole, b.matiere, b.juridiction, b.montant_litige,
       b.mode_honoraires, b.urgence, b.responsable_id, b.phase, b.statut, b.objet, b.numero_role,
@@ -659,6 +777,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       b.date_ouverture_origine || null,
       b.mode_honoraires_precision ?? null,
       b.montant_convenu ?? null,
+      b.abonnement_periodicite || null, formuleAbonnementFournie, formuleAbonnement.jourEcheance ?? null, formuleAbonnement.moisEcheance ?? null,
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
@@ -688,8 +807,11 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          date_ouverture_origine = COALESCE($22::date, date_ouverture_origine),
          mode_honoraires_precision = COALESCE($23, mode_honoraires_precision),
          montant_convenu_xof = COALESCE($24, montant_convenu_xof),
+         abonnement_periodicite = COALESCE($25, abonnement_periodicite),
+         abonnement_jour_facturation = CASE WHEN $26 THEN $27 ELSE abonnement_jour_facturation END,
+         abonnement_mois_facturation = CASE WHEN $26 THEN $28 ELSE abonnement_mois_facturation END,
          maj_le = now()
-       WHERE id = $25 ${clauseConcurrence}
+       WHERE id = $29 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
       params
     );

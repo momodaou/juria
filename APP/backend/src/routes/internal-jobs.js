@@ -19,6 +19,7 @@ const { executerJobAlertesHonoraires } = require("../jobs/alertesHonoraires");
 const { executerJobMessagerieNotifications } = require("../jobs/messagerieNotifications");
 const { executerJobAlertesFacturationDiscipline } = require("../jobs/alertesFacturationDiscipline");
 const { executerJobAlertesRetoursManquants } = require("../jobs/alertesRetoursManquants");
+const { executerJobAlertesAbonnements } = require("../jobs/alertesAbonnements");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -81,6 +82,18 @@ router.post("/alertes-facturation-discipline", requireSchedulerSecret, async (re
 router.post("/alertes-retours-manquants", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobAlertesRetoursManquants(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 05/10/2026 — clients contractuels (abonnement) : facturation périodique
+// dépassée. Cadence recommandée : quotidienne (comme les autres jobs de
+// facturation, ces seuils se comptent en jours).
+router.post("/alertes-abonnements", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobAlertesAbonnements(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

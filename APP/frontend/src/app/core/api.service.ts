@@ -68,6 +68,12 @@ export interface DashboardData {
   // tuile agrège des données de plusieurs modules).
   doublons_n: number | null;
   doublons_apercu: { categorie: string; dossier_id: string | null; dossier_numero: string | null; description: string; nb: number }[];
+  // Clients contractuels / abonnement (05/10/2026) — voir CLAUDE.md/
+  // HISTORY.md. `null` si factures.consulter absent. Statut dérivé de la
+  // dernière facture réellement émise et liée au dossier, jamais une case
+  // à cocher — voir backend/src/abonnements.js.
+  abonnements_retard_n: number | null;
+  abonnements_retard_apercu: { dossier_id: string; numero: string; client: string; prochaine_echeance: string }[];
 }
 
 export interface Dossier {
@@ -383,6 +389,13 @@ export class ApiService {
   codesMatiere(pole?: string): Observable<{ code: string; type: string; libelle: string; couleur: string }[]> {
     const q = pole ? `?pole=${pole}` : '';
     return this.http.get<any[]>(`${this.base}/api/dossiers/meta/codes-matiere${q}`);
+  }
+
+  // Clients contractuels / abonnement (05/10/2026) — registre des dossiers
+  // sous convention-cadre, gardé par factures.consulter (même permission
+  // que le reste des données financières agrégées).
+  dossiersAbonnements(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dossiers/meta/abonnements`);
   }
 
   // Contrôle des conflits : renvoie { id, resultat, details, message }

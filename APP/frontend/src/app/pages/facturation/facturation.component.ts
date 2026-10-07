@@ -183,6 +183,30 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     </section>
 
     <section class="panel">
+      <h3>Clients sous convention (abonnement)</h3>
+      <p class="desc">Registre des dossiers facturés de façon périodique (mensuelle/trimestrielle/semestrielle/annuelle) — une seule convention-cadre active par client. Statut dérivé automatiquement de la dernière facture réellement émise et liée au dossier, jamais une case à cocher.</p>
+      @if (abonnements().length) {
+        <table>
+          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th></tr>
+          @for (a of abonnements(); track a.dossier_id) {
+            <tr>
+              <td>{{ a.client }}</td>
+              <td class="nowrap"><a class="lien" [routerLink]="['/dossiers', a.dossier_id]">{{ a.numero }}</a></td>
+              <td>{{ a.abonnement_periodicite ? libellePeriodicite(a.abonnement_periodicite) : 'à configurer' }}</td>
+              <td>{{ a.abonnement_derniere_facture_le ? (a.abonnement_derniere_facture_le | date:'dd/MM/yyyy') : '—' }}</td>
+              <td>{{ a.abonnement_prochaine_echeance ? (a.abonnement_prochaine_echeance | date:'dd/MM/yyyy') : '—' }}</td>
+              <td>
+                @if (a.abonnement_statut) {
+                  <span class="tag" [class.haute]="a.abonnement_statut === 'en_retard'">{{ a.abonnement_statut === 'en_retard' ? 'En retard' : 'À jour' }}</span>
+                } @else { — }
+              </td>
+            </tr>
+          }
+        </table>
+      } @else { <p class="muted">Aucun client sous convention-cadre pour l'instant.</p> }
+    </section>
+
+    <section class="panel">
       <h3>Toutes les factures</h3>
       @if (factures().length) {
         <div class="table-scroll">
@@ -289,6 +313,12 @@ export class FacturationComponent implements OnInit {
   readonly factures = signal<any[]>([]);
   readonly impayees = signal<any[]>([]);
   readonly comptes = signal<{ id: string; intitule: string; type: string; banque?: string }[]>([]);
+  // Clients contractuels / abonnement (05/10/2026) — voir CLAUDE.md/HISTORY.md.
+  readonly abonnements = signal<any[]>([]);
+  readonly periodicitesAbonnement = signal<{ code: string; libelle: string }[]>([]);
+  libellePeriodicite(code: string): string {
+    return this.periodicitesAbonnement().find((p) => p.code === code)?.libelle ?? code;
+  }
   readonly message = signal('');
   readonly erreur = signal('');
   // 26/09/2026 — audit doublons : "Émettre" restait cliquable pendant
@@ -339,6 +369,8 @@ export class FacturationComponent implements OnInit {
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
+    this.api.dossiersAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
+    this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l) });
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));

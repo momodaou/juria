@@ -281,6 +281,20 @@ import { libelleRole } from '../../core/roles';
                      placeholder="Ex. 500000">
             </div>
           }
+          @if (dossier.mode_honoraires === 'abonnement') {
+            <div>
+              <label>Périodicité de facturation (facultatif)</label>
+              <select class="in" [(ngModel)]="dossier.abonnement_periodicite" name="abonnementPeriodicite">
+                <option value="">— Sélectionner —</option>
+                @for (p of periodicitesAbonnement(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+              </select>
+            </div>
+            <div>
+              <label>Prochaine facturation prévue le (facultatif)</label>
+              <input class="in" type="date" [(ngModel)]="dossier.abonnement_prochaine_facturation" name="abonnementProchaineFacturation">
+              <span class="hint">Sert uniquement à fixer le jour (et, selon la périodicité, le mois) d'ancrage du cycle — configurable aussi plus tard depuis la fiche dossier.</span>
+            </div>
+          }
           <div>
             <label>Urgence</label>
             <select class="in" [(ngModel)]="dossier.urgence" name="urgence">
@@ -469,6 +483,9 @@ export class OuvertureComponent implements OnInit {
   readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
   readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
   juridictionChoisie = '';
+  // Clients contractuels / abonnement (05/10/2026) — 'ponctuelle' exclue,
+  // sans sens pour une facturation récurrente (voir dossiers.js).
+  readonly periodicitesAbonnement = signal<{ code: string; libelle: string }[]>([]);
 
   chargerMatieres(): void {
     this.api.codesMatiere(this.dossier.pole).subscribe({ next: (l) => this.matieres.set(l) });
@@ -637,6 +654,7 @@ export class OuvertureComponent implements OnInit {
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
+    this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l.filter((p) => p.code !== 'ponctuelle')) });
   }
 
   partiesAdversesListe(): string[] {
@@ -702,6 +720,13 @@ export class OuvertureComponent implements OnInit {
     }
     if (this.dossier.mode_honoraires === 'autre' && !this.dossier.mode_honoraires_precision?.trim()) {
       this.erreurCreation.set('Précision requise pour le mode d\'honoraires « Autre ».');
+      return;
+    }
+    // Périodicité facultative à la création (configurable plus tard depuis
+    // la fiche dossier), mais si l'une des deux valeurs est renseignée,
+    // l'autre doit l'être aussi (même règle que côté serveur).
+    if (!!this.dossier.abonnement_periodicite !== !!this.dossier.abonnement_prochaine_facturation) {
+      this.erreurCreation.set('Périodicité et prochaine facturation doivent être renseignées ensemble.');
       return;
     }
     this.creation.set(true);

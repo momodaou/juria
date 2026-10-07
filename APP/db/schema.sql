@@ -4481,3 +4481,23 @@ ON CONFLICT (domaine, code) DO NOTHING;
 -- schéma mais n'était reliée à rien de précis (voir
 -- POST /api/roles-audience/audiences/:id/decision-document).
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS decision_document_id UUID REFERENCES documents(id) ON DELETE SET NULL;
+
+-- =====================================================================
+--  05/10/2026 — Clients contractuels (abonnement) : périodicité de
+--  facturation + suivi "à jour/en retard". Voir CLAUDE.md/HISTORY.md pour
+--  l'analyse complète demandée par l'utilisateur. Une seule convention-
+--  cadre active par client pour l'instant (confirmé explicitement) — le
+--  dossier déjà en mode_honoraires='abonnement' sert d'ombrelle, pas de
+--  nouvelle table. Même moteur de récurrence que echeances_administratives
+--  (periodicite/jour_echeance/mois_echeance), factorisé dans
+--  backend/src/periodicite.js. Le statut "à jour/en retard" n'est JAMAIS
+--  stocké : dérivé à la volée de la dernière facture réellement émise et
+--  liée à ce dossier (factures.dossier_id) — voir backend/src/abonnements.js.
+--  abonnement_alerte_envoyee_pour (jobs/alertesAbonnements.js) : mémorise la
+--  date d'échéance déjà notifiée par e-mail, pour ne jamais ré-alerter deux
+--  fois pour la même période en retard (même patron que les colonnes
+--  alerte_* de dossiers/factures, 18/08/2026 et 18/09/2026).
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_periodicite VARCHAR(20);       -- listes_valeurs('periodicite'), mensuelle/trimestrielle/semestrielle/annuelle
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_jour_facturation INT;          -- 1-31, ancrage (voir periodicite.js, deriverFormule)
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_mois_facturation INT;          -- 1-12, NULL pour une périodicité mensuelle
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_alerte_envoyee_pour DATE;

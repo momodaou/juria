@@ -57,6 +57,9 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // Discipline de facturation, Bloc B (18/09/2026) — même permission que
   // le reste des tuiles financières, cohérent avec impayes/realisation.
   en_attente_facturation: 'factures.consulter',
+  // Clients contractuels (abonnement), 05/10/2026 — même permission que le
+  // reste des tuiles financières.
+  abonnements_retard: 'factures.consulter',
   // "Mes tâches" est personnel (déjà filtré sur l'appelant, aucun risque de
   // confidentialité) ; "Tâches urgentes" est cabinet entier — même
   // permission que le reste des tuiles de charge de travail (cabinet.consulter,
@@ -234,6 +237,20 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours sans facture (décroissant)', key: 'jours', dir: 'desc' },
       { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
+    ],
+  },
+  abonnements_retard: {
+    titre: 'Clients sous convention (abonnement) en retard de facturation',
+    cols: [
+      { key: 'client', label: 'Client' },
+      { key: 'numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'periodicite', label: 'Périodicité' },
+      { key: 'prochaine_echeance', label: 'Échéance dépassée', format: 'date' },
+      { key: 'jours_retard', label: 'Jours de retard', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours de retard (décroissant)', key: 'jours_retard', dir: 'desc' },
+      { label: 'Client (A → Z)', key: 'client', dir: 'asc' },
     ],
   },
   dormants: {
@@ -588,6 +605,30 @@ const CONFIG: Record<string, TuileConfig> = {
               <span class="tico" [innerHTML]="icons['en_attente_facturation']"></span>
               <span class="n">{{ d.dossiers_en_attente_facturation }}</span><span class="l">Dossiers en attente de facturation</span>
               @if (peutVoirDetail('en_attente_facturation')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
+            </button>
+          }
+          @if (d.abonnements_retard_n !== null) {
+            <!-- Clients contractuels (abonnement), 05/10/2026 — voir
+                 CLAUDE.md/HISTORY.md. Aperçu (2 pires retards), même patron
+                 que les autres tuiles financières. -->
+            <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'abonnements_retard'" (click)="clic('abonnements_retard')">
+              <span class="tico" [innerHTML]="icons['abonnements_retard']"></span>
+              <span class="n">{{ d.abonnements_retard_n }}</span><span class="l">Abonnements en retard de facturation</span>
+              @if (d.abonnements_retard_apercu.length) {
+                <div class="mini-liste">
+                  @for (l of d.abonnements_retard_apercu; track l.dossier_id) {
+                    <div class="mini-ligne">
+                      @if (l.dossier_id) {
+                        <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.client }}</a>
+                      } @else {
+                        <span class="principal">{{ l.client }}</span>
+                      }
+                      <span class="secondaire">{{ l.prochaine_echeance | date:'dd/MM' }}</span>
+                    </div>
+                  }
+                </div>
+              }
+              @if (peutVoirDetail('abonnements_retard')) { <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span> }
             </button>
           }
           @if (d.ca_mois !== null) {
@@ -985,6 +1026,13 @@ export class CockpitComponent implements OnInit {
     ),
     en_attente_facturation: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.6 2.6"/><path d="M9 2.5h6"/></svg>',
+    ),
+    // Clients contractuels (abonnement), 05/10/2026 — flèches de
+    // récurrence (cycle périodique), distinct de l'horloge de
+    // "en_attente_facturation" (jamais facturé) pour marquer qu'il s'agit
+    // d'un rythme répété, pas d'une échéance ponctuelle.
+    abonnements_retard: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7H8a5 5 0 0 0-5 5v1"/><polyline points="13,3.5 17,7 13,10.5"/><path d="M7 17h9a5 5 0 0 0 5-5v-1"/><polyline points="11,20.5 7,17 11,13.5"/></svg>',
     ),
     realisation: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 0 1 16 0"/><line x1="12" y1="16" x2="16.2" y2="10.4"/></svg>',

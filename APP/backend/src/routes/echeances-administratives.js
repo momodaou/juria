@@ -27,6 +27,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { versDateISO, calculerProchaineEcheance, deriverFormule } = require("../periodicite");
 const router = express.Router();
 
 // Même échelle d'alerte que evenements.js (J-30/J-15/J-7/J-1/J0/dépassé) —
@@ -42,61 +43,10 @@ function niveauAlerte(jours) {
   return "—";
 }
 
-// `pg` renvoie une colonne DATE comme un objet Date JS (minuit UTC), pas
-// une chaîne — normalise en 'YYYY-MM-DD' partout où ce module manipule des
-// dates en provenance de la base, pour ne jamais comparer/concaténer une
-// Date et une chaîne par erreur (silencieux : NaN dans une comparaison,
-// pas une exception).
-function versDateISO(v) {
-  if (v == null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  return String(v).slice(0, 10);
-}
-
-// Calcule la prochaine occurrence d'une échéance récurrente à partir de sa
-// formule (périodicité + jour du mois + mois d'ancrage pour l'annuelle) et
-// de la dernière période effectivement traitée — plutôt que de faire
-// confiance à une date stockée qu'il faudrait avancer manuellement à
-// chaque clic (l'ancien comportement, sujet à dérive si personne ne
-// clique pendant plusieurs mois : la date restait figée dans le passé).
-// Retourne null pour une échéance ponctuelle (pas de formule, la date
-// saisie à la création fait foi telle quelle) ou des données insuffisantes.
-// `aujourdHui`/`dernierTraiteLe` : chaînes 'YYYY-MM-DD' (ou null).
-function calculerProchaineEcheance({ periodicite, jour_echeance, mois_echeance, dernier_traite_le }, aujourdHui) {
-  const pasMois = { mensuelle: 1, trimestrielle: 3, semestrielle: 6, annuelle: 12 }[periodicite];
-  if (!pasMois || !jour_echeance) return null;
-  const today = new Date(versDateISO(aujourdHui) + "T00:00:00Z");
-  const dernierTraiteIso = versDateISO(dernier_traite_le);
-  const dernierTraite = dernierTraiteIso ? new Date(dernierTraiteIso + "T00:00:00Z") : null;
-
-  let annee = today.getUTCFullYear();
-  // Mois de départ : pour l'annuelle, le mois d'ancrage fixé une fois pour
-  // toutes ; sinon (mensuelle/trimestrielle/semestrielle), le mois courant
-  // — peu importe lequel, le pas suivant balaie de toute façon tous les
-  // mois au fil des itérations ci-dessous.
-  let moisIndex = (mois_echeance ?? today.getUTCMonth() + 1) - 1; // 0-indexé
-
-  function occurrence(a, mIdx) {
-    // Clampe au dernier jour du mois si jour_echeance le dépasse (ex. 31
-    // un mois de 30 jours) — évite un débordement silencieux sur le mois
-    // suivant que donnerait Date.UTC(a, mIdx, 31) pour avril.
-    const dernierJourDuMois = new Date(Date.UTC(a, mIdx + 1, 0)).getUTCDate();
-    return new Date(Date.UTC(a, mIdx, Math.min(jour_echeance, dernierJourDuMois)));
-  }
-
-  let candidate = occurrence(annee, moisIndex);
-  // Avance tant que la période candidate a déjà été traitée — capture
-  // aussi bien "jamais traitée, on prend la période courante" (boucle ne
-  // s'exécute pas) que "plusieurs périodes ratées d'affilée" (boucle
-  // avance jusqu'à la première période encore ouverte).
-  while (dernierTraite && candidate <= dernierTraite) {
-    moisIndex += pasMois;
-    annee += Math.floor(moisIndex / 12);
-    moisIndex = ((moisIndex % 12) + 12) % 12;
-    candidate = occurrence(annee, moisIndex);
-  }
-  return candidate.toISOString().slice(0, 10);
-}
+// calculerProchaineEcheance/versDateISO : extraits le 05/10/2026 dans
+// ../periodicite (partagé avec abonnements.js, facturation périodique des
+// clients sous convention-cadre) — voir ce module pour le détail, la
+// logique elle-même est inchangée.
 
 // GET /api/echeances-administratives — actives, triées par échéance
 // effective (calculée pour les récurrentes, stockée pour les ponctuelles).
@@ -145,24 +95,8 @@ router.get("/", requirePermission("echeances_admin.consulter"), async (req, res)
 // Réservé (echeances_admin.gerer) : contrairement à un délai de dossier
 // (ouvert à la plupart des rôles via evenements.creer), une obligation du
 // cabinet relève de la direction/comptabilité.
-// Déduit (jour_echeance, mois_echeance) d'une date + une périodicité —
-// partagé entre la création et la modification, qui doivent appliquer
-// exactement la même règle (voir le commentaire ci-dessous sur le pourquoi
-// de l'exception mensuelle).
-function deriverFormule(prochaineDate, periodicite) {
-  const d = new Date(prochaineDate + "T00:00:00Z");
-  const jourEcheance = d.getUTCDate();
-  // Le mois d'ancrage n'a de sens que pour une périodicité >= annuelle
-  // (semestrielle/trimestrielle/annuelle) : « le 30 avril » ou « tous les
-  // 3 mois à partir de mars » sont des formules réelles. Une périodicité
-  // MENSUELLE ne doit jamais être ancrée à son mois de création — sinon
-  // calculerProchaineEcheance() la fait redémarrer chaque année sur CE
-  // mois-là au lieu de flotter sur le mois courant (bug trouvé en testant :
-  // une échéance mensuelle créée en janvier restait bloquée en janvier).
-  const moisEcheance = periodicite === "mensuelle" ? null : d.getUTCMonth() + 1;
-  return { jourEcheance, moisEcheance };
-}
-
+// deriverFormule (jour_echeance/mois_echeance depuis une date + une
+// périodicité) : également extrait dans ../periodicite le 05/10/2026.
 // GET /api/echeances-administratives/verifier-doublon?libelle=&categorie=
 // (26/09/2026, audit doublons) — signale, sans jamais bloquer, une
 // échéance active déjà enregistrée avec le même libellé/catégorie.
