@@ -187,7 +187,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       <p class="desc">Registre des dossiers facturés de façon périodique (mensuelle/trimestrielle/semestrielle/annuelle) — une seule convention-cadre active par client. Statut dérivé automatiquement de la dernière facture réellement émise et liée au dossier, jamais une case à cocher.</p>
       @if (abonnements().length) {
         <table>
-          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th></tr>
+          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th><th>Action</th></tr>
           @for (a of abonnements(); track a.dossier_id) {
             <tr>
               <td>{{ a.client }}</td>
@@ -199,6 +199,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 @if (a.abonnement_statut) {
                   <span class="tag" [class.haute]="a.abonnement_statut === 'en_retard'">{{ a.abonnement_statut === 'en_retard' ? 'En retard' : 'À jour' }}</span>
                 } @else { — }
+              </td>
+              <td>
+                @if (auth.peut('factures.creer')) {
+                  <button class="lien" (click)="preparerFacturationAbonnement(a)">Facturer</button>
+                }
               </td>
             </tr>
           }
@@ -493,6 +498,22 @@ export class FacturationComponent implements OnInit {
     if (this.dossierId === '__autre__') { this.objet = ''; this.factureClientId = null; return; }
     const d = this.dossiers().find((x) => x.id === this.dossierId);
     this.objet = d?.objet || '';
+  }
+
+  // Raccourci depuis le registre "Clients sous convention" (07/10/2026) :
+  // jusqu'ici ce tableau n'avait aucune action, il fallait retrouver le
+  // dossier à la main dans le sélecteur de "Nouvelle facture" ci-dessus.
+  // Pré-remplit ce même formulaire (mode abonnement, montant convenu s'il
+  // existe) plutôt que de dupliquer un mécanisme d'émission — le registre
+  // reste un affichage dérivé, l'émission reste le seul formulaire existant.
+  preparerFacturationAbonnement(a: any): void {
+    this.message.set('');
+    this.erreur.set('');
+    this.dossierId = a.dossier_id;
+    this.mode = 'abonnement';
+    this.objet = a.intitule || '';
+    this.montantHt = a.montant_convenu_xof ?? null;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   commencerEdition(f: any): void {
