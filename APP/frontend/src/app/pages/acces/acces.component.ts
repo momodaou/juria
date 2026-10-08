@@ -348,14 +348,28 @@ import { ROLES } from '../../core/roles';
        ⚠️ position:sticky sur une cellule de table exige border-collapse
        (déjà en place) et un fond opaque explicite sur les cellules
        collantes, sinon le contenu défilant transparaît en dessous. */
-    .matrice-scroll{overflow-x:auto}
+    /* 08/10/2026 — la colonne Action était déjà figée horizontalement,
+       mais l'en-tête des rôles (ligne du haut) ne l'était pas verticalement
+       : en défilant vers le bas dans une matrice de ~60 lignes, on perdait
+       la correspondance colonne↔rôle (constat direct de l'utilisateur).
+       ⚠️ Simplement ajouter position:sticky;top:0 au thead n'aurait rien
+       donné ici : .matrice-scroll n'avait qu'overflow-x:auto, qui fait
+       calculer overflow-y à auto également (règle CSS : si un axe est
+       différent de visible, l'autre axe "visible" devient "auto") — un
+       conteneur qui devient ainsi un conteneur de défilement sans jamais
+       avoir de hauteur bornée ne "scrolle" jamais lui-même, donc sticky
+       n'a aucun scrollport où s'accrocher pendant le défilement de la
+       page. Corrigé en donnant au conteneur une vraie hauteur bornée
+       (max-height + overflow:auto explicite sur les 2 axes) : la matrice
+       devient son propre cadre de défilement interne, ligne d'en-tête ET
+       colonne Action figées en même temps (patron tableur classique). */
+    .matrice-scroll{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:8px}
     /* border-collapse:separate (pas collapse) — avec collapse, la colonne
        sticky laissait passer une fine tranche de la colonne suivante en
        défilement (artefact connu de position:sticky combiné à
        border-collapse:collapse sur une table). border-spacing:0 conserve
        un rendu visuellement identique à collapse en dehors de ce cas. */
-    table.matrice{border-collapse:separate;border-spacing:0;font-size:var(--fs-sm);
-      border-top:1px solid var(--line);border-left:1px solid var(--line)}
+    table.matrice{border-collapse:separate;border-spacing:0;font-size:var(--fs-sm)}
     table.matrice th, table.matrice td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
     table.matrice .col-action{text-align:left;width:220px;white-space:normal;
       position:sticky;left:0;background:#fff;box-shadow:2px 0 4px -2px rgba(0,0,0,.15);}
@@ -364,7 +378,13 @@ import { ROLES } from '../../core/roles';
        au milieu d'un mot ; les intitulés à 2 mots (Assoc. fondateur, Of
        Counsel…) se répartissent naturellement sur 2 lignes à l'espace. */
     table.matrice .col-role{width:82px;white-space:normal}
-    table.matrice thead th{background:var(--light);font-weight:700;font-size:var(--fs-xs)}
+    /* z-index croissant du bas vers le haut à chaque intersection de 2
+       éléments figés : corps (auto, 0 implicite) < ligne d'en-tête figée
+       (1, pour passer devant le corps qui défile dessous) < coin Action
+       de l'en-tête (2, figé à la fois en haut ET à gauche — doit passer
+       devant l'en-tête des rôles ET la colonne Action du corps). */
+    table.matrice thead th{background:var(--light);font-weight:700;font-size:var(--fs-xs);
+      position:sticky;top:0;z-index:1}
     table.matrice thead .col-action{z-index:2}
     /* Le libellé de section (ex. « ATELIER D'ACTES ») est sa propre
        cellule .col-action (1 seule colonne, pas de colspan) pour hériter
