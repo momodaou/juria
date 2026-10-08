@@ -468,7 +468,7 @@ import { libelleRole } from '../../core/roles';
           <p class="muted">1re instance, appel, cassation… chaque degré garde sa propre juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
             <table>
-              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th></th></tr>
+              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th>Vignette</th><th></th></tr>
               @for (i of d.instances; track i.id) {
                 <tr>
                   <td>{{ libelleDegre(i.degre) }}</td>
@@ -476,11 +476,27 @@ import { libelleRole } from '../../core/roles';
                   <td>{{ i.numero_role || '—' }}</td>
                   <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
+                  <td>{{ i.numero_vignette ? 'N° ' + i.numero_vignette : '—' }}</td>
                   <td><app-menu-actions [actions]="actionsPourInstance(i)" /></td>
                 </tr>
+                @if (instanceVignetteEnEdition() === i.id) {
+                  <tr class="edition">
+                    <td colspan="7">
+                      <div class="upload">
+                        <input class="in" style="width:160px;margin:0" type="number" [(ngModel)]="vignetteNumeroSaisi" [name]="'vNum' + i.id" placeholder="N° de vignette" list="numerosVignettesDispo" />
+                        <button class="lien" (click)="enregistrerVignetteInstance(i)">Enregistrer</button>
+                        <button class="lien" (click)="annulerVignetteInstance()">Annuler</button>
+                      </div>
+                      @if (numerosVignettesDisponibles().length) {
+                        <p class="muted">Numéros connus disponibles (achat avec plage renseignée) : {{ numerosVignettesDisponibles().join(', ') }}</p>
+                      }
+                      @if (erreurInstance()) { <p class="err">{{ erreurInstance() }}</p> }
+                    </td>
+                  </tr>
+                }
                 @if (instanceEnEdition() === i.id) {
                   <tr class="edition">
-                    <td colspan="6">
+                    <td colspan="7">
                       <div class="grid2">
                         <div>
                           <label>Juridiction</label>
@@ -519,6 +535,9 @@ import { libelleRole } from '../../core/roles';
                 }
               }
             </table>
+            <datalist id="numerosVignettesDispo">
+              @for (n of numerosVignettesDisponibles(); track n) { <option [value]="n"></option> }
+            </datalist>
           } @else { <p class="muted">Aucune instance enregistrée.</p> }
 
           @if (auth.peut('dossiers.instances.gerer')) {
@@ -1323,6 +1342,11 @@ export class DossierDetailComponent implements OnInit {
   // Appelant/etc.) — en cas d'erreur de degré, retirer puis recréer.
   readonly instanceEnEdition = signal<string | null>(null);
   editInstance: any = {};
+  // Vignette de plaidoirie ancrée sur l'instance (08/10/2026, voir
+  // CLAUDE.md/HISTORY.md) — une seule par instance, numéro obligatoire.
+  readonly instanceVignetteEnEdition = signal<string | null>(null);
+  readonly numerosVignettesDisponibles = signal<number[]>([]);
+  vignetteNumeroSaisi: number | null = null;
 
   // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
   // comporter plusieurs identités clientes. Sélecteur avec recherche
@@ -1625,13 +1649,42 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
-  // Menu "⋮" (19/09/2026).
+  // Menu "⋮" (19/09/2026 ; vignette ajoutée le 08/10/2026).
   actionsPourInstance(i: any): ActionMenuItem[] {
-    if (!this.auth.peut('dossiers.instances.gerer')) return [];
-    return [
-      { label: 'Modifier', action: () => this.commencerEditionInstance(i) },
-      { label: 'Retirer', action: () => this.retirerInstance(i.id), danger: true },
-    ];
+    const items: ActionMenuItem[] = [];
+    if (!i.numero_vignette && this.auth.peut('depenses.vignettes.mouvement')) {
+      items.push({ label: 'Enregistrer la vignette', action: () => this.commencerVignetteInstance(i) });
+    }
+    if (this.auth.peut('dossiers.instances.gerer')) {
+      items.push({ label: 'Modifier', action: () => this.commencerEditionInstance(i) });
+      items.push({ label: 'Retirer', action: () => this.retirerInstance(i.id), danger: true });
+    }
+    return items;
+  }
+
+  commencerVignetteInstance(i: any): void {
+    this.erreurInstance.set('');
+    this.vignetteNumeroSaisi = null;
+    this.instanceVignetteEnEdition.set(i.id);
+  }
+
+  annulerVignetteInstance(): void {
+    this.instanceVignetteEnEdition.set(null);
+    this.vignetteNumeroSaisi = null;
+  }
+
+  enregistrerVignetteInstance(i: any): void {
+    if (!this.vignetteNumeroSaisi) { this.erreurInstance.set('Numéro de vignette requis.'); return; }
+    this.erreurInstance.set('');
+    this.api.enregistrerVignetteInstance(this.id, i.id, this.vignetteNumeroSaisi).subscribe({
+      next: () => {
+        this.instanceVignetteEnEdition.set(null);
+        this.vignetteNumeroSaisi = null;
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+        this.api.numerosVignettesDisponibles().subscribe({ next: (n) => this.numerosVignettesDisponibles.set(n), error: () => {} });
+      },
+      error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Enregistrement impossible.'),
+    });
   }
 
   retirerInstance(instanceId: string): void {
@@ -1888,6 +1941,10 @@ export class DossierDetailComponent implements OnInit {
     this.rafraichirDocuments();
     this.rafraichirTemps();
     this.rafraichirComms();
+    // 08/10/2026 — numéros déjà connus (achats avec plage renseignée) pour
+    // suggestion à la saisie d'une vignette ; vide si personne n'en a
+    // jamais pré-enregistré, repli silencieux (saisie libre).
+    this.api.numerosVignettesDisponibles().subscribe({ next: (n) => this.numerosVignettesDisponibles.set(n), error: () => {} });
   }
 
   activerEdition(d: any): void {

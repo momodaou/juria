@@ -26,7 +26,7 @@ const router = express.Router();
 router.get("/honoraires", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel
+      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes
        FROM parametres_cabinet WHERE id = 1`
     );
     res.json(rows[0]);
@@ -36,21 +36,24 @@ router.get("/honoraires", async (req, res) => {
   }
 });
 
-// PUT /api/parametres/honoraires  { frais_procedure_pro_bono_min_xof?, quota_pro_bono_mensuel? }
+// PUT /api/parametres/honoraires  { frais_procedure_pro_bono_min_xof?, quota_pro_bono_mensuel?, seuil_alerte_vignettes? }
 // Réservé par la matrice de permissions (parametres.honoraires.modifier),
 // pas un requireRole en dur : contrairement à la matrice elle-même, il n'y
 // a pas de risque d'auto-verrouillage à faire dépendre ce réglage de la
-// matrice qu'il ne contrôle pas.
+// matrice qu'il ne contrôle pas. seuil_alerte_vignettes (08/10/2026)
+// réutilise cette même route/permission plutôt qu'un nouveau concept de
+// réglage dédié — c'est un seuil du même esprit que les deux autres.
 router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
       `UPDATE parametres_cabinet SET
          frais_procedure_pro_bono_min_xof = COALESCE($1, frais_procedure_pro_bono_min_xof),
-         quota_pro_bono_mensuel = COALESCE($2, quota_pro_bono_mensuel)
+         quota_pro_bono_mensuel = COALESCE($2, quota_pro_bono_mensuel),
+         seuil_alerte_vignettes = COALESCE($3, seuil_alerte_vignettes)
        WHERE id = 1
-       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel`,
-      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null]
+       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes`,
+      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null]
     );
     res.json(rows[0]);
   } catch (e) {

@@ -114,6 +114,7 @@ export interface Dossier {
 export interface ParametresHonoraires {
   frais_procedure_pro_bono_min_xof: number;
   quota_pro_bono_mensuel: number;
+  seuil_alerte_vignettes: number;
 }
 
 // Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
@@ -750,11 +751,19 @@ export class ApiService {
   definirDotationCaisse(mois: string, montant_alloue: number): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/petite-caisse`, { mois, montant_alloue });
   }
-  stockVignettes(): Observable<{ stock: number }> {
-    return this.http.get<{ stock: number }>(`${this.base}/api/depenses/vignettes/stock`);
+  stockVignettes(): Observable<{ stock: number; seuil: number }> {
+    return this.http.get<{ stock: number; seuil: number }>(`${this.base}/api/depenses/vignettes/stock`);
   }
-  mouvementVignettes(payload: { mouvement: 'achat' | 'utilisation'; quantite: number; dossier_id?: string; refacturee?: boolean }): Observable<any> {
+  // 08/10/2026 — "utilisation" retiré : la consommation passe désormais par
+  // enregistrerVignetteInstance() (liée à une instance précise).
+  approvisionnerVignettes(payload: { quantite?: number; numero_debut?: number; numero_fin?: number }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/vignettes`, payload);
+  }
+  numerosVignettesDisponibles(): Observable<number[]> {
+    return this.http.get<number[]>(`${this.base}/api/depenses/vignettes/numeros-disponibles`);
+  }
+  enregistrerVignetteInstance(dossierId: string, instanceId: string, numero_vignette: number): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette`, { numero_vignette });
   }
 
   // Rétrocessions d'honoraires

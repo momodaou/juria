@@ -253,34 +253,79 @@ router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"),
   }
 });
 
-// GET /api/depenses/vignettes/stock
+// GET /api/depenses/vignettes/stock — expose aussi le seuil d'alerte
+// (08/10/2026) pour que l'écran puisse colorer la tuile sans requête
+// séparée.
 router.get("/vignettes/stock", async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT stock FROM v_stock_vignettes");
-    res.json({ stock: rows[0]?.stock ?? 0 });
+    const { rows } = await pool.query(
+      "SELECT (SELECT stock::int FROM v_stock_vignettes) AS stock, seuil_alerte_vignettes AS seuil FROM parametres_cabinet WHERE id = 1"
+    );
+    res.json({ stock: rows[0]?.stock ?? 0, seuil: rows[0]?.seuil ?? 10 });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// POST /api/depenses/vignettes  { mouvement: 'achat'|'utilisation', quantite, dossier_id?, refacturee? }
-router.post("/vignettes", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
-  const b = req.body || {};
-  if (!["achat", "utilisation"].includes(b.mouvement) || !b.quantite) {
-    return res.status(400).json({ error: "mouvement (achat|utilisation) et quantite requis" });
-  }
+// GET /api/depenses/vignettes/numeros-disponibles (08/10/2026) — numéros
+// individuels connus à l'avance (achat avec plage renseignée) et pas
+// encore consommés ; sert à proposer un numéro plutôt que de le ressaisir
+// à la main quand il est déjà connu.
+router.get("/vignettes/numeros-disponibles", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `INSERT INTO vignettes_plaidoirie (mouvement, quantite, dossier_id, refacturee, cree_par)
-       VALUES ($1,$2,$3,COALESCE($4,false),$5)
-       RETURNING id, mouvement, quantite, date_mouvement`,
-      [b.mouvement, b.quantite, b.dossier_id || null, b.refacturee, req.user.sub]
+      "SELECT numero FROM vignettes_numeros_stock WHERE disponible = TRUE ORDER BY numero ASC"
     );
-    res.status(201).json(rows[0]);
+    res.json(rows.map((r) => r.numero));
   } catch (e) {
     console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/depenses/vignettes  { quantite, numero_debut?, numero_fin? }
+// (08/10/2026) — réservé à l'approvisionnement (achat) : la consommation
+// ("utilisation") passe désormais exclusivement par
+// POST /api/dossiers/:id/instances/:instanceId/vignette, seul endroit qui
+// applique les règles de traçabilité (instance, numéro, mode d'honoraires
+// renseigné). Laisser "utilisation" ici en parallèle aurait recréé la
+// faille qu'on cherche justement à combler.
+router.post("/vignettes", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  const b = req.body || {};
+  if (b.mouvement && b.mouvement !== "achat") {
+    return res.status(400).json({ error: "La consommation d'une vignette se fait désormais depuis l'instance du dossier concerné (fiche dossier → Instances)." });
+  }
+  const plageFournie = b.numero_debut != null || b.numero_fin != null;
+  if (plageFournie && (b.numero_debut == null || b.numero_fin == null || b.numero_fin < b.numero_debut)) {
+    return res.status(400).json({ error: "numero_debut et numero_fin doivent être fournis ensemble, avec numero_fin >= numero_debut." });
+  }
+  const quantite = plageFournie ? (b.numero_fin - b.numero_debut + 1) : b.quantite;
+  if (!quantite) return res.status(400).json({ error: "quantite (ou une plage numero_debut/numero_fin) requise" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [achat] } = await client.query(
+      `INSERT INTO vignettes_plaidoirie (mouvement, quantite, numero_debut, numero_fin, cree_par)
+       VALUES ('achat', $1, $2, $3, $4)
+       RETURNING id, mouvement, quantite, date_mouvement`,
+      [quantite, b.numero_debut ?? null, b.numero_fin ?? null, req.user.sub]
+    );
+    if (plageFournie) {
+      const numeros = Array.from({ length: quantite }, (_, i) => b.numero_debut + i);
+      await client.query(
+        "INSERT INTO vignettes_numeros_stock (numero, achat_id) SELECT unnest($1::int[]), $2",
+        [numeros, achat.id]
+      );
+    }
+    await client.query("COMMIT");
+    res.status(201).json(achat);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
     res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

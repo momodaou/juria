@@ -393,8 +393,15 @@ router.get("/:id", async (req, res) => {
     // Instances (19/08/2026) : table déjà présente en base (degré/
     // juridiction/n° de rôle par degré — 1re instance, appel, cassation…)
     // mais jamais branchée à aucune route jusqu'ici.
+    // v.numero_vignette (08/10/2026) : la vignette qui marque l'entrée en
+    // procédure du cabinet sur CETTE instance, voir POST .../vignette
+    // ci-dessous — au plus une par instance (contrainte d'unicité en base).
     const instances = await pool.query(
-      "SELECT id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision FROM instances WHERE dossier_id = $1 ORDER BY date_debut NULLS LAST, cree_le",
+      `SELECT i.id, i.degre, i.juridiction, i.numero_role, i.date_debut, i.decision, i.statut_partie, i.statut_partie_precision,
+              v.numero_vignette
+       FROM instances i
+       LEFT JOIN vignettes_plaidoirie v ON v.instance_id = i.id AND v.mouvement = 'utilisation'
+       WHERE i.dossier_id = $1 ORDER BY i.date_debut NULLS LAST, i.cree_le`,
       [id]
     );
     // Discipline de facturation — Bloc A : le montant convenu avec le
@@ -1034,6 +1041,94 @@ router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instance
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/dossiers/:id/instances/:instanceId/vignette (08/10/2026, voir
+// CLAUDE.md/HISTORY.md pour l'analyse complète menée avec l'utilisateur) —
+// enregistre la vignette de plaidoirie qui marque l'entrée en procédure du
+// cabinet sur CETTE instance précise (jamais l'audience, jamais le dossier
+// en général) : constitution, assignation, requête, conclusions, mémoire
+// en défense — une seule fois par instance (contrainte d'unicité en base,
+// vérifiée aussi ici pour un message clair plutôt qu'une erreur SQL brute).
+// Condition de décaissement UNIFORME, sans distinction de mode d'honoraires
+// (classique/abonnement/pro bono) : le mode d'honoraires du dossier doit
+// être renseigné — pas de facture exigée (décision explicite de
+// l'utilisateur, 08/10/2026, pour ne pas créer de dépendance circulaire
+// avec la facturation).
+router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  const b = req.body || {};
+  const numero = Number(b.numero_vignette);
+  if (!Number.isInteger(numero) || numero <= 0) {
+    return res.status(400).json({ error: "numero_vignette (entier positif) requis" });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [dossier] } = await client.query(
+      "SELECT pole, mode_honoraires, pro_bono FROM dossiers WHERE id = $1 FOR UPDATE", [req.params.id]
+    );
+    if (!dossier) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Dossier introuvable" }); }
+    if (dossier.pole !== "contentieux") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Une vignette de plaidoirie ne concerne qu'un dossier contentieux." });
+    }
+    if (!dossier.mode_honoraires) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Le mode d'honoraires du dossier doit être renseigné avant d'enregistrer une vignette." });
+    }
+    const { rows: [instance] } = await client.query(
+      "SELECT id FROM instances WHERE id = $1 AND dossier_id = $2", [req.params.instanceId, req.params.id]
+    );
+    if (!instance) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Instance introuvable" }); }
+    const dejaUtilisee = await client.query(
+      "SELECT 1 FROM vignettes_plaidoirie WHERE instance_id = $1 AND mouvement = 'utilisation'", [req.params.instanceId]
+    );
+    if (dejaUtilisee.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Une vignette a déjà été enregistrée pour cette instance." });
+    }
+    const numeroDejaUtilise = await client.query(
+      "SELECT 1 FROM vignettes_plaidoirie WHERE numero_vignette = $1 AND mouvement = 'utilisation'", [numero]
+    );
+    if (numeroDejaUtilise.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Ce numéro de vignette a déjà été enregistré sur une autre instance." });
+    }
+    const stock = await client.query("SELECT stock FROM v_stock_vignettes");
+    if ((stock.rows[0]?.stock ?? 0) <= 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Stock de vignettes épuisé — enregistrez d'abord un approvisionnement (Dépenses & caisse)." });
+    }
+    const refacturee = !dossier.pro_bono;
+    const { rows: [vignette] } = await client.query(
+      `INSERT INTO vignettes_plaidoirie (mouvement, quantite, dossier_id, instance_id, numero_vignette, refacturee, cree_par)
+       VALUES ('utilisation', 1, $1, $2, $3, $4, $5)
+       RETURNING id`,
+      [req.params.id, req.params.instanceId, numero, refacturee, req.user.sub]
+    );
+    // Si ce numéro provient d'un approvisionnement avec plage connue, le
+    // marque consommé dans le pool — sinon simple saisie libre, sans effet
+    // (numéros jamais préenregistrés pour cet achat).
+    await client.query(
+      "UPDATE vignettes_numeros_stock SET disponible = FALSE, utilisation_id = $1 WHERE numero = $2 AND disponible = TRUE",
+      [vignette.id, numero]
+    );
+    const { rows: [depense] } = await client.query(
+      `INSERT INTO depenses (type, categorie, libelle, montant, date_depense, statut, dossier_id, refacturable_client, cree_par)
+       VALUES ('ponctuelle', 'vignette_plaidoirie', $1, 10000, current_date, 'decaissee', $2, $3, $4)
+       RETURNING id`,
+      [`Vignette de plaidoirie n°${numero}`, req.params.id, refacturee, req.user.sub]
+    );
+    await client.query("UPDATE vignettes_plaidoirie SET depense_id = $1 WHERE id = $2", [depense.id, vignette.id]);
+    await client.query("COMMIT");
+    res.status(201).json({ id: vignette.id, numero_vignette: numero, depense_id: depense.id, refacturee });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

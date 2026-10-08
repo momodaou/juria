@@ -40,9 +40,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
         <div class="l">Solde caisse</div>
       </div>
-      <div class="kpi blue">
+      <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
         <div class="n">{{ stockVignettes() }}</div>
-        <div class="l">Vignettes en stock</div>
+        <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
       </div>
     </div>
 
@@ -236,15 +236,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
+      <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>
       @if (auth.peut('depenses.vignettes.mouvement')) {
         <div class="upload">
-          <select class="sel" [(ngModel)]="vignetteMouvement" name="vmouv">
-            <option value="achat">Achat</option>
-            <option value="utilisation">Utilisation</option>
-          </select>
-          <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" />
-          <button class="btn sm" (click)="mouvementVignette()" [disabled]="!vignetteQuantite || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+          <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" style="max-width:120px" />
+          <input class="sel" type="number" [(ngModel)]="vignetteNumeroDebut" name="vndebut" placeholder="N° début (facultatif)" style="max-width:180px" />
+          <input class="sel" type="number" [(ngModel)]="vignetteNumeroFin" name="vnfin" placeholder="N° fin (facultatif)" style="max-width:180px" />
+          <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !(vignetteNumeroDebut && vignetteNumeroFin)) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
         </div>
+        <p class="muted" style="margin-top:6px">Les numéros de début/fin sont facultatifs — à renseigner seulement si l'Ordre les fournit à l'avance pour ce ravitaillement ; la quantité se déduit alors automatiquement de la plage.</p>
       }
     </section>
   `,
@@ -282,6 +282,7 @@ export class DepensesComponent implements OnInit {
   readonly comptes = signal<any[]>([]);
   readonly caisse = signal<any | null>(null);
   readonly stockVignettes = signal(0);
+  readonly seuilVignettes = signal(10);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
   // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
@@ -302,8 +303,9 @@ export class DepensesComponent implements OnInit {
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
   dotationMois = this.moisCourant;
   dotationMontant: number | null = null;
-  vignetteMouvement: 'achat' | 'utilisation' = 'achat';
   vignetteQuantite: number | null = null;
+  vignetteNumeroDebut: number | null = null;
+  vignetteNumeroFin: number | null = null;
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
@@ -312,7 +314,11 @@ export class DepensesComponent implements OnInit {
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.chargerCaisse();
-    this.api.stockVignettes().subscribe({ next: (v) => this.stockVignettes.set(v.stock) });
+    this.chargerStockVignettes();
+  }
+
+  chargerStockVignettes(): void {
+    this.api.stockVignettes().subscribe({ next: (v) => { this.stockVignettes.set(v.stock); this.seuilVignettes.set(v.seuil); } });
   }
 
   charger(): void {
@@ -475,17 +481,24 @@ export class DepensesComponent implements OnInit {
   }
 
   readonly vignetteEnCours = signal(false);
-  mouvementVignette(): void {
-    if (!this.vignetteQuantite || this.vignetteEnCours()) return;
+  approvisionnerVignette(): void {
+    if (this.vignetteEnCours()) return;
+    if (!this.vignetteQuantite && !(this.vignetteNumeroDebut && this.vignetteNumeroFin)) return;
     this.erreur.set('');
     this.vignetteEnCours.set(true);
-    this.api.mouvementVignettes({ mouvement: this.vignetteMouvement, quantite: this.vignetteQuantite }).subscribe({
+    this.api.approvisionnerVignettes({
+      quantite: this.vignetteQuantite ?? undefined,
+      numero_debut: this.vignetteNumeroDebut ?? undefined,
+      numero_fin: this.vignetteNumeroFin ?? undefined,
+    }).subscribe({
       next: () => {
         this.vignetteEnCours.set(false);
         this.vignetteQuantite = null;
-        this.api.stockVignettes().subscribe({ next: (v) => this.stockVignettes.set(v.stock) });
+        this.vignetteNumeroDebut = null;
+        this.vignetteNumeroFin = null;
+        this.chargerStockVignettes();
       },
-      error: (e) => { this.vignetteEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Mouvement impossible.'); },
+      error: (e) => { this.vignetteEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Approvisionnement impossible.'); },
     });
   }
 }

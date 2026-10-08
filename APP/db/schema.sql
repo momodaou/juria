@@ -4501,3 +4501,53 @@ ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_periodicite VARCHAR(20)
 ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_jour_facturation INT;          -- 1-31, ancrage (voir periodicite.js, deriverFormule)
 ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_mois_facturation INT;          -- 1-12, NULL pour une périodicité mensuelle
 ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS abonnement_alerte_envoyee_pour DATE;
+
+-- =====================================================================
+--  VIGNETTES DE PLAIDOIRIE — ancrage sur l'instance, numéro, lien
+--  facturation (08/10/2026, voir CLAUDE.md/HISTORY.md pour l'analyse
+--  complète menée avec l'utilisateur)
+-- =====================================================================
+-- Jusqu'ici : quantité agrégée, dossier_id facultatif, "refacturee" purement
+-- déclaratif (jamais relié à aucune facture) — aucune traçabilité réelle, et
+-- rien n'empêchait de consommer des vignettes sans indiquer de dossier.
+-- Une vignette marque l'entrée en procédure du cabinet dans UNE instance
+-- précise (1re instance, appel, cassation...), en demande ou en défense —
+-- jamais par audience, une seule fois par instance (contrainte d'unicité
+-- ci-dessous).
+ALTER TABLE vignettes_plaidoirie ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
+ALTER TABLE vignettes_plaidoirie ADD COLUMN IF NOT EXISTS numero_vignette INTEGER;
+ALTER TABLE vignettes_plaidoirie ADD COLUMN IF NOT EXISTS depense_id UUID REFERENCES depenses(id) ON DELETE SET NULL;
+-- Plage de numéros connue à l'achat — facultatif, certains ravitaillements
+-- fournissent les numéros à l'avance (booklets séquentiels de l'Ordre),
+-- d'autres non.
+ALTER TABLE vignettes_plaidoirie ADD COLUMN IF NOT EXISTS numero_debut INTEGER;
+ALTER TABLE vignettes_plaidoirie ADD COLUMN IF NOT EXISTS numero_fin INTEGER;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ux_vignette_instance') THEN
+    CREATE UNIQUE INDEX ux_vignette_instance ON vignettes_plaidoirie(instance_id)
+      WHERE mouvement = 'utilisation' AND instance_id IS NOT NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ux_vignette_numero_utilisation') THEN
+    CREATE UNIQUE INDEX ux_vignette_numero_utilisation ON vignettes_plaidoirie(numero_vignette)
+      WHERE mouvement = 'utilisation' AND numero_vignette IS NOT NULL;
+  END IF;
+END $$;
+
+-- Pool de numéros individuels disponibles — alimenté seulement quand un
+-- achat précise une plage (numero_debut/numero_fin) ; reste vide sinon, la
+-- saisie du numéro à la consommation redevient alors libre (facultatif de
+-- bout en bout, comme demandé).
+CREATE TABLE IF NOT EXISTS vignettes_numeros_stock (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero         INTEGER NOT NULL UNIQUE,
+    achat_id       UUID NOT NULL REFERENCES vignettes_plaidoirie(id) ON DELETE CASCADE,
+    disponible     BOOLEAN NOT NULL DEFAULT TRUE,
+    utilisation_id UUID REFERENCES vignettes_plaidoirie(id) ON DELETE SET NULL,
+    cree_le        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_vignettes_numeros_dispo ON vignettes_numeros_stock(disponible);
+
+-- Seuil d'alerte de stock (configurable), même esprit que les seuils
+-- honoraires/pro bono déjà en place.
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS seuil_alerte_vignettes INTEGER NOT NULL DEFAULT 10;

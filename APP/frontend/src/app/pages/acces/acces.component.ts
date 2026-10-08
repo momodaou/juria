@@ -149,6 +149,10 @@ import { ROLES } from '../../core/roles';
               <label>Quota pro bono (dossiers/mois/responsable)</label>
               <input class="in" type="number" [(ngModel)]="parametresEdit.quota_pro_bono_mensuel" name="quotaProBono" />
             </div>
+            <div>
+              <label>Seuil d'alerte — stock de vignettes de plaidoirie</label>
+              <input class="in" type="number" [(ngModel)]="parametresEdit.seuil_alerte_vignettes" name="seuilVignettes" />
+            </div>
           </div>
           <button class="btn" (click)="enregistrerParametres()">Enregistrer</button>
           @if (parametresMessage()) { <p class="muted" style="margin-top:8px">{{ parametresMessage() }}</p> }
