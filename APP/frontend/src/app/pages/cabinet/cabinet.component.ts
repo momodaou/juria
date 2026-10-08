@@ -35,20 +35,22 @@ import { libelleRole } from '../../core/roles';
       </section>
     }
 
-    <section class="panel">
-      <h3>Équipe</h3>
-      <table>
-        <tr><th>Membre</th><th>Rôle</th><th>Dossiers actifs</th><th>Heures ce mois</th></tr>
-        @for (m of equipe(); track m.id) {
-          <tr>
-            <td>{{ m.prenom }} {{ m.nom }}</td>
-            <td>{{ libelleRole(m.role) }}</td>
-            <td>{{ m.dossiers_actifs }}</td>
-            <td>{{ m.heures_mois | number }} h</td>
-          </tr>
-        }
-      </table>
-    </section>
+    @if (auth.peut('cabinet.consulter')) {
+      <section class="panel">
+        <h3>Équipe</h3>
+        <table>
+          <tr><th>Membre</th><th>Rôle</th><th>Dossiers actifs</th><th>Heures ce mois</th></tr>
+          @for (m of equipe(); track m.id) {
+            <tr>
+              <td>{{ m.prenom }} {{ m.nom }}</td>
+              <td>{{ libelleRole(m.role) }}</td>
+              <td>{{ m.dossiers_actifs }}</td>
+              <td>{{ m.heures_mois | number }} h</td>
+            </tr>
+          }
+        </table>
+      </section>
+    }
 
     <section class="panel">
       <h3>{{ estSoiMemeVue() ? 'Mon pointage' : 'Pointage — ' + nomMembre(pointageMembreId()) }}
