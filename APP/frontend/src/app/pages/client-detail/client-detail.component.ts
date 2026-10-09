@@ -51,6 +51,21 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         </div>
       </div>
 
+      <!-- 09/10/2026 — traçabilité procédurale (même patron que la fiche
+           dossier, voir CLAUDE.md) : « créé par » répond à une question
+           explicite de l'utilisateur ; « dernière modification » prévient
+           un mélange d'informations d'identité/KYC entre collaborateurs. -->
+      <p class="derniere-modif">
+        Créé par : <b>{{ c.cree_par_code || c.cree_par_nom || '—' }}</b>
+        @if (c.cree_le) { — le {{ c.cree_le | date:'dd/MM/yyyy à HH:mm' }} }
+      </p>
+      @if (c.derniere_modification; as dm) {
+        <p class="derniere-modif">
+          Dernière modification : <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
+          — le {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
+        </p>
+      }
+
       @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
 
       @if (modeEdition()) {
@@ -228,6 +243,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     }
   `,
   styles: [`
+    /* 09/10/2026 — bandeaux "créé par"/"dernière modification" (traçabilité
+       procédurale), même style que dossier-detail.component.ts. */
+    .derniere-modif{font-size:var(--fs-sm);color:var(--slate);margin:8px 0 0}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}

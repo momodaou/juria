@@ -7,6 +7,18 @@ const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
+const { logAudit, diffChamps } = require("../audit");
+
+// Traçabilité "créé par"/"modifié par" (09/10/2026, question explicite de
+// l'utilisateur, voir CLAUDE.md) : champs d'identité dont une erreur de
+// saisie ou une substitution déguisée a un vrai enjeu KYC/LBC-FT — pas
+// l'intégralité des colonnes modifiables (notes/bénéficiaires effectifs
+// exclus, moins sensibles et plus sujets à de simples compléments
+// d'information sans enjeu de traçabilité).
+const CHAMPS_IDENTITE_CLIENT = [
+  "denomination", "rccm", "nif", "forme_juridique", "prenom", "nom",
+  "nationalite", "email", "telephone", "adresse", "ville", "pays", "kyc_statut",
+];
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -135,8 +147,27 @@ router.get("/verifier-doublon", async (req, res) => {
 // GET /api/clients/:id — fiche 360° (KYC, dossiers, originaux confiés, liens)
 router.get("/:id", async (req, res) => {
   try {
-    const cli = await pool.query("SELECT * FROM clients WHERE id = $1", [req.params.id]);
+    const cli = await pool.query(
+      `SELECT c.*, cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom
+       FROM clients c LEFT JOIN utilisateurs cp ON cp.id = c.cree_par
+       WHERE c.id = $1`,
+      [req.params.id]
+    );
     if (!cli.rows[0]) return res.status(404).json({ error: "Client introuvable" });
+
+    // Traçabilité procédurale (09/10/2026, voir CLAUDE.md « Traçabilité
+    // procédurale », même patron que GET /api/dossiers/:id) : dernière
+    // modification de la fiche identité/KYC, visible par tout collaborateur
+    // ayant accès à la fiche, pas seulement le cercle restreint d'Accès &
+    // permissions.
+    const derniereModif = await pool.query(
+      `SELECT j.action, j.horodatage, u.code AS utilisateur_code, u.prenom || ' ' || u.nom AS utilisateur_nom
+       FROM journal_audit j
+       LEFT JOIN utilisateurs u ON u.id = j.utilisateur_id
+       WHERE j.entite = 'clients' AND j.entite_id = $1
+       ORDER BY j.horodatage DESC LIMIT 1`,
+      [req.params.id]
+    );
 
     const [pieces, dossiers, originaux, liens, liensInverses] = await Promise.all([
       pool.query(
@@ -182,6 +213,7 @@ router.get("/:id", async (req, res) => {
       originaux_confies: originaux.rows,
       liens: liens.rows,
       liens_inverses: liensInverses.rows,
+      derniere_modification: derniereModif.rows[0] || null,
     });
   } catch (e) {
     console.error(e);
@@ -228,6 +260,15 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
 router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
+    // Traçabilité procédurale (09/10/2026) : photo "avant" sur les champs
+    // d'identité suivis (CHAMPS_IDENTITE_CLIENT), pour diffuser avant/après
+    // après l'UPDATE.
+    const { rows: [avant] } = await pool.query(
+      `SELECT ${CHAMPS_IDENTITE_CLIENT.join(", ")} FROM clients WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!avant) return res.status(404).json({ error: "Client introuvable" });
+
     // date_trunc('milliseconds', ...) des deux côtés : Postgres stocke
     // TIMESTAMPTZ à la microseconde, mais un aller-retour JSON/JS Date perd
     // cette précision (arrondi à la milliseconde) — sans ce troncage, une
@@ -258,13 +299,22 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
          kyc_maj_le = CASE WHEN $15 IS NOT NULL THEN current_date ELSE kyc_maj_le END,
          maj_le = now()
        WHERE id = $16 ${clauseConcurrence}
-       RETURNING id, kyc_statut, kyc_maj_le, maj_le`,
+       RETURNING id, kyc_statut, kyc_maj_le, maj_le,
+                 denomination, rccm, nif, forme_juridique, prenom, nom,
+                 nationalite, email, telephone, adresse, ville, pays`,
       params
     );
     if (!rows[0]) {
       const existe = await pool.query("SELECT 1 FROM clients WHERE id = $1", [req.params.id]);
       if (!existe.rows[0]) return res.status(404).json({ error: "Client introuvable" });
       return res.status(409).json({ error: "Cette fiche a été modifiée entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
+    }
+    const changements = diffChamps(avant, rows[0], CHAMPS_IDENTITE_CLIENT);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_client", entite: "clients",
+        entiteId: req.params.id, details: { changements }, ip: req.ip,
+      });
     }
     res.json(rows[0]);
   } catch (e) {

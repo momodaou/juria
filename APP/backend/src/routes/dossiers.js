@@ -369,12 +369,14 @@ router.get("/:id", async (req, res) => {
       `SELECT d.*,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               u.prenom || ' ' || u.nom AS responsable_nom,
+              cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom,
               ${SELECT_HONORAIRES},
               ${SELECT_STATUT_FACTURATION},
               abf.derniere_facture_le AS abonnement_derniere_facture_le
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
        JOIN utilisateurs u ON u.id = d.responsable_id
+       LEFT JOIN utilisateurs cp ON cp.id = d.cree_par
        ${JOIN_HONORAIRES}
        ${JOIN_STATUT_FACTURATION}
        ${JOIN_ABONNEMENT_FACTURE}
@@ -649,8 +651,8 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
           objet, statut_procedure, statut_procedure_precision, intermediaire,
           code_matiere, couleur_chemise, date_ouverture_origine,
           mode_honoraires_precision, montant_convenu_xof,
-          abonnement_periodicite, abonnement_jour_facturation, abonnement_mois_facturation)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+          abonnement_periodicite, abonnement_jour_facturation, abonnement_mois_facturation, cree_par)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
       [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.montant_litige_sens || null, b.montant_litige_sens_precision || null, b.mode_honoraires, b.urgence, b.responsable_id, proBono,
@@ -658,7 +660,8 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
        codeMatiere, couleurChemise, b.date_ouverture_origine || null,
        b.mode_honoraires === "autre" ? b.mode_honoraires_precision.trim() : null,
        MODES_MONTANT_CONVENU.includes(b.mode_honoraires) ? (b.montant_convenu ?? null) : null,
-       b.abonnement_periodicite || null, formuleAbonnement.jourEcheance ?? null, formuleAbonnement.moisEcheance ?? null]
+       b.abonnement_periodicite || null, formuleAbonnement.jourEcheance ?? null, formuleAbonnement.moisEcheance ?? null,
+       req.user.sub]
     );
 
     // Parties adverses saisies au contrôle des conflits (étape 1 du

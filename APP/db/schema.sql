@@ -4551,3 +4551,17 @@ CREATE INDEX IF NOT EXISTS idx_vignettes_numeros_dispo ON vignettes_numeros_stoc
 -- Seuil d'alerte de stock (configurable), même esprit que les seuils
 -- honoraires/pro bono déjà en place.
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS seuil_alerte_vignettes INTEGER NOT NULL DEFAULT 10;
+
+-- =====================================================================
+--  TRAÇABILITÉ "CRÉÉ PAR" — dossiers (09/10/2026, question explicite de
+--  l'utilisateur : « c'est quand même important de savoir qui a créé un
+--  dossier ou un client... apparent dans les fiches »)
+-- =====================================================================
+-- `clients.cree_par` existait déjà (premier schéma) mais n'était jamais
+-- résolu/affiché. `dossiers` n'avait, elle, AUCUNE colonne équivalente —
+-- `responsable_id` est réattribuable (voir dossiers.js), donc ne répond
+-- pas à "qui a créé", seulement "qui en a la charge aujourd'hui".
+-- Non rétroactif : NULL pour tout dossier déjà existant — affiché « — »
+-- côté écran, même principe que les autres ajouts non rétroactifs du
+-- projet (ex. règle responsable-avocat du 12/09/2026).
+ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS cree_par UUID REFERENCES utilisateurs(id);

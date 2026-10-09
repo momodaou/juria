@@ -191,3 +191,60 @@ describe("GET /api/acces/audit — filtres (09/10/2026)", () => {
     expect(res.body.length).toBe(0);
   });
 });
+
+// 09/10/2026 — suite de la demande utilisateur (« c'est quand même important
+// de savoir qui a créé un dossier ou un client... apparent dans les
+// fiches ») : `dossiers.cree_par` (nouvelle colonne, non rétroactive) et
+// `clients.cree_par` (déjà en base depuis le premier schéma, jamais résolu
+// ni affiché) + journalisation des modifications de fiche client (gap
+// identique à celui comblé pour les dossiers plus haut dans ce fichier,
+// jamais traité pour clients.js jusqu'ici).
+describe("« Créé par » — dossiers et clients", () => {
+  test("GET /api/dossiers/:id expose cree_par_code/cree_par_nom pour un dossier créé après le correctif", async () => {
+    const dossierId = await creerClientEtDossier("cree-par");
+    const fiche = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.status).toBe(200);
+    expect(fiche.body.cree_par_code).toBe("TREG");
+  });
+
+  test("GET /api/clients/:id expose cree_par_code/cree_par_nom", async () => {
+    const client = await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination: `Client créateur ${Date.now()}-${Math.random()}` });
+    const fiche = await request(app).get(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.status).toBe(200);
+    expect(fiche.body.cree_par_code).toBe("TREG");
+  });
+});
+
+describe("Modification de fiche client — journalisée + rollup « dernière modification »", () => {
+  test("un champ d'identité suivi (denomination) produit une entrée avec code utilisateur + diff", async () => {
+    const client = await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination: `Client avant correction ${Date.now()}-${Math.random()}` });
+
+    const avant = await request(app).get(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(avant.body.derniere_modification).toBeNull();
+
+    const nouvelleDenom = `Client après correction ${Date.now()}`;
+    const maj = await request(app).put(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ denomination: nouvelleDenom });
+    expect(maj.status).toBe(200);
+
+    const apres = await request(app).get(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(apres.body.derniere_modification.utilisateur_code).toBe("TREG");
+
+    const entree = await dernierAudit("clients", "modifier_client", client.body.id);
+    expect(entree).toBeTruthy();
+    expect(entree.details.changements.denomination.apres).toBe(nouvelleDenom);
+  });
+
+  test("un champ non suivi (notes) ne produit aucune entrée", async () => {
+    const client = await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination: `Client notes seules ${Date.now()}-${Math.random()}` });
+    const maj = await request(app).put(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ notes: "Simple complément d'information, sans enjeu d'identité." });
+    expect(maj.status).toBe(200);
+
+    const fiche = await request(app).get(`/api/clients/${client.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.body.derniere_modification).toBeNull();
+  });
+});
