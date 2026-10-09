@@ -222,6 +222,15 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/dossiers`, payload);
   }
 
+  // 09/10/2026 — audit doublons, même patron que verifierDoublonClient (gap
+  // comblé : la création d'un dossier lui-même n'avait jamais été couverte
+  // par l'audit doublons du 26/09/2026).
+  verifierDoublonDossier(clientId: string, codeMatiere?: string): Observable<any[]> {
+    const params = new URLSearchParams({ client_id: clientId });
+    if (codeMatiere) params.set('code_matiere', codeMatiere);
+    return this.http.get<any[]>(`${this.base}/api/dossiers/verifier-doublon?${params.toString()}`);
+  }
+
   majDossier(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/dossiers/${id}`, payload);
   }

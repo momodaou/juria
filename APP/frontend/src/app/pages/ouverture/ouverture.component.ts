@@ -1,4 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
@@ -9,7 +10,7 @@ import { libelleRole } from '../../core/roles';
 @Component({
   selector: 'app-ouverture',
   standalone: true,
-  imports: [FormsModule, RouterLink, ClientPickerComponent],
+  imports: [FormsModule, RouterLink, ClientPickerComponent, DatePipe],
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
 
@@ -345,9 +346,25 @@ import { libelleRole } from '../../core/roles';
           </label>
         }
 
-        <button class="btn" (click)="creerDossier()" [disabled]="creation() || !formValide()">
-          {{ creation() ? 'Création…' : 'Créer le dossier' }}
-        </button>
+        @if (doublonsDossier().length) {
+          <div class="doublon">
+            <b>⚠ Dossier(s) déjà ouvert(s) pour ce client{{ dossier.code_matiere ? ' dans la même matière' : '' }} :</b>
+            @for (d of doublonsDossier(); track d.id) {
+              <p>
+                <a class="lien" [routerLink]="['/dossiers', d.id]" target="_blank">{{ d.numero }} — {{ d.intitule }}</a>
+                ({{ d.statut }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
+              </p>
+            }
+            <div class="upload">
+              <button class="btn ghost" type="button" (click)="doublonsDossier.set([])" [disabled]="creation()">Annuler, je vérifie</button>
+              <button class="btn" type="button" (click)="creerDossier(true)" [disabled]="creation()">{{ creation() ? 'Création…' : 'Créer quand même' }}</button>
+            </div>
+          </div>
+        } @else {
+          <button class="btn" (click)="creerDossier()" [disabled]="creation() || !formValide()">
+            {{ creation() ? 'Création…' : 'Créer le dossier' }}
+          </button>
+        }
         @if (erreurCreation()) { <p class="err">{{ erreurCreation() }}</p> }
       </section>
     }
@@ -710,7 +727,15 @@ export class OuvertureComponent implements OnInit {
     });
   }
 
-  creerDossier(): void {
+  // Contrôle de doublon avant création (09/10/2026, voir dossiers.js
+  // verifier-doublon) — comble un gap trouvé en pratique (CX-SOC-2026-0002/
+  // 0003, même affaire ouverte deux fois pour le même client), que l'audit
+  // doublons du 26/09/2026 n'avait jamais couvert pour la création d'un
+  // dossier lui-même. Même principe que creerClientInline : on prévient,
+  // sans jamais bloquer, l'utilisateur décide.
+  readonly doublonsDossier = signal<any[]>([]);
+
+  creerDossier(ignorerDoublon = false): void {
     this.erreurCreation.set('');
     // Discipline de facturation — Bloc A : même garde que côté serveur,
     // pour un retour immédiat plutôt qu'un aller-retour réseau.
@@ -729,6 +754,18 @@ export class OuvertureComponent implements OnInit {
       this.erreurCreation.set('Périodicité et prochaine facturation doivent être renseignées ensemble.');
       return;
     }
+    if (!ignorerDoublon) {
+      this.api.verifierDoublonDossier(this.dossier.client_id, this.dossier.code_matiere).subscribe({
+        next: (d) => { if (d.length) this.doublonsDossier.set(d); else this.creerDossierReellement(); },
+        error: () => this.creerDossierReellement(),
+      });
+      return;
+    }
+    this.doublonsDossier.set([]);
+    this.creerDossierReellement();
+  }
+
+  private creerDossierReellement(): void {
     this.creation.set(true);
     const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
     // Instance initiale : seulement pertinent en contentieux, et seulement

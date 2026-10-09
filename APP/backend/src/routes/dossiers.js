@@ -361,6 +361,37 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/dossiers/verifier-doublon?client_id=&code_matiere=
+// (09/10/2026, comble un gap de l'audit doublons du 26/09/2026 qui avait
+// couvert parties/instances/clients/rôle d'audience/dépenses/rétrocessions
+// mais jamais la création d'un dossier lui-même — découvert en pratique :
+// CX-SOC-2026-0002/0003, même affaire ouverte deux fois pour le même
+// client). Signale, sans jamais bloquer (même principe que
+// clients.verifier-doublon) : resserré sur la même matière si elle est déjà
+// choisie à l'écran, sinon tous les dossiers déjà ouverts pour ce client.
+router.get("/verifier-doublon", async (req, res) => {
+  const { client_id, code_matiere } = req.query;
+  if (!client_id) return res.json([]);
+  try {
+    const clauses = ["client_id = $1"];
+    const params = [client_id];
+    if (code_matiere) {
+      params.push(code_matiere);
+      clauses.push(`code_matiere = $${params.length}`);
+    }
+    const { rows } = await pool.query(
+      `SELECT id, numero, intitule, objet, statut, date_ouverture
+       FROM dossiers WHERE ${clauses.join(" AND ")}
+       ORDER BY date_ouverture DESC LIMIT 10`,
+      params
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/dossiers/:id  -> dossier enrichi (client, responsable, parties, équipe)
 router.get("/:id", async (req, res) => {
   const id = req.params.id;
