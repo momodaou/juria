@@ -839,8 +839,19 @@ export class ApiService {
   revoquerDelegation(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/acces/delegations/${id}/revoquer`, {});
   }
-  journalAudit(limit = 100): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/api/acces/audit?limit=${limit}`);
+  // Filtres étendus le 09/10/2026 (identifier au besoin, par le code d'un
+  // profil — mda/mdj/bco… — telle ou telle action effectuée) — voir
+  // CLAUDE.md. `utilisateur_id`/`entite` existaient déjà côté API sans
+  // jamais être transmis depuis l'écran.
+  journalAudit(filtres: { utilisateur_id?: string; entite?: string; action?: string; depuis?: string; jusqu_au?: string; limit?: number } = {}): Observable<any[]> {
+    const params = new URLSearchParams();
+    if (filtres.utilisateur_id) params.set('utilisateur_id', filtres.utilisateur_id);
+    if (filtres.entite) params.set('entite', filtres.entite);
+    if (filtres.action) params.set('action', filtres.action);
+    if (filtres.depuis) params.set('depuis', filtres.depuis);
+    if (filtres.jusqu_au) params.set('jusqu_au', filtres.jusqu_au);
+    params.set('limit', String(filtres.limit || 100));
+    return this.http.get<any[]>(`${this.base}/api/acces/audit?${params.toString()}`);
   }
   permissionsMatrice(): Observable<{ catalogue: any[]; roles: string[]; valeurs: Record<string, boolean> }> {
     return this.http.get<any>(`${this.base}/api/acces/permissions`);

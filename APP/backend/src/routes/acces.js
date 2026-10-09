@@ -252,20 +252,32 @@ router.post("/delegations/:id/revoquer", async (req, res) => {
   }
 });
 
-// GET /api/acces/audit?utilisateur_id=&entite=&limit=
+// GET /api/acces/audit?utilisateur_id=&entite=&action=&depuis=&jusqu_au=&limit=
+// Filtres étendus le 09/10/2026 (demande explicite de l'utilisateur :
+// pouvoir identifier au besoin, par le code d'un profil — mda/mdj/bco…,
+// ce qui est déjà exposé par le sélecteur d'utilisateur côté écran —
+// telle ou telle action effectuée). `utilisateur_id`/`entite` existaient
+// déjà côté API sans jamais être câblés par le frontend ; `action` et la
+// plage de dates (`depuis`/`jusqu_au`, bornes incluses sur la DATE,
+// indépendante de l'heure) sont nouveaux. `u.code` ajouté à la sélection —
+// résolu par jointure comme ailleurs dans l'appli (ex. audiences.js), pas
+// dupliqué dans journal_audit lui-même.
 router.get("/audit", async (req, res) => {
-  const { utilisateur_id, entite } = req.query;
+  const { utilisateur_id, entite, action } = req.query;
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const params = [];
   const clauses = [];
   if (utilisateur_id) { params.push(utilisateur_id); clauses.push(`j.utilisateur_id = $${params.length}`); }
   if (entite) { params.push(entite); clauses.push(`j.entite = $${params.length}`); }
+  if (action) { params.push(action); clauses.push(`j.action = $${params.length}`); }
+  if (req.query.depuis) { params.push(req.query.depuis); clauses.push(`j.horodatage >= $${params.length}::date`); }
+  if (req.query.jusqu_au) { params.push(req.query.jusqu_au); clauses.push(`j.horodatage < $${params.length}::date + interval '1 day'`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   params.push(limit);
   try {
     const { rows } = await pool.query(
       `SELECT j.id, j.action, j.entite, j.entite_id, j.details, j.horodatage,
-              u.prenom || ' ' || u.nom AS utilisateur
+              u.code AS utilisateur_code, u.prenom || ' ' || u.nom AS utilisateur
        FROM journal_audit j
        LEFT JOIN utilisateurs u ON u.id = j.utilisateur_id
        ${where}

@@ -3,6 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
+const { logAudit, diffChamps } = require("../audit");
 const router = express.Router();
 
 // Repli d'intitulé quand aucun titre n'est saisi (titre NOT NULL en base).
@@ -71,6 +72,11 @@ router.post("/", requirePermission("evenements.creer"), async (req, res) => {
       // 25/09/2026 en ajoutant la correction des échéances).
       [b.dossier_id, b.type, (b.titre && b.titre.trim()) || LIBELLES_TYPE[b.type] || b.type, b.date_echeance, b.responsable_id || req.user.sub, b.precision || null]
     );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "creer_echeance", entite: "evenements", entiteId: rows[0].id,
+      details: { dossier_id: b.dossier_id, type: rows[0].type, titre: rows[0].titre, date_echeance: rows[0].date_echeance },
+      ip: req.ip,
+    });
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -83,9 +89,15 @@ router.post("/", requirePermission("evenements.creer"), async (req, res) => {
 // correction n'était possible jusqu'ici). Si la date change (report), les
 // drapeaux d'alerte sont remis à zéro pour que la cascade J-30 → jour J
 // reparte sur la nouvelle date. Même permission que la création.
+const CHAMPS_PROCEDURAUX_ECHEANCE = ["type", "titre", "precision", "responsable_id", "date_echeance"];
+
 router.put("/:id", requirePermission("evenements.creer"), async (req, res) => {
   const b = req.body || {};
   try {
+    const { rows: [avant] } = await pool.query(
+      `SELECT dossier_id, ${CHAMPS_PROCEDURAUX_ECHEANCE.join(", ")} FROM evenements WHERE id = $1`,
+      [req.params.id]
+    );
     const { rows } = await pool.query(
       `UPDATE evenements SET
          type = COALESCE($1::type_evenement, type),
@@ -99,7 +111,7 @@ router.put("/:id", requirePermission("evenements.creer"), async (req, res) => {
          alerte_j0  = CASE WHEN $3::timestamptz IS NOT NULL AND $3::timestamptz <> date_echeance THEN FALSE ELSE alerte_j0 END,
          date_echeance = COALESCE($3::timestamptz, date_echeance)
        WHERE id = $7 AND statut = 'a_venir'
-       RETURNING id, type, titre, precision, date_echeance, statut`,
+       RETURNING id, type, titre, precision, responsable_id, date_echeance, statut`,
       [b.type || null, (b.titre && b.titre.trim()) || null, b.date_echeance || null,
        b.responsable_id || null, b.precision || null, b.precision !== undefined, req.params.id]
     );
@@ -107,6 +119,13 @@ router.put("/:id", requirePermission("evenements.creer"), async (req, res) => {
       const existe = await pool.query("SELECT 1 FROM evenements WHERE id = $1", [req.params.id]);
       return res.status(existe.rows[0] ? 409 : 404).json({
         error: existe.rows[0] ? "Échéance déjà traitée ou annulée — non modifiable." : "Échéance introuvable",
+      });
+    }
+    const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_ECHEANCE);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_echeance", entite: "evenements", entiteId: req.params.id,
+        details: { dossier_id: avant.dossier_id, changements }, ip: req.ip,
       });
     }
     res.json(rows[0]);
@@ -127,7 +146,7 @@ router.post("/:id/statut", requirePermission("evenements.creer"), async (req, re
   try {
     const { rows } = await pool.query(
       `UPDATE evenements SET statut = $1::statut_evenement
-       WHERE id = $2 AND statut = 'a_venir' RETURNING id, statut`,
+       WHERE id = $2 AND statut = 'a_venir' RETURNING id, statut, dossier_id`,
       [statut, req.params.id]
     );
     if (!rows[0]) {
@@ -136,6 +155,12 @@ router.post("/:id/statut", requirePermission("evenements.creer"), async (req, re
         error: existe.rows[0] ? "Échéance déjà traitée ou annulée (par quelqu'un d'autre entre-temps ?)" : "Échéance introuvable",
       });
     }
+    await logAudit({
+      utilisateurId: req.user.sub, action: `${statut === "traite" ? "traiter" : "annuler"}_echeance`,
+      entite: "evenements", entiteId: req.params.id,
+      details: { dossier_id: rows[0].dossier_id, changements: { statut: { avant: "a_venir", apres: statut } } },
+      ip: req.ip,
+    });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

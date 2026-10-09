@@ -299,23 +299,42 @@ import { ROLES } from '../../core/roles';
 
       <section class="panel">
         <h3>Journal d'audit (100 dernières actions)</h3>
+        <div class="audit-filtres">
+          <select class="sel" [(ngModel)]="auditFiltre.utilisateur_id" (ngModelChange)="chargerAudit()">
+            <option value="">Tous les utilisateurs</option>
+            @for (u of utilisateurs(); track u.id) {
+              <option [value]="u.id">{{ u.code }} — {{ u.prenom }} {{ u.nom }}</option>
+            }
+          </select>
+          <select class="sel" [(ngModel)]="auditFiltre.entite" (ngModelChange)="chargerAudit()">
+            <option value="">Toutes les entités</option>
+            @for (e of ENTITES_AUDIT; track e.code) {
+              <option [value]="e.code">{{ e.libelle }}</option>
+            }
+          </select>
+          <input class="sel" type="date" [(ngModel)]="auditFiltre.depuis" (ngModelChange)="chargerAudit()" title="Depuis le">
+          <input class="sel" type="date" [(ngModel)]="auditFiltre.jusqu_au" (ngModelChange)="chargerAudit()" title="Jusqu'au">
+          <a class="lien" (click)="reinitialiserFiltreAudit()">Réinitialiser</a>
+        </div>
         @if (audit().length) {
           <table>
             <tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Entité</th></tr>
             @for (a of audit(); track a.id) {
               <tr>
                 <td>{{ a.horodatage | date:'dd/MM/yyyy HH:mm' }}</td>
-                <td>{{ a.utilisateur || '—' }}</td>
+                <td>{{ a.utilisateur_code ? (a.utilisateur_code + ' — ' + a.utilisateur) : (a.utilisateur || '—') }}</td>
                 <td><span class="tag">{{ a.action }}</span></td>
                 <td>{{ a.entite || '—' }}</td>
               </tr>
             }
           </table>
-        } @else { <p class="muted">Aucune entrée.</p> }
+        } @else { <p class="muted">Aucune entrée pour ce filtre.</p> }
       </section>
     }
   `,
   styles: [`
+    /* 09/10/2026 — filtres du journal d'audit. */
+    .audit-filtres{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
@@ -442,6 +461,27 @@ export class AccesComponent implements OnInit {
 
   readonly matrice = signal<{ catalogue: any[]; roles: string[]; valeurs: Record<string, boolean> } | null>(null);
 
+  // Filtres du journal d'audit (09/10/2026, demande explicite de
+  // l'utilisateur : « identifier au besoin, par le code d'un profil —
+  // mda/mdj/bco… — telle ou telle action effectuée »). `utilisateur_id`/
+  // `entite` existaient déjà côté API, jamais câblés depuis l'écran.
+  auditFiltre: { utilisateur_id: string; entite: string; depuis: string; jusqu_au: string } = {
+    utilisateur_id: '', entite: '', depuis: '', jusqu_au: '',
+  };
+  readonly ENTITES_AUDIT = [
+    { code: 'dossiers', libelle: 'Dossier' },
+    { code: 'dossier_instances', libelle: 'Instance' },
+    { code: 'dossier_parties', libelle: 'Partie au dossier' },
+    { code: 'audiences', libelle: 'Audience' },
+    { code: 'evenements', libelle: 'Échéance' },
+    { code: 'utilisateurs', libelle: 'Compte utilisateur' },
+    { code: 'delegations_acces', libelle: 'Délégation d’accès' },
+    { code: 'permissions_role', libelle: 'Matrice de permissions' },
+    { code: 'factures', libelle: 'Facture' },
+    { code: 'conversations', libelle: 'Conversation (messagerie)' },
+    { code: 'messages', libelle: 'Message' },
+  ];
+
   statut(u: any): 'actif' | 'attente' | 'suspendu' {
     if (u.actif) return 'actif';
     return u.valide_le ? 'suspendu' : 'attente';
@@ -452,13 +492,22 @@ export class AccesComponent implements OnInit {
     return s === 'actif' ? 'Actif' : s === 'attente' ? 'En attente de validation' : 'Suspendu';
   }
 
+  chargerAudit(): void {
+    this.api.journalAudit(this.auditFiltre).subscribe({
+      next: (a) => { this.audit.set(a); this.erreurGlobale.set(''); },
+      error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Accès réservé aux associés/admin.'),
+    });
+  }
+
+  reinitialiserFiltreAudit(): void {
+    this.auditFiltre = { utilisateur_id: '', entite: '', depuis: '', jusqu_au: '' };
+    this.chargerAudit();
+  }
+
   ngOnInit(): void {
     this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.chargerDelegations();
-    this.api.journalAudit().subscribe({
-      next: (a) => this.audit.set(a),
-      error: (e) => this.erreurGlobale.set(e?.error?.error ?? 'Accès réservé aux associés/admin.'),
-    });
+    this.chargerAudit();
     // 403 attendu pour un Administrateur général (matrice réservée
     // Associé + Administrateur IT) : on masque simplement la section,
     // sans faire remonter d'erreur.

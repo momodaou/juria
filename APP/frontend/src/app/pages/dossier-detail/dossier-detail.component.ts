@@ -111,6 +111,19 @@ import { libelleRole } from '../../core/roles';
         </div>
       </div>
 
+      <!-- 09/10/2026 — traçabilité procédurale (voir CLAUDE.md) : signal
+           préventif visible par tout collaborateur ayant accès à la fiche,
+           pas un journal à aller consulter ailleurs — pour repérer tout de
+           suite qu'un autre collaborateur vient de toucher ce dossier
+           (dossier lui-même, instance, partie, audience ou échéance liée),
+           avant de risquer de mélanger une information procédurale. -->
+      @if (d.derniere_modification; as dm) {
+        <p class="derniere-modif">
+          Dernière modification : <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
+          — {{ libelleActionAudit(dm.action) }} — {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
+        </p>
+      }
+
       @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
 
       <div class="liens-rapides">
@@ -1012,6 +1025,8 @@ import { libelleRole } from '../../core/roles';
     }
   `,
   styles: [`
+    /* 09/10/2026 — bandeau "dernière modification" (traçabilité procédurale). */
+    .derniere-modif{font-size:var(--fs-sm);color:var(--slate);margin:8px 0 0}
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
@@ -1517,6 +1532,35 @@ export class DossierDetailComponent implements OnInit {
     if (sens === 'reclame_par_partie_adverse') return 'réclamation adverse';
     if (sens === 'autre') return precision?.trim() ? precision.trim() : 'autre';
     return '';
+  }
+
+  // 09/10/2026 — bandeau "dernière modification" (traçabilité procédurale,
+  // voir CLAUDE.md) : traduit les codes d'action posés par logAudit() sur
+  // dossiers.js/audiences.js/evenements.js — repli sur le code brut pour
+  // ne jamais afficher un bandeau vide si une action future est ajoutée
+  // sans être traduite ici.
+  private readonly LIBELLES_ACTIONS_AUDIT: Record<string, string> = {
+    modifier_dossier: 'fiche du dossier modifiée',
+    basculer_pro_bono: 'statut pro bono modifié',
+    creer_instance: 'instance ajoutée',
+    modifier_instance: 'instance modifiée',
+    supprimer_instance: 'instance retirée',
+    creer_partie: 'partie ajoutée',
+    modifier_partie: 'partie modifiée',
+    supprimer_partie: 'partie retirée',
+    creer_audience: 'audience programmée',
+    modifier_audience: 'audience corrigée',
+    saisir_retour_audience: 'retour d’audience saisi',
+    corriger_retour_audience: 'retour d’audience corrigé',
+    supprimer_audience: 'audience retirée du rôle',
+    creer_echeance: 'échéance ajoutée',
+    modifier_echeance: 'échéance modifiée',
+    traiter_echeance: 'échéance marquée traitée',
+    annuler_echeance: 'échéance annulée',
+  };
+
+  libelleActionAudit(action: string): string {
+    return this.LIBELLES_ACTIONS_AUDIT[action] || action;
   }
 
   ajouterInstance(): void {

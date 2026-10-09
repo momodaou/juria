@@ -13,7 +13,18 @@ const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanc
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const { deriverFormule } = require("../periodicite");
 const { PERIODICITES_ABONNEMENT, JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
+const { logAudit, diffChamps } = require("../audit");
 const router = express.Router();
+
+// Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
+// erreur de saisie peut avoir un impact réel sur une procédure (délai,
+// qualification, responsable, juridiction…) — journalisés avec leur
+// valeur avant/après, pas l'intégralité des colonnes modifiables.
+const CHAMPS_PROCEDURAUX_DOSSIER = [
+  "responsable_id", "statut", "phase", "statut_procedure", "statut_procedure_precision",
+  "juridiction", "numero_role", "objet", "montant_litige", "montant_litige_sens",
+  "mode_honoraires", "client_id",
+];
 
 // Discipline de facturation — Bloc A (18/09/2026, voir CLAUDE.md/HISTORY.md
 // pour la synthèse de conception complète). Montant convenu réservé aux
@@ -417,9 +428,29 @@ router.get("/:id", async (req, res) => {
     const dossier = { ...d.rows[0] };
     if (!peutVoirMontant) dossier.montant_convenu_xof = null;
 
+    // Traçabilité procédurale (09/10/2026) : "dernière modification" visible
+    // par tout collaborateur ayant accès à la fiche — pas seulement le
+    // cercle restreint de l'Accès & permissions (/api/acces/audit) — pour
+    // prévenir un mélange d'informations entre collaborateurs sur CE dossier,
+    // pas seulement le constater après coup. Agrège les écritures touchant
+    // le dossier lui-même ET ses sous-entités procédurales (instances,
+    // parties, audiences, échéances) via details.dossier_id.
+    const derniereModif = await pool.query(
+      `SELECT j.action, j.entite, j.horodatage, u.code AS utilisateur_code,
+              u.prenom || ' ' || u.nom AS utilisateur_nom
+       FROM journal_audit j
+       LEFT JOIN utilisateurs u ON u.id = j.utilisateur_id
+       WHERE (j.entite = 'dossiers' AND j.entite_id = $1)
+          OR (j.entite IN ('dossier_instances', 'dossier_parties', 'audiences', 'evenements')
+              AND j.details->>'dossier_id' = $1::text)
+       ORDER BY j.horodatage DESC LIMIT 1`,
+      [id]
+    );
+
     res.json({
       ...dossier, parties: parties.rows, intervenants: intervenants.rows,
       clients_additionnels: clientsAdditionnels.rows, instances: instances.rows,
+      derniere_modification: derniereModif.rows[0] || null,
     });
   } catch (e) {
     console.error(e);
@@ -771,6 +802,15 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // rencontré et corrigé sur PUT /api/echeances-administratives/:id.
     const formuleAbonnementFournie = !!(b.abonnement_periodicite || b.abonnement_prochaine_facturation);
 
+    // Traçabilité procédurale : photo "avant" sur les seuls champs suivis
+    // (CHAMPS_PROCEDURAUX_DOSSIER), pour diffuser avant/après après l'UPDATE
+    // sans dépendre de ce que le RETURNING choisit de renvoyer.
+    const { rows: [avant] } = await pool.query(
+      `SELECT ${CHAMPS_PROCEDURAUX_DOSSIER.join(", ")} FROM dossiers WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!avant) return res.status(404).json({ error: "Dossier introuvable" });
+
     const clauseConcurrence = b.maj_le_attendu != null
       ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $30::timestamptz)"
       : "";
@@ -819,13 +859,22 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
          abonnement_mois_facturation = CASE WHEN $26 THEN $28 ELSE abonnement_mois_facturation END,
          maj_le = now()
        WHERE id = $29 ${clauseConcurrence}
-       RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le`,
+       RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le,
+                 responsable_id, statut_procedure, statut_procedure_precision, juridiction,
+                 numero_role, objet, montant_litige, montant_litige_sens, mode_honoraires`,
       params
     );
     if (!rows[0]) {
       const existe = await pool.query("SELECT 1 FROM dossiers WHERE id = $1", [req.params.id]);
       if (!existe.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
       return res.status(409).json({ error: "Ce dossier a été modifié entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
+    }
+    const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_DOSSIER);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_dossier", entite: "dossiers",
+        entiteId: req.params.id, details: { changements }, ip: req.ip,
+      });
     }
     res.json(rows[0]);
   } catch (e) {
@@ -883,6 +932,10 @@ router.put("/:id/pro-bono", requirePermission("dossiers.pro_bono.declarer"), asy
       }
     }
     await pool.query("UPDATE dossiers SET pro_bono = $1 WHERE id = $2", [proBono, req.params.id]);
+    await logAudit({
+      utilisateurId: req.user.sub, action: "basculer_pro_bono", entite: "dossiers", entiteId: req.params.id,
+      details: { changements: { pro_bono: { avant: d.pro_bono, apres: proBono } } }, ip: req.ip,
+    });
     res.json({ pro_bono: proBono });
   } catch (e) {
     console.error(e);
@@ -996,6 +1049,10 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
       [req.params.id, b.degre || null, b.juridiction || null, b.numero_role || null, b.date_debut || null,
        b.statut_partie || null, b.statut_partie_precision || null]
     );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "creer_instance", entite: "dossier_instances", entiteId: rows[0].id,
+      details: { dossier_id: req.params.id, instance: rows[0] }, ip: req.ip,
+    });
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -1005,9 +1062,18 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
 
 // PUT /api/dossiers/:id/instances/:instanceId — compléter une instance au
 // fil du temps (n° de rôle obtenu après coup, décision rendue…).
+const CHAMPS_PROCEDURAUX_INSTANCE = [
+  "juridiction", "numero_role", "date_debut", "decision", "statut_partie", "statut_partie_precision",
+];
+
 router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
   const b = req.body || {};
   try {
+    const { rows: [avant] } = await pool.query(
+      `SELECT ${CHAMPS_PROCEDURAUX_INSTANCE.join(", ")} FROM instances WHERE id = $1 AND dossier_id = $2`,
+      [req.params.instanceId, req.params.id]
+    );
+    if (!avant) return res.status(404).json({ error: "Instance introuvable" });
     const { rows } = await pool.query(
       `UPDATE instances SET
          juridiction = COALESCE($1, juridiction),
@@ -1022,7 +1088,13 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
        b.statut_partie || null, b.statut_partie_precision || null,
        req.params.instanceId, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Instance introuvable" });
+    const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_INSTANCE);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_instance", entite: "dossier_instances",
+        entiteId: req.params.instanceId, details: { dossier_id: req.params.id, changements }, ip: req.ip,
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -1036,7 +1108,16 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
 // instance à côté). Même patron que DELETE /:id/parties/:partieId.
 router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
   try {
-    await pool.query("DELETE FROM instances WHERE id = $1 AND dossier_id = $2", [req.params.instanceId, req.params.id]);
+    const { rows } = await pool.query(
+      "DELETE FROM instances WHERE id = $1 AND dossier_id = $2 RETURNING *",
+      [req.params.instanceId, req.params.id]
+    );
+    if (rows[0]) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "supprimer_instance", entite: "dossier_instances",
+        entiteId: req.params.instanceId, details: { dossier_id: req.params.id, instance: rows[0] }, ip: req.ip,
+      });
+    }
     res.status(204).send();
   } catch (e) {
     console.error(e);
@@ -1171,6 +1252,10 @@ router.post("/:id/parties", requirePermission("dossiers.parties.gerer"), async (
        RETURNING id, role, denomination, conseil`,
       [req.params.id, b.role || null, b.denomination, b.conseil || null]
     );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "creer_partie", entite: "dossier_parties", entiteId: rows[0].id,
+      details: { dossier_id: req.params.id, partie: rows[0] }, ip: req.ip,
+    });
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -1186,6 +1271,11 @@ router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer")
     // pas de qualifier une partie autrement qu'« adverse » (rôle imposé à
     // la création). Cast explicite ::role_partie — motif de bug récurrent
     // du projet sur un COALESCE face à une colonne ENUM (voir CLAUDE.md).
+    const { rows: [avant] } = await pool.query(
+      "SELECT role, denomination, conseil FROM dossier_parties WHERE id = $1 AND dossier_id = $2",
+      [req.params.partieId, req.params.id]
+    );
+    if (!avant) return res.status(404).json({ error: "Partie introuvable" });
     const { rows } = await pool.query(
       `UPDATE dossier_parties SET
          role = COALESCE($1::role_partie, role),
@@ -1195,7 +1285,13 @@ router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer")
        RETURNING id, role, denomination, conseil`,
       [b.role || null, b.denomination || null, b.conseil || null, req.params.partieId, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Partie introuvable" });
+    const changements = diffChamps(avant, rows[0], ["role", "denomination", "conseil"]);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_partie", entite: "dossier_parties",
+        entiteId: req.params.partieId, details: { dossier_id: req.params.id, changements }, ip: req.ip,
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -1205,7 +1301,16 @@ router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer")
 
 router.delete("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer"), async (req, res) => {
   try {
-    await pool.query("DELETE FROM dossier_parties WHERE id = $1 AND dossier_id = $2", [req.params.partieId, req.params.id]);
+    const { rows } = await pool.query(
+      "DELETE FROM dossier_parties WHERE id = $1 AND dossier_id = $2 RETURNING *",
+      [req.params.partieId, req.params.id]
+    );
+    if (rows[0]) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "supprimer_partie", entite: "dossier_parties",
+        entiteId: req.params.partieId, details: { dossier_id: req.params.id, partie: rows[0] }, ip: req.ip,
+      });
+    }
     res.status(204).send();
   } catch (e) {
     console.error(e);

@@ -9,6 +9,7 @@ const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanc
 const { envoyerRolePdf } = require("../rolePdf");
 const { saveObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
+const { logAudit, diffChamps } = require("../audit");
 const router = express.Router();
 
 // 26/09/2026 — joindre le document de la décision (jugement/arrêt/
@@ -149,6 +150,12 @@ router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, r
       [role.id, audience.rows[0].id, b.dossier_id, b.date_prevue, b.juridiction || null, b.type, b.avocat_id || null]
     );
     await client.query("COMMIT");
+    await logAudit({
+      utilisateurId: req.user.sub, action: "creer_audience", entite: "audiences",
+      entiteId: audience.rows[0].id,
+      details: { dossier_id: b.dossier_id, date_prevue: b.date_prevue, juridiction: b.juridiction || null, type: b.type || null },
+      ip: req.ip,
+    });
     res.status(201).json({ id: ligne.rows[0].id, role_id: role.id, audience_id: audience.rows[0].id });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -234,12 +241,22 @@ router.get("/motifs-renvoi", async (req, res) => {
 // "dernier_motif_precision" (texte libre du motif "Autre (préciser)")
 // suit le même déclencheur que "dernier_motif_id" -- un seul et même
 // geste de correction, pas un champ à part qui pourrait diverger.
+const CHAMPS_PROCEDURAUX_AUDIENCE = [
+  "date_audience", "heure", "juridiction", "type", "avocat_id", "instructions", "urgente",
+  "nature_procedure", "nature_precision", "dernier_motif_id", "dernier_motif_precision",
+];
+
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   const toucheMotif = Object.prototype.hasOwnProperty.call(b, "dernier_motif_id");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const { rows: [avant] } = await client.query(
+      `SELECT ${CHAMPS_PROCEDURAUX_AUDIENCE.join(", ")} FROM audiences WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!avant) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const maj = await client.query(
       `UPDATE audiences SET
          date_audience = COALESCE($1, date_audience),
@@ -268,6 +285,13 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
       [a.date_audience, a.juridiction, a.type, a.avocat_id, a.id]
     );
     await client.query("COMMIT");
+    const changements = diffChamps(avant, a, CHAMPS_PROCEDURAUX_AUDIENCE);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_audience", entite: "audiences", entiteId: a.id,
+        details: { dossier_id: a.dossier_id, changements }, ip: req.ip,
+      });
+    }
     res.json(a);
   } catch (e) {
     await client.query("ROLLBACK");
@@ -391,6 +415,14 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
       prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
     }
     await client.query("COMMIT");
+    await logAudit({
+      utilisateurId: req.user.sub, action: "saisir_retour_audience", entite: "audiences", entiteId: a.id,
+      details: {
+        dossier_id: a.dossier_id,
+        resultat: a.resultat, motif_renvoi_id: a.motif_renvoi_id, prochaine_date: a.prochaine_date,
+      },
+      ip: req.ip,
+    });
     res.json({ audience: a, prochaine_inscrite: prochaine });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -413,12 +445,19 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
 // qui est fourni), sauf motif_renvoi_id/precision qui suivent le même
 // déclencheur explicite que dans PUT /audiences/:id (un seul geste, une
 // clé absente = "ne pas toucher", présente avec valeur vide = "effacer").
+const CHAMPS_PROCEDURAUX_RETOUR = [
+  "resultat", "motif_renvoi_id", "motif_renvoi_precision", "prochaine_date", "observations",
+];
+
 router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
   const b = req.body || {};
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existante = await client.query("SELECT resultat FROM audiences WHERE id = $1", [req.params.id]);
+    const existante = await client.query(
+      `SELECT ${CHAMPS_PROCEDURAUX_RETOUR.join(", ")}, dossier_id FROM audiences WHERE id = $1`,
+      [req.params.id]
+    );
     if (!existante.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     if (!existante.rows[0].resultat) {
       await client.query("ROLLBACK");
@@ -447,6 +486,13 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
       prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
     }
     await client.query("COMMIT");
+    const changements = diffChamps(existante.rows[0], a, CHAMPS_PROCEDURAUX_RETOUR);
+    if (Object.keys(changements).length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "corriger_retour_audience", entite: "audiences", entiteId: a.id,
+        details: { dossier_id: a.dossier_id, changements }, ip: req.ip,
+      });
+    }
     res.json({ audience: a, prochaine_inscrite: prochaine });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -513,7 +559,7 @@ router.delete("/audiences/:id", requirePermission("audiences.ligne.creer"), asyn
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existante = await client.query("SELECT id, resultat FROM audiences WHERE id = $1", [req.params.id]);
+    const existante = await client.query("SELECT * FROM audiences WHERE id = $1", [req.params.id]);
     if (!existante.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     if (existante.rows[0].resultat) {
       await client.query("ROLLBACK");
@@ -527,6 +573,10 @@ router.delete("/audiences/:id", requirePermission("audiences.ligne.creer"), asyn
     await client.query("DELETE FROM role_audience_lignes WHERE audience_id = $1", [req.params.id]);
     await client.query("DELETE FROM audiences WHERE id = $1", [req.params.id]);
     await client.query("COMMIT");
+    await logAudit({
+      utilisateurId: req.user.sub, action: "supprimer_audience", entite: "audiences", entiteId: req.params.id,
+      details: { dossier_id: existante.rows[0].dossier_id, audience: existante.rows[0] }, ip: req.ip,
+    });
     res.status(204).end();
   } catch (e) {
     await client.query("ROLLBACK");
