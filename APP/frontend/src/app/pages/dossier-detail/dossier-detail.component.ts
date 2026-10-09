@@ -110,32 +110,25 @@ import { libelleRole } from '../../core/roles';
               </div>
             }
           </div>
+          <!-- 09/10/2026, repositionné le 09/10/2026 (2e passe, retour utilisateur :
+               « entre-mêlées avec les sous-rubriques ») — rattaché au pied de l'en-tête
+               plutôt que laissé en texte libre entre la carte et les panneaux suivants,
+               où « Créé par »/« Dernière modification » se confondaient visuellement
+               avec les liens rapides et les sections du dessous. -->
+          <div class="dcard-foot">
+            <span>
+              Créé par <b>{{ d.cree_par_code || d.cree_par_nom || '—' }}</b>
+              @if (d.cree_le) { le {{ d.cree_le | date:'dd/MM/yyyy à HH:mm' }} }
+            </span>
+            @if (d.derniere_modification; as dm) {
+              <span class="dcard-foot-sep">
+                Dernière modification par <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
+                — {{ libelleActionAudit(dm.action) }} — {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
+              </span>
+            }
+          </div>
         </div>
       </div>
-
-      <!-- 09/10/2026 — traçabilité procédurale (voir CLAUDE.md) : signal
-           préventif visible par tout collaborateur ayant accès à la fiche,
-           pas un journal à aller consulter ailleurs — pour repérer tout de
-           suite qu'un autre collaborateur vient de toucher ce dossier
-           (dossier lui-même, instance, partie, audience ou échéance liée),
-           avant de risquer de mélanger une information procédurale. -->
-      @if (d.derniere_modification; as dm) {
-        <p class="derniere-modif">
-          Dernière modification : <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
-          — {{ libelleActionAudit(dm.action) }} — {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
-        </p>
-      }
-      <!-- 09/10/2026 — « créé par », question explicite de l'utilisateur
-           (« c'est quand même important de savoir qui a créé un dossier...
-           et que cela soit clairement apparent ») — distinct du responsable
-           (dossiers.responsable_id, réattribuable, voir dossiers.js) qui ne
-           répond pas à "qui a créé" mais "qui en a la charge aujourd'hui".
-           "cree_par" absent (« — ») pour tout dossier créé avant ce correctif
-           (non rétroactif, comme les autres ajouts de ce type sur ce projet). -->
-      <p class="derniere-modif">
-        Créé par : <b>{{ d.cree_par_code || d.cree_par_nom || '—' }}</b>
-        @if (d.cree_le) { — le {{ d.cree_le | date:'dd/MM/yyyy à HH:mm' }} }
-      </p>
 
       @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
 
@@ -1042,8 +1035,12 @@ import { libelleRole } from '../../core/roles';
     }
   `,
   styles: [`
-    /* 09/10/2026 — bandeau "dernière modification" (traçabilité procédurale). */
-    .derniere-modif{font-size:var(--fs-sm);color:var(--slate);margin:8px 0 0}
+    /* 09/10/2026 — traçabilité procédurale, intégrée au pied de l'en-tête bleu
+       (repositionnée le 09/10/2026, 2e passe) plutôt que laissée en texte libre
+       entre la carte et les sous-rubriques du dessous. */
+    .dcard-foot{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14);font-size:var(--fs-xs);color:#9aa7bd}
+    .dcard-foot-sep::before{content:'·';margin-right:14px;opacity:.6}
+    .dcard-foot b{color:#d7dde8}
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}

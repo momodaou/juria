@@ -49,22 +49,23 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <div><span>Adresse</span><b>{{ c.adresse || '—' }}, {{ c.ville }}</b></div>
           <div><span>Dernière MAJ KYC</span><b>{{ c.kyc_maj_le ? (c.kyc_maj_le | date:'dd/MM/yyyy') : '—' }}</b></div>
         </div>
+        <!-- 09/10/2026, repositionné le 09/10/2026 (2e passe, retour utilisateur :
+             « entre-mêlées avec les sous-rubriques ») — rattaché au pied de l'en-tête
+             (même patron que la fiche dossier) plutôt que laissé en texte libre entre
+             la carte et les panneaux du dessous. -->
+        <div class="dcard-foot">
+          <span>
+            Créé par <b>{{ c.cree_par_code || c.cree_par_nom || '—' }}</b>
+            @if (c.cree_le) { le {{ c.cree_le | date:'dd/MM/yyyy à HH:mm' }} }
+          </span>
+          @if (c.derniere_modification; as dm) {
+            <span class="dcard-foot-sep">
+              Dernière modification par <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
+              — le {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
+            </span>
+          }
+        </div>
       </div>
-
-      <!-- 09/10/2026 — traçabilité procédurale (même patron que la fiche
-           dossier, voir CLAUDE.md) : « créé par » répond à une question
-           explicite de l'utilisateur ; « dernière modification » prévient
-           un mélange d'informations d'identité/KYC entre collaborateurs. -->
-      <p class="derniere-modif">
-        Créé par : <b>{{ c.cree_par_code || c.cree_par_nom || '—' }}</b>
-        @if (c.cree_le) { — le {{ c.cree_le | date:'dd/MM/yyyy à HH:mm' }} }
-      </p>
-      @if (c.derniere_modification; as dm) {
-        <p class="derniere-modif">
-          Dernière modification : <b>{{ dm.utilisateur_code || dm.utilisateur_nom || '—' }}</b>
-          — le {{ dm.horodatage | date:'dd/MM/yyyy à HH:mm' }}
-        </p>
-      }
 
       @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
 
@@ -243,9 +244,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     }
   `,
   styles: [`
-    /* 09/10/2026 — bandeaux "créé par"/"dernière modification" (traçabilité
-       procédurale), même style que dossier-detail.component.ts. */
-    .derniere-modif{font-size:var(--fs-sm);color:var(--slate);margin:8px 0 0}
+    /* 09/10/2026 — traçabilité procédurale, intégrée au pied de l'en-tête bleu
+       (repositionnée le 09/10/2026, 2e passe), même patron que dossier-detail.component.ts. */
+    .dcard-foot{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14);font-size:var(--fs-xs);color:#9aa7bd}
+    .dcard-foot-sep::before{content:'·';margin-right:14px;opacity:.6}
+    .dcard-foot b{color:#d7dde8}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
