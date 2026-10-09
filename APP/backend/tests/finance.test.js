@@ -797,4 +797,82 @@ describe("PUT /api/factures/:id — correction avant tout règlement (diagnostic
       .send({ montant_ht: 0 });
     expect(maj.status).toBe(400);
   });
+
+  // 09/10/2026 — gap signalé par l'utilisateur (« aucune possibilité de
+  // mettre à jour les montants des factures déjà émises en raison d'une
+  // erreur ») : un paiement, même erroné, bloquait TOUTE correction, y
+  // compris un simple objet/mention sans rapport avec le montant.
+  test("une correction PUREMENT administrative (objet/mention/échéance) reste possible même après un paiement partiel", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app)
+      .post(`/api/factures/${facture.body.id}/paiements`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant: 10000, mode: "virement" });
+
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ objet: "Correction d'une faute de frappe", mention: "Merci de régler sous 15 jours", date_echeance: "2026-12-31" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.objet).toBe("Correction d'une faute de frappe");
+    // Le montant, lui, reste inchangé (pas touché par cette requête).
+    expect(Number(maj.body.montant_ht)).toBe(100000);
+  });
+
+  test("retirer le paiement erroné rouvre la correction du montant (DELETE /:id/paiements/:pid revient à 'emise')", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    const paiement = await request(app)
+      .post(`/api/factures/${facture.body.id}/paiements`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant: 10000, mode: "virement" });
+    expect(paiement.status).toBe(201);
+    // POST /:id/paiements ne renvoie pas l'id du paiement (juste { facture_id, statut }) — retrouvé via GET.
+    const liste = await request(app).get(`/api/factures/${facture.body.id}/paiements`).set("Authorization", `Bearer ${token}`);
+    const paiementId = liste.body[0].id;
+
+    // Tant que le paiement existe, le montant reste verrouillé.
+    const refuse = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 200000 });
+    expect(refuse.status).toBe(409);
+    expect(refuse.body.error).toMatch(/paiement/i);
+
+    await request(app)
+      .delete(`/api/factures/${facture.body.id}/paiements/${paiementId}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    const corrige = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ montant_ht: 200000 });
+    expect(corrige.status).toBe(200);
+    expect(Number(corrige.body.montant_ht)).toBe(200000);
+  });
+
+  test("refuse toujours la correction d'une facture annulée, même un champ purement administratif", async () => {
+    const clientId = await creerClient();
+    const facture = await request(app)
+      .post("/api/factures")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000 });
+    await request(app)
+      .post(`/api/factures/${facture.body.id}/annuler`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    const maj = await request(app)
+      .put(`/api/factures/${facture.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ mention: "Correction" });
+    expect(maj.status).toBe(409);
+  });
 });

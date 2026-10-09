@@ -258,19 +258,33 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                       <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" style="min-width:220px" />
                     </label>
                     <label>Montant HT
-                      <input type="number" [(ngModel)]="edit.montant_ht" [name]="'edHt' + f.id" />
+                      <input type="number" [(ngModel)]="edit.montant_ht" [name]="'edHt' + f.id" [disabled]="f.statut !== 'emise'" />
+                    </label>
+                    <label>TVA %
+                      <input type="number" [(ngModel)]="edit.taux_tva" [name]="'edTva' + f.id" [disabled]="f.statut !== 'emise'" />
                     </label>
                     <label>Frais
-                      <input type="number" [(ngModel)]="edit.montant_frais" [name]="'edFrais' + f.id" />
+                      <input type="number" [(ngModel)]="edit.montant_frais" [name]="'edFrais' + f.id" [disabled]="f.statut !== 'emise'" />
                     </label>
                     <label>Échéance
                       <input type="date" [(ngModel)]="edit.date_echeance" [name]="'edEch' + f.id" />
+                    </label>
+                    <label>Compte à créditer
+                      <select [(ngModel)]="edit.compte_reglement_id" [name]="'edCompte' + f.id">
+                        <option value="">— non précisé —</option>
+                        @for (c of comptes(); track c.id) {
+                          <option [value]="c.id">{{ c.intitule }}{{ c.banque ? ' — ' + c.banque : '' }}</option>
+                        }
+                      </select>
                     </label>
                     <label>Mention
                       <input [(ngModel)]="edit.mention" [name]="'edMention' + f.id" style="min-width:220px" />
                     </label>
                   </div>
-                  <p class="hint">Correction possible tant qu'aucun paiement n'est encore enregistré sur cette facture.</p>
+                  @if (f.statut !== 'emise') {
+                    <p class="hint">Le montant (HT/TVA/frais) est verrouillé — un paiement est déjà enregistré sur cette facture. <button type="button" class="lien" (click)="ouvrirPaiements(f)">Voir/retirer le paiement</button> pour pouvoir le corriger.</p>
+                  }
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                   <button class="lien" (click)="enregistrerEdition(f)">Enregistrer</button>
                   <button class="lien" (click)="annulerEdition()">Annuler</button>
                 </td>
@@ -508,8 +522,15 @@ export class FacturationComponent implements OnInit {
     if (f.statut === 'partielle' || f.statut === 'payee') {
       items.push({ label: 'Paiements', action: () => this.ouvrirPaiements(f) });
     }
-    if (this.auth.peut('factures.annuler') && f.statut === 'emise') {
+    // 09/10/2026 — "Modifier" reste accessible tant que la facture n'est
+    // pas annulée (avant : seulement si 'emise', bloquant même une simple
+    // correction d'objet/mention dès qu'un paiement existait). Le montant
+    // reste lui verrouillé une fois un paiement enregistré — voir le
+    // formulaire d'édition et PUT /api/factures/:id.
+    if (this.auth.peut('factures.annuler') && f.statut !== 'annulee') {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(f) });
+    }
+    if (this.auth.peut('factures.annuler') && f.statut === 'emise') {
       items.push({ label: 'Annuler', action: () => this.annuler(f), danger: true });
     }
     return items;
@@ -608,8 +629,10 @@ export class FacturationComponent implements OnInit {
     this.edit = {
       objet: f.objet || '',
       montant_ht: f.montant_ht,
+      taux_tva: f.taux_tva,
       montant_frais: f.montant_frais,
       date_echeance: f.date_echeance ? String(f.date_echeance).slice(0, 10) : '',
+      compte_reglement_id: f.compte_reglement_id || '',
       mention: f.mention || '',
     };
   }
@@ -618,11 +641,30 @@ export class FacturationComponent implements OnInit {
     this.editionId.set(null);
   }
 
+  // 09/10/2026 — le montant (HT/TVA/frais) n'est envoyé QUE si la facture
+  // est encore 'emise' (champs désactivés sinon côté formulaire) : sans
+  // cette garde, renvoyer la valeur affichée mais inchangée aurait quand
+  // même déclenché le verrou "financeTouchee" côté serveur pour une simple
+  // correction de mention/échéance/compte sur une facture déjà réglée.
   enregistrerEdition(f: any): void {
     this.erreur.set('');
-    this.api.modifierFacture(f.id, this.edit).subscribe({
+    const payload: any = {
+      objet: this.edit.objet,
+      date_echeance: this.edit.date_echeance || null,
+      mention: this.edit.mention,
+    };
+    if (this.edit.compte_reglement_id) {
+      payload.compte_reglement_id = this.edit.compte_reglement_id;
+      payload.mode_reglement = 'virement';
+    }
+    if (f.statut === 'emise') {
+      payload.montant_ht = this.edit.montant_ht;
+      payload.taux_tva = this.edit.taux_tva;
+      payload.montant_frais = this.edit.montant_frais;
+    }
+    this.api.modifierFacture(f.id, payload).subscribe({
       next: () => { this.editionId.set(null); this.rafraichir(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible (facture déjà réglée ou annulée ?)'),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible (facture annulée ?)'),
     });
   }
 

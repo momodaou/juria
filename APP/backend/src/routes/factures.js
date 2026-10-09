@@ -89,8 +89,8 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
-              f.taux_applique, f.montant_ttc_xof, f.statut, f.mention,
+      `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.taux_tva, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
+              f.taux_applique, f.montant_ttc_xof, f.statut, f.mention, f.mode_reglement, f.compte_reglement_id,
               f.date_emission, f.date_echeance, f.dossier_id, f.client_id,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero
@@ -367,15 +367,23 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
 
 // PUT /api/factures/:id  { objet?, montant_ht?, taux_tva?, montant_frais?,
 //   date_echeance?, mode_reglement?, compte_reglement_id?, mention? }
-// Corrige une facture émise avant tout règlement — refusée dès qu'un
-// paiement (même partiel) existe (le statut n'est alors plus 'emise', voir
-// majStatut ci-dessus) ou qu'elle est déjà annulée. Pas de cycle de vie
-// brouillon distinct : décision actée avec l'utilisateur le 05/09/2026 (une
-// simple faute de frappe sur une facture non réglée ne justifie pas de
-// différer la numérotation). Réutilise le taux de change et le montant de
+// Corrige une facture émise. Réutilise le taux de change et le montant de
 // débours déjà figés à l'émission (ni l'un ni l'autre ne se corrigent ici —
 // annuler/recréer si la devise ou les débours rattachés doivent changer) ;
 // même palier de permission que l'annulation (factures.annuler).
+//
+// 09/10/2026 (gap signalé par l'utilisateur — « aucune possibilité de
+// mettre à jour les montants des factures déjà émises en raison d'une
+// erreur ») : jusqu'ici UN SEUL paiement, même une poussière, même saisi
+// par erreur, bloquait TOUTE correction — y compris un simple objet/mention
+// sans aucun rapport avec le montant. Distingue désormais deux familles de
+// champs : ceux qui AFFECTENT le montant dû (montant_ht/taux_tva/
+// montant_frais) restent verrouillés dès qu'un paiement existe (intégrité
+// du montant déjà réglé — retirer le paiement d'abord via
+// DELETE /:id/paiements/:paiementId, qui réévalue le statut et rouvre
+// cette correction, voir majStatut) ; les champs purement administratifs
+// (objet, échéance, règlement, mention) restent corrigibles à tout moment
+// tant que la facture n'est pas annulée (seul état réellement figé).
 router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
   const b = req.body || {};
   try {
@@ -384,9 +392,13 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
       [req.params.id]
     );
     if (!cur.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
-    if (cur.rows[0].statut !== "emise") {
+    if (cur.rows[0].statut === "annulee") {
+      return res.status(409).json({ error: "Facture annulée — non modifiable. Recréez-la si nécessaire." });
+    }
+    const financeTouchee = b.montant_ht !== undefined || b.taux_tva !== undefined || b.montant_frais !== undefined;
+    if (financeTouchee && cur.rows[0].statut !== "emise") {
       return res.status(409).json({
-        error: "Cette facture ne peut plus être modifiée (déjà réglée au moins partiellement, ou annulée) — annulez-la et recréez-la si nécessaire.",
+        error: "Le montant ne peut plus être corrigé : un paiement est déjà enregistré sur cette facture. Retirez-le d'abord (onglet Paiements) pour pouvoir le corriger.",
       });
     }
 
