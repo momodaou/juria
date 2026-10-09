@@ -273,7 +273,7 @@ router.get("/meta/codes-matiere", async (req, res) => {
 // pour ne jamais entrer en collision avec GET /:id (voir /meta/codes-matiere
 // ci-dessus).
 router.get("/meta/abonnements", async (req, res) => {
-  if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+  if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
     return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
   }
   try {
@@ -469,7 +469,7 @@ router.get("/:id", async (req, res) => {
     // par affectation à un dossier précis).
     const affecte = d.rows[0].responsable_id === req.user.sub
       || intervenants.rows.some((i) => i.utilisateur_id === req.user.sub);
-    const peutVoirMontant = affecte || (await estAutorise(req.user.role, "factures.consulter"));
+    const peutVoirMontant = affecte || (await estAutorise(req.user.role, "factures.consulter", req.user.sub));
     const dossier = { ...d.rows[0] };
     if (!peutVoirMontant) dossier.montant_convenu_xof = null;
 
@@ -643,7 +643,7 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     if (erreurImputation) return res.status(403).json({ error: erreurImputation });
 
     if (proBono) {
-      if (!(await estAutorise(req.user.role, "dossiers.pro_bono.declarer"))) {
+      if (!(await estAutorise(req.user.role, "dossiers.pro_bono.declarer", req.user.sub))) {
         return res.status(403).json({ error: "Non autorisé à déclarer un dossier pro bono" });
       }
       const { rows: [resp] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [b.responsable_id]);
@@ -777,7 +777,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
   try {
     // Archiver (statut='archive') exige en plus dossiers.archiver — un
     // droit d'édition générale ne doit pas suffire à clore un dossier.
-    if (b.statut === "archive" && !(await estAutorise(req.user.role, "dossiers.archiver"))) {
+    if (b.statut === "archive" && !(await estAutorise(req.user.role, "dossiers.archiver", req.user.sub))) {
       return res.status(403).json({ error: "Non autorisé à archiver un dossier" });
     }
 

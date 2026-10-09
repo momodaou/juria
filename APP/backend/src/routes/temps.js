@@ -40,8 +40,8 @@ router.get("/", async (req, res) => {
     // ce taux) — durée/description/facturable restent visibles pour tous
     // (gestion collaborative du dossier, déjà le comportement historique).
     if (dossier_id) {
-      const peutVoirTaux = (await estAutorise(req.user.role, "factures.creer"))
-        || (await estAutorise(req.user.role, "factures.consulter"));
+      const peutVoirTaux = (await estAutorise(req.user.role, "factures.creer", req.user.sub))
+        || (await estAutorise(req.user.role, "factures.consulter", req.user.sub));
       if (!peutVoirTaux) {
         for (const r of rows) {
           if (r.utilisateur_id !== req.user.sub) r.taux_horaire = null;

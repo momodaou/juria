@@ -56,7 +56,7 @@ router.get("/echeances", requirePermission("cabinet.consulter"), async (req, res
 // cabinet.conge.decision (même cercle que celui qui les tranche).
 router.get("/conges", async (req, res) => {
   const { statut } = req.query;
-  const peutTout = await estAutorise(req.user.role, "cabinet.conge.decision");
+  const peutTout = await estAutorise(req.user.role, "cabinet.conge.decision", req.user.sub);
   const utilisateur_id = peutTout ? req.query.utilisateur_id : req.user.sub;
   const params = [];
   const clauses = [];
@@ -132,7 +132,7 @@ router.delete("/conges/:id", requirePermission("cabinet.conge.demander"), async 
     const { rows: [conge] } = await pool.query("SELECT utilisateur_id, statut FROM conges WHERE id = $1", [req.params.id]);
     if (!conge) return res.status(404).json({ error: "Demande introuvable" });
     const estDemandeur = conge.utilisateur_id === req.user.sub;
-    if (!estDemandeur && !(await estAutorise(req.user.role, "cabinet.conge.decision"))) {
+    if (!estDemandeur && !(await estAutorise(req.user.role, "cabinet.conge.decision", req.user.sub))) {
       return res.status(403).json({ error: "Seul le demandeur ou une personne habilitée à décider peut retirer cette demande." });
     }
     const { rowCount } = await pool.query("DELETE FROM conges WHERE id = $1 AND statut = 'demande'", [req.params.id]);
@@ -217,7 +217,7 @@ router.get("/presences", async (req, res) => {
   // Voir le pointage de quelqu'un d'autre exige la vue de supervision RH
   // (25/09/2026 — même contournement ?utilisateur_id= que celui corrigé sur
   // les bulletins le 18/08/2026, jamais repris ici jusqu'à présent).
-  if (uid !== req.user.sub && !(await estAutorise(req.user.role, "cabinet.consulter"))) {
+  if (uid !== req.user.sub && !(await estAutorise(req.user.role, "cabinet.consulter", req.user.sub))) {
     return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
   }
   const { debut, fin } = bornesPeriode(req.query);

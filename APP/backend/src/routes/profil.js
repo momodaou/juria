@@ -11,6 +11,12 @@ const router = express.Router();
 // de l'appelant (permissions.autorise=TRUE), pour que le frontend puisse
 // masquer les sections/menus auxquels il n'a pas droit sans avoir à deviner
 // ou à essayer un appel pour voir s'il échoue.
+//
+// Délégations d'accès (09/10/2026) : en plus du rôle, une action précise
+// peut aussi venir d'une délégation active et ciblée (delegations_acces.
+// action_code), même logique que estAutorise() côté middleware — sinon
+// l'API accepterait la requête (via requirePermission) mais le menu/bouton
+// resterait masqué côté écran faute de figurer dans cette liste.
 router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -19,8 +25,13 @@ router.get("/", async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable" });
     const perms = await pool.query(
-      "SELECT action_code FROM permissions_role WHERE role = $1 AND autorise = TRUE",
-      [req.user.role]
+      `SELECT action_code FROM permissions_role WHERE role = $1 AND autorise = TRUE
+       UNION
+       SELECT action_code FROM delegations_acces
+       WHERE utilisateur_id = $2 AND action_code IS NOT NULL AND actif = TRUE
+         AND date_debut <= current_date
+         AND (portee = 'permanent' OR date_fin IS NULL OR date_fin >= current_date)`,
+      [req.user.role, req.user.sub]
     );
     res.json({ ...rows[0], permissions: perms.rows.map((r) => r.action_code) });
   } catch (e) {

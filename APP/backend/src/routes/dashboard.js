@@ -171,15 +171,15 @@ router.get("/", async (req, res) => {
     // 18/08/2026 sur l'écran Facturation). Absente (null) plutôt qu'une
     // erreur 403 sur toute la route — même principe que le menu qui
     // disparaît en silence.
-    const voitFactures = await estAutorise(req.user.role, "factures.consulter");
-    const voitCabinet = await estAutorise(req.user.role, "cabinet.consulter");
+    const voitFactures = await estAutorise(req.user.role, "factures.consulter", req.user.sub);
+    const voitCabinet = await estAutorise(req.user.role, "cabinet.consulter", req.user.sub);
     // 24/09/2026 — gap signalé par l'utilisateur (« quelle solution existe-t-il
     // lorsqu'une audience n'a pas eu de retour ») : aucun mécanisme ne
     // repérait jusqu'ici une audience/diligence dont la date est déjà
     // passée sans qu'un résultat ait été saisi (omission). Même permission
     // que le module qui porte ces deux tables (audiences.consulter — Rôle
     // d'audience gère aussi bien les audiences que les diligences).
-    const voitAudiencesModule = await estAutorise(req.user.role, "audiences.consulter");
+    const voitAudiencesModule = await estAutorise(req.user.role, "audiences.consulter", req.user.sub);
     // 26/09/2026 — audit doublons, phase 5 (filet de sécurité) : les phases
     // 1-4 préviennent la saisie (garde anti-double-clic + avertissement non
     // bloquant), mais rien ne repère un doublon déjà entré AVANT ces
@@ -191,7 +191,7 @@ router.get("/", async (req, res) => {
     // bancaires (direction/admin IT) — la tuile agrège des données de
     // plusieurs modules (dépenses/rétrocessions inclus), pas seulement le
     // module qui la porte.
-    const voitDoublons = await estAutorise(req.user.role, "parametres.cabinet.modifier");
+    const voitDoublons = await estAutorise(req.user.role, "parametres.cabinet.modifier", req.user.sub);
     const impayes = voitFactures
       ? await one(
           `SELECT COALESCE(SUM(montant_ttc),0) AS total
@@ -671,7 +671,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "impayes": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -685,7 +685,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "heures": {
-        if (!(await estAutorise(req.user.role, "cabinet.consulter"))) {
+        if (!(await estAutorise(req.user.role, "cabinet.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -715,7 +715,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "conges": {
-        if (!(await estAutorise(req.user.role, "cabinet.consulter"))) {
+        if (!(await estAutorise(req.user.role, "cabinet.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -750,7 +750,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "en_attente_facturation": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -768,7 +768,7 @@ router.get("/detail/:type", async (req, res) => {
       // Clients contractuels (abonnement) en retard de facturation
       // (05/10/2026) — même donnée que la tuile, triable, pas de LIMIT 2.
       case "abonnements_retard": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -793,7 +793,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(enRetard);
       }
       case "realisation": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -810,7 +810,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "ca_mois": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -824,7 +824,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "impayes_aging": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -853,7 +853,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "recouvrement": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -882,7 +882,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "ca_pole": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -898,7 +898,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "top_clients": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -910,7 +910,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "productivite": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -936,7 +936,7 @@ router.get("/detail/:type", async (req, res) => {
         return res.json(rows);
       }
       case "taches_urgentes": {
-        if (!(await estAutorise(req.user.role, "cabinet.consulter"))) {
+        if (!(await estAutorise(req.user.role, "cabinet.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
@@ -955,7 +955,7 @@ router.get("/detail/:type", async (req, res) => {
       // date est déjà passée sans résultat/statut définitif (voir la note
       // sur la tuile agrégée plus haut dans ce fichier).
       case "retours_manquants": {
-        if (!(await estAutorise(req.user.role, "audiences.consulter"))) {
+        if (!(await estAutorise(req.user.role, "audiences.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(`
@@ -976,7 +976,7 @@ router.get("/detail/:type", async (req, res) => {
       // 26/09/2026 — "Dossiers en attente de réenrôlement" (voir la note sur
       // la tuile agrégée plus haut dans ce fichier).
       case "reenrolement": {
-        if (!(await estAutorise(req.user.role, "audiences.consulter"))) {
+        if (!(await estAutorise(req.user.role, "audiences.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(`
@@ -994,14 +994,14 @@ router.get("/detail/:type", async (req, res) => {
       }
       // 26/09/2026 — "Doublons potentiels" (voir DOUBLONS_CTE plus haut).
       case "doublons": {
-        if (!(await estAutorise(req.user.role, "parametres.cabinet.modifier"))) {
+        if (!(await estAutorise(req.user.role, "parametres.cabinet.modifier", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(`${DOUBLONS_CTE} SELECT * FROM doublons ORDER BY categorie LIMIT 200`);
         return res.json(rows);
       }
       case "non_rentables": {
-        if (!(await estAutorise(req.user.role, "factures.consulter"))) {
+        if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         // Vue complète des dossiers facturés (meilleure comme pire marge),

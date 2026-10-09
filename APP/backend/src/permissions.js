@@ -171,19 +171,42 @@ const CODES_VALIDES = new Set(CATALOGUE.map((a) => a.code));
 // d'une condition dans le body (ex. dossiers.js : seule la déclaration
 // pro_bono=true exige la permission, pas la création elle-même) et ne peut
 // donc pas être un simple middleware de route.
-async function estAutorise(role, actionCode) {
+//
+// userId (09/10/2026) : en plus du rôle, vérifie si CET utilisateur précis
+// bénéficie d'une délégation d'accès active et ciblée sur cette action
+// précise (delegations_acces.action_code) — demande explicite de
+// l'utilisateur ("menu déroulant avec les permissions précises, pour
+// choisir l'autorisation exacte à déléguer à un profil"). Avant cette
+// évolution, une délégation était purement déclarative (texte libre, zéro
+// effet sur le contrôle d'accès réel — voir CLAUDE.md/HISTORY.md pour le
+// constat fait en l'auditant). Le rôle reste vérifié en premier (chemin le
+// plus fréquent, pas de coût d'une 2e requête pour la quasi-totalité des
+// appels) ; la délégation n'est consultée qu'en repli, et seulement si un
+// userId est fourni (les quelques appelants qui ne passent que (role,
+// actionCode) gardent le comportement strictement par rôle).
+async function estAutorise(role, actionCode, userId) {
   const { rows } = await pool.query(
     "SELECT autorise FROM permissions_role WHERE role = $1 AND action_code = $2",
     [role, actionCode]
   );
-  return !!(rows[0] && rows[0].autorise);
+  if (rows[0] && rows[0].autorise) return true;
+  if (!userId) return false;
+  const { rows: deleg } = await pool.query(
+    `SELECT 1 FROM delegations_acces
+     WHERE utilisateur_id = $1 AND action_code = $2 AND actif = TRUE
+       AND date_debut <= current_date
+       AND (portee = 'permanent' OR date_fin IS NULL OR date_fin >= current_date)
+     LIMIT 1`,
+    [userId, actionCode]
+  );
+  return deleg.length > 0;
 }
 
 function requirePermission(actionCode) {
   return async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: "Non authentifié" });
     try {
-      if (!(await estAutorise(req.user.role, actionCode))) {
+      if (!(await estAutorise(req.user.role, actionCode, req.user.sub))) {
         return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
       }
       next();

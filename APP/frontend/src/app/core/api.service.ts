@@ -835,6 +835,12 @@ export class ApiService {
   majIdentiteUtilisateur(id: string, payload: { code?: string; prenom?: string; nom?: string; email?: string; pole?: string; taux_horaire?: number }): Observable<any> {
     return this.http.put<any>(`${this.base}/api/acces/utilisateurs/${id}`, payload);
   }
+  // 09/10/2026 — catalogue des 80 actions (code/module/label) pour le
+  // sélecteur "Action déléguée", distinct de GET /api/acces/permissions
+  // (réservé associe+admin_it, expose en plus l'état TRUE/FAUX par rôle).
+  catalogueActionsDelegation(): Observable<{ code: string; module: string; label: string; restreinte?: boolean }[]> {
+    return this.http.get<any[]>(`${this.base}/api/acces/delegations/catalogue-actions`);
+  }
   delegations(filtres: { utilisateur_id?: string; actif?: boolean } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     if (filtres.utilisateur_id) params.set('utilisateur_id', filtres.utilisateur_id);

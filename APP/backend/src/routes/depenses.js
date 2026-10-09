@@ -113,7 +113,7 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
     const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
     const estDeposant = actuelle.soumis_par === req.user.sub;
-    if (!estDeposant && !(await estAutorise(req.user.role, "depenses.decision"))) {
+    if (!estDeposant && !(await estAutorise(req.user.role, "depenses.decision", req.user.sub))) {
       return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut corriger cette dépense." });
     }
     if (actuelle.statut !== "soumise") {
@@ -155,7 +155,7 @@ router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
   try {
     const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
-    if (actuelle.soumis_par !== req.user.sub && !(await estAutorise(req.user.role, "depenses.decision"))) {
+    if (actuelle.soumis_par !== req.user.sub && !(await estAutorise(req.user.role, "depenses.decision", req.user.sub))) {
       return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut retirer cette dépense." });
     }
     const { rowCount } = await pool.query("DELETE FROM depenses WHERE id = $1 AND statut = 'soumise'", [req.params.id]);

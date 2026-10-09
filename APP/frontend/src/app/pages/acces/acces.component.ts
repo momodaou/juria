@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ParametresHonoraires, ParametresCabinet, CompteBancaire } from '../../core/api.service';
@@ -102,10 +102,21 @@ import { ROLES } from '../../core/roles';
 
       <section class="panel">
         <h3>Délégations d'accès</h3>
+        <p class="muted" style="margin-top:-6px">
+          « Autre (note seule) » n'accorde aucun droit — purement déclaratif. Choisir une action précise du catalogue l'accorde réellement à la personne pendant la période de la délégation, sans avoir à aussi cocher la case dans la Matrice.
+        </p>
         <div class="upload">
           <select class="sel" [(ngModel)]="nouvelleDeleg.utilisateur_id" name="deleUser">
             <option value="">Bénéficiaire…</option>
             @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+          </select>
+          <select class="sel" [(ngModel)]="nouvelleDeleg.action_code" name="deleAction" style="min-width:220px">
+            <option value="">Autre (note seule, sans effet)</option>
+            @for (grp of modulesActions(); track grp.module) {
+              <optgroup [label]="grp.module">
+                @for (a of grp.items; track a.code) { <option [value]="a.code">{{ a.label }}</option> }
+              </optgroup>
+            }
           </select>
           <select class="sel" [(ngModel)]="nouvelleDeleg.portee" name="delePortee">
             <option value="temporaire">Temporaire</option>
@@ -120,10 +131,11 @@ import { ROLES } from '../../core/roles';
 
         @if (delegations().length) {
           <table>
-            <tr><th>Bénéficiaire</th><th>Portée</th><th>Description</th><th>Du</th><th>Au</th><th>Statut</th><th></th></tr>
+            <tr><th>Bénéficiaire</th><th>Action déléguée</th><th>Portée</th><th>Description</th><th>Du</th><th>Au</th><th>Statut</th><th></th></tr>
             @for (d of delegations(); track d.id) {
               <tr>
                 <td>{{ d.utilisateur }}</td>
+                <td>{{ d.action_code ? libelleAction(d.action_code) : '—' }}</td>
                 <td>{{ d.portee }}</td>
                 <td>{{ d.description }}</td>
                 <td>{{ d.date_debut | date:'dd/MM/yyyy' }}</td>
@@ -426,6 +438,21 @@ export class AccesComponent implements OnInit {
   readonly parametresMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
   readonly delegations = signal<any[]>([]);
+  // 09/10/2026 — catalogue des 80 actions pour le sélecteur "Action
+  // déléguée" (route dédiée, accessible même à admin_general qui n'a pas
+  // accès à GET /api/acces/permissions, réservée associe+admin_it).
+  readonly catalogueActions = signal<{ code: string; module: string; label: string }[]>([]);
+  readonly modulesActions = computed(() => {
+    const parModule = new Map<string, { code: string; module: string; label: string }[]>();
+    for (const a of this.catalogueActions()) {
+      if (!parModule.has(a.module)) parModule.set(a.module, []);
+      parModule.get(a.module)!.push(a);
+    }
+    return Array.from(parModule.entries()).map(([module, items]) => ({ module, items }));
+  });
+  libelleAction(code: string): string {
+    return this.catalogueActions().find((a) => a.code === code)?.label ?? code;
+  }
   readonly audit = signal<any[]>([]);
   readonly erreurGlobale = signal('');
   readonly afficherFormCompte = signal(false);
@@ -507,6 +534,7 @@ export class AccesComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.utilisateurs(null).subscribe({ next: (u) => this.utilisateurs.set(u) });
+    this.api.catalogueActionsDelegation().subscribe({ next: (c) => this.catalogueActions.set(c) });
     this.chargerDelegations();
     this.chargerAudit();
     // 403 attendu pour un Administrateur général (matrice réservée

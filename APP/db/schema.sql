@@ -707,6 +707,14 @@ CREATE TABLE delegations_acces (
     accorde_par   UUID REFERENCES utilisateurs(id),        -- associé / direction
     portee        portee_delegation NOT NULL DEFAULT 'temporaire',
     description   VARCHAR(240) NOT NULL,                   -- ex. « accès facturation », « rôle associé »
+    -- action_code (09/10/2026) : optionnel — pas de FK (le catalogue des 80
+    -- actions vit dans backend/src/permissions.js, pas en base, même
+    -- convention que permissions_role.action_code ci-dessous). Si renseigné,
+    -- la délégation devient RÉELLEMENT effective pour cette action précise
+    -- pendant sa période (voir permissions.js estAutorise()) — avant cette
+    -- évolution, une délégation était purement déclarative (description en
+    -- texte libre, aucun effet sur le contrôle d'accès réel).
+    action_code   VARCHAR(80),
     date_debut    DATE NOT NULL DEFAULT current_date,
     date_fin      DATE,                                    -- nul si permanent
     motif         TEXT,
@@ -4565,3 +4573,17 @@ ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS seuil_alerte_vignettes I
 -- côté écran, même principe que les autres ajouts non rétroactifs du
 -- projet (ex. règle responsable-avocat du 12/09/2026).
 ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS cree_par UUID REFERENCES utilisateurs(id);
+
+-- =====================================================================
+--  DÉLÉGATIONS D'ACCÈS RÉELLEMENT EFFECTIVES (09/10/2026, question
+--  explicite de l'utilisateur sur la tuile "Délégations d'accès" : menu
+--  déroulant avec une action précise du catalogue de permissions)
+-- =====================================================================
+-- Constat avant cette évolution : une délégation n'avait AUCUN effet sur
+-- le contrôle d'accès réel (ni requirePermission, ni requireRole, ni
+-- /api/profil ne lisaient jamais cette table) — un simple registre
+-- déclaratif en texte libre. action_code (optionnel, pas de FK — voir le
+-- commentaire sur la colonne plus haut) rend la délégation effective pour
+-- cette action précise, pendant sa période, via permissions.js
+-- estAutorise().
+ALTER TABLE delegations_acces ADD COLUMN IF NOT EXISTS action_code VARCHAR(80);

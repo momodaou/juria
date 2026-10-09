@@ -187,6 +187,17 @@ router.put("/utilisateurs/:id/actif", async (req, res) => {
   }
 });
 
+// GET /api/acces/delegations/catalogue-actions (09/10/2026) — inventaire
+// des 80 actions (code/module/label) pour peupler le sélecteur "Action
+// déléguée" du formulaire. Volontairement distinct de GET /permissions
+// (réservé associe+admin_it, qui expose en plus l'état TRUE/FAUX par rôle,
+// plus sensible) : la simple liste des noms d'action n'a rien de sensible,
+// et admin_general (qui peut accorder des délégations via la garde commune
+// ci-dessus) n'a pas accès à la matrice complète.
+router.get("/delegations/catalogue-actions", (req, res) => {
+  res.json(CATALOGUE);
+});
+
 // GET /api/acces/delegations?utilisateur_id=&actif=
 router.get("/delegations", async (req, res) => {
   const { utilisateur_id, actif } = req.query;
@@ -197,7 +208,7 @@ router.get("/delegations", async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT d.id, d.portee, d.description, d.date_debut, d.date_fin, d.motif, d.actif,
+      `SELECT d.id, d.portee, d.description, d.action_code, d.date_debut, d.date_fin, d.motif, d.actif,
               u.prenom || ' ' || u.nom AS utilisateur,
               a.prenom || ' ' || a.nom AS accorde_par
        FROM delegations_acces d
@@ -214,20 +225,28 @@ router.get("/delegations", async (req, res) => {
   }
 });
 
-// POST /api/acces/delegations  { utilisateur_id, portee, description, date_debut?, date_fin?, motif? }
+// POST /api/acces/delegations  { utilisateur_id, portee, description, action_code?, date_debut?, date_fin?, motif? }
+// action_code (09/10/2026) : optionnel — une délégation reste possible
+// sans action précise (simple note, comme avant cette évolution), mais si
+// fournie, elle doit exister dans le catalogue ET devient alors RÉELLEMENT
+// effective (voir permissions.js estAutorise()) pendant toute la période de
+// la délégation, pas seulement un registre déclaratif.
 router.post("/delegations", async (req, res) => {
   const b = req.body || {};
   if (!b.utilisateur_id || !b.description) return res.status(400).json({ error: "utilisateur_id et description requis" });
+  if (b.action_code && !CODES_VALIDES.has(b.action_code)) {
+    return res.status(400).json({ error: "action_code invalide" });
+  }
   try {
     const { rows } = await pool.query(
-      `INSERT INTO delegations_acces (utilisateur_id, accorde_par, portee, description, date_debut, date_fin, motif)
-       VALUES ($1,$2,COALESCE($3::portee_delegation,'temporaire'),$4,COALESCE($5,current_date),$6,$7)
-       RETURNING id, portee, description, date_debut, date_fin`,
-      [b.utilisateur_id, req.user.sub, b.portee, b.description, b.date_debut || null, b.date_fin || null, b.motif || null]
+      `INSERT INTO delegations_acces (utilisateur_id, accorde_par, portee, description, action_code, date_debut, date_fin, motif)
+       VALUES ($1,$2,COALESCE($3::portee_delegation,'temporaire'),$4,$5,COALESCE($6,current_date),$7,$8)
+       RETURNING id, portee, description, action_code, date_debut, date_fin`,
+      [b.utilisateur_id, req.user.sub, b.portee, b.description, b.action_code || null, b.date_debut || null, b.date_fin || null, b.motif || null]
     );
     await logAudit({
       utilisateurId: req.user.sub, action: "accorder_delegation", entite: "delegations_acces",
-      entiteId: rows[0].id, details: { utilisateur_id: b.utilisateur_id, description: b.description }, ip: req.ip,
+      entiteId: rows[0].id, details: { utilisateur_id: b.utilisateur_id, description: b.description, action_code: b.action_code || null }, ip: req.ip,
     });
     res.status(201).json(rows[0]);
   } catch (e) {
