@@ -256,17 +256,22 @@ import { libelleRole } from '../../core/roles';
                       placeholder="Ex. Recouvrement d'une créance commerciale impayée"></textarea>
           </div>
 
+          @if (clientPrincipalSousConvention()) {
+            <div class="col2">
+              <p class="hint">Ce client est sous convention-cadre (abonnement) — ce dossier y sera automatiquement rattaché, sans configuration supplémentaire. Voir la fiche client pour le détail de la facturation périodique.</p>
+            </div>
+          }
           <div>
             <label>Mode d'honoraires *</label>
-            <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires" required>
+            <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires" [disabled]="clientPrincipalSousConvention()" required>
               <option value="">— Sélectionner —</option>
               <option value="forfait">Forfait</option>
               <option value="temps_passe">Temps passé</option>
               <option value="success_fee">Success fee</option>
-              <option value="abonnement">Abonnement</option>
               <option value="consultation">Consultation</option>
               <option value="autre">Autre — à préciser</option>
             </select>
+            @if (clientPrincipalSousConvention()) { <span class="hint">Automatiquement « Abonnement » pour ce client.</span> }
           </div>
           @if (dossier.mode_honoraires === 'autre') {
             <div>
@@ -280,20 +285,6 @@ import { libelleRole } from '../../core/roles';
               <label>Montant convenu avec le client (FCFA, facultatif)</label>
               <input class="in" type="number" min="0" [(ngModel)]="dossier.montant_convenu" name="montantConvenu"
                      placeholder="Ex. 500000">
-            </div>
-          }
-          @if (dossier.mode_honoraires === 'abonnement') {
-            <div>
-              <label>Périodicité de facturation (facultatif)</label>
-              <select class="in" [(ngModel)]="dossier.abonnement_periodicite" name="abonnementPeriodicite">
-                <option value="">— Sélectionner —</option>
-                @for (p of periodicitesAbonnement(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
-              </select>
-            </div>
-            <div>
-              <label>Prochaine facturation prévue le (facultatif)</label>
-              <input class="in" type="date" [(ngModel)]="dossier.abonnement_prochaine_facturation" name="abonnementProchaineFacturation">
-              <span class="hint">Sert uniquement à fixer le jour (et, selon la périodicité, le mois) d'ancrage du cycle — configurable aussi plus tard depuis la fiche dossier.</span>
             </div>
           }
           <div>
@@ -439,7 +430,10 @@ export class OuvertureComponent implements OnInit {
   // sans que rien ne le signale. Le placeholder vide du <select> force un
   // choix actif, y compris « Autre » en cas d'urgence.
   dossier: any = { pole: 'contentieux', mode_honoraires: '', urgence: 'moyenne', pro_bono: false, instance_degre: 'premiere_instance', code_matiere: '', montant_litige_sens: 'indetermine' };
-  readonly MODES_MONTANT_CONVENU = ['forfait', 'consultation', 'abonnement'];
+  // 'abonnement' retiré le 09/10/2026 : le montant convenu d'une
+  // convention-cadre vit désormais sur la fiche client (une seule somme
+  // pour tous les dossiers du client), plus par dossier.
+  readonly MODES_MONTANT_CONVENU = ['forfait', 'consultation'];
 
   // Intitulé du dossier (30/08/2026, demande utilisateur) — suggéré
   // automatiquement (« Client c/ Partie adverse » en contentieux, client
@@ -485,9 +479,28 @@ export class OuvertureComponent implements OnInit {
     this.intituleAutoGenere = suggestion;
   }
 
+  // Clients contractuels / abonnement — ancrage par CLIENT (09/10/2026) :
+  // dès qu'un client déjà sous convention-cadre est choisi comme client
+  // principal, le mode d'honoraires n'est plus un choix — il sera de
+  // toute façon forcé à "abonnement" côté serveur (voir
+  // resoudreModeHonorairesEffectif, dossiers.js) ; fixé ici aussi côté
+  // écran pour que la validation avant soumission n'exige pas un choix
+  // devenu sans objet.
+  readonly clientPrincipalSousConvention = signal(false);
+
   onClientPrincipalChoisi(c: any): void {
     this.nomClientPrincipal = c ? (c.denomination || `${c.prenom ?? ''} ${c.nom ?? ''}`.trim()) : null;
     this.suggererIntitule();
+    this.clientPrincipalSousConvention.set(false);
+    if (c?.id) {
+      this.api.client(c.id).subscribe({
+        next: (full) => {
+          const sousConvention = !!full.abonnement_periodicite;
+          this.clientPrincipalSousConvention.set(sousConvention);
+          if (sousConvention) this.dossier.mode_honoraires = 'abonnement';
+        },
+      });
+    }
   }
 
   // Champs conditionnels par pôle (19/08/2026) — matière suit désormais le
@@ -500,9 +513,6 @@ export class OuvertureComponent implements OnInit {
   readonly statutsProcedure = signal<{ code: string; libelle: string }[]>([]);
   readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
   juridictionChoisie = '';
-  // Clients contractuels / abonnement (05/10/2026) — 'ponctuelle' exclue,
-  // sans sens pour une facturation récurrente (voir dossiers.js).
-  readonly periodicitesAbonnement = signal<{ code: string; libelle: string }[]>([]);
 
   chargerMatieres(): void {
     this.api.codesMatiere(this.dossier.pole).subscribe({ next: (l) => this.matieres.set(l) });
@@ -671,7 +681,6 @@ export class OuvertureComponent implements OnInit {
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
-    this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l.filter((p) => p.code !== 'ponctuelle')) });
   }
 
   partiesAdversesListe(): string[] {
@@ -745,13 +754,6 @@ export class OuvertureComponent implements OnInit {
     }
     if (this.dossier.mode_honoraires === 'autre' && !this.dossier.mode_honoraires_precision?.trim()) {
       this.erreurCreation.set('Précision requise pour le mode d\'honoraires « Autre ».');
-      return;
-    }
-    // Périodicité facultative à la création (configurable plus tard depuis
-    // la fiche dossier), mais si l'une des deux valeurs est renseignée,
-    // l'autre doit l'être aussi (même règle que côté serveur).
-    if (!!this.dossier.abonnement_periodicite !== !!this.dossier.abonnement_prochaine_facturation) {
-      this.erreurCreation.set('Périodicité et prochaine facturation doivent être renseignées ensemble.');
       return;
     }
     if (!ignorerDoublon) {

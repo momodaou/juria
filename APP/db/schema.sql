@@ -4630,3 +4630,73 @@ UPDATE dossiers d SET couleur_chemise = cm.couleur
 FROM codes_matiere cm
 WHERE cm.code = d.code_matiere AND cm.type = d.pole
   AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
+
+-- =====================================================================
+--  CLIENTS CONTRACTUELS (ABONNEMENT) — ANCRAGE PAR CLIENT, PAS PAR
+--  DOSSIER (09/10/2026, revue approfondie demandée par l'utilisateur)
+-- =====================================================================
+-- Constat : le mécanisme du 05/10/2026 ancrait périodicité/statut sur LE
+-- DOSSIER (factures.dossier_id = d.id) — mais la réalité métier (ex. BDM :
+-- une facture trimestrielle unique rémunère TOUS les dossiers du client ;
+-- Orabank : une facture annuelle unique couvre toute l'année, tous
+-- dossiers confondus) est au niveau du CLIENT. Conséquence concrète
+-- trouvée par l'utilisateur : une facture consolidée liée à un seul
+-- dossier (ou à aucun, via "Autre") ne remettait "à jour" ni les autres
+-- dossiers du même client, ni même celui-ci si facturée sans dossier_id
+-- (JOIN_ABONNEMENT_FACTURE filtrait strictement dossier_id = d.id).
+--
+-- Déplacé sur `clients` — un dossier `mode_honoraires='abonnement'` n'est
+-- plus qu'un INDICATEUR dérivé de l'état du client (voir dossiers.js,
+-- resoudreModeHonorairesEffectif) : si le client a une convention active,
+-- TOUT dossier qui lui est rattaché est automatiquement considéré comme
+-- "abonnement", sans configuration par dossier. Les 3 champs
+-- périodicité/ancrage ne sont donc plus jamais saisis au niveau du
+-- dossier — seulement ici.
+--
+-- Règle confirmée explicitement par l'utilisateur (09/10/2026, à retenir
+-- partout où un dossier de client sous convention est traité) : ces
+-- dossiers ne font l'objet d'AUCUNE rétrocession (pas de base HT
+-- attribuable par dossier sur une facture consolidée) — voir le garde-fou
+-- ajouté dans retrocessions.js.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS abonnement_periodicite VARCHAR(20);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS abonnement_jour_facturation INT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS abonnement_mois_facturation INT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS abonnement_montant_convenu_xof NUMERIC(14,0);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS abonnement_alerte_envoyee_pour DATE;
+
+-- Migration des données déjà saisies (05-07/10/2026) : pour chaque client
+-- ayant au moins un dossier mode_honoraires='abonnement' avec une
+-- périodicité déjà configurée, reprend celle du dossier le plus
+-- récemment modifié (règle déterministe, "une seule convention active par
+-- client" déjà actée le 05/10/2026 mais jamais vérifiée par le code — si
+-- plusieurs dossiers d'un même client avaient des périodicités
+-- DIFFÉRENTES par erreur, celle du dossier le plus récemment édité
+-- l'emporte).
+WITH plus_recent AS (
+  SELECT DISTINCT ON (client_id)
+    client_id, abonnement_periodicite, abonnement_jour_facturation,
+    abonnement_mois_facturation, montant_convenu_xof
+  FROM dossiers
+  WHERE mode_honoraires = 'abonnement' AND abonnement_periodicite IS NOT NULL
+  ORDER BY client_id, maj_le DESC
+)
+UPDATE clients c SET
+  abonnement_periodicite = pr.abonnement_periodicite,
+  abonnement_jour_facturation = pr.abonnement_jour_facturation,
+  abonnement_mois_facturation = pr.abonnement_mois_facturation,
+  abonnement_montant_convenu_xof = pr.montant_convenu_xof
+FROM plus_recent pr
+WHERE pr.client_id = c.id;
+
+-- Nettoyage des colonnes dossier (plus jamais lues ni écrites par le
+-- code applicatif — ni supprimées ni laissées à une valeur maintenant
+-- trompeuse). Colonnes conservées en base (jamais DROP sur ce projet)
+-- pour ne perdre aucune trace, simplement vidées une fois leur contenu
+-- recopié sur le client.
+UPDATE dossiers SET
+  abonnement_periodicite = NULL,
+  abonnement_jour_facturation = NULL,
+  abonnement_mois_facturation = NULL,
+  abonnement_alerte_envoyee_pour = NULL,
+  montant_convenu_xof = NULL
+WHERE mode_honoraires = 'abonnement';

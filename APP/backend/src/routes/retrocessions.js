@@ -127,6 +127,27 @@ router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
     if (!ROLES_AVOCATS.includes(beneficiaire.role)) {
       return res.status(400).json({ error: "Les rétrocessions concernent désormais uniquement les avocats (associé, associé fondateur, Of Counsel, collaborateur, avocat stagiaire)." });
     }
+    // Clients contractuels / abonnement (09/10/2026, règle explicite de
+    // l'utilisateur lors de la revue de l'ancrage par client — voir
+    // CLAUDE.md/HISTORY.md) : un dossier dont le client est sous
+    // convention-cadre ne fait l'objet d'AUCUNE rétrocession — une facture
+    // consolidée couvrant plusieurs dossiers n'a pas de base HT
+    // attribuable dossier par dossier/collaborateur par collaborateur.
+    // Résolu via dossier_id OU facture_id (dont client_id est toujours
+    // renseigné, même sans dossier lié — voir factures.js).
+    if (b.dossier_id || b.facture_id) {
+      const { rows: [cible] } = await pool.query(
+        `SELECT cl.abonnement_periodicite FROM clients cl
+         WHERE cl.id = COALESCE(
+           (SELECT client_id FROM dossiers WHERE id = $1),
+           (SELECT client_id FROM factures WHERE id = $2)
+         )`,
+        [b.dossier_id || null, b.facture_id || null]
+      );
+      if (cible && cible.abonnement_periodicite) {
+        return res.status(400).json({ error: "Les dossiers de clients sous convention-cadre (abonnement) ne font pas l'objet de rétrocession." });
+      }
+    }
     const { rows } = await pool.query(
       `INSERT INTO retrocessions (beneficiaire_id, qualite, taux, base_ht, montant, dossier_id, facture_id, cree_par)
        VALUES ($1,$2::qualite_retro,$3,$4,$5,$6,$7,$8)
@@ -163,6 +184,21 @@ router.put("/:id", requirePermission("retrocessions.creer"), async (req, res) =>
     if (!actuelle) return res.status(404).json({ error: "Rétrocession introuvable" });
     if (actuelle.statut !== "attente") {
       return res.status(409).json({ error: "Rétrocession déjà décaissée — non modifiable." });
+    }
+    // Même garde qu'à la création (09/10/2026) — réappliquée ici si cette
+    // correction rattache la rétrocession à un nouveau dossier/facture.
+    if (b.dossier_id || b.facture_id) {
+      const { rows: [cible] } = await pool.query(
+        `SELECT cl.abonnement_periodicite FROM clients cl
+         WHERE cl.id = COALESCE(
+           (SELECT client_id FROM dossiers WHERE id = $1),
+           (SELECT client_id FROM factures WHERE id = $2)
+         )`,
+        [b.dossier_id || null, b.facture_id || null]
+      );
+      if (cible && cible.abonnement_periodicite) {
+        return res.status(400).json({ error: "Les dossiers de clients sous convention-cadre (abonnement) ne font pas l'objet de rétrocession." });
+      }
     }
     const qualite = b.qualite || actuelle.qualite;
     const baseHt = b.base_ht != null ? Number(b.base_ht) : Number(actuelle.base_ht);

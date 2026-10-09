@@ -68,12 +68,13 @@ export interface DashboardData {
   // tuile agrège des données de plusieurs modules).
   doublons_n: number | null;
   doublons_apercu: { categorie: string; dossier_id: string | null; dossier_numero: string | null; description: string; nb: number }[];
-  // Clients contractuels / abonnement (05/10/2026) — voir CLAUDE.md/
-  // HISTORY.md. `null` si factures.consulter absent. Statut dérivé de la
-  // dernière facture réellement émise et liée au dossier, jamais une case
-  // à cocher — voir backend/src/abonnements.js.
+  // Clients contractuels / abonnement — ancrage par CLIENT (09/10/2026,
+  // revu depuis le 05/10/2026, voir CLAUDE.md/HISTORY.md). `null` si
+  // factures.consulter absent. Statut dérivé de la dernière facture
+  // réellement émise pour ce client (liée ou non à l'un de ses dossiers),
+  // jamais une case à cocher — voir backend/src/abonnements.js.
   abonnements_retard_n: number | null;
-  abonnements_retard_apercu: { dossier_id: string; numero: string; client: string; prochaine_echeance: string }[];
+  abonnements_retard_apercu: { client_id: string; client: string; prochaine_echeance: string }[];
 }
 
 export interface Dossier {
@@ -401,11 +402,18 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/dossiers/meta/codes-matiere${q}`);
   }
 
-  // Clients contractuels / abonnement (05/10/2026) — registre des dossiers
-  // sous convention-cadre, gardé par factures.consulter (même permission
-  // que le reste des données financières agrégées).
-  dossiersAbonnements(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/api/dossiers/meta/abonnements`);
+  // Clients contractuels / abonnement — ancrage par CLIENT (09/10/2026,
+  // revu depuis le 05/10/2026, voir CLAUDE.md/HISTORY.md) — registre des
+  // clients sous convention-cadre, gardé par factures.consulter (même
+  // permission que le reste des données financières agrégées).
+  clientsAbonnements(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/clients/meta/abonnements`);
+  }
+  // Configure/corrige/retire la convention-cadre d'un client (périodicité +
+  // date d'ancrage + montant convenu facultatif) — PUT dédié (clients.
+  // modifier), distinct du PUT général réservé à l'identité/KYC.
+  majAbonnementClient(id: string, payload: { abonnement_periodicite?: string | null; abonnement_prochaine_facturation?: string | null; montant_convenu?: number | null }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/clients/${id}/abonnement`, payload);
   }
 
   // Contrôle des conflits : renvoie { id, resultat, details, message }

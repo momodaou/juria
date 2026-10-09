@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
@@ -10,7 +10,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <a routerLink="/clients" class="back">← Retour aux clients</a>
 
@@ -113,6 +113,60 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @if (messageKyc()) { <p class="ok-msg">{{ messageKyc() }}</p> }
         </section>
       }
+
+      <!-- Convention-cadre / abonnement — ancrage par CLIENT (09/10/2026,
+           revu depuis le 05/10/2026, voir CLAUDE.md/HISTORY.md : une seule
+           facture périodique couvre tous les dossiers du client, la
+           configuration n'a donc plus de sens au niveau du dossier). -->
+      <section class="panel">
+        <h3>Convention-cadre (abonnement)</h3>
+        @if (c.abonnement_periodicite) {
+          <div class="conv-info">
+            <div><span>Périodicité</span><b>{{ libellePeriodicite(c.abonnement_periodicite) }}</b></div>
+            <div><span>Montant convenu</span><b>{{ c.abonnement_montant_convenu_xof ? (c.abonnement_montant_convenu_xof | number) + ' FCFA' : '—' }}</b></div>
+            <div><span>Dernière facture</span><b>{{ c.abonnement_derniere_facture_le ? (c.abonnement_derniere_facture_le | date:'dd/MM/yyyy') : 'aucune facture encore liée' }}</b></div>
+            <div>
+              <span>Statut</span>
+              <b>
+                @if (c.abonnement_statut) {
+                  <span class="tag" [class.haute]="c.abonnement_statut === 'en_retard'">
+                    {{ c.abonnement_statut === 'en_retard' ? 'En retard depuis le ' : 'Prochaine échéance le ' }}{{ c.abonnement_prochaine_echeance | date:'dd/MM/yyyy' }}
+                  </span>
+                } @else { — }
+              </b>
+            </div>
+          </div>
+        } @else {
+          <p class="muted">Ce client n'est pas sous convention-cadre — chaque dossier est facturé individuellement.</p>
+        }
+        @if (auth.peut('clients.modifier')) {
+          @if (!modeEditionAbonnement()) {
+            <button class="btn ghost" (click)="activerEditionAbonnement(c)">{{ c.abonnement_periodicite ? 'Modifier la convention' : 'Configurer une convention-cadre' }}</button>
+          } @else {
+            <div class="grid2">
+              <div>
+                <label>Périodicité</label>
+                <select class="in" [(ngModel)]="editAbonnement.abonnement_periodicite" name="editAbonnementPeriodicite">
+                  <option value="">— non configurée —</option>
+                  @for (p of periodicitesAbonnement(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+                </select>
+              </div>
+              <div>
+                <label>Date d'ancrage</label>
+                <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" name="editAbonnementAncrage" />
+              </div>
+              <div class="col2">
+                <label>Montant convenu (FCFA, facultatif)</label>
+                <input class="in" type="number" min="0" [(ngModel)]="editAbonnement.montant_convenu" name="editAbonnementMontant" />
+              </div>
+            </div>
+            <p class="muted" style="margin:-6px 0 12px">Périodicité et date d'ancrage doivent être renseignées ensemble, ou toutes les deux laissées vides pour retirer la convention (tout dossier de ce client redevient alors facturé individuellement).</p>
+            <button class="btn" (click)="enregistrerAbonnement()" [disabled]="enregistrementAbonnement()">{{ enregistrementAbonnement() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+            <button class="btn ghost" (click)="modeEditionAbonnement.set(false)">Annuler</button>
+            @if (erreurAbonnement()) { <p class="err">{{ erreurAbonnement() }}</p> }
+          }
+        }
+      </section>
 
       <section class="panel">
         <h3>Pièces KYC / LBC-FT</h3>
@@ -266,6 +320,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
     .col2{grid-column:1 / -1}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
+    /* 09/10/2026 — convention-cadre : .meta (dcard) ne s'applique qu'à
+       l'en-tête bleu, réutilisée par erreur ici sans son contexte —
+       corrigé en un style dédié, même esprit (libellé au-dessus de la
+       valeur) mais fonctionnel dans un panneau ordinaire. */
+    .conv-info{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:12px}
+    .conv-info div{display:flex;flex-direction:column;gap:2px}
+    .conv-info span{font-size:var(--fs-xs);color:var(--slate)}
+    .conv-info b{font-size:var(--fs-md)}
   `],
 })
 export class ClientDetailComponent implements OnInit {
@@ -283,6 +345,57 @@ export class ClientDetailComponent implements OnInit {
   readonly erreurPiece = signal('');
   readonly messageKyc = signal('');
   readonly ajoutEnCours = signal(false);
+
+  // Convention-cadre / abonnement — ancrage par CLIENT (09/10/2026, voir
+  // CLAUDE.md/HISTORY.md). Même patron d'édition inline que le registre
+  // Facturation ("Clients sous convention"), ici directement sur la fiche
+  // client — l'endroit naturel pour la configurer.
+  readonly periodicitesAbonnement = signal<{ code: string; libelle: string }[]>([]);
+  libellePeriodicite(code: string): string {
+    return this.periodicitesAbonnement().find((p) => p.code === code)?.libelle ?? code;
+  }
+  readonly modeEditionAbonnement = signal(false);
+  readonly enregistrementAbonnement = signal(false);
+  readonly erreurAbonnement = signal('');
+  editAbonnement: any = {};
+
+  private dateAncrageAbonnement(c: any): string {
+    if (!c.abonnement_jour_facturation) return '';
+    const aujourdHui = new Date();
+    const mois = c.abonnement_mois_facturation ?? (aujourdHui.getMonth() + 1);
+    const jour = String(c.abonnement_jour_facturation).padStart(2, '0');
+    return `${aujourdHui.getFullYear()}-${String(mois).padStart(2, '0')}-${jour}`;
+  }
+
+  activerEditionAbonnement(c: any): void {
+    this.erreurAbonnement.set('');
+    this.editAbonnement = {
+      abonnement_periodicite: c.abonnement_periodicite || '',
+      abonnement_prochaine_facturation: this.dateAncrageAbonnement(c),
+      montant_convenu: c.abonnement_montant_convenu_xof ?? null,
+    };
+    this.modeEditionAbonnement.set(true);
+  }
+
+  enregistrerAbonnement(): void {
+    this.erreurAbonnement.set('');
+    if (!!this.editAbonnement.abonnement_periodicite !== !!this.editAbonnement.abonnement_prochaine_facturation) {
+      this.erreurAbonnement.set("Périodicité et date d'ancrage doivent être renseignées ensemble.");
+      return;
+    }
+    this.enregistrementAbonnement.set(true);
+    this.api.majAbonnementClient(this.clientId, this.editAbonnement).subscribe({
+      next: () => {
+        this.enregistrementAbonnement.set(false);
+        this.modeEditionAbonnement.set(false);
+        this.charger();
+      },
+      error: (e) => {
+        this.enregistrementAbonnement.set(false);
+        this.erreurAbonnement.set(e?.error?.error ?? 'Enregistrement impossible.');
+      },
+    });
+  }
   readonly typesOriginal = signal<{ code: string; libelle: string }[]>([]);
 
   // Édition de la fiche identité/coordonnées (ajout 18/08/2026) — le backend
@@ -366,6 +479,7 @@ export class ClientDetailComponent implements OnInit {
     this.charger();
     this.api.listesValeurs('type_original').subscribe({ next: (t) => this.typesOriginal.set(t) });
     this.api.clients().subscribe({ next: (c) => this.clientsTous.set(c) });
+    this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l.filter((p) => p.code !== 'ponctuelle')) });
   }
 
   charger(): void {

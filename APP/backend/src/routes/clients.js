@@ -6,8 +6,10 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const { logAudit, diffChamps } = require("../audit");
+const { deriverFormule } = require("../periodicite");
+const { PERIODICITES_ABONNEMENT, JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
 
 // Traçabilité "créé par"/"modifié par" (09/10/2026, question explicite de
 // l'utilisateur, voir CLAUDE.md) : champs d'identité dont une erreur de
@@ -144,16 +146,118 @@ router.get("/verifier-doublon", async (req, res) => {
   }
 });
 
+// GET /api/clients/meta/abonnements — registre des clients sous
+// convention-cadre (09/10/2026, ancrage par CLIENT — remplace l'ancienne
+// GET /api/dossiers/meta/abonnements du 05/10/2026, ancrée par erreur sur
+// le dossier). Voir CLAUDE.md/HISTORY.md pour l'analyse complète
+// (exemples réels BDM/Orabank : une facture périodique unique rémunère
+// TOUS les dossiers du client). Même permission que le reste des données
+// financières agrégées (factures.consulter), volontairement pas un
+// nouveau menu/module : une section de l'écran Facturation. Préfixé
+// /meta/ pour ne jamais entrer en collision avec GET /:id ci-dessous.
+router.get("/meta/abonnements", async (req, res) => {
+  if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
+    return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.id AS client_id, c.abonnement_montant_convenu_xof AS montant_convenu_xof, c.maj_le,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
+              ${SELECT_ABONNEMENT_BRUT}
+       FROM clients c
+       ${JOIN_ABONNEMENT_FACTURE}
+       WHERE c.abonnement_periodicite IS NOT NULL`
+    );
+    const aujourdHui = new Date().toISOString().slice(0, 10);
+    const enrichies = rows.map((r) => ({ ...r, ...calculerStatutAbonnement(r, aujourdHui) }));
+    enrichies.sort((a, b) => {
+      // En retard d'abord, puis par prochaine échéance la plus proche.
+      const ra = a.abonnement_statut === "en_retard" ? 0 : 1;
+      const rb = b.abonnement_statut === "en_retard" ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      if (a.abonnement_prochaine_echeance && b.abonnement_prochaine_echeance) {
+        return a.abonnement_prochaine_echeance < b.abonnement_prochaine_echeance ? -1 : 1;
+      }
+      return 0;
+    });
+    res.json(enrichies);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/clients/:id/abonnement — configure/corrige/retire la
+// convention-cadre d'un client (09/10/2026). { abonnement_periodicite?,
+// abonnement_prochaine_facturation?, montant_convenu? } — périodicité et
+// date d'ancrage doivent être fournies ENSEMBLE (même règle que
+// PUT /api/echeances-administratives/:id) ou toutes les deux omises pour
+// RETIRER la convention (remet tout à NULL, y compris le montant convenu
+// — sans convention active, ce montant n'a plus de sens). Gardée par
+// clients.modifier (pas une nouvelle action dédiée) — configurer la
+// convention d'un client fait partie de l'édition de sa fiche, même
+// niveau que le statut KYC ou les liens déjà modifiables sous ce droit.
+router.put("/:id/abonnement", requirePermission("clients.modifier"), async (req, res) => {
+  const b = req.body || {};
+  const periodicite = b.abonnement_periodicite || null;
+  const prochaineFacturation = b.abonnement_prochaine_facturation || null;
+  if ((periodicite == null) !== (prochaineFacturation == null)) {
+    return res.status(400).json({ error: "abonnement_periodicite et abonnement_prochaine_facturation doivent être fournis ensemble (ou tous les deux omis pour retirer la convention)." });
+  }
+  if (periodicite != null && !PERIODICITES_ABONNEMENT.includes(periodicite)) {
+    return res.status(400).json({ error: `Périodicité d'abonnement invalide (attendu : ${PERIODICITES_ABONNEMENT.join(", ")}).` });
+  }
+  try {
+    let jourEcheance = null, moisEcheance = null;
+    if (periodicite != null) {
+      ({ jourEcheance, moisEcheance } = deriverFormule(prochaineFacturation, periodicite));
+    }
+    // ⚠️ $6 duplique $1 (periodicite) plutôt que de le réutiliser dans le
+    // CASE WHEN ci-dessous — motif de bug déjà documenté sur ce projet
+    // (CLAUDE.md) : un même paramètre réemployé dans un contexte non typé
+    // (ici "$1 IS NULL" seul, sans colonne typée en face) fait échouer la
+    // résolution de type Postgres ("could not determine data type of
+    // parameter $1"), confirmé en testant cette route.
+    const { rows } = await pool.query(
+      `UPDATE clients SET
+         abonnement_periodicite = $1,
+         abonnement_jour_facturation = $2,
+         abonnement_mois_facturation = $3,
+         abonnement_montant_convenu_xof = CASE WHEN $6::varchar IS NULL THEN NULL ELSE COALESCE($4, abonnement_montant_convenu_xof) END,
+         maj_le = now()
+       WHERE id = $5
+       RETURNING id, abonnement_periodicite, abonnement_jour_facturation, abonnement_mois_facturation, abonnement_montant_convenu_xof, maj_le`,
+      [periodicite, jourEcheance, moisEcheance, b.montant_convenu ?? null, req.params.id, periodicite]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    await logAudit({
+      utilisateurId: req.user.sub, action: "modifier_abonnement_client", entite: "clients",
+      entiteId: req.params.id, details: { abonnement_periodicite: periodicite }, ip: req.ip,
+    });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // GET /api/clients/:id — fiche 360° (KYC, dossiers, originaux confiés, liens)
 router.get("/:id", async (req, res) => {
   try {
     const cli = await pool.query(
-      `SELECT c.*, cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom
-       FROM clients c LEFT JOIN utilisateurs cp ON cp.id = c.cree_par
+      `SELECT c.*, cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom,
+              abf.derniere_facture_le AS abonnement_derniere_facture_le
+       FROM clients c
+       LEFT JOIN utilisateurs cp ON cp.id = c.cree_par
+       ${JOIN_ABONNEMENT_FACTURE}
        WHERE c.id = $1`,
       [req.params.id]
     );
     if (!cli.rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    // Convention-cadre / abonnement (09/10/2026, ancrage par client — voir
+    // CLAUDE.md/HISTORY.md) : statut "à jour/en retard" dérivé, jamais
+    // stocké, même mécanisme que GET /api/clients/meta/abonnements.
+    Object.assign(cli.rows[0], calculerStatutAbonnement(cli.rows[0], new Date().toISOString().slice(0, 10)));
 
     // Traçabilité procédurale (09/10/2026, voir CLAUDE.md « Traçabilité
     // procédurale », même patron que GET /api/dossiers/:id) : dernière

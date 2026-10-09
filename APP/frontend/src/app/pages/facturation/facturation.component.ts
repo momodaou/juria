@@ -184,15 +184,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>Clients sous convention (abonnement)</h3>
-      <p class="desc">Registre des dossiers facturés de façon périodique (mensuelle/trimestrielle/semestrielle/annuelle) — une seule convention-cadre active par client. Statut dérivé automatiquement de la dernière facture réellement émise et liée au dossier, jamais une case à cocher.</p>
+      <p class="desc">Registre des clients facturés de façon périodique (mensuelle/trimestrielle/semestrielle/annuelle) — une seule facture couvre tous les dossiers du client (contentieux, conseil, diligences…), pas de convention distincte par dossier. Statut dérivé automatiquement de la dernière facture réellement émise pour ce client (liée ou non à l'un de ses dossiers), jamais une case à cocher.</p>
       @if (abonnements().length) {
         <table>
-          <tr><th>Client</th><th class="nowrap">Dossier</th><th>Périodicité</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th><th></th></tr>
-          @for (a of abonnements(); track a.dossier_id) {
+          <tr><th>Client</th><th>Périodicité</th><th>Montant convenu</th><th>Dernière facture</th><th>Prochaine échéance</th><th>Statut</th><th></th></tr>
+          @for (a of abonnements(); track a.client_id) {
             <tr>
-              <td>{{ a.client }}</td>
-              <td class="nowrap"><a class="lien" [routerLink]="['/dossiers', a.dossier_id]">{{ a.numero }}</a></td>
+              <td><a class="lien" [routerLink]="['/clients', a.client_id]">{{ a.client }}</a></td>
               <td>{{ a.abonnement_periodicite ? libellePeriodicite(a.abonnement_periodicite) : 'à configurer' }}</td>
+              <td>{{ a.montant_convenu_xof ? (a.montant_convenu_xof | number) + ' FCFA' : '—' }}</td>
               <td>{{ a.abonnement_derniere_facture_le ? (a.abonnement_derniere_facture_le | date:'dd/MM/yyyy') : '—' }}</td>
               <td>{{ a.abonnement_prochaine_echeance ? (a.abonnement_prochaine_echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td>
@@ -202,12 +202,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               </td>
               <td><app-menu-actions [actions]="actionsPourAbonnement(a)" /></td>
             </tr>
-            @if (editionAbonnementId() === a.dossier_id) {
+            @if (editionAbonnementId() === a.client_id) {
               <tr class="edition">
                 <td colspan="7">
                   <div class="form">
                     <label>Périodicité
-                      <select class="in" [(ngModel)]="editAbonnement.abonnement_periodicite" [name]="'edPeriod' + a.dossier_id">
+                      <select class="in" [(ngModel)]="editAbonnement.abonnement_periodicite" [name]="'edPeriod' + a.client_id">
                         <option value="">— non configurée —</option>
                         @for (p of periodicitesAbonnement(); track p.code) {
                           <option [value]="p.code">{{ p.libelle }}</option>
@@ -215,10 +215,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                       </select>
                     </label>
                     <label>Date d'ancrage
-                      <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" [name]="'edAncrage' + a.dossier_id" />
+                      <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" [name]="'edAncrage' + a.client_id" />
+                    </label>
+                    <label>Montant convenu (FCFA, facultatif)
+                      <input class="in" type="number" min="0" [(ngModel)]="editAbonnement.montant_convenu" [name]="'edMontant' + a.client_id" />
                     </label>
                   </div>
-                  <p class="hint">Les deux champs doivent être renseignés ensemble (comme sur la fiche dossier).</p>
+                  <p class="hint">Périodicité et date d'ancrage doivent être renseignées ensemble (ou toutes les deux laissées vides pour retirer la convention).</p>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                   <button class="lien" (click)="enregistrerEditionAbonnement(a)">Enregistrer</button>
                   <button class="lien" (click)="annulerEditionAbonnement()">Annuler</button>
@@ -397,7 +400,7 @@ export class FacturationComponent implements OnInit {
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
-    this.api.dossiersAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
+    this.api.clientsAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
     this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l) });
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
@@ -409,6 +412,12 @@ export class FacturationComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.factures('', dossierId ? { dossier_id: dossierId } : {}).subscribe({ next: (f) => this.factures.set(f), error: () => {} });
     this.api.facturesImpayees().subscribe({ next: (f) => this.impayees.set(f), error: () => {} });
+    // 🐛 Trouvé en vérifiant visuellement le cycle complet (09/10/2026) :
+    // émettre une facture (ex. depuis "Facturer" sur le registre
+    // abonnement) ne rafraîchissait que les factures/impayées — le statut
+    // "à jour/en retard" du registre restait affiché tel qu'avant
+    // l'émission jusqu'à un rechargement manuel de la page.
+    this.api.clientsAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
     if (this.dossierTempsId) this.chargerTempsNonFactures();
   }
 
@@ -523,18 +532,20 @@ export class FacturationComponent implements OnInit {
     this.objet = d?.objet || '';
   }
 
-  // Raccourci depuis le registre "Clients sous convention" (07/10/2026) :
-  // jusqu'ici ce tableau n'avait aucune action, il fallait retrouver le
-  // dossier à la main dans le sélecteur de "Nouvelle facture" ci-dessus.
-  // Pré-remplit ce même formulaire (mode abonnement, montant convenu s'il
-  // existe) plutôt que de dupliquer un mécanisme d'émission — le registre
-  // reste un affichage dérivé, l'émission reste le seul formulaire existant.
+  // Raccourci depuis le registre "Clients sous convention" (07/10/2026,
+  // bascule sur une facture CLIENT — pas dossier — le 09/10/2026 : une
+  // seule facture couvre tous les dossiers du client, jamais un dossier
+  // précis). Pré-remplit ce même formulaire (option "Autre", mode
+  // abonnement, montant convenu s'il existe) plutôt que de dupliquer un
+  // mécanisme d'émission — le registre reste un affichage dérivé,
+  // l'émission reste le seul formulaire existant.
   preparerFacturationAbonnement(a: any): void {
     this.message.set('');
     this.erreur.set('');
-    this.dossierId = a.dossier_id;
+    this.dossierId = '__autre__';
+    this.factureClientId = a.client_id;
     this.mode = 'abonnement';
-    this.objet = a.intitule || '';
+    this.objet = '';
     this.montantHt = a.montant_convenu_xof ?? null;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -544,14 +555,14 @@ export class FacturationComponent implements OnInit {
     if (this.auth.peut('factures.creer')) {
       items.push({ label: 'Facturer', action: () => this.preparerFacturationAbonnement(a) });
     }
-    if (this.auth.peut('dossiers.modifier')) {
+    if (this.auth.peut('clients.modifier')) {
       items.push({ label: 'Modifier', action: () => this.commencerEditionAbonnement(a) });
     }
     return items;
   }
 
   // Reconstruit une date d'ancrage représentative depuis jour/mois stockés
-  // — même patron que dossier-detail.component.ts (seuls jour/mois sont
+  // — même patron que client-detail.component.ts (seuls jour/mois sont
   // conservés, pas la date d'origine exacte ; la formule est toujours
   // re-dérivée côté serveur).
   private dateAncrageAbonnement(a: any): string {
@@ -564,10 +575,11 @@ export class FacturationComponent implements OnInit {
 
   commencerEditionAbonnement(a: any): void {
     this.erreur.set('');
-    this.editionAbonnementId.set(a.dossier_id);
+    this.editionAbonnementId.set(a.client_id);
     this.editAbonnement = {
       abonnement_periodicite: a.abonnement_periodicite || '',
       abonnement_prochaine_facturation: this.dateAncrageAbonnement(a),
+      montant_convenu: a.montant_convenu_xof ?? null,
     };
   }
 
@@ -581,12 +593,12 @@ export class FacturationComponent implements OnInit {
       this.erreur.set("Périodicité et date d'ancrage doivent être renseignées ensemble.");
       return;
     }
-    this.api.majDossier(a.dossier_id, { ...this.editAbonnement, maj_le_attendu: a.maj_le }).subscribe({
+    this.api.majAbonnementClient(a.client_id, this.editAbonnement).subscribe({
       next: () => {
         this.editionAbonnementId.set(null);
-        this.api.dossiersAbonnements().subscribe({ next: (ab) => this.abonnements.set(ab) });
+        this.api.clientsAbonnements().subscribe({ next: (ab) => this.abonnements.set(ab) });
       },
-      error: (e) => this.erreur.set(e?.error?.error ?? "Modification impossible (le dossier a peut-être été modifié entre-temps — rechargez la page)."),
+      error: (e) => this.erreur.set(e?.error?.error ?? "Modification impossible."),
     });
   }
 

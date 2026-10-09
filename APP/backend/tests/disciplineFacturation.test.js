@@ -47,6 +47,17 @@ async function creerClient(overrides = {}) {
   return res.body.id;
 }
 
+// Clients contractuels (ancrage par client, 09/10/2026) : un dossier ne
+// peut plus être créé avec mode_honoraires='abonnement' que si son client
+// est DÉJÀ sous convention-cadre active — configure celle-ci au préalable
+// dans les tests qui en ont besoin.
+async function configurerAbonnementClient(clientId) {
+  await request(app)
+    .put(`/api/clients/${clientId}/abonnement`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ abonnement_periodicite: "mensuelle", abonnement_prochaine_facturation: "2026-11-05" });
+}
+
 function creerDossier(tokenAppelant, payload) {
   return request(app)
     .post("/api/dossiers")
@@ -91,7 +102,7 @@ describe("Mode d'honoraires obligatoire à la création", () => {
   });
 });
 
-describe("Montant convenu — verrouillé aux modes forfait / consultation / abonnement", () => {
+describe("Montant convenu — verrouillé aux modes forfait / consultation (abonnement retiré le 09/10/2026, le montant convenu vit désormais sur le client)", () => {
   test("refusé (400) sur un dossier au temps passé", async () => {
     const clientId = await creerClient();
     const associe = await creerUtilisateurRole("associe");
@@ -170,25 +181,28 @@ describe("Lettre de mission générée automatiquement à l'ouverture", () => {
     expect(rows[0].statut).toBe("brouillon");
   });
 
-  test("NON générée pour un dossier en abonnement (convention-cadre déjà signée)", async () => {
+  test("NON générée pour un dossier dont le client est sous convention-cadre (abonnement)", async () => {
     const clientId = await creerClient();
+    await configurerAbonnementClient(clientId);
     const associe = await creerUtilisateurRole("associe");
     const creation = await creerDossier(token, {
-      client_id: clientId, responsable_id: associe.id, mode_honoraires: "abonnement",
+      client_id: clientId, responsable_id: associe.id,
     });
     expect(creation.status).toBe(201);
     expect(creation.body.lettre_mission_document_id).toBeNull();
   });
 
-  test("NON générée pour un success fee quand le client a déjà un dossier en abonnement", async () => {
+  test("un 'success_fee' demandé explicitement est coercé en 'abonnement' si le client est déjà sous convention — pas de lettre de mission", async () => {
     const clientId = await creerClient();
+    await configurerAbonnementClient(clientId);
     const associe = await creerUtilisateurRole("associe");
-    await creerDossier(token, { client_id: clientId, responsable_id: associe.id, mode_honoraires: "abonnement" });
     const creation = await creerDossier(token, {
       client_id: clientId, responsable_id: associe.id, mode_honoraires: "success_fee",
     });
     expect(creation.status).toBe(201);
     expect(creation.body.lettre_mission_document_id).toBeNull();
+    const relu = await request(app).get(`/api/dossiers/${creation.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(relu.body.mode_honoraires).toBe("abonnement");
   });
 
   test("générée pour un success fee autonome (client sans abonnement)", async () => {
@@ -263,6 +277,7 @@ describe("statut_facturation — calcul et exemptions (Bloc B)", () => {
 
   test.each(["success_fee", "abonnement"])("exempté pour le mode %s, même à 90 jours sans facture", async (mode) => {
     const clientId = await creerClient();
+    if (mode === "abonnement") await configurerAbonnementClient(clientId);
     const associe = await creerUtilisateurRole("associe");
     const creation = await creerDossier(token, { client_id: clientId, responsable_id: associe.id, mode_honoraires: mode });
     await reculerOuverture(creation.body.id, 90);

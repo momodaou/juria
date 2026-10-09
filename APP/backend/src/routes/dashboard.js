@@ -316,22 +316,21 @@ router.get("/", async (req, res) => {
            WHERE (${STATUT_FACTURATION_EXPR}) IS NOT NULL`
         )
       : null;
-    // Clients contractuels (abonnement), 05/10/2026 — voir abonnements.js.
-    // Compte + aperçu (2 pires retards), même permission que le reste des
-    // tuiles financières. Statut dérivé en JS (calculerStatutAbonnement),
-    // pas en SQL — peu de lignes concernées (une par client sous
-    // convention), pas besoin d'un calcul serveur plus élaboré.
+    // Clients contractuels (abonnement) — ancrage par CLIENT (09/10/2026,
+    // revu depuis le 05/10/2026, voir abonnements.js/CLAUDE.md). Compte +
+    // aperçu (2 pires retards), même permission que le reste des tuiles
+    // financières. Statut dérivé en JS (calculerStatutAbonnement), pas en
+    // SQL — peu de lignes concernées (un par client sous convention), pas
+    // besoin d'un calcul serveur plus élaboré.
     let abonnementsRetardN = null, abonnementsRetardApercu = [];
     if (voitFactures) {
       const { rows: abonnementsRows } = await pool.query(
-        `SELECT d.id AS dossier_id, d.numero,
-                ${NOM_CLIENT} AS client,
+        `SELECT c.id AS client_id,
+                COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
                 ${SELECT_ABONNEMENT_BRUT}
-         FROM dossiers d
-         JOIN clients c ON c.id = d.client_id
+         FROM clients c
          ${JOIN_ABONNEMENT_FACTURE}
-         WHERE d.mode_honoraires = 'abonnement' AND d.abonnement_periodicite IS NOT NULL
-           AND d.statut NOT IN ('archive')`
+         WHERE c.abonnement_periodicite IS NOT NULL`
       );
       const aujourdHuiIso = new Date().toISOString().slice(0, 10);
       const enRetard = abonnementsRows
@@ -340,18 +339,28 @@ router.get("/", async (req, res) => {
         .sort((a, b) => (a.abonnement_prochaine_echeance < b.abonnement_prochaine_echeance ? -1 : 1));
       abonnementsRetardN = enRetard.length;
       abonnementsRetardApercu = enRetard.slice(0, 2).map((r) => ({
-        dossier_id: r.dossier_id, numero: r.numero, client: r.client,
+        client_id: r.client_id, client: r.client,
         prochaine_echeance: r.abonnement_prochaine_echeance,
       }));
     }
     // Taux de réalisation (rentabilité) — heures facturées / heures saisies
     // ce mois, cabinet entier. Dérivé de temps.facture_id (câblé le
     // 25/08/2026) — même permission que les autres données financières.
+    // Exclut le temps saisi sur un dossier dont le CLIENT est sous
+    // convention-cadre (09/10/2026) : ce temps n'est structurellement
+    // jamais rattaché à une facture au niveau du dossier (la facturation
+    // se fait au niveau du client, souvent sans dossier_id) — le compter
+    // ici ferait baisser artificiellement le taux sans rien y changer de
+    // réel, pour tout collaborateur travaillant sur ce type de client.
     const realisation = voitFactures
       ? await one(
-          `SELECT ROUND(100.0 * SUM(duree_minutes) FILTER (WHERE facture_id IS NOT NULL)
-                  / NULLIF(SUM(duree_minutes), 0)) AS taux
-           FROM temps WHERE date_saisie >= date_trunc('month', current_date)`
+          `SELECT ROUND(100.0 * SUM(t.duree_minutes) FILTER (WHERE t.facture_id IS NOT NULL)
+                  / NULLIF(SUM(t.duree_minutes), 0)) AS taux
+           FROM temps t
+           JOIN dossiers d ON d.id = t.dossier_id
+           JOIN clients c ON c.id = d.client_id
+           WHERE t.date_saisie >= date_trunc('month', current_date)
+             AND c.abonnement_periodicite IS NULL`
         )
       : null;
 
@@ -765,28 +774,27 @@ router.get("/detail/:type", async (req, res) => {
         );
         return res.json(rows);
       }
-      // Clients contractuels (abonnement) en retard de facturation
-      // (05/10/2026) — même donnée que la tuile, triable, pas de LIMIT 2.
+      // Clients contractuels (abonnement) en retard de facturation —
+      // ancrage par CLIENT (09/10/2026, revu depuis le 05/10/2026) — même
+      // donnée que la tuile, triable, pas de LIMIT 2.
       case "abonnements_retard": {
         if (!(await estAutorise(req.user.role, "factures.consulter", req.user.sub))) {
           return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
         }
         const { rows } = await pool.query(
-          `SELECT d.id AS dossier_id, d.numero, d.intitule,
-                  ${NOM_CLIENT} AS client,
+          `SELECT c.id AS client_id,
+                  COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
                   ${SELECT_ABONNEMENT_BRUT}
-           FROM dossiers d
-           JOIN clients c ON c.id = d.client_id
+           FROM clients c
            ${JOIN_ABONNEMENT_FACTURE}
-           WHERE d.mode_honoraires = 'abonnement' AND d.abonnement_periodicite IS NOT NULL
-             AND d.statut NOT IN ('archive')`
+           WHERE c.abonnement_periodicite IS NOT NULL`
         );
         const aujourdHui = new Date().toISOString().slice(0, 10);
         const enRetard = rows
           .map((r) => ({ ...r, ...calculerStatutAbonnement(r, aujourdHui) }))
           .filter((r) => r.abonnement_statut === "en_retard")
           .map((r) => ({
-            dossier_id: r.dossier_id, numero: r.numero, intitule: r.intitule, client: r.client,
+            client_id: r.client_id, client: r.client,
             periodicite: r.abonnement_periodicite, prochaine_echeance: r.abonnement_prochaine_echeance,
             jours_retard: Math.round((new Date(aujourdHui) - new Date(r.abonnement_prochaine_echeance)) / 86400000),
           }));

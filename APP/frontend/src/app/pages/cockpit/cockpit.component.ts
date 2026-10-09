@@ -242,8 +242,7 @@ const CONFIG: Record<string, TuileConfig> = {
   abonnements_retard: {
     titre: 'Clients sous convention (abonnement) en retard de facturation',
     cols: [
-      { key: 'client', label: 'Client' },
-      { key: 'numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'client', label: 'Client', lien: { route: '/clients', idKey: 'client_id' } },
       { key: 'periodicite', label: 'Périodicité' },
       { key: 'prochaine_echeance', label: 'Échéance dépassée', format: 'date' },
       { key: 'jours_retard', label: 'Jours de retard', format: 'num' },
@@ -608,21 +607,18 @@ const CONFIG: Record<string, TuileConfig> = {
             </button>
           }
           @if (d.abonnements_retard_n !== null) {
-            <!-- Clients contractuels (abonnement), 05/10/2026 — voir
-                 CLAUDE.md/HISTORY.md. Aperçu (2 pires retards), même patron
-                 que les autres tuiles financières. -->
+            <!-- Clients contractuels (abonnement) — ancrage par CLIENT
+                 (09/10/2026, revu depuis le 05/10/2026, voir CLAUDE.md/
+                 HISTORY.md). Aperçu (2 pires retards), même patron que les
+                 autres tuiles financières. -->
             <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'abonnements_retard'" (click)="clic('abonnements_retard')">
               <span class="tico" [innerHTML]="icons['abonnements_retard']"></span>
               <span class="n">{{ d.abonnements_retard_n }}</span><span class="l">Abonnements en retard de facturation</span>
               @if (d.abonnements_retard_apercu.length) {
                 <div class="mini-liste">
-                  @for (l of d.abonnements_retard_apercu; track l.dossier_id) {
+                  @for (l of d.abonnements_retard_apercu; track l.client_id) {
                     <div class="mini-ligne">
-                      @if (l.dossier_id) {
-                        <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.client }}</a>
-                      } @else {
-                        <span class="principal">{{ l.client }}</span>
-                      }
+                      <a class="principal" [routerLink]="['/clients', l.client_id]" (click)="$event.stopPropagation()">{{ l.client }}</a>
                       <span class="secondaire">{{ l.prochaine_echeance | date:'dd/MM' }}</span>
                     </div>
                   }
