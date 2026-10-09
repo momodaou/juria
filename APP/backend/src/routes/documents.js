@@ -2,7 +2,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
@@ -65,7 +65,7 @@ router.get("/:id/download", async (req, res) => {
     }
     const buf = await readObject(rows[0].chemin_storage);
     res.setHeader("Content-Type", rows[0].type_mime || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${rows[0].nom}"`);
+    res.setHeader("Content-Disposition", enteteContentDisposition(rows[0].nom));
     res.send(buf);
   } catch (e) {
     if (e instanceof FichierIntrouvableError) {

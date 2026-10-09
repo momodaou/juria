@@ -130,7 +130,9 @@ describe("Historique des audiences sur la fiche dossier", () => {
       .send({ dossier_id: dossierId, date_prevue: "2026-12-11", juridiction: "TGI Bamako", type: "mise_en_etat" });
     const suppression = await request(app).delete(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
     expect(suppression.status).toBe(409);
-    expect(suppression.body.error).toMatch(/audiences/);
+    // 09/10/2026 — le message est désormais en français (libellé lisible,
+    // plus le nom de table brut) ; on vérifie la structure `blocages`.
+    expect(suppression.body.blocages.some((b) => b.table === "audiences")).toBe(true);
   });
 });
 

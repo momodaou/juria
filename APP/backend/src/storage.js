@@ -83,4 +83,21 @@ async function deleteObject(cheminStorage) {
   }
 }
 
-module.exports = { saveObject, readObject, deleteObject, FichierIntrouvableError };
+// 🔴 Bug de production trouvé le 09/10/2026 (constat utilisateur : « lettre
+// d'engagement n'est pas visible ni en aperçu ni n'a l'action télécharger »)
+// — `res.setHeader("Content-Disposition", \`attachment; filename="${nom}"\`)`
+// avec un nom contenant un caractère non-ASCII (tiret cadratin « — »,
+// apostrophe typographique, accent…) fait planter Node en 500
+// (`TypeError [ERR_INVALID_CHAR]`), AVANT même d'envoyer le fichier — un
+// crash systémique, pas une limitation de format. Touchait potentiellement
+// tout document/pièce/ressource au nom français "normal" (ex. la lettre de
+// mission auto-générée, nommée "Lettre de mission / d'engagement — <numéro
+// de dossier>"). Corrigé une fois ici (RFC 6266/5987 : filename ASCII de
+// repli + filename* encodé UTF-8, que tous les navigateurs modernes
+// préfèrent) plutôt que de reproduire un correctif par route.
+function enteteContentDisposition(nom) {
+  const ascii = nom.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nom)}`;
+}
+
+module.exports = { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition };

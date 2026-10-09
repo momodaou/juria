@@ -72,6 +72,24 @@ describe("DELETE /api/dossiers/:id — limité aux dossiers sans activité", () 
     const relu = await request(app).get(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
     expect(relu.status).toBe(200); // toujours là
   });
+
+  // 09/10/2026 — gap signalé par l'utilisateur (message de blocage illisible,
+  // noms de table bruts) : le 409 expose désormais `blocages` structuré
+  // (libellé français + compte), en plus d'un texte lisible.
+  test("409 expose `blocages` structuré avec libellé français (pas le nom de table brut)", async () => {
+    const clientId = await creerClient();
+    const dossierId = await creerDossier(clientId);
+    await request(app)
+      .post(`/api/dossiers/${dossierId}/parties`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ denomination: "Partie bloquante" });
+
+    const res = await request(app).delete(`/api/dossiers/${dossierId}`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(409);
+    expect(res.body.blocages).toEqual([{ table: "dossier_parties", libelle: "partie(s) au dossier", n: 1 }]);
+    expect(res.body.error).not.toMatch(/dossier_parties/);
+    expect(res.body.error).toMatch(/partie\(s\) au dossier/);
+  });
 });
 
 describe("DELETE /api/clients/:id — limité aux clients sans activité", () => {
@@ -86,6 +104,15 @@ describe("DELETE /api/clients/:id — limité aux clients sans activité", () =>
     await creerDossier(clientId);
     const res = await request(app).delete(`/api/clients/${clientId}`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(409);
+  });
+
+  // 09/10/2026 — même correctif de lisibilité que dossiers.js.
+  test("409 expose `blocages` structuré avec libellé français (pas la clé SQL brute)", async () => {
+    const clientId = await creerClient();
+    await creerDossier(clientId);
+    const res = await request(app).delete(`/api/clients/${clientId}`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(409);
+    expect(res.body.blocages).toEqual([{ table: "dossiers", libelle: "dossier(s)", n: 1 }]);
   });
 });
 

@@ -158,7 +158,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td>{{ c.impute_a || '—' }}</td>
               <td>
                 @if (c.document_id) {
-                  <button class="lien" (click)="apercuPiece(c)">Aperçu</button>
+                  <button class="lien" (click)="apercuPiece(c)">Aperçu</button> ·
+                  <button class="lien" (click)="ouvrirPiece(c)">Ouvrir</button>
                 } @else if (c.dossier_id && auth.peut('courriers.creer')) {
                   <input type="file" class="mini-file" (change)="joindrePiece(c, $event)" title="Joindre le scan de ce courrier" />
                 } @else { — }
@@ -369,6 +370,24 @@ export class CourrierComponent implements OnInit {
 
   apercuPiece(c: any): void {
     this.preview.ouvrir(c.reference, this.api.telechargerDocument(c.document_id));
+  }
+
+  // 09/10/2026 — gap signalé par l'utilisateur (actions de document
+  // manquantes à certains endroits) : seul « Aperçu » existait ici, sans
+  // repli si le format n'est pas prévisualisable (le composant d'aperçu
+  // affiche alors juste « utilisez Ouvrir/Télécharger », sans que ces
+  // actions existent nulle part sur cet écran) ni en cas de fichier perdu
+  // du stockage (404, voir storage.js) — même repli que dossier-detail.
+  ouvrirPiece(c: any): void {
+    this.erreur.set('');
+    this.api.telechargerDocument(c.document_id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: (e) => this.erreur.set(e?.status === 404 ? 'Fichier introuvable dans le stockage.' : 'Téléchargement impossible'),
+    });
   }
 
   changerStatut(c: any, statut: string): void {

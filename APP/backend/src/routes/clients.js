@@ -4,7 +4,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject, readObject, deleteObject, FichierIntrouvableError } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
@@ -327,7 +327,7 @@ router.get("/:id/kyc-pieces/:pieceId/download", async (req, res) => {
     if (!rows[0] || !rows[0].chemin_storage) return res.status(404).json({ error: "Pièce introuvable" });
     const buf = await readObject(rows[0].chemin_storage);
     res.setHeader("Content-Type", rows[0].type_mime || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${rows[0].libelle}"`);
+    res.setHeader("Content-Disposition", enteteContentDisposition(rows[0].libelle));
     res.send(buf);
   } catch (e) {
     if (e instanceof FichierIntrouvableError) {
@@ -440,10 +440,19 @@ router.delete("/:id", requirePermission("clients.supprimer"), async (req, res) =
       [id]
     );
     const c = chk.rows[0];
+    // Libellés français (09/10/2026, cohérent avec le même correctif sur
+    // DELETE /api/dossiers/:id) — le message affichait jusqu'ici les clés
+    // SQL brutes (ex. "1 pieces_kyc").
+    const libelles = {
+      dossiers: "dossier(s)", dossiers_additionnels: "dossier(s) où ce client est additionnel",
+      factures: "facture(s)", pieces_kyc: "pièce(s) KYC", originaux: "original(aux) confié(s)",
+      liens: "lien(s) avec un autre client",
+    };
     const bloquants = Object.entries(c).filter(([, n]) => Number(n) > 0);
     if (bloquants.length) {
       return res.status(409).json({
-        error: `Suppression impossible : activité déjà enregistrée (${bloquants.map(([k, n]) => `${n} ${k}`).join(", ")}).`,
+        error: `Suppression impossible : ce client est déjà rattaché à ${bloquants.map(([k, n]) => `${n} ${libelles[k] || k}`).join(", ")}.`,
+        blocages: bloquants.map(([k, n]) => ({ table: k, libelle: libelles[k] || k, n: Number(n) })),
       });
     }
     const del = await pool.query("DELETE FROM clients WHERE id = $1 RETURNING id", [id]);

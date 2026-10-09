@@ -98,6 +98,8 @@ import { libelleRole } from '../../core/roles';
             @if (d.lettre_mission_document_id) {
               <div class="montant-sens">
                 Lettre de mission —
+                <button type="button" class="lien" (click)="apercuLettreMission(d)">Aperçu</button> ·
+                <button type="button" class="lien" (click)="ouvrirLettreMission(d)">Ouvrir</button> —
                 @if (d.lettre_mission_retour_le) {
                   retour signé le {{ d.lettre_mission_retour_le | date:'dd/MM/yyyy' }}
                 } @else if (auth.peut('courriers.creer')) {
@@ -841,7 +843,11 @@ import { libelleRole } from '../../core/roles';
                         <div class="col2">
                           <label>Document de la décision (jugement/arrêt/ordonnance)</label>
                           @if (a.decision_document_id) {
-                            <p class="muted">Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(a)">{{ a.decision_document_nom }}</button> — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).</p>
+                            <p class="muted">
+                              Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(a)">{{ a.decision_document_nom }}</button>
+                              (<button type="button" class="lien" (click)="telechargerDecision(a)">Télécharger</button>)
+                              — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).
+                            </p>
                           }
                           <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
                           <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(a)">Joindre le document</button>
@@ -1955,12 +1961,41 @@ export class DossierDetailComponent implements OnInit {
     this.preview.ouvrir(a.decision_document_nom || 'Décision', this.api.telechargerDocument(a.decision_document_id));
   }
 
+  // 09/10/2026 — même repli téléchargement direct que role-audience.component.ts.
+  telechargerDecision(a: any): void {
+    if (!a.decision_document_id) return;
+    this.erreur.set('');
+    this.api.telechargerDocument(a.decision_document_id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => this.erreur.set('Téléchargement impossible (fichier introuvable dans le stockage ?).'),
+    });
+  }
+
+  // 09/10/2026 — gap signalé par l'utilisateur (« impossible de supprimer,
+  // c'est lourd et déconfortant ») : le blocage lui-même reste volontaire
+  // (protège contre la perte silencieuse de parties/instances/documents
+  // réels — voir TABLES_ACTIVITE_DOSSIER côté backend, inchangé), mais rien
+  // ne proposait la suite logique une fois bloqué. Le message d'erreur est
+  // désormais lisible (libellés français, plus de noms de table bruts —
+  // voir dossiers.js) et, sur un 409, une bascule directe vers l'archivage
+  // est proposée en un clic plutôt que de laisser l'utilisateur dans une
+  // impasse.
   supprimerDossier(): void {
-    if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps…) est déjà enregistrée.')) return;
+    if (!window.confirm('Supprimer définitivement ce dossier ? Impossible si une activité (facture, document, temps, partie, instance…) est déjà enregistrée — l’archivage sera alors proposé à la place.')) return;
     this.erreur.set('');
     this.api.supprimerDossier(this.id).subscribe({
       next: () => this.router.navigate(['/dossiers']),
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
+      error: (e) => {
+        const msg = e?.error?.error ?? 'Suppression impossible.';
+        if (e?.status === 409 && e?.error?.blocages?.length) {
+          if (window.confirm(`${msg}\n\nArchiver ce dossier à la place ?`)) { this.archiverDossier(); return; }
+        }
+        this.erreur.set(msg);
+      },
     });
   }
 
@@ -2175,6 +2210,20 @@ export class DossierDetailComponent implements OnInit {
   // au composant partagé plutôt qu'ouvert dans un nouvel onglet.
   apercu(doc: any): void {
     this.preview.ouvrir(doc.nom, this.api.telechargerDocument(doc.id));
+  }
+
+  // 09/10/2026 — gap signalé par l'utilisateur (« lettre d'engagement n'est
+  // pas visible ni en aperçu ni n'a l'action télécharger ») : la ligne
+  // d'en-tête sur la lettre de mission (Bloc A, 18/09/2026) n'affichait
+  // jusqu'ici qu'un statut de retour signé, sans aucun moyen d'ouvrir le
+  // document lui-même depuis là — il fallait descendre jusqu'au tableau
+  // « Pièces (GED) » plus bas pour le retrouver. Réutilise apercu()/ouvrir()
+  // sur un objet document minimal (id + nom), sans dupliquer leur logique.
+  apercuLettreMission(d: any): void {
+    this.apercu({ id: d.lettre_mission_document_id, nom: `Lettre de mission — ${d.numero}` });
+  }
+  ouvrirLettreMission(d: any): void {
+    this.ouvrir({ id: d.lettre_mission_document_id });
   }
 
   // Menu "⋮" (19/09/2026).

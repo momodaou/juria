@@ -203,6 +203,18 @@ const TABLES_ACTIVITE_DOSSIER = [
   "dossier_parties", "instances", "dossier_clients_additionnels", "audiences",
 ];
 
+// Libellés français des tables ci-dessus (09/10/2026, gap signalé par
+// l'utilisateur : le message d'erreur de suppression affichait les noms de
+// table bruts — « 2 dossier_parties, 1 instances » — illisibles pour un
+// utilisateur final). Purement cosmétique, la logique de blocage ne change
+// pas.
+const LIBELLES_TABLES_ACTIVITE = {
+  documents: "pièce(s) GED", temps: "entrée(s) de temps passé", factures: "facture(s)",
+  communications: "communication(s)", retrocessions: "rétrocession(s)", evenements: "échéance(s)",
+  taches: "tâche(s)", dossier_parties: "partie(s) au dossier", instances: "instance(s)",
+  dossier_clients_additionnels: "client(s) additionnel(s)", audiences: "audience(s)",
+};
+
 // Référencement des dossiers (ajout 19/08/2026) — Guide de référencement
 // des dossiers, JFC Avocats : [TYPE]-[MATIÈRE]-[ANNÉE]-[N° d'ordre], ex.
 // CX-CIV-2026-0048. Compteur remis à 0001 chaque année, PAR type+matière
@@ -969,11 +981,15 @@ router.delete("/:id", requirePermission("dossiers.supprimer"), async (req, res) 
       )
     );
     const bloquants = TABLES_ACTIVITE_DOSSIER
-      .map((t, i) => ({ table: t, n: Number(compteurs[i].rows[0].n) }))
+      .map((t, i) => ({ table: t, libelle: LIBELLES_TABLES_ACTIVITE[t] || t, n: Number(compteurs[i].rows[0].n) }))
       .filter((x) => x.n > 0);
     if (bloquants.length) {
+      // `blocages` structuré (09/10/2026) en plus du texte — permet au
+      // frontend d'offrir « Archiver à la place » directement depuis
+      // l'échec de suppression, sans reparser le message.
       return res.status(409).json({
-        error: `Suppression impossible : activité déjà enregistrée (${bloquants.map((x) => `${x.n} ${x.table}`).join(", ")}). Utilisez l'archivage à la place.`,
+        error: `Suppression impossible : ce dossier contient déjà ${bloquants.map((x) => `${x.n} ${x.libelle}`).join(", ")}. Utilisez l'archivage à la place.`,
+        blocages: bloquants.map(({ table, libelle, n }) => ({ table, libelle, n })),
       });
     }
     const del = await pool.query("DELETE FROM dossiers WHERE id = $1 RETURNING id", [id]);

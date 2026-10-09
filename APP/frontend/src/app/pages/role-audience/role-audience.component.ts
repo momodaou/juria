@@ -244,7 +244,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <div class="col2">
                 <label>Document de la décision (jugement/arrêt/ordonnance)</label>
                 @if (l.decision_document_id) {
-                  <p class="muted">Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(l)">{{ l.decision_document_nom }}</button> — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).</p>
+                  <p class="muted">
+                    Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(l)">{{ l.decision_document_nom }}</button>
+                    (<button type="button" class="lien" (click)="telechargerDecision(l)">Télécharger</button>)
+                    — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).
+                  </p>
                 }
                 <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
                 <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(l)">Joindre le document</button>
@@ -1137,5 +1141,21 @@ export class RoleAudienceComponent implements OnInit {
   ouvrirDecision(l: any): void {
     if (!l.decision_document_id) return;
     this.preview.ouvrir(l.decision_document_nom || 'Décision', this.api.telechargerDocument(l.decision_document_id));
+  }
+
+  // 09/10/2026 — repli téléchargement direct (même motif que courrier.js/
+  // dossier-detail.js) : le bouton « 📄 Décision » n'ouvre que l'aperçu,
+  // sans action de secours si le format n'est pas prévisualisable ou si le
+  // fichier est introuvable dans le stockage (404).
+  telechargerDecision(l: any): void {
+    if (!l.decision_document_id) return;
+    this.api.telechargerDocument(l.decision_document_id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => { this.erreurDecision = 'Téléchargement impossible (fichier introuvable dans le stockage ?).'; },
+    });
   }
 }

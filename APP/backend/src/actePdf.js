@@ -12,6 +12,7 @@
 // vue imprimable du texte courant à l'instant du téléchargement.
 const path = require("path");
 const PDFDocument = require("pdfkit");
+const { enteteContentDisposition } = require("./storage");
 
 const LOGO_PATH = path.join(__dirname, "../assets/logo-jfc.png");
 
@@ -93,7 +94,11 @@ async function envoyerActePdf(pool, docId, res) {
   if (!donnees) return false;
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${donnees.acte.nom.replace(/[^\w.-]/g, "_")}.pdf"`);
+  // 09/10/2026 — remplace le repli grossier (accents/tirets effacés en
+  // "_") par le même en-tête RFC 5987 que documents.js/biblio.js/clients.js
+  // (storage.js), qui préserve le nom réel tout en restant un header HTTP
+  // valide.
+  res.setHeader("Content-Disposition", enteteContentDisposition(`${donnees.acte.nom}.pdf`));
 
   const doc = new PDFDocument({ size: "A4", margin: 50, compress: false });
   doc.pipe(res);
