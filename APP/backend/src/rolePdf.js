@@ -326,6 +326,21 @@ function dessinerCellule(doc, colonne, valeur, y, hauteurLigne) {
       } else {
         doc.text(ligne, colonne.x + PADDING, curY, { width: largeurUtile });
       }
+      // 🐛 Bug trouvé le 09/10/2026 (cas réel : dossier "Moumouni Konaté",
+      // intitulé SANS " c/ " — reproduit avec un intitulé long à une seule
+      // partie) : dessinerLigneParties()/dessinerParagrapheEtiquette()
+      // changent la police EN COURS DE DESSIN (mélange gras/italique) sans
+      // la restaurer après coup — sans "c/ Partie" à la suite, la dernière
+      // police posée est l'italique 8pt de "(client)", plus étroite que le
+      // gras 9.5pt qui a dessiné le nom. heightOfString() ci-dessous
+      // mesurait alors avec CETTE police résiduelle au lieu de celle
+      // réellement utilisée pour l'essentiel du texte, sous-estimant le
+      // nombre de lignes réellement occupées et faisant chevaucher la
+      // référence du dossier (ligne suivante) sur le texte encore affiché.
+      // Corrigé en réappliquant systématiquement la police de mesure
+      // (même styleLigne() que juste avant le dessin) avant de mesurer —
+      // cohérent avec hauteurCellule(), qui fait déjà ainsi.
+      styleLigne(doc, colonne, i);
       curY += doc.heightOfString(ligne, { width: largeurUtile }) + 2;
     });
   } else {
@@ -467,4 +482,7 @@ async function envoyerRolePdf(pool, roleId, res) {
   return true;
 }
 
-module.exports = { envoyerRolePdf, chargerDonnees, dessinerRole, STYLE };
+// styleLigne/dessinerLigneParties/texteParties/calculerColonnes exportés en
+// plus (09/10/2026) uniquement pour le test de non-régression dédié au bug
+// de chevauchement ci-dessus (tests/rolePdf.test.js) — aucun autre appelant.
+module.exports = { envoyerRolePdf, chargerDonnees, dessinerRole, STYLE, styleLigne, dessinerLigneParties, texteParties, calculerColonnes };
