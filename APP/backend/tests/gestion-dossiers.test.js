@@ -339,7 +339,7 @@ describe("Requalification depuis IND — seul cas où la référence, normalemen
     expect(requalif.body.numero).not.toBe(ancienNumero);
     expect(requalif.body.numero).toMatch(/^CX-CIV-\d{4}-\d{4}$/);
     expect(requalif.body.code_matiere).toBe("CIV");
-    expect(requalif.body.couleur_chemise).toBe("jaune"); // Guide §6 : CX-CIV → jaune
+    expect(requalif.body.couleur_chemise).toBe("dore"); // 09/10/2026 : CX-CIV → doré (fusionné avec Foncier)
 
     const numeroApresRequalif = requalif.body.numero;
     const autreChangement = await request(app)

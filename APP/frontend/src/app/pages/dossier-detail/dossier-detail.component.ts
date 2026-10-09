@@ -1245,9 +1245,15 @@ export class DossierDetailComponent implements OnInit {
   // table codes_matiere, pilote la référence et la couleur de chemise.
   readonly matieres = signal<{ code: string; libelle: string; couleur: string }[]>([]);
 
+  // 09/10/2026 — nouvelle maquette de chemises à rabat (4 couleurs
+  // physiques réelles, DOC/CLAUDE CODE - JURIA/JFC - 4 CHEMISES A
+  // RABAT.pdf) : "dore" fusionne Civil/Foncier/Famille/Immobilier (ni
+  // jaune ni orange) — hex extrait par décodage pixel de la maquette,
+  // même méthode que le logo du cabinet. "jaune"/"orange" restent dans
+  // la table (valeurs mortes, plus aucun code n'y pointe) par prudence.
   private readonly couleursCss: Record<string, string> = {
     rouge: '#c0392b', jaune: '#d4ac0d', bleu: '#2874a6', vert: '#229954',
-    orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6',
+    orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6', dore: '#C89938',
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
 

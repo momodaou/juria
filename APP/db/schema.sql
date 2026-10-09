@@ -4587,3 +4587,46 @@ ALTER TABLE dossiers ADD COLUMN IF NOT EXISTS cree_par UUID REFERENCES utilisate
 -- cette action précise, pendant sa période, via permissions.js
 -- estAutorise().
 ALTER TABLE delegations_acces ADD COLUMN IF NOT EXISTS action_code VARCHAR(80);
+
+-- =====================================================================
+--  NOUVELLE MAQUETTE DE CHEMISES À RABAT — 4 couleurs physiques
+--  (09/10/2026, demande explicite de l'utilisateur à partir de
+--  `DOC/CLAUDE CODE - JURIA/JFC - 4 CHEMISES A RABAT.pdf`, 4 pages)
+-- =====================================================================
+-- Le cabinet n'imprime plus que 4 couleurs de chemise physique (vérifié
+-- par lecture directe des 4 pages du PDF, couleurs extraites par
+-- décodage pixel — même méthode que le logo du 28/08/2026) :
+--   Bleu   #2E7DC2 — "Commercial · OHADA · Arbitrage"
+--   Doré   #C89938 — "Civil - Foncier"  (nouvelle couleur, ni jaune ni
+--                      orange — fusion explicite des deux)
+--   Rouge  #5B1B1D — "Pénal"
+--   Vert   #1D6434 — "Social"
+-- Mapping des matières non nommées sur une chemise, confirmé explicitement
+-- par l'utilisateur (pas déduit par Claude, contrairement à la 1re
+-- consolidation du 03/09/2026 qui avait été reprise le jour même) :
+-- Famille et Immobilier rejoignent Civil/Foncier (doré, même logique
+-- civiliste) ; Administratif/Fiscal restent violet ; Pénal reste rouge ;
+-- Social reste vert ; les 8 codes Conseil restent gris — aucun de ces 3
+-- derniers groupes ne change. Arbitrage (ARB), jusqu'ici violet comme
+-- Administratif/Fiscal, rejoint Bleu (groupé avec Commercial/OHADA sur la
+-- même page de la maquette) — seul changement non explicitement énoncé
+-- par l'utilisateur mais directement visible sur l'artefact fourni.
+-- Numérique/NTIC (NUM) et Autre (AUT) ne figurent sur aucune des 4 pages
+-- et ne sont pas mentionnés par l'utilisateur : laissés inchangés (gris).
+-- "jaune" et "orange" deviennent des valeurs mortes du référentiel (plus
+-- aucun code n'y pointe) — non supprimées de `couleursCss` côté frontend,
+-- même principe que les autres valeurs d'ENUM devenues obsolètes sans
+-- être retirées ailleurs dans ce projet.
+UPDATE codes_matiere SET couleur = 'dore' WHERE code = 'CIV' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'dore' WHERE code = 'FAM' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'dore' WHERE code = 'IMM' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'dore' WHERE code = 'FON' AND type = 'contentieux';
+UPDATE codes_matiere SET couleur = 'bleu' WHERE code = 'ARB' AND type = 'contentieux';
+
+-- couleur_chemise des dossiers déjà enregistrés (dénormalisée à la
+-- création, jamais mise à jour depuis) recalculée dans la foulée — même
+-- mécanisme que les 2 passes du 03/09/2026.
+UPDATE dossiers d SET couleur_chemise = cm.couleur
+FROM codes_matiere cm
+WHERE cm.code = d.code_matiere AND cm.type = d.pole
+  AND d.couleur_chemise IS DISTINCT FROM cm.couleur;
