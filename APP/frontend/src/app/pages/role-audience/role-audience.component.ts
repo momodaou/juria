@@ -440,6 +440,14 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     }
   `,
   styles: [`
+    /* 10/10/2026 — .hint n'avait jamais de règle locale dans ce fichier
+       (contrairement aux 7 autres composants de l'appli qui utilisent
+       cette classe) : les 2 notes explicatives (audiencier, motif de
+       renvoi recopié) héritaient donc de la taille de texte normale au
+       lieu d'une note secondaire — remonté par l'utilisateur comme « trop
+       gros ». Petit + italique (demande explicite), même ton que
+       .montant-sens (seul autre texte italique de l'appli). */
+    .hint{display:block;font-size:var(--fs-xs);font-style:italic;color:var(--grey);margin-top:4px}
     .actions{display:flex;gap:8px}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px}
