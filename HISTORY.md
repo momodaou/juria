@@ -3491,7 +3491,7 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 
 **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée — comptes de test juriste/stagiaire/assistante créés, environnement détruit après coup) : connecté en tant que juriste, sélecteur « Responsable » confirmé limité à `["—", "Fatou Juriste" (soi-même), "Issa Stagiaire", "Mariam Assistante"]` (un avocat de test n'apparaît pas dans la liste), texte indicatif affiché correctement sans trace de l'apostrophe échappée ; tentative de délégation d'une tâche de type « recherche » vers le stagiaire confirmée refusée par le serveur, message d'erreur exact affiché à l'écran. Aucune erreur console.
 
-**Déploiement** : commité. Aucune migration nécessaire.
+**Déploiement** : commité (`dc5a305`). Aucune migration nécessaire. **Déployé et vérifié en production le 10/10/2026** (accord utilisateur, `./scripts/deploy.sh both` lancé par lui-même via `!`, bloqué pour moi par le classificateur de permissions local, catégorie « Production Deploy ») — API `juria-00134-kh7`, frontend `juria-web-00179-zfw`. Vérifié : `/health` API en `200`, `/` frontend en `200`.
 
 ## 10/10/2026 (même jour) — « Dossiers connexes » (même client ou même partie adverse)
 
@@ -3512,4 +3512,4 @@ Frontend (`dossier-detail.component.ts`) : nouveau panneau « Dossiers connexes 
 
 **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée — rejoue le cas concret exact de la discussion : même client, 2 dossiers « Saisie-revendication conservatoire »/« Injonction de délivrer », même partie adverse saisie avec une casse/un tiret différents entre les deux, environnement détruit après coup) : panneau confirmé affiché avec le texte exact « Dossiers connexes : CX-IND-2026-0002 (même client et même partie adverse) », lien cliquable vers l'autre dossier, bien positionné sous le bandeau « Liens rapides ». Aucune erreur console.
 
-**Déploiement** : commité. Aucune migration nécessaire.
+**Déploiement** : commité (`bd3f9a9`). Aucune migration nécessaire. **Déployé et vérifié en production le 10/10/2026** (accord utilisateur, même déploiement groupé que le Bloc D ci-dessus) — API `juria-00134-kh7`, frontend `juria-web-00179-zfw`. Vérifié : `/health` API en `200`, `/` frontend en `200`.
