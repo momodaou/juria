@@ -47,6 +47,7 @@ import { ApiService } from '../../core/api.service';
             <select class="in" [(ngModel)]="form.type" name="type">
               <option value="morale">Personne morale</option>
               <option value="physique">Personne physique</option>
+              <option value="entrepreneur_individuel">Entrepreneur individuel</option>
             </select>
           </div>
           <div></div>
@@ -54,12 +55,19 @@ import { ApiService } from '../../core/api.service';
           @if (form.type === 'morale') {
             <div><label>Dénomination</label><input class="in" [(ngModel)]="form.denomination" name="denomination" /></div>
             <div><label>Forme juridique</label><input class="in" [(ngModel)]="form.forme_juridique" name="forme_juridique" /></div>
-            <div><label>RCCM</label><input class="in" [(ngModel)]="form.rccm" name="rccm" /></div>
-            <div><label>NIF</label><input class="in" [(ngModel)]="form.nif" name="nif" /></div>
           } @else {
             <div><label>Prénom</label><input class="in" [(ngModel)]="form.prenom" name="prenom" /></div>
             <div><label>Nom</label><input class="in" [(ngModel)]="form.nom" name="nom" /></div>
             <div><label>Nationalité</label><input class="in" [(ngModel)]="form.nationalite" name="nationalite" /></div>
+          }
+          <!-- 10/10/2026 — RCCM/NIF : ni l'un ni l'autre pour une personne
+               physique "simple" (pas d'activité commerciale enregistrée),
+               les deux pour une personne morale ET un entrepreneur
+               individuel (commerçant enregistré au RCCM, identifié
+               fiscalement comme n'importe quel autre contribuable). -->
+          @if (form.type === 'morale' || form.type === 'entrepreneur_individuel') {
+            <div><label>RCCM</label><input class="in" [(ngModel)]="form.rccm" name="rccm" /></div>
+            <div><label>NIF</label><input class="in" [(ngModel)]="form.nif" name="nif" /></div>
           }
 
           <div><label>Email</label><input class="in" [(ngModel)]="form.email" name="email" /></div>
@@ -111,8 +119,8 @@ import { ApiService } from '../../core/api.service';
           @for (c of clients(); track c.id) {
             <tr class="clik" [routerLink]="['/clients', c.id]">
               <td>{{ c.denomination || (c.prenom + ' ' + c.nom) }}</td>
-              <td>{{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}</td>
-              <td>{{ c.type === 'morale' ? (c.rccm || c.nif || '—') : (c.rccm || '—') }}</td>
+              <td>{{ libelleTypeClient(c.type) }}</td>
+              <td>{{ aIdentifiantFiscal(c.type) ? (c.rccm || c.nif || '—') : '—' }}</td>
               <td>{{ c.pays }}</td>
               <td>
                 <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'"
@@ -172,6 +180,20 @@ export class ClientsComponent implements OnInit {
 
   libelleKyc(statut: string): string {
     return this.libellesKyc[statut] ?? statut;
+  }
+
+  // 10/10/2026 — Entrepreneur individuel : personne physique (identité en
+  // prénom/nom, comme "physique") mais commerçante enregistrée au RCCM, donc
+  // identifiée fiscalement (NIF) comme une personne morale. Un "physique"
+  // simple n'a ni RCCM ni NIF.
+  libelleTypeClient(type: string): string {
+    if (type === 'morale') return 'Personne morale';
+    if (type === 'entrepreneur_individuel') return 'Entrepreneur individuel';
+    return 'Personne physique';
+  }
+
+  aIdentifiantFiscal(type: string): boolean {
+    return type === 'morale' || type === 'entrepreneur_individuel';
   }
 
   ngOnInit(): void {

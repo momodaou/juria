@@ -20,8 +20,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <div>
             <h1>{{ c.denomination || (c.prenom + ' ' + c.nom) }}</h1>
             <div class="sub">
-              {{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}
-              · {{ c.type === 'morale' ? (c.rccm || c.nif || 'Identifiant non renseigné') : (c.rccm || 'Identifiant non renseigné') }} · {{ c.pays }}
+              {{ libelleTypeClient(c.type) }}
+              @if (aIdentifiantFiscal(c.type)) { · {{ c.rccm || c.nif || 'Identifiant non renseigné' }} }
+              · {{ c.pays }}
             </div>
             @if (nbDossiers() !== null) {
               <a class="lien" [routerLink]="['/dossiers']" [queryParams]="{ client: clientId, clientLabel: c.denomination || (c.prenom + ' ' + c.nom) }">
@@ -75,13 +76,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <div class="grid2">
             @if (c.type === 'morale') {
               <div><label>Dénomination</label><input class="in" [(ngModel)]="edit.denomination" name="editDenomination" /></div>
-              <div><label>RCCM</label><input class="in" [(ngModel)]="edit.rccm" name="editRccm" /></div>
-              <div><label>NIF</label><input class="in" [(ngModel)]="edit.nif" name="editNif" /></div>
               <div><label>Forme juridique</label><input class="in" [(ngModel)]="edit.forme_juridique" name="editForme" /></div>
             } @else {
               <div><label>Prénom</label><input class="in" [(ngModel)]="edit.prenom" name="editPrenom" /></div>
               <div><label>Nom</label><input class="in" [(ngModel)]="edit.nom" name="editNom" /></div>
               <div><label>Nationalité</label><input class="in" [(ngModel)]="edit.nationalite" name="editNationalite" /></div>
+            }
+            @if (aIdentifiantFiscal(c.type)) {
+              <div><label>RCCM</label><input class="in" [(ngModel)]="edit.rccm" name="editRccm" /></div>
+              <div><label>NIF</label><input class="in" [(ngModel)]="edit.nif" name="editNif" /></div>
             }
             <div><label>Email</label><input class="in" type="email" [(ngModel)]="edit.email" name="editEmail" /></div>
             <div><label>Téléphone</label><input class="in" [(ngModel)]="edit.telephone" name="editTelephone" /></div>
@@ -525,6 +528,20 @@ export class ClientDetailComponent implements OnInit {
     a_faire: 'À faire', incomplet: 'Incomplet', piece_expiree: 'Pièce expirée', a_jour: 'À jour',
   };
   libelleKyc(statut: string): string { return this.libellesKyc[statut] ?? statut; }
+
+  // 10/10/2026 — même règle que clients.component.ts (liste) : un
+  // entrepreneur individuel est identifié en prénom/nom (comme "physique")
+  // mais a RCCM/NIF (comme "morale") ; un "physique" simple n'a ni l'un ni
+  // l'autre.
+  libelleTypeClient(type: string): string {
+    if (type === 'morale') return 'Personne morale';
+    if (type === 'entrepreneur_individuel') return 'Entrepreneur individuel';
+    return 'Personne physique';
+  }
+
+  aIdentifiantFiscal(type: string): boolean {
+    return type === 'morale' || type === 'entrepreneur_individuel';
+  }
 
   ngOnInit(): void {
     this.clientId = this.route.snapshot.paramMap.get('id') ?? '';

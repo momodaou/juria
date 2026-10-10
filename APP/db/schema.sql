@@ -24,7 +24,11 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";       -- recherche floue / plein texte
 CREATE TYPE role_utilisateur AS ENUM
   ('associe','collaborateur','stagiaire','assistante','comptable','admin');
 
-CREATE TYPE type_client AS ENUM ('physique','morale');
+-- 10/10/2026 : 'entrepreneur_individuel' ajouté (personne physique
+-- commerçante, identifiée par prénom/nom comme 'physique' mais avec
+-- RCCM/NIF comme 'morale' — un pur 'physique', lui, n'a ni l'un ni
+-- l'autre). Voir CLAUDE.md « Clients : type Entrepreneur individuel ».
+CREATE TYPE type_client AS ENUM ('physique','morale','entrepreneur_individuel');
 
 CREATE TYPE statut_kyc AS ENUM ('a_faire','a_jour','piece_expiree','incomplet');
 
@@ -127,7 +131,7 @@ CREATE TABLE clients (
     maj_le          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT chk_identite CHECK (
         (type = 'morale'  AND denomination IS NOT NULL) OR
-        (type = 'physique' AND nom IS NOT NULL)
+        (type IN ('physique','entrepreneur_individuel') AND nom IS NOT NULL)
     )
 );
 CREATE INDEX idx_clients_nom ON clients USING gin ((coalesce(denomination,'') || ' ' || coalesce(nom,'') || ' ' || coalesce(prenom,'')) gin_trgm_ops);

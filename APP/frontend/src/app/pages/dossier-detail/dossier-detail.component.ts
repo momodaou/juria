@@ -188,6 +188,7 @@ import { libelleRole } from '../../core/roles';
                   <select class="in" [(ngModel)]="nouveauClient.type" name="ncType">
                     <option value="morale">Personne morale</option>
                     <option value="physique">Personne physique</option>
+                    <option value="entrepreneur_individuel">Entrepreneur individuel</option>
                   </select>
                   @if (nouveauClient.type === 'morale') {
                     <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenomination" placeholder="Dénomination" />
@@ -398,7 +399,7 @@ import { libelleRole } from '../../core/roles';
             @for (c of d.clients_additionnels; track c.id) {
               <tr>
                 <td><a class="lien" [routerLink]="['/clients', c.id]">{{ c.nom }}</a></td>
-                <td>{{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}</td>
+                <td>{{ libelleTypeClient(c.type) }}</td>
                 <td>
                   @if (auth.peut('dossiers.clients_additionnels.gerer')) {
                     <button class="lien" (click)="retirerClient(c.id)">Retirer</button>
@@ -422,6 +423,7 @@ import { libelleRole } from '../../core/roles';
               <select class="in" [(ngModel)]="nouveauClient.type" name="ncTypeAdd">
                 <option value="morale">Personne morale</option>
                 <option value="physique">Personne physique</option>
+                <option value="entrepreneur_individuel">Entrepreneur individuel</option>
               </select>
               @if (nouveauClient.type === 'morale') {
                 <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenominationAdd" placeholder="Dénomination" />
@@ -2106,6 +2108,14 @@ export class DossierDetailComponent implements OnInit {
   }
   libelleType(code: string): string {
     return this.typesEvenement.find((t) => t.code === code)?.libelle ?? code;
+  }
+
+  // 10/10/2026 — même règle que clients.component.ts/client-detail.component.ts
+  // (entrepreneur individuel = identité en prénom/nom comme "physique").
+  libelleTypeClient(type: string): string {
+    if (type === 'morale') return 'Personne morale';
+    if (type === 'entrepreneur_individuel') return 'Entrepreneur individuel';
+    return 'Personne physique';
   }
 
   private rafraichirComms(): void {

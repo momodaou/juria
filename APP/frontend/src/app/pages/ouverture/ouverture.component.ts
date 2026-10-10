@@ -101,6 +101,7 @@ import { libelleRole } from '../../core/roles';
             <select class="in" [(ngModel)]="nouveauClient.type" name="ncType">
               <option value="morale">Personne morale</option>
               <option value="physique">Personne physique</option>
+              <option value="entrepreneur_individuel">Entrepreneur individuel</option>
             </select>
             @if (nouveauClient.type === 'morale') {
               <input class="in" [(ngModel)]="nouveauClient.denomination" name="ncDenomination" placeholder="Dénomination" />
