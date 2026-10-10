@@ -533,16 +533,40 @@ export class FacturationComponent implements OnInit {
     if (f.statut === 'partielle' || f.statut === 'payee') {
       items.push({ label: 'Paiements', action: () => this.ouvrirPaiements(f) });
     }
-    // 09/10/2026 — "Modifier" reste accessible tant que la facture n'est
-    // pas annulée (avant : seulement si 'emise', bloquant même une simple
-    // correction d'objet/mention dès qu'un paiement existait). Le montant
-    // reste lui verrouillé une fois un paiement enregistré — voir le
-    // formulaire d'édition et PUT /api/factures/:id.
-    if (this.auth.peut('factures.annuler') && f.statut !== 'annulee') {
-      items.push({ label: 'Modifier', action: () => this.commencerEdition(f) });
-    }
-    if (this.auth.peut('factures.annuler') && f.statut === 'emise') {
-      items.push({ label: 'Annuler', action: () => this.annuler(f), danger: true });
+    // 10/10/2026 — Modifier/Annuler/Supprimer restent désormais TOUJOURS
+    // visibles (quand la permission factures.annuler est présente — le
+    // masquage par permission, lui, reste un masquage pur), même quand la
+    // facture ne s'y prête pas : grisées + expliquées via `title`, plutôt
+    // que silencieusement absentes du menu. Avant ce correctif, l'absence
+    // de bouton ne distinguait pas "pas le droit" de "facture déjà payée"
+    // de "déjà annulée" — remonté comme confus par l'utilisateur.
+    if (this.auth.peut('factures.annuler')) {
+      if (f.statut === 'annulee') {
+        items.push({ label: 'Modifier', action: () => {}, disabled: true, title: 'Facture annulée — plus aucune modification possible.' });
+      } else {
+        items.push({ label: 'Modifier', action: () => this.commencerEdition(f) });
+      }
+
+      if (f.statut === 'emise') {
+        items.push({ label: 'Annuler', action: () => this.annuler(f), danger: true });
+      } else if (f.statut === 'annulee') {
+        items.push({ label: 'Annuler', action: () => {}, disabled: true, title: 'Déjà annulée.' });
+      } else {
+        items.push({
+          label: 'Annuler', action: () => {}, disabled: true,
+          title: 'Impossible : un ou plusieurs paiements sont déjà enregistrés sur cette facture. Retirez-les d’abord (menu « Paiements ») pour pouvoir l’annuler.',
+        });
+      }
+
+      // La suppression définitive d'une facture n'existe pas dans JURIA, par
+      // choix délibéré : la numérotation séquentielle (F-26-001, 002…) doit
+      // rester continue pour la traçabilité fiscale — un trou dans la
+      // numérotation est lui-même suspect pour un contrôle. "Annuler"
+      // (ci-dessus) est la seule voie, et seulement avant tout paiement.
+      items.push({
+        label: 'Supprimer', action: () => {}, disabled: true,
+        title: 'La suppression définitive n’existe pas dans JURIA (numérotation fiscale séquentielle, jamais trouée). Utilisez « Annuler » sur une facture non réglée.',
+      });
     }
     return items;
   }

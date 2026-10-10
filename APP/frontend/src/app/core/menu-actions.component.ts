@@ -12,6 +12,15 @@ export interface ActionMenuItem {
   action: () => void;
   danger?: boolean;
   title?: string;
+  // 10/10/2026 — une action qui dépend d'un état (statut, permission fine,
+  // garde métier) reste VISIBLE mais grisée + explicitée par `title`,
+  // plutôt que silencieusement absente du menu (motif de confusion
+  // remonté par l'utilisateur sur les actions Facturation : « pourquoi on
+  // ne peut toujours pas annuler/supprimer... les actions ne sont pas du
+  // tout claires »). Ne s'applique qu'aux conditions MÉTIER — le masquage
+  // par permission de rôle reste un masquage pur (convention déjà actée
+  // le 30/08/2026 : une permission décochée retire l'élément d'UI).
+  disabled?: boolean;
 }
 
 @Component({
@@ -24,7 +33,8 @@ export interface ActionMenuItem {
     @if (ouvert()) {
       <div class="menu-actions" [style.top.px]="pos()?.top" [style.left.px]="pos()?.left">
         @for (a of actions; track a.label) {
-          <button type="button" class="menu-item" [class.menu-item-danger]="a.danger" [title]="a.title || ''" (click)="choisir(a, $event)">{{ a.label }}</button>
+          <button type="button" class="menu-item" [class.menu-item-danger]="a.danger" [class.menu-item-disabled]="a.disabled"
+                  [disabled]="a.disabled" [title]="a.title || ''" (click)="choisir(a, $event)">{{ a.label }}</button>
         }
       </div>
     }
@@ -100,6 +110,8 @@ export interface ActionMenuItem {
     }
     .menu-item:hover{background:var(--light)}
     .menu-item-danger{color:#b23b3b}
+    .menu-item-disabled{color:var(--grey);cursor:not-allowed}
+    .menu-item-disabled:hover{background:none}
   `],
 })
 export class MenuActionsComponent {
