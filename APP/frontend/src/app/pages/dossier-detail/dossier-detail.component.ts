@@ -143,6 +143,19 @@ import { libelleRole } from '../../core/roles';
         }
       </div>
 
+      <!-- 10/10/2026 — Dossiers connexes (même client ou même partie
+           adverse), calculé à la volée — voir CLAUDE.md/HISTORY.md. -->
+      @if (connexes().length) {
+        <div class="liens-rapides dossiers-connexes">
+          <span class="dc-titre">Dossiers connexes :</span>
+          @for (c of connexes(); track c.id) {
+            <a class="lien" [routerLink]="['/dossiers', c.id]" [title]="c.intitule">
+              {{ c.numero }}@if (c.meme_client && c.meme_partie) { (même client et même partie adverse) } @else if (c.meme_client) { (même client) } @else { (même partie adverse) }
+            </a>
+          }
+        </div>
+      }
+
       <section class="panel">
         <h3>Référencement & étiquette</h3>
         <div class="etq-row">
@@ -1051,6 +1064,8 @@ import { libelleRole } from '../../core/roles';
     .hint-ind{font-size:var(--fs-sm);color:#9a6c12;margin-top:4px}
     .nature{color:#c3cdde;font-size:var(--fs-base);margin:2px 0 0}
     .liens-rapides{display:flex;flex-wrap:wrap;margin:-6px 0 18px;font-size:var(--fs-base)}
+    .dossiers-connexes{align-items:center;gap:8px}
+    .dc-titre{color:var(--grey);font-size:var(--fs-sm)}
     .col2{grid-column:1 / -1}
     textarea.in{font-family:inherit;resize:vertical}
     .inline-client{background:var(--light);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0 14px}
@@ -1160,6 +1175,15 @@ export class DossierDetailComponent implements OnInit {
         error: () => {},
       });
     }
+  }
+
+  // Dossiers connexes (10/10/2026) — même client ou même partie adverse,
+  // calculé à la volée côté serveur. Aucune permission dédiée (lecture
+  // seule, même dossiers déjà visibles un par un ailleurs dans l'appli).
+  readonly connexes = signal<any[]>([]);
+
+  private chargerConnexes(dossierId: string): void {
+    this.api.dossierConnexes(dossierId).subscribe({ next: (c) => this.connexes.set(c), error: () => {} });
   }
 
   readonly fichier = signal<File | null>(null);
@@ -2000,6 +2024,7 @@ export class DossierDetailComponent implements OnInit {
       error: () => this.erreur.set('Dossier introuvable.'),
     });
     this.chargerLiensRapides(id);
+    this.chargerConnexes(id);
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });

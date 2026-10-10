@@ -186,6 +186,11 @@ export class ApiService {
   dossierEvenements(id: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/evenements`);
   }
+  // Dossiers connexes (10/10/2026, même client ou même partie adverse,
+  // calculé à la volée — voir CLAUDE.md/HISTORY.md).
+  dossierConnexes(id: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/connexes`);
+  }
   // Historique des audiences du dossier (11/09/2026, gap comblé — voir
   // CLAUDE.md/HISTORY.md).
   dossierAudiences(id: string): Observable<any[]> {

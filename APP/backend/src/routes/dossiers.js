@@ -495,6 +495,64 @@ router.get("/:id/evenements", async (req, res) => {
   }
 });
 
+// GET /api/dossiers/:id/connexes — dossiers partageant le même client ou la
+// même partie adverse (10/10/2026, demande explicite de l'utilisateur après
+// discussion sur le traitement de 2 procédures liées — ex. saisie-
+// revendication conservatoire + injonction de délivrer facturées
+// séparément, donc restées 2 dossiers distincts malgré le lien juridique).
+// Calculé à la volée (pas de colonne/table à tenir à jour — aucune saisie
+// supplémentaire à retenir, même philosophie que "Dossiers dormants"/
+// "Doublons potentiels" ailleurs dans l'appli). Le rapprochement « même
+// client » est fiable (clients.id, pas du texte) ; le rapprochement « même
+// partie adverse » réutilise la même normalisation (espace/tiret/virgule
+// insensible) déjà utilisée pour les doublons/conflits de ce fichier et de
+// clients.js — même limite assumée ailleurs : un rapprochement par nom,
+// pas une identité garantie.
+router.get("/:id/connexes", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `WITH clients_dossier AS (
+         SELECT client_id FROM dossiers WHERE id = $1
+         UNION
+         SELECT client_id FROM dossier_clients_additionnels WHERE dossier_id = $1
+       ),
+       noms_parties_dossier AS (
+         SELECT DISTINCT regexp_replace(lower(denomination), '[\\s\\-.,]', '', 'g') AS nom
+         FROM dossier_parties WHERE dossier_id = $1 AND denomination IS NOT NULL
+       )
+       SELECT d.id, d.numero, d.intitule, d.statut,
+         (d.client_id IN (SELECT client_id FROM clients_dossier)
+          OR EXISTS (SELECT 1 FROM dossier_clients_additionnels dca
+                     WHERE dca.dossier_id = d.id AND dca.client_id IN (SELECT client_id FROM clients_dossier))
+         ) AS meme_client,
+         EXISTS (
+           SELECT 1 FROM dossier_parties dp
+           WHERE dp.dossier_id = d.id AND dp.denomination IS NOT NULL
+             AND regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g') IN (SELECT nom FROM noms_parties_dossier)
+         ) AS meme_partie
+       FROM dossiers d
+       WHERE d.id <> $1
+         AND (
+           d.client_id IN (SELECT client_id FROM clients_dossier)
+           OR EXISTS (SELECT 1 FROM dossier_clients_additionnels dca
+                      WHERE dca.dossier_id = d.id AND dca.client_id IN (SELECT client_id FROM clients_dossier))
+           OR EXISTS (
+             SELECT 1 FROM dossier_parties dp
+             WHERE dp.dossier_id = d.id AND dp.denomination IS NOT NULL
+               AND regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g') IN (SELECT nom FROM noms_parties_dossier)
+           )
+         )
+       ORDER BY d.numero
+       LIMIT 50`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/dossiers/:id/audiences  -> historique des audiences du dossier
 // (11/09/2026, gap comblé : la fiche dossier n'avait jusqu'ici aucune
 // visibilité sur ses propres audiences, contrairement à documents/
