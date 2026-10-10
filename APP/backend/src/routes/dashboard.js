@@ -566,6 +566,29 @@ router.get("/", async (req, res) => {
       tachesUrgentesApercu = tua.rows;
     }
 
+    // "Tâches que j'ai confiées" (10/10/2026, Bloc B du diagnostic
+    // "instruction avocat -> collaborateur" — voir CLAUDE.md) : symétrique
+    // de "Mes tâches" côté DONNEUR d'instruction plutôt qu'exécutant —
+    // jusqu'ici aucune vue ne permettait à qui a délégué une tâche de
+    // vérifier que ça avance sans aller fouiller le Plan d'action filtré à
+    // la main. "responsable_id <> moi" exclut les tâches auto-assignées
+    // (déjà couvertes par "Mes tâches", redondant sinon). Personnelle
+    // comme "Mes tâches" (ce sont MES délégations) : aucune permission
+    // dédiée, ouverte à tout le monde.
+    const tachesConfiees = await one(
+      `SELECT count(*) AS n FROM taches t
+       WHERE t.cree_par = $1 AND t.responsable_id IS DISTINCT FROM $1 AND t.statut NOT IN ('termine','annule')`,
+      [req.user.sub]
+    );
+    const tachesConfieesApercu = await pool.query(
+      `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite,
+              u.prenom || ' ' || u.nom AS responsable
+       FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id LEFT JOIN utilisateurs u ON u.id = t.responsable_id
+       WHERE t.cree_par = $1 AND t.responsable_id IS DISTINCT FROM $1 AND t.statut NOT IN ('termine','annule')
+       ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 5`,
+      [req.user.sub]
+    );
+
     // "Dossiers non rentables" — même famille que les autres tuiles CA/
     // marge, gardée par factures.consulter. Compte + aperçu des 2 pires
     // marges (dossiers facturés à perte), pas la liste complète (voir le
@@ -615,6 +638,8 @@ router.get("/", async (req, res) => {
       impayes_tranches: impayesTranches,
       mes_taches_n: Number(mesTaches.n),
       mes_taches_apercu: mesTachesApercu.rows,
+      taches_confiees_n: Number(tachesConfiees.n),
+      taches_confiees_apercu: tachesConfieesApercu.rows,
       taches_urgentes_n: tachesUrgentesN,
       taches_urgentes_apercu: tachesUrgentesApercu,
       dossiers_non_rentables: dossiersNonRentablesN,
@@ -938,6 +963,17 @@ router.get("/detail/:type", async (req, res) => {
           `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite, t.statut::text AS statut
            FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id
            WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')
+           ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`,
+          [req.user.sub]
+        );
+        return res.json(rows);
+      }
+      case "taches_confiees": {
+        const { rows } = await pool.query(
+          `SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, t.echeance, t.priorite::text AS priorite,
+                  t.statut::text AS statut, u.prenom || ' ' || u.nom AS responsable
+           FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id LEFT JOIN utilisateurs u ON u.id = t.responsable_id
+           WHERE t.cree_par = $1 AND t.responsable_id IS DISTINCT FROM $1 AND t.statut NOT IN ('termine','annule')
            ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 200`,
           [req.user.sub]
         );

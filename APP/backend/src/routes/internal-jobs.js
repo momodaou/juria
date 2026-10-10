@@ -20,6 +20,7 @@ const { executerJobMessagerieNotifications } = require("../jobs/messagerieNotifi
 const { executerJobAlertesFacturationDiscipline } = require("../jobs/alertesFacturationDiscipline");
 const { executerJobAlertesRetoursManquants } = require("../jobs/alertesRetoursManquants");
 const { executerJobAlertesAbonnements } = require("../jobs/alertesAbonnements");
+const { executerJobAlertesTachesRetard } = require("../jobs/alertesTachesRetard");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -94,6 +95,20 @@ router.post("/alertes-retours-manquants", requireSchedulerSecret, async (req, re
 router.post("/alertes-abonnements", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobAlertesAbonnements(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 10/10/2026 — Bloc B du diagnostic "instruction avocat -> collaborateur" :
+// tâches en retard, un e-mail personnalisé par destinataire (ses propres
+// tâches en retard + celles qu'il a confiées), sans fenêtre glissante
+// contrairement à alertes-retours-manquants (voir jobs/alertesTachesRetard.js).
+// Cadence recommandée : quotidienne.
+router.post("/alertes-taches-retard", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobAlertesTachesRetard(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

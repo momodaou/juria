@@ -43,6 +43,11 @@ export interface DashboardData {
   // taches_urgentes_n reste `null` si le rôle n'a pas cabinet.consulter.
   mes_taches_n: number;
   mes_taches_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string }[];
+  // "Tâches que j'ai confiées" (10/10/2026, Bloc B du diagnostic "instruction
+  // avocat -> collaborateur") — symétrique de mes_taches côté donneur
+  // d'instruction. Toujours présent (personnel, aucune permission requise).
+  taches_confiees_n: number;
+  taches_confiees_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string; responsable: string }[];
   taches_urgentes_n: number | null;
   taches_urgentes_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string; responsable: string }[];
   // "Dossiers non rentables" (07/09/2026) — marge = facturé HT − dépenses

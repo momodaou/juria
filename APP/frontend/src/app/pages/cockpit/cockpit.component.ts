@@ -64,7 +64,10 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // confidentialité) ; "Tâches urgentes" est cabinet entier — même
   // permission que le reste des tuiles de charge de travail (cabinet.consulter,
   // resserrée direction/finance le 29/08/2026) plutôt qu'un nouveau concept.
-  mes_taches: null, taches_urgentes: 'cabinet.consulter', non_rentables: 'factures.consulter',
+  // "Tâches que j'ai confiées" (10/10/2026, Bloc B du diagnostic
+  // "instruction avocat -> collaborateur") — personnelle comme "Mes
+  // tâches" (déjà filtrée sur cree_par = moi côté serveur).
+  mes_taches: null, taches_confiees: null, taches_urgentes: 'cabinet.consulter', non_rentables: 'factures.consulter',
   // 6 indicateurs de performance (04/09/2026, demande explicite de
   // l'utilisateur suite au benchmark du 03/09/2026) — tous financiers,
   // tous gardés par factures.consulter comme le reste.
@@ -110,6 +113,19 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Échéance (la plus proche)', key: 'echeance', dir: 'asc' },
       { label: 'Priorité (Z → A, urgente en tête)', key: 'priorite', dir: 'asc' },
+    ],
+  },
+  taches_confiees: {
+    titre: 'Tâches que j\'ai confiées',
+    cols: [
+      { key: 'titre', label: 'Tâche' }, { key: 'responsable', label: 'Responsable' },
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'echeance', label: 'Échéance', format: 'date' }, { key: 'priorite', label: 'Priorité' },
+      { key: 'statut', label: 'Statut' },
+    ],
+    sorts: [
+      { label: 'Échéance (la plus proche)', key: 'echeance', dir: 'asc' },
+      { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
     ],
   },
   taches_urgentes: {
@@ -532,6 +548,30 @@ const CONFIG: Record<string, TuileConfig> = {
             </div>
           }
           <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.mes_taches_n }}</span>
+        </button>
+        <!-- 10/10/2026 — Bloc B du diagnostic "instruction avocat ->
+             collaborateur" : symétrique de "Mes tâches" côté donneur
+             d'instruction (aucune vue jusqu'ici ne permettait de vérifier
+             que les tâches confiées à un collaborateur avancent, sans aller
+             filtrer le Plan d'action à la main). -->
+        <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'taches_confiees'" (click)="clic('taches_confiees')">
+          <span class="tico" [innerHTML]="icons['tachesConfiees']"></span>
+          <span class="n">{{ d.taches_confiees_n }}</span><span class="l">Tâches que j'ai confiées</span>
+          @if (d.taches_confiees_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.taches_confiees_apercu; track l.id) {
+                <div class="mini-ligne">
+                  @if (l.dossier_id) {
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">{{ l.titre }} — {{ l.responsable }}</a>
+                  } @else {
+                    <span class="principal">{{ l.titre }} — {{ l.responsable }}</span>
+                  }
+                  <span class="secondaire">{{ l.echeance ? (l.echeance | date:'dd/MM') : l.priorite }}</span>
+                </div>
+              }
+            </div>
+          }
+          <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.taches_confiees_n }}</span>
         </button>
         @if (d.taches_urgentes_n !== null) {
           <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'taches_urgentes'" (click)="clic('taches_urgentes')">
@@ -999,6 +1039,12 @@ export class CockpitComponent implements OnInit {
     ),
     tachesUrgentes: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.3" width="6" height="3" rx="1"/><line x1="12" y1="10.5" x2="12" y2="14.5"/><circle cx="12" cy="17.3" r="0.55" fill="currentColor" stroke="none"/></svg>',
+    ),
+    // Même silhouette de presse-papiers que les 2 tuiles tâches ci-dessus
+    // (10/10/2026, Bloc B) — flèche sortante à l'intérieur pour marquer la
+    // délégation (donneur -> exécutant), plutôt qu'un symbole alarmant.
+    tachesConfiees: this.icon(
+      '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.3" width="6" height="3" rx="1"/><path d="M9.5 15.5l5-5"/><path d="M11 10.5h3.5V14"/></svg>',
     ),
     impayes: this.icon(
       '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h9l3 3V21a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="8" x2="15.5" y2="8"/><line x1="8.5" y1="12" x2="15.5" y2="12"/><line x1="8.5" y1="16" x2="12.5" y2="16"/></svg>',
