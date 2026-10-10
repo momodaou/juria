@@ -15,7 +15,14 @@ router.get("/equipe", requirePermission("cabinet.consulter"), async (req, res) =
       `SELECT u.id, u.code, u.prenom, u.nom, u.role, u.pole, u.taux_horaire, u.actif,
               u.type_contrat, u.date_fin_essai, u.date_fin_contrat,
               COALESCE(h.total_heures, 0) AS heures_mois,
-              (SELECT COUNT(*) FROM dossiers d WHERE d.responsable_id = u.id AND d.statut = 'ouvert') AS dossiers_actifs
+              (SELECT COUNT(*) FROM dossiers d WHERE d.responsable_id = u.id AND d.statut = 'ouvert') AS dossiers_actifs,
+              -- 10/10/2026 — Bloc C du diagnostic "instruction avocat ->
+              -- collaborateur" (voir CLAUDE.md) : "charge de travail"
+              -- n'agrégeait jusqu'ici que dossiers actifs + heures, malgré
+              -- le libellé du module ("équipe et charge de travail") —
+              -- tâches/diligences en cours jamais comptées nulle part.
+              (SELECT COUNT(*) FROM taches t WHERE t.responsable_id = u.id AND t.statut NOT IN ('termine','annule')) AS taches_en_cours,
+              (SELECT COUNT(*) FROM diligences dl WHERE dl.membre_id = u.id AND dl.statut = 'a_faire') AS diligences_en_cours
        FROM utilisateurs u
        LEFT JOIN v_heures_mensuelles h
               ON h.utilisateur_id = u.id AND h.mois = date_trunc('month', current_date)

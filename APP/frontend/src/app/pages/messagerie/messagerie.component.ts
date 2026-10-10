@@ -1,9 +1,10 @@
 import { Component, inject, signal, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
-import { MessagerieService, Conversation } from '../../core/messagerie.service';
+import { MessagerieService, Conversation, Message } from '../../core/messagerie.service';
 
 @Component({
   selector: 'app-messagerie',
@@ -117,6 +118,13 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
                 <span class="msg-heure">
                   {{ m.cree_le | date: 'HH:mm' }}
                   @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
+                  <!-- 10/10/2026 — "Transformer en tâche" (Bloc C du diagnostic
+                       instruction avocat -> collaborateur) : fermer la boucle
+                       instruction (message) -> exécution (tâche), seulement
+                       quand la conversation est liée à un dossier. -->
+                  @if (!m.masque && dossierActif() && auth.peut('taches.creer')) {
+                    <button class="msg-tache" title="Transformer en tâche" (click)="transformerEnTache(m)">📋</button>
+                  }
                   @if (!m.masque && auth.peut('messagerie.message.supprimer')) {
                     <button class="msg-supprimer" title="Supprimer ce message (chez vous uniquement)" (click)="supprimerMessage(m.id)">✕</button>
                   }
@@ -235,12 +243,19 @@ import { MessagerieService, Conversation } from '../../core/messagerie.service';
     }
     .msg:hover .msg-supprimer{opacity:.85}
     .msg-supprimer:hover{opacity:1}
+    .msg-tache{
+      background:none;border:none;cursor:pointer;margin-left:6px;font-size:var(--fs-2xs);
+      opacity:.35;padding:0 2px;
+    }
+    .msg:hover .msg-tache{opacity:.85}
+    .msg-tache:hover{opacity:1}
   `],
 })
 export class MessagerieComponent implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly messagerie = inject(MessagerieService);
+  private readonly router = inject(Router);
 
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);
@@ -293,6 +308,15 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     const id = this.messagerie.conversationActiveId();
     const c = this.messagerie.conversations().find((x) => x.id === id);
     return c ? this.titreAffiche(c) : 'Conversation';
+  }
+
+  // 10/10/2026 — Bloc C du diagnostic "instruction avocat -> collaborateur" :
+  // dossier de la conversation actuellement ouverte, si elle en a un
+  // (`m.conversation_id` n'est pas fiable — voir conversationActiveId()).
+  dossierActif(): { id: string; numero: string | null } | null {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return c?.dossier_id ? { id: c.dossier_id, numero: c.dossier_numero } : null;
   }
 
   // Présence (13/09/2026, même patron que le widget flottant) : affichée
@@ -418,5 +442,17 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     this.messagerie.supprimerMessage(id, messageId).subscribe({
       next: () => this.messagerie.retirerMessageLocalement(messageId),
     });
+  }
+
+  // 10/10/2026 — "Transformer en tâche" (Bloc C du diagnostic instruction
+  // avocat -> collaborateur) : navigue vers le Plan d'action, dossier déjà
+  // filtré et titre pré-rempli depuis le message — l'utilisateur n'a plus
+  // qu'à choisir le responsable et valider (jamais de création automatique,
+  // on ne devine pas à qui confier la tâche).
+  transformerEnTache(m: Message): void {
+    const d = this.dossierActif();
+    if (!d) return;
+    const titre = (m.contenu || '').length > 80 ? m.contenu!.slice(0, 80) + '…' : (m.contenu || '');
+    this.router.navigate(['/plan-action'], { queryParams: { dossier: d.id, dossierLabel: d.numero, titre } });
   }
 }

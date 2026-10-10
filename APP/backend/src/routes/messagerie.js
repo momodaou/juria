@@ -52,12 +52,17 @@ async function estParticipant(conversationId, utilisateurId) {
 // conversations masquées (les seules qui ne reviennent jamais toutes
 // seules, contrairement à archivée/supprimée qui réapparaissent dès qu'un
 // nouveau message arrive — voir schema.sql pour le détail du calcul).
+//
+// `dossier_numero` (10/10/2026, Bloc C du diagnostic "instruction avocat
+// -> collaborateur" — voir CLAUDE.md) : jusqu'ici seul `dossier_id` était
+// exposé, insuffisant pour afficher un libellé lisible côté écran (bouton
+// "Transformer en tâche" sur un message, a besoin d'un numéro affichable).
 router.get("/conversations", async (req, res) => {
   const listerMasquees = req.query.masquees === "true";
   try {
     const { rows } = await pool.query(
       `WITH base AS (
-         SELECT c.id, c.titre, c.dossier_id, c.cree_le,
+         SELECT c.id, c.titre, c.dossier_id, d.numero AS dossier_numero, c.cree_le,
                 cp.dernier_lu_le, cp.masquee_le, cp.archivee_le, cp.supprimee_le,
                 (SELECT array_agg(u.prenom || ' ' || u.nom ORDER BY u.prenom)
                    FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
@@ -75,9 +80,10 @@ router.get("/conversations", async (req, res) => {
                      AND m.cree_le > COALESCE(cp.dernier_lu_le, 'epoch'::timestamptz)
                      AND m.auteur_id <> $1) AS non_lus
          FROM conversations c
+         LEFT JOIN dossiers d ON d.id = c.dossier_id
          JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.utilisateur_id = $1
        )
-       SELECT id, titre, dossier_id, cree_le, dernier_lu_le, autres_participants,
+       SELECT id, titre, dossier_id, dossier_numero, cree_le, dernier_lu_le, autres_participants,
               autres_participants_ids, dernier_message, dernier_message_le, non_lus
        FROM base
        WHERE ${listerMasquees

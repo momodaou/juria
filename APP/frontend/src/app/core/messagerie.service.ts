@@ -8,6 +8,9 @@ export interface Conversation {
   id: string;
   titre: string | null;
   dossier_id: string | null;
+  // 10/10/2026 — Bloc C du diagnostic "instruction avocat -> collaborateur" :
+  // libellé lisible du dossier, utilisé par "Transformer en tâche".
+  dossier_numero: string | null;
   autres_participants: string[] | null;
   autres_participants_ids: string[] | null;
   dernier_message: string | null;

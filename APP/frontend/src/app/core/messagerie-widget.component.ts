@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
-import { MessagerieService, Conversation } from './messagerie.service';
+import { MessagerieService, Conversation, Message } from './messagerie.service';
 
 // Widget flottant de messagerie (19/08/2026) — pour discuter en continu
 // sans quitter l'écran en cours, contrairement à l'écran dédié /messagerie
@@ -130,6 +130,12 @@ import { MessagerieService, Conversation } from './messagerie.service';
                   <span class="mw-msg-heure">
                     {{ m.cree_le | date: 'HH:mm' }}
                     @if (m.auteur_id === moi() && messagerie.estLuParTous(m)) { · Lu }
+                    <!-- 10/10/2026 — "Transformer en tâche" (Bloc C du diagnostic
+                         instruction avocat -> collaborateur), même patron que
+                         l'écran plein page. -->
+                    @if (!m.masque && dossierActif() && auth.peut('taches.creer')) {
+                      <button type="button" class="mw-msg-tache" title="Transformer en tâche" (click)="transformerEnTache(m)">📋</button>
+                    }
                     @if (!m.masque && auth.peut('messagerie.message.supprimer')) {
                       <button type="button" class="mw-msg-supprimer" title="Supprimer ce message (chez vous uniquement)" (click)="supprimerMessage(m.id)">✕</button>
                     }
@@ -239,6 +245,9 @@ import { MessagerieService, Conversation } from './messagerie.service';
     .mw-msg-supprimer{background:none;border:none;cursor:pointer;margin-left:5px;font-size:var(--fs-2xs);color:inherit;opacity:.35;padding:0 2px}
     .mw-msg:hover .mw-msg-supprimer{opacity:.85}
     .mw-msg-supprimer:hover{opacity:1}
+    .mw-msg-tache{background:none;border:none;cursor:pointer;margin-left:5px;font-size:var(--fs-2xs);opacity:.35;padding:0 2px}
+    .mw-msg:hover .mw-msg-tache{opacity:.85}
+    .mw-msg-tache:hover{opacity:1}
     @media (max-width: 420px){
       .mw-panneau{right:12px;left:12px;width:auto;bottom:82px}
       .mw-bulle{right:16px;bottom:16px}
@@ -466,5 +475,20 @@ export class MessagerieWidgetComponent implements OnInit {
     this.messagerie.supprimerMessage(id, messageId).subscribe({
       next: () => this.messagerie.retirerMessageLocalement(messageId),
     });
+  }
+
+  // 10/10/2026 — "Transformer en tâche" (Bloc C du diagnostic instruction
+  // avocat -> collaborateur), même patron que messagerie.component.ts.
+  dossierActif(): { id: string; numero: string | null } | null {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return c?.dossier_id ? { id: c.dossier_id, numero: c.dossier_numero } : null;
+  }
+
+  transformerEnTache(m: Message): void {
+    const d = this.dossierActif();
+    if (!d) return;
+    const titre = (m.contenu || '').length > 80 ? m.contenu!.slice(0, 80) + '…' : (m.contenu || '');
+    this.router.navigate(['/plan-action'], { queryParams: { dossier: d.id, dossierLabel: d.numero, titre } });
   }
 }

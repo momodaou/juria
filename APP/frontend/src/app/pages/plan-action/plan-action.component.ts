@@ -240,6 +240,21 @@ export class PlanActionComponent implements OnInit {
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
+
+    // 10/10/2026 — Bloc C du diagnostic "instruction avocat -> collaborateur"
+    // (voir CLAUDE.md) : arrivée depuis "Transformer en tâche" (messagerie) —
+    // le dossier est déjà filtré ci-dessus, on pré-remplit aussi le
+    // formulaire de création et on l'ouvre directement, pour que l'auteur du
+    // message n'ait plus qu'à choisir le responsable et valider.
+    const titre = params.get('titre');
+    if (titre) {
+      this.form.titre = titre;
+      if (this.filtreDossierId()) {
+        this.form.dossier_id = this.filtreDossierId();
+        this.dossierLabel = this.filtreDossierNumero() || '';
+      }
+      this.afficherForm.set(true);
+    }
   }
 
   charger(): void {

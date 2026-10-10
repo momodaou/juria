@@ -39,12 +39,19 @@ import { libelleRole } from '../../core/roles';
       <section class="panel">
         <h3>Équipe</h3>
         <table>
-          <tr><th>Membre</th><th>Rôle</th><th>Dossiers actifs</th><th>Heures ce mois</th></tr>
+          <!-- 10/10/2026 — "Tâches en cours"/"Diligences en cours" (Bloc C
+               du diagnostic instruction avocat -> collaborateur) : la
+               charge de travail n'agrégeait jusqu'ici que dossiers actifs
+               et heures saisies, jamais le Plan d'action ni le Rôle
+               d'audience. -->
+          <tr><th>Membre</th><th>Rôle</th><th>Dossiers actifs</th><th>Tâches en cours</th><th>Diligences en cours</th><th>Heures ce mois</th></tr>
           @for (m of equipe(); track m.id) {
             <tr>
               <td>{{ m.prenom }} {{ m.nom }}</td>
               <td>{{ libelleRole(m.role) }}</td>
               <td>{{ m.dossiers_actifs }}</td>
+              <td>{{ m.taches_en_cours }}</td>
+              <td>{{ m.diligences_en_cours }}</td>
               <td>{{ m.heures_mois | number }} h</td>
             </tr>
           }
