@@ -94,6 +94,10 @@ const COLONNES = [
             @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
           </div>
           <div><label><input type="checkbox" [(ngModel)]="form.validation_requise" name="validation" /> Validation associé requise</label></div>
+          <!-- 10/10/2026 — champ "description" exposé (diagnostic
+               instruction avocat -> collaborateur, Bloc A) : existait en
+               base depuis le premier schéma, jamais accessible à l'écran. -->
+          <div class="col2"><label>Instructions <span class="muted">(facultatif)</span></label><input class="in" [(ngModel)]="form.description" name="description" /></div>
         </div>
         <button class="btn" (click)="creer()" [disabled]="!form.titre || creationEnCours()">{{ creationEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
         @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -119,6 +123,7 @@ const COLONNES = [
                     <option value="">Responsable…</option>
                     @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
                   </select>
+                  <input class="in" [(ngModel)]="editForm.description" name="edDesc" placeholder="Instructions (facultatif)" />
                   <div class="carte-actions">
                     <button class="lien" (click)="enregistrerEdition()" [disabled]="!editForm.titre">Enregistrer</button>
                     <button class="lien" (click)="editionId.set(null)">Annuler</button>
@@ -133,18 +138,30 @@ const COLONNES = [
               </div>
               @if (t.dossier_id) { <div class="carte-info"><a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a></div> }
               @if (t.responsable) { <div class="carte-info">{{ t.responsable }}</div> }
+              <!-- 10/10/2026 — "Confié par X" (diagnostic instruction
+                   avocat -> collaborateur, Bloc A) : n'affiché que si le
+                   créateur diffère du responsable, sinon redondant. -->
+              @if (t.cree_par_nom && t.cree_par !== t.responsable_id) { <div class="carte-info">Confié par {{ t.cree_par_nom }}</div> }
+              @if (t.description) { <div class="carte-info carte-desc">{{ t.description }}</div> }
               @if (t.echeance) { <div class="carte-info">Échéance : {{ t.echeance | date:'dd/MM/yyyy' }}</div> }
+              @if (col.statut === 'a_valider' && t.validation_requise) { <div class="carte-info">🔒 Validation requise</div> }
               <!-- ← / → restent des liens directement visibles (19/09/2026) :
                    c'est l'action PRIMAIRE de ce kanban (déplacer une carte),
                    pas une action secondaire à cacher dans un menu — même
                    logique que Gmail/Linear qui gardent l'action la plus
                    fréquente visible et réservent le menu "⋮" aux actions
-                   occasionnelles (Valider/Annuler/Réactiver ici). -->
+                   occasionnelles (Valider/Annuler/Réactiver ici).
+                   10/10/2026 — la flèche → de "À valider" vers "Terminé" est
+                   retirée quand validation_requise=true (le serveur refuse
+                   désormais ce contournement, Bloc A du diagnostic) : seule
+                   l'action "Valider" du menu "⋮" (réservée à taches.valider)
+                   reste disponible dans ce cas. -->
               <div class="carte-actions">
                 @if (col.statut !== 'annule' && col.statut !== 'a_faire' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, -1)">←</button> }
-                @if (col.statut !== 'annule' && col.statut !== 'termine' && auth.peut('taches.statut.modifier')) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
+                @if (col.statut !== 'annule' && col.statut !== 'termine' && auth.peut('taches.statut.modifier') && !(col.statut === 'a_valider' && t.validation_requise)) { <button class="lien" (click)="deplacer(t, 1)">→</button> }
                 <app-menu-actions [actions]="actionsPourTache(t, col)" />
               </div>
+              @if (erreurDeplacement() === t.id) { <p class="err">{{ erreur() }}</p> }
               }
             </div>
           } @empty {
@@ -169,6 +186,7 @@ const COLONNES = [
     .compte{background:#fff;border:1px solid var(--line);border-radius:10px;padding:0 7px;font-size:var(--fs-xs)}
     .carte{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 11px;margin-bottom:9px;font-size:var(--fs-base)}
     .carte.urgente{border-left:3px solid var(--red)}
+    .carte-desc{font-style:italic}
     .carte-titre{font-weight:600;margin-bottom:5px}
     .carte-meta{display:flex;gap:5px;margin-bottom:5px;flex-wrap:wrap}
     .carte-info{color:var(--grey);font-size:var(--fs-xs);margin-top:2px}
@@ -197,6 +215,11 @@ export class PlanActionComponent implements OnInit {
   readonly creationEnCours = signal(false);
   readonly editionId = signal<string | null>(null);
   readonly erreurEdition = signal('');
+  // 10/10/2026 — Bloc A du diagnostic : la flèche → échoue désormais (409)
+  // sur une tâche validation_requise=true si l'arrière-plan réagit plus
+  // vite que l'écran (ex. double-clic) — affiche l'erreur sur la carte
+  // concernée plutôt que silencieusement rien.
+  readonly erreurDeplacement = signal<string | null>(null);
   editForm: any = {};
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
@@ -278,7 +301,7 @@ export class PlanActionComponent implements OnInit {
     this.erreurEdition.set('');
     this.editForm = {
       titre: t.titre, echeance: t.echeance ? String(t.echeance).slice(0, 10) : '',
-      priorite: t.priorite, responsable_id: t.responsable_id ?? '',
+      priorite: t.priorite, responsable_id: t.responsable_id ?? '', description: t.description ?? '',
     };
     this.editionId.set(t.id);
   }
@@ -289,6 +312,7 @@ export class PlanActionComponent implements OnInit {
     const f = this.editForm;
     this.api.majDetailsTache(id, {
       titre: f.titre, echeance: f.echeance || null, priorite: f.priorite, responsable_id: f.responsable_id || undefined,
+      description: f.description || null,
     }).subscribe({
       next: () => { this.editionId.set(null); this.charger(); },
       error: (e) => this.erreurEdition.set(e?.error?.error ?? 'Modification impossible'),
@@ -296,10 +320,14 @@ export class PlanActionComponent implements OnInit {
   }
 
   deplacer(t: any, sens: 1 | -1): void {
+    this.erreurDeplacement.set(null);
     const i = this.colonnes.findIndex((c) => c.statut === t.statut);
     const suivant = this.colonnes[i + sens];
     if (!suivant) return;
-    this.api.majTache(t.id, suivant.statut).subscribe({ next: () => this.charger() });
+    this.api.majTache(t.id, suivant.statut).subscribe({
+      next: () => this.charger(),
+      error: (e) => { this.erreur.set(e?.error?.error ?? 'Déplacement impossible.'); this.erreurDeplacement.set(t.id); },
+    });
   }
 
   valider(t: any): void {

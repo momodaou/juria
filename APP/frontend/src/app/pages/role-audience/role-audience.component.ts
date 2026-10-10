@@ -313,9 +313,18 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ dl.heure || '—' }}</td>
               <td>{{ libelleTypeDiligence(dl.type_diligence) }}@if (dl.type_diligence === 'autre' && dl.type_precision) { : {{ dl.type_precision }} }</td>
               <td>@if (dl.dossier_id) { <a class="lien" [routerLink]="['/dossiers', dl.dossier_id]">{{ dl.dossier_numero }}</a> } @else { — }</td>
-              <td>{{ dl.membre_nom || '—' }}</td>
+              <td>
+                {{ dl.membre_nom || '—' }}
+                <!-- 10/10/2026 — "Confié par X" (diagnostic instruction
+                     avocat -> collaborateur, Bloc A) : n'affiché que si le
+                     créateur diffère de l'assigné, sinon redondant. -->
+                @if (dl.cree_par_nom && dl.cree_par !== dl.membre_id) { <div class="muted" style="font-size:var(--fs-xs)">confié par {{ dl.cree_par_nom }}</div> }
+              </td>
               <td>{{ dl.lieu || '—' }}</td>
-              <td>{{ dl.objet || '—' }}</td>
+              <td>
+                {{ dl.objet || '—' }}
+                @if (dl.observations) { <div class="muted" style="font-size:var(--fs-xs)">{{ dl.observations }}</div> }
+              </td>
               <td><app-menu-actions [actions]="actionsPourDiligence(dl)" /></td>
             </tr>
           }
@@ -358,6 +367,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div><label>Heure</label><input class="in" type="time" [(ngModel)]="nouvelleDiligence.heure" name="dlheure" /></div>
           <div><label>Lieu</label><input class="in" [(ngModel)]="nouvelleDiligence.lieu" name="dllieu" /></div>
           <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="nouvelleDiligence.objet" name="dlobjet" /></div>
+          <!-- 10/10/2026 — champ "observations" exposé (diagnostic
+               instruction avocat -> collaborateur, Bloc A) : existait en
+               base depuis le premier schéma, jamais accessible à l'écran.
+               Sert d'instructions détaillées à la création, puis de
+               compte-rendu une fois la diligence clôturée (voir
+               majDiligence()). -->
+          <div class="col2"><label>Instructions <span class="muted">(facultatif)</span></label><input class="in" [(ngModel)]="nouvelleDiligence.observations" name="dlobs" /></div>
         </div>
         <button class="btn" (click)="ajouterDiligence()" [disabled]="!nouvelleDiligence.date_diligence || ajoutDiligenceEnCours()">{{ ajoutDiligenceEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
         @if (doublonsDiligence().length) {
@@ -836,8 +852,15 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   // Menu "⋮" (19/09/2026).
+  // 10/10/2026 — Bloc A du diagnostic "instruction avocat -> collaborateur"
+  // (voir CLAUDE.md) : en plus de la permission générique, le serveur
+  // restreint désormais la clôture au membre assigné, au créateur, ou au
+  // responsable du dossier — masqué côté écran pour qui n'est aucun des
+  // trois, plutôt que de laisser un menu qui échouerait systématiquement en 403.
   actionsPourDiligence(dl: any): ActionMenuItem[] {
     if (!this.auth.peut('audiences.diligence.gerer')) return [];
+    const moi = this.auth.utilisateur()?.id;
+    if (dl.membre_id !== moi && dl.cree_par !== moi && dl.dossier_responsable_id !== moi) return [];
     return [
       { label: 'Fait', action: () => this.majDiligence(dl, 'fait') },
       { label: 'Reporter', action: () => this.majDiligence(dl, 'reporte') },
@@ -846,7 +869,21 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   majDiligence(dl: any, statut: string): void {
-    this.api.majStatutDiligence(dl.id, statut).subscribe({ next: () => this.chargerDiligences() });
+    this.erreur.set('');
+    // 10/10/2026 — compte-rendu écrit à la clôture ("fait") : jusqu'ici un
+    // simple statut coché, sans trace de ce qui a réellement été fait.
+    // Facultatif (annuler l'invite laisse la diligence inchangée pour
+    // "fait" ; sans objet pour reporter/annuler).
+    let observations: string | undefined;
+    if (statut === 'fait') {
+      const saisie = prompt('Compte-rendu de la diligence (facultatif) :', dl.observations || '');
+      if (saisie === null) return; // annulé
+      observations = saisie || undefined;
+    }
+    this.api.majStatutDiligence(dl.id, statut, observations).subscribe({
+      next: () => this.chargerDiligences(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible.'),
+    });
   }
 
   semaineDecalage(jours: number): void {

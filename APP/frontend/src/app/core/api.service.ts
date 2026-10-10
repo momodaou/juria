@@ -529,7 +529,7 @@ export class ApiService {
   majTache(id: string, statut: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/taches/${id}`, { statut });
   }
-  majDetailsTache(id: string, payload: { titre?: string; echeance?: string | null; responsable_id?: string; priorite?: string }): Observable<any> {
+  majDetailsTache(id: string, payload: { titre?: string; echeance?: string | null; responsable_id?: string; priorite?: string; description?: string | null }): Observable<any> {
     return this.http.put<any>(`${this.base}/api/taches/${id}/details`, payload);
   }
 
@@ -636,8 +636,8 @@ export class ApiService {
     Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     return this.http.get<any[]>(`${this.base}/api/diligences/verifier-doublon?${params.toString()}`);
   }
-  majStatutDiligence(id: string, statut: string): Observable<any> {
-    return this.http.put<any>(`${this.base}/api/diligences/${id}/statut`, { statut });
+  majStatutDiligence(id: string, statut: string, observations?: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/diligences/${id}/statut`, { statut, observations });
   }
 
   // Registre du courrier
