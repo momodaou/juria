@@ -151,16 +151,31 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                   @for (p of periodicitesAbonnement(); track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
                 </select>
               </div>
+              @if (editAbonnement.abonnement_periodicite && editAbonnement.abonnement_periodicite !== 'mensuelle') {
+                <div>
+                  <label>Mois d'ancrage</label>
+                  <select class="in" [(ngModel)]="editAbonnement.mois_ancrage" name="editAbonnementMois" (ngModelChange)="onMoisAncrageChange()">
+                    <option [value]="null">—</option>
+                    @for (m of MOIS_NOMS; track m; let i = $index) { <option [value]="i + 1">{{ m }}</option> }
+                  </select>
+                </div>
+              }
               <div>
-                <label>Date d'ancrage</label>
-                <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" name="editAbonnementAncrage" />
+                <label>Jour de facturation</label>
+                <select class="in" [(ngModel)]="editAbonnement.jour_ancrage" name="editAbonnementJour">
+                  <option [value]="null">—</option>
+                  @for (j of joursDisponibles(editAbonnement.abonnement_periodicite === 'mensuelle' ? null : editAbonnement.mois_ancrage); track j) { <option [value]="j">{{ j }}</option> }
+                </select>
               </div>
               <div class="col2">
                 <label>Montant convenu (FCFA, facultatif)</label>
                 <input class="in" type="number" min="0" [(ngModel)]="editAbonnement.montant_convenu" name="editAbonnementMontant" />
               </div>
             </div>
-            <p class="muted" style="margin:-6px 0 12px">Périodicité et date d'ancrage doivent être renseignées ensemble, ou toutes les deux laissées vides pour retirer la convention (tout dossier de ce client redevient alors facturé individuellement).</p>
+            <p class="muted" style="margin:-6px 0 12px">
+              Ce repère se répète indéfiniment (il n'y a pas d'année à choisir, l'échéance n'a pas de fin) — pour une périodicité mensuelle, seul le jour compte ; au-delà, le mois d'ancrage fixe aussi le point de départ du cycle.
+              Périodicité et jour de facturation doivent être renseignés ensemble, ou tous les deux laissés vides pour retirer la convention (tout dossier de ce client redevient alors facturé individuellement).
+            </p>
             <button class="btn" (click)="enregistrerAbonnement()" [disabled]="enregistrementAbonnement()">{{ enregistrementAbonnement() ? 'Enregistrement…' : 'Enregistrer' }}</button>
             <button class="btn ghost" (click)="modeEditionAbonnement.set(false)">Annuler</button>
             @if (erreurAbonnement()) { <p class="err">{{ erreurAbonnement() }}</p> }
@@ -359,19 +374,38 @@ export class ClientDetailComponent implements OnInit {
   readonly erreurAbonnement = signal('');
   editAbonnement: any = {};
 
-  private dateAncrageAbonnement(c: any): string {
-    if (!c.abonnement_jour_facturation) return '';
-    const aujourdHui = new Date();
-    const mois = c.abonnement_mois_facturation ?? (aujourdHui.getMonth() + 1);
-    const jour = String(c.abonnement_jour_facturation).padStart(2, '0');
-    return `${aujourdHui.getFullYear()}-${String(mois).padStart(2, '0')}-${jour}`;
+  // Repère jour/mois sans année (10/10/2026) — remplace l'ancien input
+  // type="date" qui donnait l'illusion trompeuse qu'on choisissait une
+  // année : le serveur ne retient JAMAIS l'année (periodicite.js ne stocke
+  // que jour_echeance/mois_echeance), et l'ancien composant reconstruisait
+  // systématiquement la date affichée avec l'année courante à chaque
+  // réouverture — toute année saisie était donc silencieusement perdue.
+  readonly MOIS_NOMS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+  // Jours valides pour un mois donné (1-indexé), année de référence 2024
+  // (bissextile, autorise le 29 février) — sans mois (périodicité
+  // mensuelle), les 31 jours restent tous proposés, le clamp au nombre de
+  // jours réel du mois se fait de toute façon à chaque occurrence calculée
+  // côté serveur (calculerProchaineEcheance).
+  joursDisponibles(mois: number | string | null): number[] {
+    const m = Number(mois) || null;
+    const total = m ? new Date(2024, m, 0).getDate() : 31;
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  onMoisAncrageChange(): void {
+    const max = this.joursDisponibles(this.editAbonnement.mois_ancrage).length;
+    if (this.editAbonnement.jour_ancrage && Number(this.editAbonnement.jour_ancrage) > max) {
+      this.editAbonnement.jour_ancrage = max;
+    }
   }
 
   activerEditionAbonnement(c: any): void {
     this.erreurAbonnement.set('');
     this.editAbonnement = {
       abonnement_periodicite: c.abonnement_periodicite || '',
-      abonnement_prochaine_facturation: this.dateAncrageAbonnement(c),
+      jour_ancrage: c.abonnement_jour_facturation ?? null,
+      mois_ancrage: c.abonnement_mois_facturation ?? null,
       montant_convenu: c.abonnement_montant_convenu_xof ?? null,
     };
     this.modeEditionAbonnement.set(true);
@@ -379,12 +413,30 @@ export class ClientDetailComponent implements OnInit {
 
   enregistrerAbonnement(): void {
     this.erreurAbonnement.set('');
-    if (!!this.editAbonnement.abonnement_periodicite !== !!this.editAbonnement.abonnement_prochaine_facturation) {
-      this.erreurAbonnement.set("Périodicité et date d'ancrage doivent être renseignées ensemble.");
+    const periodicite = this.editAbonnement.abonnement_periodicite || '';
+    const jour = this.editAbonnement.jour_ancrage;
+    if (!!periodicite !== !!jour) {
+      this.erreurAbonnement.set('Périodicité et jour de facturation doivent être renseignés ensemble.');
       return;
     }
+    if (periodicite && periodicite !== 'mensuelle' && !this.editAbonnement.mois_ancrage) {
+      this.erreurAbonnement.set("Le mois d'ancrage est requis pour cette périodicité (au-delà de la mensuelle).");
+      return;
+    }
+    // Reconstruit une date réelle uniquement pour le format attendu par
+    // l'API (date d'ancrage) — l'année (2024, bissextile) n'a jamais
+    // d'effet côté serveur, qui n'en extrait que le jour et le mois.
+    let prochaineFacturation: string | null = null;
+    if (periodicite) {
+      const mois = periodicite === 'mensuelle' ? new Date().getMonth() + 1 : Number(this.editAbonnement.mois_ancrage);
+      prochaineFacturation = `2024-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`;
+    }
     this.enregistrementAbonnement.set(true);
-    this.api.majAbonnementClient(this.clientId, this.editAbonnement).subscribe({
+    this.api.majAbonnementClient(this.clientId, {
+      abonnement_periodicite: periodicite || null,
+      abonnement_prochaine_facturation: prochaineFacturation,
+      montant_convenu: this.editAbonnement.montant_convenu,
+    }).subscribe({
       next: () => {
         this.enregistrementAbonnement.set(false);
         this.modeEditionAbonnement.set(false);

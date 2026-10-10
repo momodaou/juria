@@ -214,14 +214,25 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         }
                       </select>
                     </label>
-                    <label>Date d'ancrage
-                      <input class="in" type="date" [(ngModel)]="editAbonnement.abonnement_prochaine_facturation" [name]="'edAncrage' + a.client_id" />
+                    @if (editAbonnement.abonnement_periodicite && editAbonnement.abonnement_periodicite !== 'mensuelle') {
+                      <label>Mois d'ancrage
+                        <select class="in" [(ngModel)]="editAbonnement.mois_ancrage" [name]="'edMois' + a.client_id" (ngModelChange)="onMoisAncrageChange()">
+                          <option [value]="null">—</option>
+                          @for (m of MOIS_NOMS; track m; let i = $index) { <option [value]="i + 1">{{ m }}</option> }
+                        </select>
+                      </label>
+                    }
+                    <label>Jour de facturation
+                      <select class="in" [(ngModel)]="editAbonnement.jour_ancrage" [name]="'edJour' + a.client_id">
+                        <option [value]="null">—</option>
+                        @for (j of joursDisponibles(editAbonnement.abonnement_periodicite === 'mensuelle' ? null : editAbonnement.mois_ancrage); track j) { <option [value]="j">{{ j }}</option> }
+                      </select>
                     </label>
                     <label>Montant convenu (FCFA, facultatif)
                       <input class="in" type="number" min="0" [(ngModel)]="editAbonnement.montant_convenu" [name]="'edMontant' + a.client_id" />
                     </label>
                   </div>
-                  <p class="hint">Périodicité et date d'ancrage doivent être renseignées ensemble (ou toutes les deux laissées vides pour retirer la convention).</p>
+                  <p class="hint">Ce repère se répète indéfiniment (pas d'année à choisir). Périodicité et jour de facturation doivent être renseignés ensemble (ou tous les deux laissés vides pour retirer la convention).</p>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                   <button class="lien" (click)="enregistrerEditionAbonnement(a)">Enregistrer</button>
                   <button class="lien" (click)="annulerEditionAbonnement()">Annuler</button>
@@ -582,16 +593,24 @@ export class FacturationComponent implements OnInit {
     return items;
   }
 
-  // Reconstruit une date d'ancrage représentative depuis jour/mois stockés
-  // — même patron que client-detail.component.ts (seuls jour/mois sont
-  // conservés, pas la date d'origine exacte ; la formule est toujours
-  // re-dérivée côté serveur).
-  private dateAncrageAbonnement(a: any): string {
-    if (!a.abonnement_jour_facturation) return '';
-    const aujourdHui = new Date();
-    const mois = a.abonnement_mois_facturation ?? (aujourdHui.getMonth() + 1);
-    const jour = String(a.abonnement_jour_facturation).padStart(2, '0');
-    return `${aujourdHui.getFullYear()}-${String(mois).padStart(2, '0')}-${jour}`;
+  // Repère jour/mois sans année (10/10/2026) — même correctif que
+  // client-detail.component.ts : l'ancien input type="date" reconstruisait
+  // systématiquement l'année courante à chaque réouverture, donnant
+  // l'illusion trompeuse qu'on pouvait choisir une année alors que le
+  // serveur ne retient jamais que jour/mois (periodicite.js).
+  readonly MOIS_NOMS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+  joursDisponibles(mois: number | string | null): number[] {
+    const m = Number(mois) || null;
+    const total = m ? new Date(2024, m, 0).getDate() : 31;
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  onMoisAncrageChange(): void {
+    const max = this.joursDisponibles(this.editAbonnement.mois_ancrage).length;
+    if (this.editAbonnement.jour_ancrage && Number(this.editAbonnement.jour_ancrage) > max) {
+      this.editAbonnement.jour_ancrage = max;
+    }
   }
 
   commencerEditionAbonnement(a: any): void {
@@ -599,7 +618,8 @@ export class FacturationComponent implements OnInit {
     this.editionAbonnementId.set(a.client_id);
     this.editAbonnement = {
       abonnement_periodicite: a.abonnement_periodicite || '',
-      abonnement_prochaine_facturation: this.dateAncrageAbonnement(a),
+      jour_ancrage: a.abonnement_jour_facturation ?? null,
+      mois_ancrage: a.abonnement_mois_facturation ?? null,
       montant_convenu: a.montant_convenu_xof ?? null,
     };
   }
@@ -610,11 +630,26 @@ export class FacturationComponent implements OnInit {
 
   enregistrerEditionAbonnement(a: any): void {
     this.erreur.set('');
-    if (!!this.editAbonnement.abonnement_periodicite !== !!this.editAbonnement.abonnement_prochaine_facturation) {
-      this.erreur.set("Périodicité et date d'ancrage doivent être renseignées ensemble.");
+    const periodicite = this.editAbonnement.abonnement_periodicite || '';
+    const jour = this.editAbonnement.jour_ancrage;
+    if (!!periodicite !== !!jour) {
+      this.erreur.set('Périodicité et jour de facturation doivent être renseignés ensemble.');
       return;
     }
-    this.api.majAbonnementClient(a.client_id, this.editAbonnement).subscribe({
+    if (periodicite && periodicite !== 'mensuelle' && !this.editAbonnement.mois_ancrage) {
+      this.erreur.set("Le mois d'ancrage est requis pour cette périodicité (au-delà de la mensuelle).");
+      return;
+    }
+    let prochaineFacturation: string | null = null;
+    if (periodicite) {
+      const mois = periodicite === 'mensuelle' ? new Date().getMonth() + 1 : Number(this.editAbonnement.mois_ancrage);
+      prochaineFacturation = `2024-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`;
+    }
+    this.api.majAbonnementClient(a.client_id, {
+      abonnement_periodicite: periodicite || null,
+      abonnement_prochaine_facturation: prochaineFacturation,
+      montant_convenu: this.editAbonnement.montant_convenu,
+    }).subscribe({
       next: () => {
         this.editionAbonnementId.set(null);
         this.api.clientsAbonnements().subscribe({ next: (ab) => this.abonnements.set(ab) });
