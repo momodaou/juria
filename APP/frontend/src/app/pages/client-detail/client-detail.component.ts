@@ -21,7 +21,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <h1>{{ c.denomination || (c.prenom + ' ' + c.nom) }}</h1>
             <div class="sub">
               {{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}
-              · {{ c.rccm || c.nif || 'Identifiant non renseigné' }} · {{ c.pays }}
+              · {{ c.type === 'morale' ? (c.rccm || c.nif || 'Identifiant non renseigné') : (c.rccm || 'Identifiant non renseigné') }} · {{ c.pays }}
             </div>
             @if (nbDossiers() !== null) {
               <a class="lien" [routerLink]="['/dossiers']" [queryParams]="{ client: clientId, clientLabel: c.denomination || (c.prenom + ' ' + c.nom) }">

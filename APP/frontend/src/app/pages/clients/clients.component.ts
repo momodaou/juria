@@ -60,7 +60,6 @@ import { ApiService } from '../../core/api.service';
             <div><label>Prénom</label><input class="in" [(ngModel)]="form.prenom" name="prenom" /></div>
             <div><label>Nom</label><input class="in" [(ngModel)]="form.nom" name="nom" /></div>
             <div><label>Nationalité</label><input class="in" [(ngModel)]="form.nationalite" name="nationalite" /></div>
-            <div><label>NIF</label><input class="in" [(ngModel)]="form.nif" name="nif" /></div>
           }
 
           <div><label>Email</label><input class="in" [(ngModel)]="form.email" name="email" /></div>
@@ -113,7 +112,7 @@ import { ApiService } from '../../core/api.service';
             <tr class="clik" [routerLink]="['/clients', c.id]">
               <td>{{ c.denomination || (c.prenom + ' ' + c.nom) }}</td>
               <td>{{ c.type === 'morale' ? 'Personne morale' : 'Personne physique' }}</td>
-              <td>{{ c.rccm || c.nif || '—' }}</td>
+              <td>{{ c.type === 'morale' ? (c.rccm || c.nif || '—') : (c.rccm || '—') }}</td>
               <td>{{ c.pays }}</td>
               <td>
                 <span class="tag" [class.haute]="c.kyc_statut === 'piece_expiree'"
