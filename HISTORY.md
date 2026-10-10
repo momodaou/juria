@@ -3456,4 +3456,4 @@ Build Angular production OK. **Vérification visuelle et fonctionnelle réelle**
 
 **Non fait, volontairement** : le job est codé et exposé mais **aucun Cloud Scheduler n'a été créé** pour le déclencher automatiquement (comme pour les jobs honoraires/facturation/retours manquants à leur création, nécessite une action sur l'infrastructure de production, à faire avec confirmation explicite).
 
-**Déploiement** : commité. Aucune migration nécessaire.
+**Déploiement** : commité (`5e109ab`). Aucune migration nécessaire. **Déployé et vérifié en production le 10/10/2026** (accord utilisateur, `./scripts/deploy.sh both` lancé par lui-même via `!`, bloqué pour moi par le classificateur de permissions local, catégorie « Production Deploy ») — API `juria-00132-92g`, frontend `juria-web-00177-r8p`. Vérifié : `/health` API en `200`, `/` frontend en `200`, `POST /internal/jobs/alertes-taches-retard` sans secret en `401` (route correctement montée et protégée — `SCHEDULER_SECRET` est configuré en production, contrairement au `503` observé en local où il ne l'est pas).
