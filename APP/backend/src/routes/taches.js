@@ -5,6 +5,39 @@ const { requirePermission } = require("../permissions");
 const { logAudit } = require("../audit");
 const router = express.Router();
 
+// Délégation d'une tâche (Bloc D, 10/10/2026, diagnostic "instruction
+// avocat -> collaborateur" — voir CLAUDE.md) : même esprit que
+// verifierImputationResponsable() de dossiers.js (30/08/2026), appliqué ici
+// aux tâches. L'auto-assignation (responsable = appelant) reste toujours
+// libre pour tous, quel que soit le rôle — seule la délégation à QUELQU'UN
+// D'AUTRE est restreinte :
+// - un avocat (associé, fondateur, Of Counsel, avocat stagiaire,
+//   collaborateur avocat) peut confier n'importe quel type de tâche à
+//   n'importe qui ;
+// - un juriste (collaborateur non-avocat) peut confier une tâche
+//   uniquement à un stagiaire non-avocat ou à l'assistante, et uniquement
+//   pour des types de tâches administratives/support (pas recherche/
+//   rédaction/revue/appel client, considérés comme du travail juridique
+//   réservé aux avocats pour déléguer) ;
+// - tout autre profil ne peut pas confier de tâche à quelqu'un d'autre.
+const ROLES_AVOCAT_TACHE = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
+const TYPES_DELEGABLES_JURISTE = ["depot", "facturation", "relance", "collecte_pieces", "autre"];
+const PROFILS_DELEGABLES_PAR_JURISTE = ["stagiaire", "assistante"];
+
+async function verifierDelegationTache(poolOuClient, responsableId, type, roleAppelant, appelantId) {
+  if (!responsableId || responsableId === appelantId) return null;
+  if (ROLES_AVOCAT_TACHE.includes(roleAppelant)) return null;
+  if (roleAppelant === "juriste") {
+    const { rows: [resp] } = await poolOuClient.query("SELECT role FROM utilisateurs WHERE id = $1", [responsableId]);
+    const typeEffectif = type || "autre";
+    if (resp && PROFILS_DELEGABLES_PAR_JURISTE.includes(resp.role) && TYPES_DELEGABLES_JURISTE.includes(typeEffectif)) {
+      return null;
+    }
+    return "Un collaborateur non-avocat ne peut confier une tâche qu'à un stagiaire non-avocat ou à l'assistante, et uniquement pour des tâches administratives (dépôt, facturation, relance, collecte de pièces, autre).";
+  }
+  return "Seuls les avocats peuvent confier une tâche à quelqu'un d'autre (les collaborateurs non-avocats ne le peuvent que pour certaines tâches administratives, vers un stagiaire non-avocat ou l'assistante).";
+}
+
 // GET /api/taches?dossier_id=...  |  ?mine=1  (mes tâches)  |  ?anciennes=true
 //
 // Terminées/annulées masquées par défaut au-delà de 30 jours (13/09/2026,
@@ -54,6 +87,9 @@ router.post("/", requirePermission("taches.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.titre) return res.status(400).json({ error: "titre requis" });
   try {
+    const responsableResolu = b.responsable_id || req.user.sub;
+    const erreurDelegation = await verifierDelegationTache(pool, responsableResolu, b.type, req.user.role, req.user.sub);
+    if (erreurDelegation) return res.status(403).json({ error: erreurDelegation });
     const { rows } = await pool.query(
       `INSERT INTO taches
          (dossier_id, titre, type, priorite, statut, echeance, responsable_id, validation_requise, description, cree_par)
@@ -136,6 +172,12 @@ router.put("/:id/details", requirePermission("taches.creer"), async (req, res) =
       "SELECT titre, echeance, responsable_id, priorite, type, description, dossier_id, statut FROM taches WHERE id = $1",
       [req.params.id]
     );
+    if (avant) {
+      const responsableCible = b.responsable_id !== undefined ? b.responsable_id : avant.responsable_id;
+      const typeCible = b.type || avant.type;
+      const erreurDelegation = await verifierDelegationTache(pool, responsableCible, typeCible, req.user.role, req.user.sub);
+      if (erreurDelegation) return res.status(403).json({ error: erreurDelegation });
+    }
     const { rows } = await pool.query(
       `UPDATE taches SET
          titre = COALESCE($1, titre),

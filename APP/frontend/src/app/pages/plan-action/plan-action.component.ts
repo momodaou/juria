@@ -77,8 +77,12 @@ const COLONNES = [
             <label>Responsable</label>
             <select class="in" [(ngModel)]="form.responsable_id" name="responsable">
               <option value="">—</option>
-              @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+              @for (u of responsablesDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
             </select>
+            <!-- 10/10/2026 — Bloc D du diagnostic instruction avocat ->
+                 collaborateur : liste filtrée, indicatif côté écran (la
+                 vraie garde est serveur, voir taches.js). -->
+            @if (!estAvocat()) { <span class="hint">{{ hintDelegation() }}</span> }
           </div>
           <div class="col2">
             <label>Dossier (optionnel)</label>
@@ -121,7 +125,7 @@ const COLONNES = [
                   </select>
                   <select class="in" [(ngModel)]="editForm.responsable_id" name="edResp">
                     <option value="">Responsable…</option>
-                    @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                    @for (u of responsablesDisponibles(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
                   </select>
                   <input class="in" [(ngModel)]="editForm.description" name="edDesc" placeholder="Instructions (facultatif)" />
                   <div class="carte-actions">
@@ -232,6 +236,36 @@ export class PlanActionComponent implements OnInit {
 
   parStatut(statut: string): any[] {
     return this.taches().filter((t) => t.statut === statut);
+  }
+
+  // 10/10/2026 — Bloc D du diagnostic "instruction avocat -> collaborateur"
+  // (voir CLAUDE.md) : qui peut confier une tâche à quelqu'un d'autre.
+  // Indicatif côté écran uniquement — la vraie garde est serveur
+  // (verifierDelegationTache() dans taches.js), même principe que le
+  // filtrage du responsable de dossier dans ouverture.component.ts.
+  private readonly rolesAvocatTache = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
+
+  estAvocat(): boolean {
+    return this.rolesAvocatTache.includes(this.auth.utilisateur()?.role ?? '');
+  }
+
+  estJuriste(): boolean {
+    return this.auth.utilisateur()?.role === 'juriste';
+  }
+
+  hintDelegation(): string {
+    return this.estJuriste()
+      ? "Vous ne pouvez confier une tâche qu'à vous-même, à un stagiaire non-avocat ou à l'assistante (et uniquement pour des tâches administratives)."
+      : 'Vous ne pouvez vous assigner cette tâche qu\'à vous-même.';
+  }
+
+  responsablesDisponibles(): any[] {
+    const moi = this.auth.utilisateur();
+    if (!moi || this.estAvocat()) return this.utilisateurs();
+    if (this.estJuriste()) {
+      return this.utilisateurs().filter((u: any) => u.id === moi.id || ['stagiaire', 'assistante'].includes(u.role));
+    }
+    return this.utilisateurs().filter((u: any) => u.id === moi.id);
   }
 
   ngOnInit(): void {
