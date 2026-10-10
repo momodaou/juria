@@ -335,7 +335,7 @@ describe("GET /api/roles-audience — semaine_fin toujours présente + Suite pro
     const res = await request(app).get("/api/roles-audience?semaine=2028-06-05").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.semaine_debut).toBe("2028-06-05"); // déjà un lundi
-    expect(res.body.semaine_fin).toBe("2028-06-11"); // + 6 jours
+    expect(res.body.semaine_fin).toBe("2028-06-09"); // + 4 jours (vendredi, 10/10/2026 — 5 jours ouvrés, plus le dimanche)
   });
 
   test("renvoi : la ligne d'origine expose suite_date/suite_juridiction/suite_avocat_code (reportés depuis l'audience d'origine)", async () => {

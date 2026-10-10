@@ -30,14 +30,24 @@ function lundiDeSemaine(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// 10/10/2026 — vendredi de la semaine (lundi + 4 jours), pas dimanche
+// (lundi + 6) : demande explicite de l'utilisateur, le rôle d'audience ne
+// couvre que les 5 jours ouvrés (lundi-vendredi), jamais le week-end. Pure
+// métadonnée d'affichage (en-tête écran + PDF) — n'a jamais borné aucune
+// requête (une ligne appartient à une semaine via le lundi de sa
+// `date_prevue`, pas via une comparaison à `semaine_fin`).
+function vendrediDeSemaine(semaineDebutStr) {
+  const d = new Date(semaineDebutStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 4);
+  return d.toISOString().slice(0, 10);
+}
+
 async function trouverOuCreerRole(client, semaineDebut, creePar) {
   const existe = await client.query("SELECT * FROM roles_audience WHERE semaine_debut = $1", [semaineDebut]);
   if (existe.rows[0]) return existe.rows[0];
-  const fin = new Date(semaineDebut + "T00:00:00Z");
-  fin.setUTCDate(fin.getUTCDate() + 6);
   const cree = await client.query(
     `INSERT INTO roles_audience (semaine_debut, semaine_fin, cree_par) VALUES ($1,$2,$3) RETURNING *`,
-    [semaineDebut, fin.toISOString().slice(0, 10), creePar]
+    [semaineDebut, vendrediDeSemaine(semaineDebut), creePar]
   );
   return cree.rows[0];
 }
@@ -52,10 +62,8 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
       // pas la semaine, X au [rien] ») : sur une semaine encore vide (aucune
       // ligne `roles_audience` créée), cette réponse omettait `semaine_fin`
       // — calculée ici comme `trouverOuCreerRole()` le fait déjà pour une
-      // semaine qui a une ligne (lundi + 6 jours).
-      const fin = new Date(semaine + "T00:00:00Z");
-      fin.setUTCDate(fin.getUTCDate() + 6);
-      return res.json({ semaine_debut: semaine, semaine_fin: fin.toISOString().slice(0, 10), statut: null, lignes: [] });
+      // semaine qui a une ligne.
+      return res.json({ semaine_debut: semaine, semaine_fin: vendrediDeSemaine(semaine), statut: null, lignes: [] });
     }
 
     const lignes = await pool.query(
