@@ -4704,3 +4704,14 @@ UPDATE dossiers SET
   abonnement_alerte_envoyee_pour = NULL,
   montant_convenu_xof = NULL
 WHERE mode_honoraires = 'abonnement';
+
+-- ---- Rôle d'audience : heure de la prochaine audience programmée (10/10/2026) ----
+-- Demande explicite de l'utilisateur : la tuile « Retour d'audience »
+-- (renvoi / mise en délibéré) ne portait que la date de la prochaine
+-- audience, jamais son heure, alors que `audiences.heure` existe déjà pour
+-- l'audience en cours. Même principe que `prochaine_date` (dupliquée sur
+-- l'audience d'ORIGINE pour affichage/pré-remplissage, en plus de l'heure
+-- réellement posée sur l'audience « suite » elle-même via
+-- `synchroniserProchaineAudience()`, lue par la jointure déjà en place
+-- côté Rôle d'audience — voir audiences.js).
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS prochaine_heure TIME;  -- heure de la prochaine audience (renvoi/délibéré), miroir de prochaine_date

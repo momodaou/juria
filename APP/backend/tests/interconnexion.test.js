@@ -322,6 +322,43 @@ describe("POST/PUT /api/roles-audience/audiences/:id/retour — obligation + cor
       .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi" });
     expect(correction.status).toBe(400);
   });
+
+  // 10/10/2026 — gap signalé par l'utilisateur : la tuile "Retour
+  // d'audience" ne portait que la date de la prochaine audience, jamais son
+  // heure. `prochaine_heure` est posée sur l'audience d'origine (miroir de
+  // prochaine_date, pour la fiche dossier/le pré-remplissage de la
+  // correction) ET sur l'audience "suite" elle-même (heure réelle, lue via
+  // suite_heure dans la liste du rôle).
+  test("renvoi avec prochaine_heure : posée sur l'audience d'origine ET sur l'audience suite (suite_heure)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-10", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-02-17", prochaine_heure: "09:30" });
+    expect(retour.status).toBe(200);
+    expect(retour.body.audience.prochaine_heure.slice(0, 5)).toBe("09:30");
+
+    const roleFutur = await request(app).get("/api/roles-audience?semaine=2027-01-10").set("Authorization", `Bearer ${token}`);
+    const ligne = roleFutur.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne.suite_heure.slice(0, 5)).toBe("09:30");
+  });
+
+  test("PUT /retour : changer seulement la date garde l'heure déjà connue sur l'audience suite (pas effacée)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-01-11", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-02-18", prochaine_heure: "10:00" });
+
+    const correction = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ prochaine_date: "2027-03-23" });
+    expect(correction.status).toBe(200);
+    expect(correction.body.audience.prochaine_heure.slice(0, 5)).toBe("10:00"); // inchangée
+
+    const roleFutur = await request(app).get("/api/roles-audience?semaine=2027-01-11").set("Authorization", `Bearer ${token}`);
+    const ligne = roleFutur.body.lignes.find((l) => l.dossier_id === dossierId);
+    expect(ligne.suite_heure.slice(0, 5)).toBe("10:00"); // déplacée avec la date, pas effacée
+  });
 });
 
 // 24/09/2026 — suite de la même discussion : (i) en-tête "au [rien]" sur une

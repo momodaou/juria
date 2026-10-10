@@ -72,7 +72,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               u.prenom || ' ' || u.nom AS avocat_nom, u.code AS avocat_code,
               ur.prenom || ' ' || ur.nom AS responsable_dossier_nom, ur.code AS responsable_dossier_code,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
-              a.resultat, a.prochaine_date, a.observations,
+              a.resultat, a.prochaine_date, a.prochaine_heure, a.observations,
               a.nature_procedure, a.nature_precision,
               a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
               a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
@@ -322,7 +322,12 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
 // l'utilisateur) — la nouvelle audience créée pour un `delibere` porte
 // désormais le type `prononce`, plutôt que de recopier bêtement le type de
 // l'audience d'origine (une mise en délibéré n'a souvent pas ce type).
-async function synchroniserProchaineAudience(client, audienceOriginale, prochaineDate, creePar, resultat) {
+// `prochaineHeure` (10/10/2026, facultatif) : posée directement sur
+// `audiences.heure` de l'audience « suite » (déplacée ou créée) — c'est
+// cette colonne, déjà affichée pour l'audience courante, qui est jointe et
+// montrée comme `suite_heure` par le GET / ci-dessus, sans changement de
+// requête nécessaire côté lecture.
+async function synchroniserProchaineAudience(client, audienceOriginale, prochaineDate, creePar, resultat, prochaineHeure) {
   const role = await trouverOuCreerRole(client, lundiDeSemaine(prochaineDate), creePar);
   const existante = await client.query(
     `SELECT a.id, l.id AS ligne_id FROM audiences a
@@ -332,7 +337,10 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
   );
   if (existante.rows[0]) {
     const a2 = existante.rows[0];
-    await client.query(`UPDATE audiences SET date_audience = $1 WHERE id = $2`, [prochaineDate, a2.id]);
+    await client.query(
+      `UPDATE audiences SET date_audience = $1, heure = $2 WHERE id = $3`,
+      [prochaineDate, prochaineHeure || null, a2.id]
+    );
     if (a2.ligne_id) {
       await client.query(
         `UPDATE role_audience_lignes SET role_id = $1, date_prevue = $2 WHERE id = $3`,
@@ -360,11 +368,11 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
   const typeSuite = resultat === "delibere" ? "prononce" : audienceOriginale.type;
   const nouvelleAudience = await client.query(
     `INSERT INTO audiences
-       (dossier_id, avocat_id, juridiction, date_audience, type,
+       (dossier_id, avocat_id, juridiction, date_audience, heure, type,
         nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
         dernier_motif_precision, cree_par)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, typeSuite,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, prochaineHeure || null, typeSuite,
      audienceOriginale.nature_procedure, audienceOriginale.nature_precision, audienceOriginale.id, audienceOriginale.motif_renvoi_id,
      audienceOriginale.motif_renvoi_precision, creePar]
   );
@@ -411,16 +419,16 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
     }
     const maj = await client.query(
       `UPDATE audiences SET resultat = $1, motif_renvoi_id = $2, motif_renvoi_precision = $3,
-         prochaine_date = $4, observations = $5
-       WHERE id = $6 RETURNING *`,
+         prochaine_date = $4, prochaine_heure = $5, observations = $6
+       WHERE id = $7 RETURNING *`,
       [b.resultat, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
-       b.prochaine_date || null, b.observations || null, req.params.id]
+       b.prochaine_date || null, b.prochaine_heure || null, b.observations || null, req.params.id]
     );
     const a = maj.rows[0];
 
     let prochaine = null;
     if (b.prochaine_date) {
-      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat, b.prochaine_heure || null);
     }
     await client.query("COMMIT");
     await logAudit({
@@ -454,7 +462,7 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
 // déclencheur explicite que dans PUT /audiences/:id (un seul geste, une
 // clé absente = "ne pas toucher", présente avec valeur vide = "effacer").
 const CHAMPS_PROCEDURAUX_RETOUR = [
-  "resultat", "motif_renvoi_id", "motif_renvoi_precision", "prochaine_date", "observations",
+  "resultat", "motif_renvoi_id", "motif_renvoi_precision", "prochaine_date", "prochaine_heure", "observations",
 ];
 
 router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
@@ -478,10 +486,11 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
          motif_renvoi_id = CASE WHEN $2::boolean THEN $3::uuid ELSE motif_renvoi_id END,
          motif_renvoi_precision = CASE WHEN $2::boolean THEN $4 ELSE motif_renvoi_precision END,
          prochaine_date = COALESCE($5, prochaine_date),
-         observations = COALESCE($6, observations)
-       WHERE id = $7 RETURNING *`,
+         prochaine_heure = COALESCE($6, prochaine_heure),
+         observations = COALESCE($7, observations)
+       WHERE id = $8 RETURNING *`,
       [b.resultat || null, toucheMotif, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
-       b.prochaine_date || null, b.observations || null, req.params.id]
+       b.prochaine_date || null, b.prochaine_heure || null, b.observations || null, req.params.id]
     );
     const a = maj.rows[0];
     if (a.resultat === "renvoi" && !a.prochaine_date) {
@@ -491,7 +500,10 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
 
     let prochaine = null;
     if (b.prochaine_date) {
-      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat);
+      // `a.prochaine_heure` (déjà COALESCE ci-dessus) plutôt que `b.prochaine_heure`
+      // brut : si seule la date change (heure non refournie), l'audience "suite"
+      // garde l'heure déjà connue au lieu de se la voir effacée.
+      prochaine = await synchroniserProchaineAudience(client, a, b.prochaine_date, req.user.sub, a.resultat, a.prochaine_heure);
     }
     await client.query("COMMIT");
     const changements = diffChamps(existante.rows[0], a, CHAMPS_PROCEDURAUX_RETOUR);

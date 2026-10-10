@@ -765,7 +765,7 @@ import { libelleRole } from '../../core/roles';
                 <td>
                   @if (a.resultat) {
                     {{ libelleResultat(a.resultat) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
-                    @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }} }
+                    @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }}@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
                     @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
                       <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
                     }
@@ -862,6 +862,13 @@ import { libelleRole } from '../../core/roles';
                           <label>{{ retourCorrection.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
                             <span class="muted">{{ retourCorrection.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
                           <input class="in" type="date" [(ngModel)]="retourCorrection.prochaine_date" name="rcProchaine" />
+                        </div>
+                        <!-- 10/10/2026 — heure de la prochaine audience
+                             (facultative, toujours), même patron que le Rôle
+                             d'audience. -->
+                        <div>
+                          <label>Heure <span class="muted">(facultatif)</span></label>
+                          <input class="in" type="time" [(ngModel)]="retourCorrection.prochaine_heure" name="rcProchaineHeure" />
                         </div>
                       }
                       <div class="col2"><label>Observations</label><input class="in" [(ngModel)]="retourCorrection.observations" name="rcObs" /></div>
@@ -1888,6 +1895,7 @@ export class DossierDetailComponent implements OnInit {
       motif_renvoi_id: a.motif_renvoi_id || '',
       motif_renvoi_precision: a.motif_renvoi_precision || '',
       prochaine_date: a.prochaine_date ? new Date(a.prochaine_date).toISOString().slice(0, 10) : '',
+      prochaine_heure: a.prochaine_heure ? a.prochaine_heure.slice(0, 5) : '',
       observations: a.observations || '',
     };
     this.correctionRetourId.set(a.id);
@@ -1903,6 +1911,8 @@ export class DossierDetailComponent implements OnInit {
     const payload = {
       ...this.retourCorrection,
       prochaine_date: this.retourCorrection.prochaine_date || null,
+      // 10/10/2026 — jamais une chaîne vide (Postgres TIME la refuserait).
+      prochaine_heure: this.retourCorrection.prochaine_heure || null,
       motif_renvoi_id: this.retourCorrection.motif_renvoi_id || null,
       motif_renvoi_precision: precisionValide ? (this.retourCorrection.motif_renvoi_precision || null) : null,
     };

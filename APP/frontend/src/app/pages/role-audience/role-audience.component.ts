@@ -108,7 +108,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                        serveur, sans distinction de résultat). -->
                   @if (l.suite_date) {
                     <button class="lien" (click)="toggleApercuSuite(l)">
-                      {{ apercuSuiteId() === l.audience_id ? '▾' : '▸' }} {{ l.suite_date | date:'dd/MM/yyyy' }}
+                      {{ apercuSuiteId() === l.audience_id ? '▾' : '▸' }} {{ l.suite_date | date:'dd/MM/yyyy' }}@if (l.suite_heure) { {{ formaterHeure(l.suite_heure) }} }
                     </button>
                   } @else { <span class="muted">—</span> }
                 </td>
@@ -279,6 +279,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <label>{{ retourForm.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
                   <span class="muted">{{ retourForm.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
                 <input class="in" type="date" [(ngModel)]="retourForm.prochaine_date" name="prochaine" />
+              </div>
+              <div>
+                <!-- 10/10/2026 — heure de la prochaine audience (facultative,
+                     toujours), demande explicite de l'utilisateur. -->
+                <label>Heure <span class="muted">(facultatif)</span></label>
+                <input class="in" type="time" [(ngModel)]="retourForm.prochaine_heure" name="prochaineHeure" />
               </div>
             }
             <div class="col2">
@@ -609,7 +615,7 @@ export class RoleAudienceComponent implements OnInit {
   dossierRecherche = '';
   dossierLabel = '';
   nouvelleLigne: any = { type: 'mise_en_etat', urgente: false };
-  retourForm: any = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', observations: '' };
+  retourForm: any = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
 
   libelleStatut(s: string): string {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
@@ -901,7 +907,7 @@ export class RoleAudienceComponent implements OnInit {
   ouvrirRetour(l: any): void {
     this.erreur.set('');
     this.correctionRetour.set(false);
-    this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', observations: '' };
+    this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
     this.ligneRetour.set(l);
     // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
     // hors écran si la ligne cliquée est loin dans le tableau : défilement auto.
@@ -921,6 +927,7 @@ export class RoleAudienceComponent implements OnInit {
       motif_renvoi_id: l.motif_renvoi_id || '',
       motif_renvoi_precision: l.motif_renvoi_precision || '',
       prochaine_date: l.prochaine_date ? new Date(l.prochaine_date).toISOString().slice(0, 10) : '',
+      prochaine_heure: l.prochaine_heure ? l.prochaine_heure.slice(0, 5) : '',
       observations: l.observations || '',
     };
     this.ligneRetour.set(l);
@@ -947,6 +954,10 @@ export class RoleAudienceComponent implements OnInit {
     const payload = {
       ...this.retourForm,
       prochaine_date: this.retourForm.prochaine_date || null,
+      // 10/10/2026 — jamais une chaîne vide : Postgres (TIME) refuse "" en
+      // entrée, contrairement à un <input type="date"> qui, lui, n'est
+      // jamais soumis vide par le navigateur quand il est requis.
+      prochaine_heure: this.retourForm.prochaine_heure || null,
       motif_renvoi_id: this.retourForm.motif_renvoi_id || null,
       motif_renvoi_precision: precisionValide ? (this.retourForm.motif_renvoi_precision || null) : null,
     };
