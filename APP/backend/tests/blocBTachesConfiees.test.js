@@ -1,8 +1,11 @@
-// JURIA — 10/10/2026, Bloc B du diagnostic "instruction avocat ->
+// JURIA — 10-11/10/2026, Bloc B du diagnostic "instruction avocat ->
 // collaborateur" (voir CLAUDE.md/HISTORY.md) : tuile "Tâches que j'ai
 // confiées" (symétrique de "Mes tâches" côté donneur d'instruction) +
-// job d'alerte quotidien sur les tâches en retard (un e-mail personnalisé
-// par destinataire, pas de diffusion collective).
+// job d'alerte quotidien sur les tâches en retard. Le job a été revu le
+// lendemain (11/10/2026) : la version individualisée (un e-mail personnel
+// par destinataire) a été remplacée par une diffusion collective à deux
+// volets (technique/administratif), l'objectif réel étant l'assiduité de
+// l'exécutant via une visibilité partagée — voir jobs/alertesTachesRetard.js.
 jest.mock("../src/mailer", () => ({ envoyerEmail: jest.fn().mockResolvedValue({ envoye: true }) }));
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -73,68 +76,127 @@ describe("Tableau de bord — tuile « Tâches que j'ai confiées »", () => {
   });
 });
 
-describe("Job alertesTachesRetard — un e-mail personnalisé par destinataire", () => {
-  test("le responsable ET le créateur (différent) d'une tâche en retard reçoivent chacun un e-mail", async () => {
+// Le fichier accumule des tâches au fil des tests (base partagée, jamais
+// réinitialisée entre deux tests) — les assertions portent donc sur le
+// CONTENU (présence/absence d'un titre unique) plutôt que sur "0 e-mail
+// envoyé à X", qui ne serait plus fiable dès qu'un autre test a déjà créé
+// une tâche en retard concernant ce même rôle.
+function contenuPour(email) {
+  const appels = appelsVers(email);
+  return appels.length ? appels[0][0].html : "";
+}
+function titreApparaitQuelquePart(titre) {
+  return envoyerEmail.mock.calls.some((c) => c[0].html.includes(titre));
+}
+async function creerTacheEnRetard({ titre, type, statut = "a_faire", joursRetard = 3, responsableId }) {
+  await pool.query(
+    `INSERT INTO taches (titre, type, statut, echeance, responsable_id, cree_par)
+     VALUES ($1, $2::type_tache, $3, current_date - $4::int, $5, $5)`,
+    [titre, type, statut, joursRetard, responsableId]
+  );
+}
+
+describe("Job alertesTachesRetard — diffusion collective à deux volets (technique/administratif)", () => {
+  test("une tâche technique (dépôt) est signalée aux avocats et aux juristes", async () => {
     envoyerEmail.mockClear();
-    const assigne = await creerUtilisateurRole("collaborateur");
-    const createur = await creerUtilisateurRole("juriste");
-    await pool.query(
-      `INSERT INTO taches (titre, statut, echeance, responsable_id, cree_par)
-       VALUES ('Tâche en retard test', 'a_faire', current_date - 3, $1, $2)`,
-      [assigne.id, createur.id]
-    );
+    const avocat = await creerUtilisateurRole("collaborateur");
+    const juriste = await creerUtilisateurRole("juriste");
+    const titre = `Dépôt au greffe ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "depot", responsableId: avocat.id });
 
     const resultat = await executerJobAlertesTachesRetard(pool);
-    expect(resultat.taches_en_retard).toBeGreaterThanOrEqual(1);
+    expect(resultat.techniques).toBeGreaterThanOrEqual(1);
 
-    expect(appelsVers(assigne.email).length).toBe(1);
-    expect(appelsVers(assigne.email)[0][0].html).toContain("qui vous sont assignées");
-    expect(appelsVers(assigne.email)[0][0].html).toContain("Tâche en retard test");
-
-    expect(appelsVers(createur.email).length).toBe(1);
-    expect(appelsVers(createur.email)[0][0].html).toContain("que vous avez confiées");
-    expect(appelsVers(createur.email)[0][0].html).toContain("Test BlocB"); // nom du responsable mentionné
+    expect(contenuPour(avocat.email)).toContain(titre);
+    expect(contenuPour(avocat.email)).toContain("Tâches techniques");
+    expect(contenuPour(juriste.email)).toContain(titre);
   });
 
-  test("une tâche auto-assignée en retard ne génère qu'un seul e-mail (pas de doublon assignée/confiée)", async () => {
+  test("une tâche technique n'est signalée ni à l'administrateur général ni à l'assistante (dépôt = technique, pas administratif)", async () => {
     envoyerEmail.mockClear();
-    const solo = await creerUtilisateurRole("collaborateur");
-    await pool.query(
-      `INSERT INTO taches (titre, statut, echeance, responsable_id, cree_par)
-       VALUES ('Tâche solo en retard', 'a_faire', current_date - 1, $1, $1)`,
-      [solo.id]
-    );
+    const adminGeneral = await creerUtilisateurRole("admin_general");
+    const assistante = await creerUtilisateurRole("assistante");
+    const titre = `Rédaction de conclusions ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "redaction", responsableId: adminGeneral.id });
 
     await executerJobAlertesTachesRetard(pool);
-    expect(appelsVers(solo.email).length).toBe(1);
-    const html = appelsVers(solo.email)[0][0].html;
-    expect(html).toContain("qui vous sont assignées");
-    expect(html).not.toContain("que vous avez confiées");
+    expect(contenuPour(adminGeneral.email)).not.toContain(titre);
+    expect(contenuPour(assistante.email)).not.toContain(titre);
   });
 
-  test("une tâche dont l'échéance n'est pas encore passée ne déclenche rien", async () => {
+  test("une tâche administrative (facturation) est signalée aux associés, à l'administrateur général et à l'assistante", async () => {
+    envoyerEmail.mockClear();
+    const associe = await creerUtilisateurRole("associe");
+    const adminGeneral = await creerUtilisateurRole("admin_general");
+    const assistante = await creerUtilisateurRole("assistante");
+    const titre = `Relance paiement ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "relance", responsableId: associe.id });
+
+    const resultat = await executerJobAlertesTachesRetard(pool);
+    expect(resultat.administratives).toBeGreaterThanOrEqual(1);
+
+    expect(contenuPour(associe.email)).toContain(titre);
+    expect(contenuPour(associe.email)).toContain("administratives/gestion");
+    expect(contenuPour(adminGeneral.email)).toContain(titre);
+    expect(contenuPour(assistante.email)).toContain(titre);
+  });
+
+  test("une tâche administrative n'est PAS signalée à un avocat collaborateur (non-associé) ni à un juriste", async () => {
+    envoyerEmail.mockClear();
+    const collaborateur = await creerUtilisateurRole("collaborateur");
+    const juriste = await creerUtilisateurRole("juriste");
+    const titre = `Collecte de pièces ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "collecte_pieces", responsableId: collaborateur.id });
+
+    await executerJobAlertesTachesRetard(pool);
+    expect(contenuPour(collaborateur.email)).not.toContain(titre);
+    expect(contenuPour(juriste.email)).not.toContain(titre);
+  });
+
+  test("un associé concerné par les 2 volets ne reçoit qu'un seul e-mail avec les 2 sections", async () => {
+    envoyerEmail.mockClear();
+    const associe = await creerUtilisateurRole("associe");
+    const titreTech = `Recherche jurisprudence ${Date.now()}`;
+    const titreAdmin = `Autre tâche admin ${Date.now()}`;
+    await creerTacheEnRetard({ titre: titreTech, type: "recherche", responsableId: associe.id });
+    await creerTacheEnRetard({ titre: titreAdmin, type: "autre", responsableId: associe.id });
+
+    await executerJobAlertesTachesRetard(pool);
+    expect(appelsVers(associe.email).length).toBe(1);
+    const html = contenuPour(associe.email);
+    expect(html).toContain(titreTech);
+    expect(html).toContain(titreAdmin);
+    expect(html).toContain("Tâches techniques");
+    expect(html).toContain("administratives/gestion");
+  });
+
+  test("une tâche dont l'échéance n'est pas encore passée n'apparaît dans aucun e-mail", async () => {
     envoyerEmail.mockClear();
     const futur = await creerUtilisateurRole("collaborateur");
-    await pool.query(
-      `INSERT INTO taches (titre, statut, echeance, responsable_id, cree_par)
-       VALUES ('Tâche future', 'a_faire', current_date + 5, $1, $1)`,
-      [futur.id]
-    );
+    const titre = `Tâche future ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "recherche", responsableId: futur.id, joursRetard: -5 });
 
     await executerJobAlertesTachesRetard(pool);
-    expect(appelsVers(futur.email).length).toBe(0);
+    expect(titreApparaitQuelquePart(titre)).toBe(false);
   });
 
-  test("une tâche terminée ou annulée en retard ne déclenche rien", async () => {
+  test("une tâche terminée en retard n'apparaît dans aucun e-mail", async () => {
     envoyerEmail.mockClear();
     const termine = await creerUtilisateurRole("collaborateur");
-    await pool.query(
-      `INSERT INTO taches (titre, statut, echeance, responsable_id, cree_par)
-       VALUES ('Tâche terminée en retard', 'termine', current_date - 2, $1, $1)`,
-      [termine.id]
-    );
+    const titre = `Tâche terminée ${Date.now()}`;
+    await creerTacheEnRetard({ titre, type: "redaction", statut: "termine", responsableId: termine.id });
 
     await executerJobAlertesTachesRetard(pool);
-    expect(appelsVers(termine.email).length).toBe(0);
+    expect(titreApparaitQuelquePart(titre)).toBe(false);
+  });
+
+  test("un profil hors des 2 groupes (comptable) ne reçoit jamais rien", async () => {
+    envoyerEmail.mockClear();
+    const comptable = await creerUtilisateurRole("comptable");
+    const associe = await creerUtilisateurRole("associe");
+    await creerTacheEnRetard({ titre: `Tâche admin comptable ${Date.now()}`, type: "facturation", responsableId: associe.id });
+
+    await executerJobAlertesTachesRetard(pool);
+    expect(appelsVers(comptable.email).length).toBe(0);
   });
 });

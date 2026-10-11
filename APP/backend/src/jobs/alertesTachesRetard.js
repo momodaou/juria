@@ -1,24 +1,34 @@
-// JURIA — tâches en retard (Plan d'action), 10/10/2026, Bloc B du
-// diagnostic "instruction avocat -> collaborateur" (voir CLAUDE.md pour la
-// synthèse complète). Constat de l'audit : aucun job planifié ne couvrait
-// les tâches en retard, contrairement aux audiences/diligences
-// (alertesRetoursManquants.js), factures, honoraires et abonnements —
-// une tâche urgente pouvait dormir indéfiniment sans que personne ne soit
-// relancé activement, visible seulement via consultation manuelle de la
-// tuile Tableau de bord.
+// JURIA — tâches en retard (Plan d'action), 10-11/10/2026, suite du Bloc B
+// du diagnostic "instruction avocat -> collaborateur" (voir CLAUDE.md pour
+// la synthèse complète). Première version individualisée (un e-mail par
+// destinataire, limité à ses propres tâches) revue le lendemain à la
+// demande explicite de l'utilisateur : l'objectif réel est l'assiduité de
+// l'exécutant via une VISIBILITÉ COLLECTIVE, pas un rappel privé — même
+// principe que alertesRetoursManquants.js (24/09/2026), appliqué ici avec
+// un découpage par nature de tâche plutôt qu'un groupe unique.
 //
-// Différence délibérée avec alertesRetoursManquants.js : pas de "fenêtre
-// glissante" de 7 jours (une tâche en retard n'a pas d'équivalent "ça a
-// sans doute été géré ailleurs depuis" — elle peut légitimement rester en
-// retard en attendant une information externe), et surtout PAS de liste
-// large diffusée à un même groupe de rôles fixe : chaque destinataire ne
-// reçoit QUE ce qui le concerne personnellement — ses propres tâches en
-// retard (responsable_id) ET/OU celles qu'il a confiées à quelqu'un
-// d'autre (cree_par), un seul e-mail récapitulatif par jour couvrant les
-// deux cas s'ils se présentent. Répond directement au Bloc B du
-// diagnostic : visibilité du DONNEUR d'instruction, pas seulement de
-// l'exécutant.
+// Deux volets, cloisonnés par `taches.type` (même découpage que
+// verifierDelegationTache() dans ../routes/taches.js, Bloc D du même
+// diagnostic) :
+// - Technique (recherche, rédaction, revue, appel client, dépôt) — travail
+//   juridique de fond et actes de procédure -> tout le personnel qui
+//   produit du travail juridique (avocats + juristes).
+// - Administratif/gestion (facturation, relance, collecte de pièces,
+//   autre) -> groupe restreint : avocats ASSOCIÉS seuls (pas Of Counsel/
+//   avocat stagiaire/collaborateur) + administrateur général + assistante.
+//
+// Un même destinataire ne reçoit jamais deux e-mails le même jour : s'il
+// est concerné par les deux volets (cas d'un associé), un seul message
+// avec les deux sections. Pas de fenêtre glissante (contrairement aux
+// audiences/diligences) : une tâche en retard n'a pas d'équivalent "sans
+// doute géré ailleurs depuis", elle reste signalée tant qu'elle n'est pas
+// clôturée ou que son échéance n'est pas repoussée.
 const { envoyerEmail } = require("../mailer");
+
+const TYPES_TECHNIQUE = ["recherche", "redaction", "revue", "appel_client", "depot"];
+const TYPES_ADMINISTRATIF = ["facturation", "relance", "collecte_pieces", "autre"];
+const ROLES_TECHNIQUE = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur", "juriste"];
+const ROLES_ADMINISTRATIF = ["associe", "associe_fondateur", "admin_general", "assistante"];
 
 function lienDossier(dossierId) {
   const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
@@ -26,79 +36,89 @@ function lienDossier(dossierId) {
 }
 
 async function tachesEnRetard(pool) {
-  const { rows } = await pool.query(`
-    SELECT t.id, t.titre, t.dossier_id, d.numero AS dossier_numero, d.intitule AS dossier_intitule,
-           t.echeance,
-           t.responsable_id, ur.email AS responsable_email, ur.prenom AS responsable_prenom,
-           t.cree_par, uc.email AS createur_email, uc.prenom AS createur_prenom,
-           ur.prenom || ' ' || ur.nom AS responsable_nom
-    FROM taches t
-    LEFT JOIN dossiers d ON d.id = t.dossier_id
-    LEFT JOIN utilisateurs ur ON ur.id = t.responsable_id
-    LEFT JOIN utilisateurs uc ON uc.id = t.cree_par
-    WHERE t.statut NOT IN ('termine','annule')
-      AND t.echeance IS NOT NULL AND t.echeance < current_date
-    ORDER BY t.echeance ASC
-  `);
+  const { rows } = await pool.query(
+    `SELECT t.id, t.titre, t.type, t.dossier_id, d.numero AS dossier_numero, d.intitule AS dossier_intitule,
+            t.echeance, u.prenom || ' ' || u.nom AS responsable_nom
+     FROM taches t
+     LEFT JOIN dossiers d ON d.id = t.dossier_id
+     LEFT JOIN utilisateurs u ON u.id = t.responsable_id
+     WHERE t.statut NOT IN ('termine','annule')
+       AND t.echeance IS NOT NULL AND t.echeance < current_date
+     ORDER BY t.echeance ASC`
+  );
   return rows;
 }
 
-// Un destinataire par id utilisateur, avec ses 2 listes ("assignees" = mes
-// propres tâches en retard, "confiees" = celles que j'ai confiées à
-// quelqu'un d'autre et qui sont en retard) — une tâche auto-assignée
-// (cree_par = responsable_id) n'apparaît que dans "assignees", jamais
-// dupliquée dans "confiees".
-function construireDestinataires(taches) {
-  const map = new Map();
-  const assurer = (id, email, prenom) => {
-    if (!map.has(id)) map.set(id, { email, prenom, assignees: [], confiees: [] });
-    return map.get(id);
-  };
-  for (const t of taches) {
-    if (t.responsable_id && t.responsable_email) {
-      assurer(t.responsable_id, t.responsable_email, t.responsable_prenom).assignees.push(t);
-    }
-    if (t.cree_par && t.createur_email && t.cree_par !== t.responsable_id) {
-      assurer(t.cree_par, t.createur_email, t.createur_prenom).confiees.push(t);
-    }
-  }
-  return map;
+async function destinataires(pool, roles) {
+  const { rows } = await pool.query(
+    "SELECT id, email, prenom, role FROM utilisateurs WHERE actif AND role = ANY($1::role_utilisateur[])",
+    [roles]
+  );
+  return rows;
 }
 
-function ligneHtml(t, { avecResponsable } = {}) {
+function ligneHtml(t) {
   const joursRetard = Math.round((Date.now() - new Date(t.echeance).getTime()) / 86400000);
-  const resp = avecResponsable && t.responsable_nom
-    ? ` <span style="font-style:italic;font-size:0.85em;color:#666">(${t.responsable_nom})</span>` : "";
   return `<li><strong>${t.titre}</strong> — échéance du ${new Date(t.echeance).toLocaleDateString("fr-FR")}
-          (${joursRetard} jour${joursRetard > 1 ? "s" : ""} de retard) —
-          <a href="${lienDossier(t.dossier_id)}">${t.dossier_numero ? t.dossier_numero + " — " : ""}${t.dossier_intitule || "(sans dossier)"}</a>${resp}</li>`;
+          (${joursRetard} jour${joursRetard > 1 ? "s" : ""} de retard) — responsable : ${t.responsable_nom || "non assigné"} —
+          <a href="${lienDossier(t.dossier_id)}">${t.dossier_numero ? t.dossier_numero + " — " : ""}${t.dossier_intitule || "(sans dossier)"}</a></li>`;
 }
 
 async function executerJobAlertesTachesRetard(pool) {
   const taches = await tachesEnRetard(pool);
-  if (!taches.length) return { taches_en_retard: 0, destinataires: 0, mails_envoyes: 0 };
+  const techniques = taches.filter((t) => TYPES_TECHNIQUE.includes(t.type));
+  const administratives = taches.filter((t) => TYPES_ADMINISTRATIF.includes(t.type));
 
-  const dests = construireDestinataires(taches);
+  // "destinataires" toujours calculés (même sans occurrence) — cohérent
+  // avec les autres jobs d'alerte, utile pour vérifier la composition des
+  // 2 groupes indépendamment du volume de tâches en retard du jour.
+  const destTechnique = await destinataires(pool, ROLES_TECHNIQUE);
+  const destAdministratif = await destinataires(pool, ROLES_ADMINISTRATIF);
+  if (!techniques.length && !administratives.length) {
+    return { techniques: 0, administratives: 0, destinataires: new Set([...destTechnique, ...destAdministratif].map((d) => d.id)).size, mails_envoyes: 0 };
+  }
+
+  // Fusionne les 2 groupes par destinataire (un associé est dans les deux) —
+  // un seul e-mail par personne, avec les sections qui la concernent.
+  const parDestinataire = new Map();
+  for (const d of destTechnique) parDestinataire.set(d.id, { ...d, technique: true, administratif: false });
+  for (const d of destAdministratif) {
+    const existant = parDestinataire.get(d.id);
+    if (existant) existant.administratif = true;
+    else parDestinataire.set(d.id, { ...d, technique: false, administratif: true });
+  }
+
+  const listeTechnique = techniques.length ? `<ul>${techniques.map(ligneHtml).join("")}</ul>` : "";
+  const listeAdministratif = administratives.length ? `<ul>${administratives.map(ligneHtml).join("")}</ul>` : "";
+
   let notifies = 0;
-  for (const [, d] of dests) {
-    let html = `<p>Bonjour ${d.prenom},</p>`;
-    if (d.assignees.length) {
-      html += `<p>Les tâches suivantes qui vous sont assignées ont dépassé leur échéance :</p>
-                <ul>${d.assignees.map((t) => ligneHtml(t)).join("")}</ul>`;
+  for (const [, d] of parDestinataire) {
+    const sections = [];
+    let nb = 0;
+    if (d.technique && techniques.length) {
+      sections.push(`<p>Tâches techniques (travail juridique) en retard :</p>${listeTechnique}`);
+      nb += techniques.length;
     }
-    if (d.confiees.length) {
-      html += `<p>Les tâches suivantes, que vous avez confiées, ont dépassé leur échéance :</p>
-                <ul>${d.confiees.map((t) => ligneHtml(t, { avecResponsable: true })).join("")}</ul>`;
+    if (d.administratif && administratives.length) {
+      sections.push(`<p>Tâches administratives/gestion en retard :</p>${listeAdministratif}`);
+      nb += administratives.length;
     }
-    html += `<p>Merci de mettre à jour leur statut sur JURIA (Plan d'action) dès que possible.</p>`;
+    if (!sections.length) continue;
     const resultat = await envoyerEmail({
       to: d.email,
-      subject: `${d.assignees.length + d.confiees.length} tâche(s) en retard`,
-      html,
+      subject: `${nb} tâche(s) en retard — Plan d'action`,
+      html: `<p>Bonjour ${d.prenom},</p>${sections.join("")}
+             <p>Merci de mettre à jour leur statut sur JURIA (Plan d'action) dès que possible.</p>`,
     });
     if (resultat.envoye) notifies++;
   }
-  return { taches_en_retard: taches.length, destinataires: dests.size, mails_envoyes: notifies };
+
+  return {
+    techniques: techniques.length,
+    administratives: administratives.length,
+    destinataires: parDestinataire.size,
+    mails_envoyes: notifies,
+  };
 }
 
 module.exports = { executerJobAlertesTachesRetard };

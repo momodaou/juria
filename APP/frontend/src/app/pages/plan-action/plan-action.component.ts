@@ -51,16 +51,25 @@ const COLONNES = [
           <div class="col2"><label>Titre</label><input class="in" [(ngModel)]="form.titre" name="titre" /></div>
           <div>
             <label>Type</label>
+            <!-- 11/10/2026 — regroupement technique/administratif (même
+                 découpage que verifierDelegationTache() de taches.js et le
+                 job alertesTachesRetard.js) : rend visible, au moment du
+                 choix, comment la tâche sera classée et à qui elle sera
+                 rapportée si elle prend du retard. -->
             <select class="in" [(ngModel)]="form.type" name="type">
-              <option value="recherche">Recherche</option>
-              <option value="redaction">Rédaction</option>
-              <option value="revue">Revue</option>
-              <option value="depot">Dépôt</option>
-              <option value="appel_client">Appel client</option>
-              <option value="facturation">Facturation</option>
-              <option value="relance">Relance</option>
-              <option value="collecte_pieces">Collecte de pièces</option>
-              <option value="autre">Autre</option>
+              <optgroup label="Travail juridique (technique)">
+                <option value="recherche">Recherche</option>
+                <option value="redaction">Rédaction</option>
+                <option value="revue">Revue</option>
+                <option value="appel_client">Appel client</option>
+                <option value="depot">Dépôt</option>
+              </optgroup>
+              <optgroup label="Administratif / gestion">
+                <option value="facturation">Facturation</option>
+                <option value="relance">Relance</option>
+                <option value="collecte_pieces">Collecte de pièces</option>
+                <option value="autre">Autre</option>
+              </optgroup>
             </select>
           </div>
           <div>
