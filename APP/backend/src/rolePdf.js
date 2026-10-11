@@ -482,7 +482,27 @@ async function envoyerRolePdf(pool, roleId, res) {
   return true;
 }
 
+// Variante en mémoire (11/10/2026, diffusion par e-mail du rôle) : même
+// contenu que envoyerRolePdf(), mais collecté dans un Buffer plutôt que
+// streamé vers une réponse HTTP — pour une pièce jointe d'e-mail
+// (mailer.js, attachments: [{filename, content}]). Renvoie null si le
+// rôle n'existe pas, comme envoyerRolePdf() renvoie false.
+async function genererRolePdfBuffer(pool, roleId) {
+  const donnees = await chargerDonnees(pool, roleId);
+  if (!donnees) return null;
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 36, compress: false });
+    const morceaux = [];
+    doc.on("data", (m) => morceaux.push(m));
+    doc.on("end", () => resolve(Buffer.concat(morceaux)));
+    doc.on("error", reject);
+    dessinerRole(doc, donnees);
+    doc.end();
+  });
+}
+
 // styleLigne/dessinerLigneParties/texteParties/calculerColonnes exportés en
 // plus (09/10/2026) uniquement pour le test de non-régression dédié au bug
 // de chevauchement ci-dessus (tests/rolePdf.test.js) — aucun autre appelant.
-module.exports = { envoyerRolePdf, chargerDonnees, dessinerRole, STYLE, styleLigne, dessinerLigneParties, texteParties, calculerColonnes };
+module.exports = { envoyerRolePdf, genererRolePdfBuffer, chargerDonnees, dessinerRole, formaterDate, STYLE, styleLigne, dessinerLigneParties, texteParties, calculerColonnes };

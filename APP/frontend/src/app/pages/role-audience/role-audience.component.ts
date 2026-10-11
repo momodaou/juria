@@ -938,7 +938,11 @@ export class RoleAudienceComponent implements OnInit {
   }
 
   diffuser(id: string): void {
-    this.api.diffuserRole(id).subscribe({ next: () => this.charger() });
+    if (!confirm("Diffuser ce rôle envoie un e-mail (avec le PDF du rôle en pièce jointe) à tout le personnel actif du cabinet. Continuer ?")) return;
+    this.api.diffuserRole(id).subscribe({
+      next: (r) => { this.charger(); alert(`Rôle diffusé — ${r.mails_envoyes}/${r.destinataires} e-mail(s) envoyé(s).`); },
+      error: (e) => { this.erreur.set(e?.error?.error ?? 'Diffusion impossible.'); },
+    });
   }
 
   ouvrirRetour(l: any): void {

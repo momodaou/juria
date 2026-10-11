@@ -6,7 +6,8 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
-const { envoyerRolePdf } = require("../rolePdf");
+const { envoyerRolePdf, genererRolePdfBuffer, formaterDate } = require("../rolePdf");
+const { envoyerEmail } = require("../mailer");
 const { saveObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit, diffChamps } = require("../audit");
@@ -191,15 +192,43 @@ router.post("/:id/valider", requirePermission("audiences.role.valider"), async (
 });
 
 // POST /api/roles-audience/:id/diffuser
+// 11/10/2026 — « Diffuser » ne faisait jusqu'ici que basculer un statut
+// (demande utilisateur : « l'option diffusée suppose un envoi mail à
+// tous non ? »). Câblé pour de vrai : e-mail à tout le personnel ACTIF du
+// cabinet, PDF du rôle (rolePdf.js, déjà existant côté "Imprimer le
+// rôle") en pièce jointe — pas un second format à maintenir. Le PDF est
+// régénéré après le passage à `diffuse` (pas avant) pour que la date
+// "édité le" imprimée sur le document reflète bien le moment de la
+// diffusion réelle, au cas où elle diffère de la validation.
 router.post("/:id/diffuser", requirePermission("audiences.role.diffuser"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `UPDATE roles_audience SET statut = 'diffuse', diffuse_le = now()
-       WHERE id = $1 AND statut = 'valide' RETURNING id, statut, diffuse_le`,
+       WHERE id = $1 AND statut = 'valide' RETURNING id, statut, diffuse_le, semaine_debut, semaine_fin`,
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Le rôle doit être validé avant diffusion" });
-    res.json(rows[0]);
+    const role = rows[0];
+
+    const pdf = await genererRolePdfBuffer(pool, role.id);
+    const { rows: destinataires } = await pool.query(
+      "SELECT email, prenom FROM utilisateurs WHERE actif ORDER BY prenom, nom"
+    );
+    const periode = `du ${formaterDate(role.semaine_debut)} au ${formaterDate(role.semaine_fin)}`;
+    let mailsEnvoyes = 0;
+    for (const d of destinataires) {
+      const resultat = await envoyerEmail({
+        to: d.email,
+        subject: `Rôle d'audience — semaine ${periode}`,
+        html: `<p>Bonjour ${d.prenom},</p>
+               <p>Le rôle d'audience de la semaine ${periode} vient d'être diffusé — vous le trouverez en pièce jointe (PDF).</p>
+               <p>Il reste également consultable à tout moment sur JURIA (module Rôle d'audience).</p>`,
+        attachments: pdf ? [{ filename: `Role-audience-${formaterDate(role.semaine_debut).replace(/\//g, "-")}.pdf`, content: pdf }] : undefined,
+      });
+      if (resultat.envoye) mailsEnvoyes++;
+    }
+
+    res.json({ id: role.id, statut: role.statut, diffuse_le: role.diffuse_le, destinataires: destinataires.length, mails_envoyes: mailsEnvoyes });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
