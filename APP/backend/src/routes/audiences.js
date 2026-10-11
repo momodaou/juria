@@ -191,15 +191,37 @@ router.post("/:id/valider", requirePermission("audiences.role.valider"), async (
   }
 });
 
+// Envoi effectif (factorisé le 11/10/2026 pour /diffuser ET /renvoyer —
+// même PDF, même corps, même liste de destinataires, un seul endroit à
+// faire évoluer). Le PDF est régénéré à chaque appel (pas mis en cache)
+// pour que la date "édité le" imprimée reflète le moment de l'envoi.
+async function envoyerRoleParEmail(pool, role) {
+  const pdf = await genererRolePdfBuffer(pool, role.id);
+  const { rows: destinataires } = await pool.query(
+    "SELECT email, prenom FROM utilisateurs WHERE actif ORDER BY prenom, nom"
+  );
+  const periode = `du ${formaterDate(role.semaine_debut)} au ${formaterDate(role.semaine_fin)}`;
+  let mailsEnvoyes = 0;
+  for (const d of destinataires) {
+    const resultat = await envoyerEmail({
+      to: d.email,
+      subject: `Rôle d'audience — semaine ${periode}`,
+      html: `<p>Bonjour ${d.prenom},</p>
+             <p>Le rôle d'audience de la semaine ${periode} vient d'être diffusé — vous le trouverez en pièce jointe (PDF).</p>
+             <p>Il reste également consultable à tout moment sur JURIA (module Rôle d'audience).</p>`,
+      attachments: pdf ? [{ filename: `Role-audience-${formaterDate(role.semaine_debut).replace(/\//g, "-")}.pdf`, content: pdf }] : undefined,
+    });
+    if (resultat.envoye) mailsEnvoyes++;
+  }
+  return { destinataires: destinataires.length, mails_envoyes: mailsEnvoyes };
+}
+
 // POST /api/roles-audience/:id/diffuser
 // 11/10/2026 — « Diffuser » ne faisait jusqu'ici que basculer un statut
 // (demande utilisateur : « l'option diffusée suppose un envoi mail à
 // tous non ? »). Câblé pour de vrai : e-mail à tout le personnel ACTIF du
 // cabinet, PDF du rôle (rolePdf.js, déjà existant côté "Imprimer le
-// rôle") en pièce jointe — pas un second format à maintenir. Le PDF est
-// régénéré après le passage à `diffuse` (pas avant) pour que la date
-// "édité le" imprimée sur le document reflète bien le moment de la
-// diffusion réelle, au cas où elle diffère de la validation.
+// rôle") en pièce jointe — pas un second format à maintenir.
 router.post("/:id/diffuser", requirePermission("audiences.role.diffuser"), async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -208,27 +230,32 @@ router.post("/:id/diffuser", requirePermission("audiences.role.diffuser"), async
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Le rôle doit être validé avant diffusion" });
-    const role = rows[0];
+    const envoi = await envoyerRoleParEmail(pool, rows[0]);
+    res.json({ id: rows[0].id, statut: rows[0].statut, diffuse_le: rows[0].diffuse_le, ...envoi });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
-    const pdf = await genererRolePdfBuffer(pool, role.id);
-    const { rows: destinataires } = await pool.query(
-      "SELECT email, prenom FROM utilisateurs WHERE actif ORDER BY prenom, nom"
+// POST /api/roles-audience/:id/renvoyer
+// 11/10/2026 — comble un trou découvert le jour même : un rôle déjà
+// "diffuse" ne pouvait plus jamais être renvoyé (le garde-fou de
+// /diffuser, `WHERE statut='valide'`, l'en empêche volontairement, pour
+// ne jamais déclencher deux diffusions "normales" du même rôle). Utile
+// pour un renvoi correctif (ex. un rôle diffusé avant que l'envoi réel ne
+// soit câblé — cas vécu ce jour-là) ou simplement si quelqu'un l'a raté.
+// Ne touche jamais `statut`/`diffuse_le` (déjà posés par /diffuser) —
+// uniquement l'envoi, répétable autant de fois que nécessaire.
+router.post("/:id/renvoyer", requirePermission("audiences.role.diffuser"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, statut, semaine_debut, semaine_fin FROM roles_audience WHERE id = $1 AND statut = 'diffuse'",
+      [req.params.id]
     );
-    const periode = `du ${formaterDate(role.semaine_debut)} au ${formaterDate(role.semaine_fin)}`;
-    let mailsEnvoyes = 0;
-    for (const d of destinataires) {
-      const resultat = await envoyerEmail({
-        to: d.email,
-        subject: `Rôle d'audience — semaine ${periode}`,
-        html: `<p>Bonjour ${d.prenom},</p>
-               <p>Le rôle d'audience de la semaine ${periode} vient d'être diffusé — vous le trouverez en pièce jointe (PDF).</p>
-               <p>Il reste également consultable à tout moment sur JURIA (module Rôle d'audience).</p>`,
-        attachments: pdf ? [{ filename: `Role-audience-${formaterDate(role.semaine_debut).replace(/\//g, "-")}.pdf`, content: pdf }] : undefined,
-      });
-      if (resultat.envoye) mailsEnvoyes++;
-    }
-
-    res.json({ id: role.id, statut: role.statut, diffuse_le: role.diffuse_le, destinataires: destinataires.length, mails_envoyes: mailsEnvoyes });
+    if (!rows[0]) return res.status(404).json({ error: "Rôle introuvable ou pas encore diffusé — utilisez « Diffuser »" });
+    const envoi = await envoyerRoleParEmail(pool, rows[0]);
+    res.json({ id: rows[0].id, statut: rows[0].statut, ...envoi });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

@@ -592,6 +592,9 @@ export class ApiService {
   diffuserRole(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/roles-audience/${id}/diffuser`, {});
   }
+  renvoyerRole(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/roles-audience/${id}/renvoyer`, {});
+  }
   // 23/09/2026 — remplace l'impression HTML/navigateur par un vrai PDF
   // généré côté serveur (rolePdf.js), même patron que telechargerFacturePdf.
   telechargerRolePdf(id: string): Observable<Blob> {

@@ -42,6 +42,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </span>
           @if (r.id && r.statut === 'brouillon' && auth.peut('audiences.role.valider')) { <button class="btn sm" (click)="valider(r.id)">Valider le rôle</button> }
           @if (r.id && r.statut === 'valide' && auth.peut('audiences.role.diffuser')) { <button class="btn sm" (click)="diffuser(r.id)">Diffuser à l'équipe</button> }
+          @if (r.id && r.statut === 'diffuse' && auth.peut('audiences.role.diffuser')) { <button class="btn sm" (click)="renvoyer(r.id)">Renvoyer l'e-mail</button> }
           @if (r.lignes?.length) {
             <button class="btn sm ghost" (click)="apercuRolePdf()">Aperçu (PDF)</button>
             <button class="btn sm ghost" (click)="telechargerRolePdf()">Télécharger (PDF)</button>
@@ -942,6 +943,14 @@ export class RoleAudienceComponent implements OnInit {
     this.api.diffuserRole(id).subscribe({
       next: (r) => { this.charger(); alert(`Rôle diffusé — ${r.mails_envoyes}/${r.destinataires} e-mail(s) envoyé(s).`); },
       error: (e) => { this.erreur.set(e?.error?.error ?? 'Diffusion impossible.'); },
+    });
+  }
+
+  renvoyer(id: string): void {
+    if (!confirm("Renvoyer ce rôle réexpédie l'e-mail (avec le PDF en pièce jointe) à tout le personnel actif. Continuer ?")) return;
+    this.api.renvoyerRole(id).subscribe({
+      next: (r) => { alert(`Rôle renvoyé — ${r.mails_envoyes}/${r.destinataires} e-mail(s) envoyé(s).`); },
+      error: (e) => { this.erreur.set(e?.error?.error ?? 'Renvoi impossible.'); },
     });
   }
 

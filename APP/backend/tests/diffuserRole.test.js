@@ -103,3 +103,48 @@ describe("POST /api/roles-audience/:id/diffuser — envoi e-mail réel à tout l
     expect(envoyerEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/roles-audience/:id/renvoyer — renvoi correctif, répétable", () => {
+  test("réexpédie l'e-mail (PDF joint) sans jamais toucher au statut, autant de fois que demandé", async () => {
+    const dossierId = await creerClientEtDossier();
+    const semaine = lundiAleatoire(2);
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: semaine, juridiction: "TGI Test", type: "mise_en_etat" });
+    const roleId = creation.body.role_id;
+    await request(app).post(`/api/roles-audience/${roleId}/valider`).set("Authorization", `Bearer ${token}`);
+    const diffusion = await request(app).post(`/api/roles-audience/${roleId}/diffuser`).set("Authorization", `Bearer ${token}`);
+    expect(diffusion.status).toBe(200);
+    const nbActifs = await compterDestinatairesActifs();
+
+    envoyerEmail.mockClear();
+    const renvoi1 = await request(app).post(`/api/roles-audience/${roleId}/renvoyer`).set("Authorization", `Bearer ${token}`);
+    expect(renvoi1.status).toBe(200);
+    expect(renvoi1.body.statut).toBe("diffuse");
+    expect(renvoi1.body.destinataires).toBe(nbActifs);
+    expect(renvoi1.body.mails_envoyes).toBe(nbActifs);
+    expect(envoyerEmail).toHaveBeenCalledTimes(nbActifs);
+
+    // Contrairement à /diffuser, /renvoyer reste répétable (renvoi correctif).
+    envoyerEmail.mockClear();
+    const renvoi2 = await request(app).post(`/api/roles-audience/${roleId}/renvoyer`).set("Authorization", `Bearer ${token}`);
+    expect(renvoi2.status).toBe(200);
+    expect(envoyerEmail).toHaveBeenCalledTimes(nbActifs);
+  });
+
+  test("refuse un rôle pas encore diffusé (brouillon ou simplement validé)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const semaine = lundiAleatoire(3);
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: semaine, juridiction: "TGI Test", type: "mise_en_etat" });
+    const roleId = creation.body.role_id;
+
+    envoyerEmail.mockClear();
+    let res = await request(app).post(`/api/roles-audience/${roleId}/renvoyer`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404); // encore en brouillon
+
+    await request(app).post(`/api/roles-audience/${roleId}/valider`).set("Authorization", `Bearer ${token}`);
+    res = await request(app).post(`/api/roles-audience/${roleId}/renvoyer`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404); // validé mais pas encore diffusé
+    expect(envoyerEmail).not.toHaveBeenCalled();
+  });
+});
