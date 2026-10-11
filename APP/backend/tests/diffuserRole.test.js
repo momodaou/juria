@@ -83,6 +83,11 @@ describe("POST /api/roles-audience/:id/diffuser — envoi e-mail réel à tout l
     expect(premierAppel.attachments[0].content.length).toBeGreaterThan(100);
     expect(premierAppel.subject).toContain("Rôle d'audience");
 
+    // Résumé succinct inline dans le corps (11/10/2026, demande explicite
+    // de l'utilisateur : PDF ET résumé, pas l'un contre l'autre).
+    expect(premierAppel.html).toContain("Résumé de la semaine");
+    expect(premierAppel.html).toContain("TGI Test");
+
     // Idempotence : un 2e appel échoue (le rôle n'est plus "valide") — pas de second lot d'e-mails.
     envoyerEmail.mockClear();
     const secondAppel = await request(app).post(`/api/roles-audience/${roleId}/diffuser`).set("Authorization", `Bearer ${token}`);

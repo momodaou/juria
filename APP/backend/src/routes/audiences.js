@@ -6,7 +6,7 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
-const { envoyerRolePdf, genererRolePdfBuffer, formaterDate } = require("../rolePdf");
+const { envoyerRolePdf, genererRolePdfBuffer, chargerDonnees, formaterDate } = require("../rolePdf");
 const { envoyerEmail } = require("../mailer");
 const { saveObject } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
@@ -191,23 +191,45 @@ router.post("/:id/valider", requirePermission("audiences.role.valider"), async (
   }
 });
 
+// Résumé succinct inline (11/10/2026, demande explicite de l'utilisateur
+// après une question sur l'efficacité PDF vs corps de mail — réponse :
+// les 2, pas l'un contre l'autre). Une ligne par audience, pour une
+// lecture rapide sans ouvrir la pièce jointe — le PDF (identique à
+// "Imprimer le rôle") reste le document de référence détaillé/imprimable.
+function resumeHtml(lignes) {
+  if (!lignes.length) return "<p><em>Aucune audience programmée cette semaine.</em></p>";
+  const items = lignes
+    .map((l) => {
+      const date = new Date(l.date_prevue).toLocaleDateString("fr-FR", { timeZone: "UTC" });
+      const heure = l.heure ? ` à ${String(l.heure).slice(0, 5)}` : "";
+      return `<li><strong>${date}${heure}</strong> — ${l.juridiction || "juridiction non précisée"} — ${l.dossier_numero} — ${l.dossier_intitule}</li>`;
+    })
+    .join("");
+  return `<p><strong>Résumé de la semaine :</strong></p><ul>${items}</ul>`;
+}
+
 // Envoi effectif (factorisé le 11/10/2026 pour /diffuser ET /renvoyer —
-// même PDF, même corps, même liste de destinataires, un seul endroit à
+// même PDF, même résumé, même liste de destinataires, un seul endroit à
 // faire évoluer). Le PDF est régénéré à chaque appel (pas mis en cache)
 // pour que la date "édité le" imprimée reflète le moment de l'envoi.
 async function envoyerRoleParEmail(pool, role) {
-  const pdf = await genererRolePdfBuffer(pool, role.id);
+  const [pdf, donnees] = await Promise.all([
+    genererRolePdfBuffer(pool, role.id),
+    chargerDonnees(pool, role.id),
+  ]);
   const { rows: destinataires } = await pool.query(
     "SELECT email, prenom FROM utilisateurs WHERE actif ORDER BY prenom, nom"
   );
   const periode = `du ${formaterDate(role.semaine_debut)} au ${formaterDate(role.semaine_fin)}`;
+  const resume = resumeHtml(donnees ? donnees.lignes : []);
   let mailsEnvoyes = 0;
   for (const d of destinataires) {
     const resultat = await envoyerEmail({
       to: d.email,
       subject: `Rôle d'audience — semaine ${periode}`,
       html: `<p>Bonjour ${d.prenom},</p>
-             <p>Le rôle d'audience de la semaine ${periode} vient d'être diffusé — vous le trouverez en pièce jointe (PDF).</p>
+             <p>Le rôle d'audience de la semaine ${periode} vient d'être diffusé — résumé ci-dessous, détail complet en pièce jointe (PDF).</p>
+             ${resume}
              <p>Il reste également consultable à tout moment sur JURIA (module Rôle d'audience).</p>`,
       attachments: pdf ? [{ filename: `Role-audience-${formaterDate(role.semaine_debut).replace(/\//g, "-")}.pdf`, content: pdf }] : undefined,
     });
