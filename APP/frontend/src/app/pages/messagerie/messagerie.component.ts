@@ -13,7 +13,16 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
   template: `
     <header class="page-head"><h1>Messagerie</h1></header>
 
-    <div class="layout">
+    <!-- 12/10/2026 (vérification mobile demandée par l'utilisateur) : sous
+         760px, la grille à 2 colonnes poussait le fil (saisie, titre) hors
+         de l'écran (x:471px sur un viewport de 390px — injoignable). Même
+         principe que le widget flottant (déjà adapté) : sur petit écran,
+         liste ET fil ne sont plus posés côte à côte mais basculés comme 2
+         "pages" l'une après l'autre, pilotés par le même état existant
+         (conversationActiveId) — aucune nouvelle logique côté TS, juste du
+         CSS conditionné par cette classe. Desktop (>760px) inchangé : les
+         2 restent toujours visibles côte à côte, comme avant. -->
+    <div class="layout" [class.conv-ouverte]="!!messagerie.conversationActiveId()">
       <section class="panel liste">
         <div class="liste-head">
           <h3>Conversations</h3>
@@ -98,6 +107,7 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
       <section class="panel fil">
         @if (messagerie.conversationActiveId()) {
           <div class="fil-entete">
+            <button type="button" class="retour-mobile" title="Retour aux conversations" (click)="retourListeMobile()">←</button>
             @if (enLigneConversationActive(); as enLigne) {
               <span class="point" [class.point-off]="!enLigne"></span>
             }
@@ -170,6 +180,20 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
   `,
   styles: [`
     .layout{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+    .retour-mobile{display:none}
+    @media (max-width: 760px){
+      /* Liste et fil basculés comme 2 "pages" plutôt que côte à côte —
+         sans ça, le fil (saisie, titre) se retrouvait hors écran. */
+      .layout{display:block}
+      .fil{display:none}
+      .layout.conv-ouverte .liste{display:none}
+      .layout.conv-ouverte .fil{display:flex}
+      .retour-mobile{
+        display:flex;align-items:center;justify-content:center;
+        background:none;border:none;cursor:pointer;font-size:var(--fs-lg);
+        width:28px;height:28px;flex-shrink:0;margin-right:2px;
+      }
+    }
     .liste{padding:16px;max-height:78vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
     .liste-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
     .liste-head h3{margin:0}
@@ -362,6 +386,14 @@ export class MessagerieComponent implements OnInit, OnDestroy {
 
   moi(): string | undefined {
     return this.auth.utilisateur()?.id;
+  }
+
+  // 12/10/2026 — bouton "←" visible seulement sous 760px (voir la media
+  // query sur .layout) : revient à la liste sans fermer le flux SSE
+  // global (seul conversationActiveId est remis à null, comme pour
+  // n'importe quel retour à la liste sur cet écran).
+  retourListeMobile(): void {
+    this.messagerie.conversationActiveId.set(null);
   }
 
   private minuteriePresence: ReturnType<typeof setInterval> | undefined;
