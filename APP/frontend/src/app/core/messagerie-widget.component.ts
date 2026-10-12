@@ -35,7 +35,12 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
                 <span class="mw-point" [class.mw-point-off]="!enLigne" [title]="enLigne ? 'En ligne' : 'Hors ligne'"></span>
               }
               <span class="mw-titre">{{ titreActif() }}</span>
-              <button type="button" class="mw-icon-btn" title="Renommer la conversation" (click)="renommer()">✏️</button>
+              <!-- 12/10/2026 — modèle WhatsApp (confirmé par l'utilisateur) :
+                   seul un groupe peut être renommé, jamais une conversation
+                   à 2 (en-tête toujours le nom du contact). -->
+              @if (conversationActiveEstGroupe()) {
+                <button type="button" class="mw-icon-btn" title="Renommer le groupe" (click)="renommer()">✏️</button>
+              }
             } @else {
               <span class="mw-titre">Messagerie</span>
             }
@@ -382,6 +387,13 @@ export class MessagerieWidgetComponent implements OnInit {
     const id = this.messagerie.conversationActiveId();
     const c = this.messagerie.conversations().find((x) => x.id === id);
     return c ? this.titreAffiche(c) : 'Conversation';
+  }
+
+  // 12/10/2026 — même règle que l'écran plein page, voir son commentaire.
+  conversationActiveEstGroupe(): boolean {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return (c?.autres_participants?.length ?? 0) > 1;
   }
 
   // Présence (13/09/2026) : affichée uniquement pour une conversation à

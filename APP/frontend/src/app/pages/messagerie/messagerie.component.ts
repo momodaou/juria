@@ -102,7 +102,13 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
               <span class="point" [class.point-off]="!enLigne"></span>
             }
             <span class="fil-titre">{{ titreActif() }}</span>
-            <button type="button" class="lien-titre" title="Renommer la conversation" (click)="renommer()">✏️</button>
+            <!-- 12/10/2026 — calé sur le modèle WhatsApp (confirmé par
+                 l'utilisateur) : une conversation à 2 affiche toujours le
+                 nom du contact, jamais renommable ; seul un groupe (3+
+                 personnes) peut recevoir un nom. -->
+            @if (conversationActiveEstGroupe()) {
+              <button type="button" class="lien-titre" title="Renommer le groupe" (click)="renommer()">✏️</button>
+            }
           </div>
           <div class="messages" #zoneMessages>
             @if (messagerie.plusAnciensDisponibles()) {
@@ -387,6 +393,15 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     const id = this.messagerie.conversationActiveId();
     const c = this.messagerie.conversations().find((x) => x.id === id);
     return c ? this.titreAffiche(c) : 'Conversation';
+  }
+
+  // 12/10/2026 — modèle WhatsApp (confirmé par l'utilisateur) : seul un
+  // groupe (2 autres participants ou plus) peut être renommé, jamais une
+  // conversation à 2 (son en-tête reste toujours le nom du contact).
+  conversationActiveEstGroupe(): boolean {
+    const id = this.messagerie.conversationActiveId();
+    const c = this.messagerie.conversations().find((x) => x.id === id);
+    return (c?.autres_participants?.length ?? 0) > 1;
   }
 
   // 10/10/2026 — Bloc C du diagnostic "instruction avocat -> collaborateur" :
