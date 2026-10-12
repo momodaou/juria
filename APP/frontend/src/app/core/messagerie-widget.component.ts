@@ -229,10 +229,10 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     .mw-avatar{
       width:30px;height:30px;border-radius:50%;flex-shrink:0;
       display:flex;align-items:center;justify-content:center;
-      font-size:var(--fs-xs);font-weight:700;color:#fff;
+      font-size:9px;font-weight:700;color:#fff;letter-spacing:.2px;
     }
-    .mw-avatar-groupe{background:var(--slate);font-size:var(--fs-base)}
-    .mw-entete .mw-avatar{width:24px;height:24px}
+    .mw-avatar-groupe{background:var(--slate);font-size:var(--fs-base);letter-spacing:0}
+    .mw-entete .mw-avatar{width:24px;height:24px;font-size:8px}
     .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
     .mw-conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .mw-conv-badge{position:absolute;top:8px;right:34px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
@@ -434,7 +434,12 @@ export class MessagerieWidgetComponent implements OnInit {
   // que l'écran plein page, voir son commentaire détaillé.
   private readonly PALETTE_AVATAR = ['#B08D57', '#2E7DC2', '#1D6434', '#5B1B1D', '#6b4fa0', '#c0634a', '#3a7d7d', '#8a6d1f'];
 
+  // 12/10/2026 — code utilisateur plutôt que des initiales calculées, voir
+  // le commentaire détaillé dans messagerie.component.ts (collision réelle
+  // trouvée sur l'effectif actuel).
   avatarInitiales(c: Conversation): string {
+    const code = c.autres_participants_codes?.[0];
+    if (code) return code.toUpperCase();
     const nom = (c.autres_participants?.[0] || '').trim();
     const mots = nom.split(/\s+/).filter(Boolean);
     if (!mots.length) return '?';

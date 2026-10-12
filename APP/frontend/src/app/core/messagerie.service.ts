@@ -13,6 +13,8 @@ export interface Conversation {
   dossier_numero: string | null;
   autres_participants: string[] | null;
   autres_participants_ids: string[] | null;
+  /** Codes utilisateur (12/10/2026, avatar — alignés index par index avec les 2 tableaux ci-dessus). */
+  autres_participants_codes: string[] | null;
   dernier_message: string | null;
   dernier_message_le: string | null;
   non_lus: number;

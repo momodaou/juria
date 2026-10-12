@@ -242,9 +242,9 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     .avatar{
       width:34px;height:34px;border-radius:50%;flex-shrink:0;
       display:flex;align-items:center;justify-content:center;
-      font-size:var(--fs-sm);font-weight:700;color:#fff;
+      font-size:var(--fs-2xs);font-weight:700;color:#fff;letter-spacing:.3px;
     }
-    .avatar-groupe{background:var(--slate);font-size:var(--fs-md)}
+    .avatar-groupe{background:var(--slate);font-size:var(--fs-md);letter-spacing:0}
     .avatar-entete{width:30px;height:30px}
     .conv-titre{font-weight:600;font-size:var(--fs-base)}
     .conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -486,7 +486,16 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   // Pas de photo à gérer : plus simple, aucun stockage/upload nouveau.
   private readonly PALETTE_AVATAR = ['#B08D57', '#2E7DC2', '#1D6434', '#5B1B1D', '#6b4fa0', '#c0634a', '#3a7d7d', '#8a6d1f'];
 
+  // 12/10/2026 — le code utilisateur (déjà garanti unique par construction,
+  // déjà utilisé partout ailleurs dans JURIA — Rôle d'audience, Matrice des
+  // permissions...) remplace des initiales calculées sur le nom, suite à
+  // une suggestion de l'utilisateur : 2 initiales auraient pu entrer en
+  // collision (ex. Mohamed Daou / Mahamane Djiteye → "MD" tous les deux).
+  // Repli sur des initiales calculées seulement si le code manque (ne
+  // devrait jamais arriver, `code` est NOT NULL en base).
   avatarInitiales(c: Conversation): string {
+    const code = c.autres_participants_codes?.[0];
+    if (code) return code.toUpperCase();
     const nom = (c.autres_participants?.[0] || '').trim();
     const mots = nom.split(/\s+/).filter(Boolean);
     if (!mots.length) return '?';

@@ -73,6 +73,16 @@ router.get("/conversations", async (req, res) => {
                 (SELECT array_agg(u.id ORDER BY u.prenom)
                    FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
                    WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants_ids,
+                -- 12/10/2026 — avatar (initiales demandées par l'utilisateur,
+                -- puis remplacées par le code utilisateur sur sa suggestion :
+                -- déjà garanti unique par construction, contrairement à des
+                -- initiales calculées sur le nom qui se seraient révélées en
+                -- collision réelle sur l'effectif actuel — Mohamed Daou/
+                -- Mahamane Djiteye auraient tous deux donné "MD". Même
+                -- alignement index par index que les 2 tableaux ci-dessus.
+                (SELECT array_agg(u.code ORDER BY u.prenom)
+                   FROM conversation_participants cp2 JOIN utilisateurs u ON u.id = cp2.utilisateur_id
+                   WHERE cp2.conversation_id = c.id AND cp2.utilisateur_id <> $1) AS autres_participants_codes,
                 (SELECT m.contenu FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message,
                 (SELECT m.cree_le FROM messages m WHERE m.conversation_id = c.id ORDER BY m.cree_le DESC LIMIT 1) AS dernier_message_le,
                 (SELECT COUNT(*) FROM messages m
@@ -84,7 +94,7 @@ router.get("/conversations", async (req, res) => {
          JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.utilisateur_id = $1
        )
        SELECT id, titre, dossier_id, dossier_numero, cree_le, dernier_lu_le, autres_participants,
-              autres_participants_ids, dernier_message, dernier_message_le, non_lus
+              autres_participants_ids, autres_participants_codes, dernier_message, dernier_message_le, non_lus
        FROM base
        WHERE ${listerMasquees
          ? "masquee_le IS NOT NULL"
