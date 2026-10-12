@@ -454,18 +454,26 @@ describe("Bloc C — escalade par courriel : alerte 'en attente de facturation'"
   });
 });
 
-describe("Bloc C — destinataires : tout avocat sauf fondateur/Of Counsel + admin général + comptable", () => {
-  test("le nombre de destinataires augmente pour un nouvel associé, pas pour un fondateur ni un Of Counsel", async () => {
+// Révisé le 12/10/2026 (registre des notifications, colonne Observations) :
+// l'associé-fondateur rejoint désormais les destinataires, avocat
+// stagiaire/collaborateur/Of Counsel en sortent.
+describe("Bloc C — destinataires : associés (classique + fondateur) + admin général + comptable, avocats non-associés exclus", () => {
+  test("associé-fondateur désormais inclus ; avocat stagiaire/collaborateur/Of Counsel exclus", async () => {
     const avant = (await executerJobAlertesFacturationDiscipline(pool)).destinataires;
 
-    await creerUtilisateurRole("associe_fondateur");
+    await creerUtilisateurRole("avocat_stagiaire");
+    await creerUtilisateurRole("collaborateur");
     await creerUtilisateurRole("of_counsel");
     const apresExclus = (await executerJobAlertesFacturationDiscipline(pool)).destinataires;
     expect(apresExclus).toBe(avant);
 
     await creerUtilisateurRole("associe");
-    const apresInclus = (await executerJobAlertesFacturationDiscipline(pool)).destinataires;
-    expect(apresInclus).toBe(avant + 1);
+    const apresAssocie = (await executerJobAlertesFacturationDiscipline(pool)).destinataires;
+    expect(apresAssocie).toBe(avant + 1);
+
+    await creerUtilisateurRole("associe_fondateur");
+    const apresFondateur = (await executerJobAlertesFacturationDiscipline(pool)).destinataires;
+    expect(apresFondateur).toBe(avant + 2);
   });
 });
 

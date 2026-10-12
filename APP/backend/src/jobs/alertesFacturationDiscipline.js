@@ -14,12 +14,16 @@
 //    Tableau de bord) : un seul calcul, jamais deux définitions qui
 //    pourraient diverger.
 //
-// Destinataires — IDENTIQUES pour les deux alertes, confirmés par
-// l'utilisateur le 18/09/2026 : tout avocat à l'exclusion de l'associé-
-// fondateur et de l'Of Counsel (associé, avocat stagiaire, collaborateur),
-// plus Administrateur général et Comptable. Diffusion large délibérée —
-// l'objectif explicite est la visibilité collective, pas seulement
-// prévenir le responsable du dossier en privé.
+// Destinataires — IDENTIQUES pour les deux alertes. Règle d'origine
+// (18/09/2026) : tout avocat à l'exclusion de l'associé-fondateur et de
+// l'Of Counsel (associé, avocat stagiaire, collaborateur), plus
+// Administrateur général et Comptable. **Révisée le 12/10/2026** (registre
+// des notifications, colonne Observations) : resserrée aux associés
+// uniquement (fondateur désormais inclus) + Administrateur général +
+// Comptable — avocat stagiaire, collaborateur, Of Counsel et assistante
+// retirés. Diffusion toujours large (visibilité collective plutôt que
+// prévenir le seul responsable du dossier), mais limitée au cercle
+// direction/comptabilité.
 //
 // Non fait ici, volontairement (déjà signalé comme angle mort dans la
 // note de conception, pas encore tranché) : un e-mail récapitulatif
@@ -28,7 +32,7 @@
 const { envoyerEmail } = require("../mailer");
 const { STATUT_FACTURATION_EXPR, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 
-const ROLES_DESTINATAIRES = ["associe", "avocat_stagiaire", "collaborateur", "admin_general", "comptable"];
+const ROLES_DESTINATAIRES = ["associe", "associe_fondateur", "admin_general", "comptable"];
 
 async function destinataires(pool) {
   const { rows } = await pool.query(

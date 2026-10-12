@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -808,7 +808,7 @@ import { libelleRole } from '../../core/roles';
                         <label>Audiencier</label>
                         <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
                           <option value="">—</option>
-                          @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                          @for (u of utilisateursAudiencier(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
                         </select>
                       </div>
                       <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
@@ -1227,6 +1227,15 @@ export class DossierDetailComponent implements OnInit {
   readonly enregistrement = signal(false);
   readonly erreurEdition = signal('');
   readonly utilisateurs = signal<any[]>([]);
+  // 12/10/2026 — correction de la règle du 21/09/2026 (« tout le monde peut
+  // être audiencier ») : administrateur général, administrateur IT et
+  // assistante ne peuvent plus être désignés audiencier (restent
+  // normalement destinataires de la diffusion du rôle, règle indépendante).
+  // Purement indicatif côté écran — la vraie garde est serveur
+  // (verifierAudiencierAutorise(), audiences.js).
+  readonly utilisateursAudiencier = computed(() =>
+    this.utilisateurs().filter((u) => !['admin_general', 'admin_it', 'assistante'].includes(u.role))
+  );
   edit: any = {};
 
   // Seul un associé peut imputer un dossier à un profil d'avocat

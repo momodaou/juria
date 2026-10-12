@@ -25,20 +25,21 @@
 //
 // Destinataires — confirmés par l'utilisateur le 24/09/2026, puis complétés
 // le même jour (« j'ai oublié : ajouter l'assistante juridique... et
-// l'admin général, l'admin IT ») : tout avocat à l'exclusion de l'associé-
-// fondateur et de l'Of Counsel (associé, avocat stagiaire, collaborateur),
-// les juristes collaborateurs (rôle "juriste"), l'Assistante juridique et
-// administrative (rôle "assistante" — suit le rôle d'audience/agenda au
-// quotidien), l'Administrateur général et l'Administrateur IT (mêmes
-// droits de supervision transverse que sur les autres jobs d'alerte du
-// cabinet). Diffusion large délibérée, même principe que
+// l'admin général, l'admin IT »). **Révisés le 12/10/2026** (registre des
+// notifications, colonne Observations) : ajout de l'associé-fondateur, de
+// l'Of Counsel et du stagiaire non-avocat ; retrait de l'Administrateur
+// IT. Liste actuelle : tout avocat sans exclusion (associé, associé-
+// fondateur, Of Counsel, avocat stagiaire, collaborateur), les juristes
+// collaborateurs ("juriste"), le stagiaire non-avocat ("stagiaire"),
+// l'Assistante juridique et administrative, l'Administrateur général.
+// Diffusion large délibérée, même principe que
 // alertesFacturationDiscipline.js — visibilité collective plutôt que
 // prévenir uniquement l'audiencier/le membre assigné.
 const { envoyerEmail } = require("../mailer");
 
 const ROLES_DESTINATAIRES = [
-  "associe", "avocat_stagiaire", "collaborateur", "juriste",
-  "assistante", "admin_general", "admin_it",
+  "associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur",
+  "juriste", "stagiaire", "assistante", "admin_general",
 ];
 const FENETRE_JOURS = 7; // "pendant une semaine"
 

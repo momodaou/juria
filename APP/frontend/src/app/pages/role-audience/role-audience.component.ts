@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -190,7 +190,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                         <label>Audiencier</label>
                         <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
                           <option value="">—</option>
-                          @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+                          @for (m of membresAudiencier(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
                         </select>
                       </div>
                       <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
@@ -425,7 +425,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <label>Audiencier (facultatif)</label>
           <select class="in" [(ngModel)]="nouvelleLigne.avocat_id" name="audiencier">
             <option value="">—</option>
-            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+            @for (m of membresAudiencier(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
           </select>
           <span class="hint">Qui se rend effectivement à cette audience — peut différer du responsable du dossier, et changer d'une semaine à l'autre (dispatching). Modifiable ensuite via « Modifier ».</span>
         </div>
@@ -611,6 +611,15 @@ export class RoleAudienceComponent implements OnInit {
   readonly diligences = signal<any[]>([]);
   readonly typesDiligence = signal<{ code: string; libelle: string }[]>([]);
   readonly membres = signal<any[]>([]);
+  // 12/10/2026 — correction de la règle du 21/09/2026 (« tout le monde peut
+  // être audiencier ») : administrateur général, administrateur IT et
+  // assistante ne peuvent plus être désignés audiencier (restent
+  // normalement destinataires de la diffusion du rôle, règle indépendante).
+  // Purement indicatif côté écran — la vraie garde est serveur
+  // (verifierAudiencierAutorise(), audiences.js).
+  readonly membresAudiencier = computed(() =>
+    this.membres().filter((m) => !['admin_general', 'admin_it', 'assistante'].includes(m.role))
+  );
   readonly dlDossierResultats = signal<Dossier[]>([]);
   // 21/09/2026 — « Nature de la procédure » : gap comblé — colonne
   // `audiences.nature_procedure` prévue au schéma (catalogue

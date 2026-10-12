@@ -115,33 +115,30 @@ describe("Job alertesRetoursManquants — fenêtre glissante de 7 jours", () => 
     expect(apresFait).toBe(avant - 1);
   });
 
-  test("destinataires : associé/avocat stagiaire/collaborateur/juriste/assistante/admin général/admin IT inclus, fondateur/Of Counsel exclus", async () => {
+  // Révisé le 12/10/2026 (registre des notifications, colonne Observations) :
+  // ajout fondateur/Of Counsel/stagiaire non-avocat, retrait admin IT.
+  test("destinataires : associé/fondateur/Of Counsel/avocat stagiaire/collaborateur/juriste/stagiaire/assistante/admin général inclus, admin IT exclu", async () => {
     // Garantit au moins 1 occurrence pour que "destinataires" soit calculé sur un passage significatif.
     const dossierId = await creerDossierAvecClient();
     await creerAudience(dossierId, -2);
 
     const avant = (await executerJobAlertesRetoursManquants(pool)).destinataires;
 
-    await creerUtilisateurRole("associe_fondateur");
-    await creerUtilisateurRole("of_counsel");
+    await creerUtilisateurRole("admin_it");
     const apresExclus = (await executerJobAlertesRetoursManquants(pool)).destinataires;
     expect(apresExclus).toBe(avant);
 
-    await creerUtilisateurRole("juriste");
-    const apresJuriste = (await executerJobAlertesRetoursManquants(pool)).destinataires;
-    expect(apresJuriste).toBe(avant + 1);
-
     await creerUtilisateurRole("associe");
-    const apresAssocie = (await executerJobAlertesRetoursManquants(pool)).destinataires;
-    expect(apresAssocie).toBe(avant + 2);
-
-    // Complément demandé par l'utilisateur le même jour, après coup
-    // (« j'ai oublié... ») : assistante juridique, admin général, admin IT.
+    await creerUtilisateurRole("associe_fondateur");
+    await creerUtilisateurRole("of_counsel");
+    await creerUtilisateurRole("avocat_stagiaire");
+    await creerUtilisateurRole("collaborateur");
+    await creerUtilisateurRole("juriste");
+    await creerUtilisateurRole("stagiaire");
     await creerUtilisateurRole("assistante");
     await creerUtilisateurRole("admin_general");
-    await creerUtilisateurRole("admin_it");
-    const apresComplement = (await executerJobAlertesRetoursManquants(pool)).destinataires;
-    expect(apresComplement).toBe(avant + 5);
+    const apresInclus = (await executerJobAlertesRetoursManquants(pool)).destinataires;
+    expect(apresInclus).toBe(avant + 9);
   });
 });
 

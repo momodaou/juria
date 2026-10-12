@@ -14,14 +14,16 @@
 // aussi finit par être dépassée.
 //
 // Destinataires : mêmes rôles que Discipline de facturation Bloc C
-// (18/09/2026) — dupliqué plutôt que partagé (ROLES_DESTINATAIRES n'est pas
-// exporté par alertesFacturationDiscipline.js), cohérent avec le reste du
-// code qui ne partage que la logique correctness-critique (voir
+// (18/09/2026, révisés le 12/10/2026 — registre des notifications,
+// colonne Observations : associés uniquement, fondateur inclus, admin
+// général + comptable) — dupliqué plutôt que partagé (ROLES_DESTINATAIRES
+// n'est pas exporté par alertesFacturationDiscipline.js), cohérent avec le
+// reste du code qui ne partage que la logique correctness-critique (voir
 // periodicite.js/abonnements.js), pas les petites listes de configuration.
 const { envoyerEmail } = require("../mailer");
 const { calculerStatutAbonnement } = require("../abonnements");
 
-const ROLES_DESTINATAIRES = ["associe", "avocat_stagiaire", "collaborateur", "admin_general", "comptable"];
+const ROLES_DESTINATAIRES = ["associe", "associe_fondateur", "admin_general", "comptable"];
 
 async function destinataires(pool) {
   const { rows } = await pool.query(

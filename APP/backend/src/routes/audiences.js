@@ -43,6 +43,23 @@ function vendrediDeSemaine(semaineDebutStr) {
   return d.toISOString().slice(0, 10);
 }
 
+// 12/10/2026 — correction de la règle du 21/09/2026 (« tout le monde peut
+// être audiencier, avocat ou non avocat »), voir registre des
+// notifications/CLAUDE.md : administrateur général, administrateur IT et
+// assistante ne peuvent plus être DÉSIGNÉS audiencier — mais continuent de
+// recevoir normalement l'e-mail de diffusion du rôle (audiences.js ne
+// filtre jamais cette liste par rôle), les deux règles sont indépendantes.
+const ROLES_EXCLUS_AUDIENCIER = ["admin_general", "admin_it", "assistante"];
+
+async function verifierAudiencierAutorise(pool, avocatId) {
+  if (!avocatId) return null;
+  const { rows: [u] } = await pool.query("SELECT role FROM utilisateurs WHERE id = $1", [avocatId]);
+  if (u && ROLES_EXCLUS_AUDIENCIER.includes(u.role)) {
+    return "Ce profil (administrateur général, administrateur IT ou assistante) ne peut pas être désigné audiencier.";
+  }
+  return null;
+}
+
 async function trouverOuCreerRole(client, semaineDebut, creePar) {
   const existe = await client.query("SELECT * FROM roles_audience WHERE semaine_debut = $1", [semaineDebut]);
   if (existe.rows[0]) return existe.rows[0];
@@ -140,6 +157,8 @@ router.get("/verifier-doublon", requirePermission("audiences.ligne.creer"), asyn
 router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.date_prevue) return res.status(400).json({ error: "dossier_id et date_prevue requis" });
+  const erreurAudiencier = await verifierAudiencierAutorise(pool, b.avocat_id);
+  if (erreurAudiencier) return res.status(400).json({ error: erreurAudiencier });
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -334,6 +353,8 @@ const CHAMPS_PROCEDURAUX_AUDIENCE = [
 
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
+  const erreurAudiencier = await verifierAudiencierAutorise(pool, b.avocat_id);
+  if (erreurAudiencier) return res.status(400).json({ error: erreurAudiencier });
   const toucheMotif = Object.prototype.hasOwnProperty.call(b, "dernier_motif_id");
   const client = await pool.connect();
   try {
