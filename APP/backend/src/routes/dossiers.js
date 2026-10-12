@@ -320,20 +320,45 @@ router.get("/", async (req, res) => {
 // client). Signale, sans jamais bloquer (même principe que
 // clients.verifier-doublon) : resserré sur la même matière si elle est déjà
 // choisie à l'écran, sinon tous les dossiers déjà ouverts pour ce client.
+//
+// 12/10/2026 — élargi : le contrôle d'origine ne comparait que le
+// `client_id` exact, donc incapable de repérer le cas en réalité le plus
+// piégeux — un même client déjà saisi DEUX FOIS en fiches distinctes (ex.
+// « Cabinet CADET » dupliqué, trouvé et nettoyé le 01/10/2026), chacune
+// avec son propre dossier. Rapproche désormais aussi par nom de client
+// normalisé (même règle espace/tiret/casse que clients.verifier-doublon),
+// pas seulement par `client_id` strict. `meme_client` distingue les deux
+// cas pour que l'écran adapte son message (même client exact vs. nom très
+// proche sur une fiche différente — à vérifier côté Clients & KYC).
 router.get("/verifier-doublon", async (req, res) => {
   const { client_id, code_matiere } = req.query;
   if (!client_id) return res.json([]);
   try {
-    const clauses = ["client_id = $1"];
     const params = [client_id];
+    let matiereClause = "";
     if (code_matiere) {
       params.push(code_matiere);
-      clauses.push(`code_matiere = $${params.length}`);
+      matiereClause = ` AND d.code_matiere = $${params.length}`;
     }
     const { rows } = await pool.query(
-      `SELECT id, numero, intitule, objet, statut, date_ouverture
-       FROM dossiers WHERE ${clauses.join(" AND ")}
-       ORDER BY date_ouverture DESC LIMIT 10`,
+      `WITH cible AS (
+         SELECT regexp_replace(lower(COALESCE(NULLIF(denomination, ''), TRIM(COALESCE(prenom,'') || ' ' || COALESCE(nom,'')))), '[\\s\\-.,]', '', 'g') AS nom_norm
+         FROM clients WHERE id = $1
+       )
+       SELECT d.id, d.numero, d.intitule, d.objet, d.statut, d.date_ouverture,
+              (d.client_id = $1) AS meme_client,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
+       FROM dossiers d
+       JOIN clients c ON c.id = d.client_id
+       CROSS JOIN cible
+       WHERE (
+         d.client_id = $1
+         OR (
+           cible.nom_norm <> ''
+           AND regexp_replace(lower(COALESCE(NULLIF(c.denomination, ''), TRIM(COALESCE(c.prenom,'') || ' ' || COALESCE(c.nom,'')))), '[\\s\\-.,]', '', 'g') = cible.nom_norm
+         )
+       )${matiereClause}
+       ORDER BY d.date_ouverture DESC LIMIT 10`,
       params
     );
     res.json(rows);
@@ -758,6 +783,17 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     // exécutée après la création, son échec éventuel n'empêche jamais la
     // réponse 201 (le dossier existe déjà à ce stade).
     const lettreMissionId = await genererLettreMissionAuto(rows[0].id, modeEffectif, b.client_id, req.user.sub);
+
+    // Traçabilité des doublons (12/10/2026) : `ignorer_doublon` n'est envoyé
+    // par le frontend que sur le chemin "Créer quand même" (après qu'un
+    // avertissement non bloquant de GET /verifier-doublon a déjà été
+    // affiché) — même principe que routes/clients.js.
+    if (b.ignorer_doublon) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "ignorer_doublon_dossier", entite: "dossiers",
+        entiteId: rows[0].id, details: { client_id: b.client_id, code_matiere: codeMatiere }, ip: req.ip,
+      });
+    }
 
     res.status(201).json({ ...rows[0], lettre_mission_document_id: lettreMissionId });
   } catch (e) {

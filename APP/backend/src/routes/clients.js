@@ -346,6 +346,17 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
       [b.type, denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
        b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays, req.user.sub]
     );
+    // Traçabilité des doublons (12/10/2026) : `ignorer_doublon` n'est envoyé
+    // par le frontend que sur le chemin "Créer quand même" (après qu'un
+    // avertissement non bloquant de GET /verifier-doublon a déjà été
+    // affiché) — permet de retrouver qui a décidé qu'un doublon signalé
+    // n'en était pas un, sans jamais bloquer la création elle-même.
+    if (b.ignorer_doublon) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "ignorer_doublon_client", entite: "clients",
+        entiteId: rows[0].id, details: { type: b.type, denomination, nom: b.nom, prenom: b.prenom }, ip: req.ip,
+      });
+    }
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);

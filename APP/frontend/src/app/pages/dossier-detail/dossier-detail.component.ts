@@ -1459,12 +1459,14 @@ export class DossierDetailComponent implements OnInit {
       return;
     }
     this.doublonsClient.set([]);
-    this.creerClientInlineReellement(cible);
+    this.creerClientInlineReellement(cible, true);
   }
 
-  private creerClientInlineReellement(cible: 'principal' | 'additionnel'): void {
+  // `ignorerDoublon` (12/10/2026) : trace dans le journal d'audit que la
+  // création a eu lieu malgré un doublon déjà signalé, voir routes/clients.js.
+  private creerClientInlineReellement(cible: 'principal' | 'additionnel', ignorerDoublon = false): void {
     this.creationClientEnCours.set(true);
-    this.api.creerClient(this.nouveauClient).subscribe({
+    this.api.creerClient(ignorerDoublon ? { ...this.nouveauClient, ignorer_doublon: true } : this.nouveauClient).subscribe({
       next: (r) => {
         this.creationClientEnCours.set(false);
         if (cible === 'principal') {

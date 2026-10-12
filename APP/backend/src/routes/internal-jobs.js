@@ -21,6 +21,7 @@ const { executerJobAlertesFacturationDiscipline } = require("../jobs/alertesFact
 const { executerJobAlertesRetoursManquants } = require("../jobs/alertesRetoursManquants");
 const { executerJobAlertesAbonnements } = require("../jobs/alertesAbonnements");
 const { executerJobAlertesTachesRetard } = require("../jobs/alertesTachesRetard");
+const { executerJobAlertesDoublons } = require("../jobs/alertesDoublons");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -109,6 +110,19 @@ router.post("/alertes-abonnements", requireSchedulerSecret, async (req, res) => 
 router.post("/alertes-taches-retard", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobAlertesTachesRetard(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 12/10/2026 — rappel actif sur les doublons potentiels (filet de sécurité
+// du Tableau de bord, jusqu'ici purement passif). Cadence recommandée :
+// hebdomadaire (voir ../jobs/alertesDoublons.js — pas de colonne de
+// suivi, un doublon persiste tant qu'il n'est pas corrigé à la main).
+router.post("/alertes-doublons", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobAlertesDoublons(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

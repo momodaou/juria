@@ -21,6 +21,7 @@ const { pool } = require("../db");
 const { estAutorise } = require("../permissions");
 const { STATUT_FACTURATION_EXPR, SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
+const { DOUBLONS_CTE } = require("../doublons");
 const router = express.Router();
 
 const NOM_CLIENT = `COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom)`;
@@ -67,87 +68,10 @@ const MARGE_DOSSIER_SELECT = `
   ROUND(100.0 * (facture_ht - depenses - retro) / facture_ht) AS marge_pct
 `;
 
-// 26/09/2026 — audit doublons, phase 5 (filet de sécurité) : rassemble, en
-// une seule requête, les groupes de lignes probablement identiques déjà
-// entrées dans les 8 tables couvertes par les avertissements de doublon
-// (phases 1-4). Calculé en direct (pas de job planifié) — voir la note sur
-// `voitDoublons` plus haut. `factures` en est volontairement absente
-// (aucune clé naturelle fiable, voir l'audit d'origine). Normalisation
-// espace/tiret sur les noms de parties, même règle que
-// GET /api/clients/verifier-doublon.
-const DOUBLONS_CTE = `
-  WITH doublons AS (
-    SELECT 'Partie de dossier'::text AS categorie, dp.dossier_id, d.numero AS dossier_numero,
-           (dp.role::text || ' — ' || MIN(dp.denomination)) AS description, count(*) AS nb
-    FROM dossier_parties dp JOIN dossiers d ON d.id = dp.dossier_id
-    GROUP BY dp.dossier_id, d.numero, dp.role, regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g')
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Instance', i.dossier_id, d.numero,
-           (i.degre::text || ' — ' || COALESCE(i.juridiction, '—')), count(*)
-    FROM instances i JOIN dossiers d ON d.id = i.dossier_id
-    GROUP BY i.dossier_id, d.numero, i.degre, i.juridiction
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Audience', l.dossier_id, d.numero,
-           ('Le ' || to_char(l.date_prevue, 'DD/MM/YYYY') || ' — ' || COALESCE(l.juridiction, '—')), count(*)
-    FROM role_audience_lignes l JOIN dossiers d ON d.id = l.dossier_id
-    GROUP BY l.dossier_id, d.numero, l.date_prevue, l.juridiction
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Dépense', dep.dossier_id, dos.numero,
-           (dep.libelle || ' — ' || dep.montant::text || ' FCFA'), count(*)
-    FROM depenses dep LEFT JOIN dossiers dos ON dos.id = dep.dossier_id
-    GROUP BY dep.dossier_id, dos.numero, dep.libelle, dep.montant, dep.date_depense
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Rétrocession', r.dossier_id, d2.numero,
-           (r.qualite::text || ' — ' || r.base_ht::text || ' FCFA'), count(*)
-    FROM retrocessions r LEFT JOIN dossiers d2 ON d2.id = r.dossier_id
-    GROUP BY r.dossier_id, d2.numero, r.beneficiaire_id, r.qualite, r.base_ht, r.facture_id
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Lien client', NULL::uuid, NULL::varchar,
-           ('Lien client — ' || cl.nature), count(*)
-    FROM client_liens cl
-    GROUP BY cl.client_id, cl.lie_a_id, cl.nature
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Compte bancaire', NULL::uuid, NULL::varchar, cb.intitule, count(*)
-    FROM comptes_bancaires cb
-    GROUP BY cb.intitule
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Congé', NULL::uuid, NULL::varchar,
-           (u.prenom || ' ' || u.nom || ' — du ' || to_char(c.date_debut, 'DD/MM/YYYY') || ' au ' || to_char(c.date_fin, 'DD/MM/YYYY')), count(*)
-    FROM conges c JOIN utilisateurs u ON u.id = c.utilisateur_id
-    GROUP BY c.utilisateur_id, u.prenom, u.nom, c.date_debut, c.date_fin
-    HAVING count(*) > 1
-    UNION ALL
-    -- 26/09/2026 — vérifié sur données réalistes : les 3 échéances IS
-    -- (acomptes provisionnels, même libellé/catégorie par design — voir
-    -- CLAUDE.md 11/09/2026) ressortaient comme un faux positif permanent.
-    -- prochaine_date (colonne brute, pas recalculée à la lecture comme le
-    -- fait l'écran via calculerProchaineEcheance()) s'est révélée peu
-    -- fiable pour les distinguer — 2 des 3 échéances IS réelles partagent
-    -- la même valeur brute en base malgré des ancrages différents. Utilise
-    -- plutôt jour_echeance/mois_echeance, le véritable ancrage saisi par
-    -- l'utilisateur (un vrai doublon partage presque toujours aussi son
-    -- ancrage, contrairement à des échéances récurrentes légitimement
-    -- homonymes).
-    SELECT 'Échéance administrative', NULL::uuid, NULL::varchar,
-           (ea.libelle || ' — ' || ea.categorie), count(*)
-    FROM echeances_administratives ea WHERE ea.actif = TRUE
-    GROUP BY ea.libelle, ea.categorie, ea.jour_echeance, ea.mois_echeance
-    HAVING count(*) > 1
-    UNION ALL
-    SELECT 'Diligence', dl.dossier_id, d3.numero,
-           (dl.type_diligence || ' — ' || to_char(dl.date_diligence, 'DD/MM/YYYY')), count(*)
-    FROM diligences dl LEFT JOIN dossiers d3 ON d3.id = dl.dossier_id
-    GROUP BY dl.dossier_id, d3.numero, dl.date_diligence, dl.type_diligence
-    HAVING count(*) > 1
-  )
-`;
+// 26/09/2026 — audit doublons, phase 5 (filet de sécurité). Requête
+// partagée extraite dans doublons.js le 12/10/2026 (réutilisée aussi par
+// jobs/alertesDoublons.js) — voir ce fichier pour le détail des
+// catégories couvertes, dont 'Client'/'Dossier' ajoutées ce jour-là.
 
 // GET /api/dashboard  -> indicateurs agrégés (les nombres affichés sur les tuiles)
 router.get("/", async (req, res) => {

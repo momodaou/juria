@@ -345,6 +345,9 @@ import { libelleRole } from '../../core/roles';
               <p>
                 <a class="lien" [routerLink]="['/dossiers', d.id]" target="_blank">{{ d.numero }} — {{ d.intitule }}</a>
                 ({{ d.statut }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
+                @if (!d.meme_client) {
+                  <span class="hint"> — pour « {{ d.client_nom }} », une fiche client au nom quasi identique : vérifiez qu'il ne s'agit pas de deux fiches pour le même client (Clients & KYC).</span>
+                }
               </p>
             }
             <div class="upload">
@@ -654,12 +657,14 @@ export class OuvertureComponent implements OnInit {
       return;
     }
     this.doublonsClient.set([]);
-    this.creerClientInlineReellement(cible);
+    this.creerClientInlineReellement(cible, true);
   }
 
-  private creerClientInlineReellement(cible: 'principal' | 'additionnel'): void {
+  // `ignorerDoublon` (12/10/2026) : trace dans le journal d'audit que la
+  // création a eu lieu malgré un doublon déjà signalé, voir routes/clients.js.
+  private creerClientInlineReellement(cible: 'principal' | 'additionnel', ignorerDoublon = false): void {
     this.creationClientEnCours.set(true);
-    this.api.creerClient(this.nouveauClient).subscribe({
+    this.api.creerClient(ignorerDoublon ? { ...this.nouveauClient, ignorer_doublon: true } : this.nouveauClient).subscribe({
       next: (r) => {
         this.creationClientEnCours.set(false);
         const nom = this.nouveauClient.denomination || `${this.nouveauClient.prenom ?? ''} ${this.nouveauClient.nom ?? ''}`.trim();
@@ -765,10 +770,12 @@ export class OuvertureComponent implements OnInit {
       return;
     }
     this.doublonsDossier.set([]);
-    this.creerDossierReellement();
+    this.creerDossierReellement(true);
   }
 
-  private creerDossierReellement(): void {
+  // `ignorerDoublon` (12/10/2026) : trace dans le journal d'audit que la
+  // création a eu lieu malgré un doublon déjà signalé, voir routes/dossiers.js.
+  private creerDossierReellement(ignorerDoublon = false): void {
     this.creation.set(true);
     const partiesAdverses = this.partiesAdversesEdit.split(',').map((s) => s.trim()).filter(Boolean);
     // Instance initiale : seulement pertinent en contentieux, et seulement
@@ -782,6 +789,7 @@ export class OuvertureComponent implements OnInit {
       clients_additionnels: this.clientsAdditionnels().map((c) => c.id),
       intervenants: this.intervenantsInitiaux().map((i) => ({ utilisateur_id: i.id, role_dossier: i.role_dossier })),
       instance_initiale: instanceInitiale,
+      ...(ignorerDoublon ? { ignorer_doublon: true } : {}),
     }).subscribe({
       next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },

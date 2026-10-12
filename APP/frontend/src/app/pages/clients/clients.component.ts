@@ -219,12 +219,16 @@ export class ClientsComponent implements OnInit {
 
   creerQuandMeme(): void {
     this.doublons.set([]);
-    this.creerReellement();
+    this.creerReellement(true);
   }
 
-  private creerReellement(): void {
+  // `ignorerDoublon` (12/10/2026) : trace dans le journal d'audit que la
+  // création a eu lieu malgré un doublon déjà signalé — ne bloque jamais,
+  // donne juste une accountability a posteriori (qui a décidé que ce
+  // n'était pas un vrai doublon), voir routes/clients.js.
+  private creerReellement(ignorerDoublon = false): void {
     this.creation.set(true);
-    this.api.creerClient(this.form).subscribe({
+    this.api.creerClient(ignorerDoublon ? { ...this.form, ignorer_doublon: true } : this.form).subscribe({
       next: () => {
         this.creation.set(false);
         this.afficherForm.set(false);
