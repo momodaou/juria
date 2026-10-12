@@ -327,3 +327,68 @@ describe("Supprimer un message précis (13/09/2026, personnel)", () => {
     expect(seconde.status).toBe(204);
   });
 });
+
+// 12/10/2026 — audit messagerie demandé par l'utilisateur (« titre
+// conversation, visibilité message, fluidité fenêtre isolée ») : 2 bugs
+// réels trouvés et corrigés côté serveur, détail dans CLAUDE.md.
+describe("PUT /api/messagerie/conversations/:id/titre — renommage (12/10/2026)", () => {
+  test("un participant peut renommer, visible ensuite dans la liste", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    const res = await request(app)
+      .put(`/api/messagerie/conversations/${convId}/titre`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ titre: "Dossier Untel c/ Autre" });
+    expect(res.status).toBe(200);
+    expect(res.body.titre).toBe("Dossier Untel c/ Autre");
+
+    const liste = await request(app).get("/api/messagerie/conversations").set("Authorization", `Bearer ${token}`);
+    expect(liste.body.find((c) => c.id === convId).titre).toBe("Dossier Untel c/ Autre");
+  });
+
+  test("une chaîne vide remet le titre à NULL (retour aux noms des participants)", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    await request(app).put(`/api/messagerie/conversations/${convId}/titre`).set("Authorization", `Bearer ${token}`).send({ titre: "Temporaire" });
+    const res = await request(app).put(`/api/messagerie/conversations/${convId}/titre`).set("Authorization", `Bearer ${token}`).send({ titre: "   " });
+    expect(res.status).toBe(200);
+    expect(res.body.titre).toBeNull();
+  });
+
+  test("refuse un non-participant", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    const tiersId = await creerUtilisateur();
+    const jwt = require("jsonwebtoken");
+    const { SECRET } = require("../src/auth");
+    const jetonTiers = jwt.sign({ sub: tiersId, role: "collaborateur", nom: "Tiers" }, SECRET, { expiresIn: "1h" });
+    const res = await request(app)
+      .put(`/api/messagerie/conversations/${convId}/titre`)
+      .set("Authorization", `Bearer ${jetonTiers}`)
+      .send({ titre: "Intrus" });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("Message très long — ne bloque plus l'envoi (bug NOTIFY corrigé le 12/10/2026)", () => {
+  // 🐛 pg_notify() a une limite dure de 8000 octets de charge utile —
+  // dépassée, elle levait une erreur qui remontait jusqu'à POST /messages
+  // (réponse d'échec) alors que l'INSERT avait déjà réussi séparément :
+  // le message existait en base mais semblait "ne pas être parti" pour
+  // l'émetteur. Corrigé en isolant l'échec de diffusion temps réel de
+  // l'écriture elle-même (messagerie-bus.js, publier()).
+  test("un message de plus de 8000 caractères est tout de même enregistré et renvoyé en 201", async () => {
+    const autreId = await creerUtilisateur();
+    const convId = await creerConversation(autreId);
+    const contenu = "x".repeat(8200);
+    const res = await request(app)
+      .post(`/api/messagerie/conversations/${convId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ contenu });
+    expect(res.status).toBe(201);
+    expect(res.body.contenu).toBe(contenu);
+
+    const liste = await request(app).get(`/api/messagerie/conversations/${convId}/messages`).set("Authorization", `Bearer ${token}`);
+    expect(liste.body.some((m) => m.contenu === contenu)).toBe(true);
+  });
+});

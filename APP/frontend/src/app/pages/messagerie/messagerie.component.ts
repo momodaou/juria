@@ -1,4 +1,4 @@
-import { Component, inject, signal, HostListener, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, HostListener, OnInit, OnDestroy, ViewChild, ElementRef, effect, afterNextRender, Injector, runInInjectionContext } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -102,10 +102,11 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
               <span class="point" [class.point-off]="!enLigne"></span>
             }
             <span class="fil-titre">{{ titreActif() }}</span>
+            <button type="button" class="lien-titre" title="Renommer la conversation" (click)="renommer()">✏️</button>
           </div>
           <div class="messages" #zoneMessages>
             @if (messagerie.plusAnciensDisponibles()) {
-              <button type="button" class="plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
+              <button type="button" class="plus-anciens" (click)="chargerPlusAnciens()">Charger les messages précédents</button>
             }
             @for (m of messagerie.messagesActifs(); track m.id) {
               <div class="msg" [class.moi]="m.auteur_id === moi()" [class.important]="m.important">
@@ -214,13 +215,27 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     .conv-menu-item:hover{background:var(--light)}
     .conv-menu-item-danger{color:#b23b3b}
 
-    .fil{padding:16px;min-height:78vh;display:flex;flex-direction:column}
+    /* 12/10/2026 (audit messagerie — fluidité fenêtre isolée) :
+       "min-height" seul n'empêche pas ce panneau de grandir au-delà de
+       78vh selon le contenu — ".messages" (flex:1 en dessous) n'avait
+       alors JAMAIS son propre défilement interne (scrollHeight restait
+       égal à clientHeight), c'est la PAGE entière qui défilait à la
+       place. "height" fige réellement la hauteur, comme ".liste" juste à
+       côté (déjà en max-height:78vh) — trouvé en vérifiant visuellement
+       que le défilement automatique n'avait aucun effet mesurable. */
+    .fil{padding:16px;height:78vh;display:flex;flex-direction:column}
     .fil-entete{display:flex;align-items:center;gap:6px;font-weight:700;font-size:var(--fs-md);padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+    .lien-titre{background:none;border:none;cursor:pointer;font-size:var(--fs-sm);opacity:.5;padding:2px 4px}
+    .lien-titre:hover{opacity:1}
     .point{display:inline-block;width:9px;height:9px;border-radius:50%;background:#4caf7d;flex-shrink:0}
     .point-off{background:#9aa5b1}
     .plus-anciens{align-self:center;background:none;border:none;color:var(--slate);text-decoration:underline;font-size:var(--fs-sm);cursor:pointer;padding:4px;margin-bottom:6px}
     .frappe{font-size:var(--fs-sm);color:var(--grey);font-style:italic;margin:0}
-    .messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
+    /* min-height:0 indispensable : un enfant flex:1 d'un conteneur flex-
+       column ne rétrécit pas sous la hauteur de son propre contenu sans
+       ça (même famille de piège que min-width:0 pour l'ellipse horizon-
+       tale, déjà documentée dans ce projet — ici son équivalent vertical). */
+    .messages{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
     .msg{display:flex;flex-direction:column;gap:2px;max-width:70%;background:var(--light);border-radius:12px;padding:8px 12px}
     .msg.moi{align-self:flex-end;background:var(--navy);color:#fff}
     .msg-auteur{font-size:var(--fs-xs);font-weight:700;color:var(--gold)}
@@ -274,6 +289,70 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   brouillon = '';
   /** Drapeau posé sur le PROCHAIN message envoyé (13/09/2026) — remis à false après envoi. */
   important = false;
+
+  // 🐛 12/10/2026 (audit messagerie — « fluidité fenêtre isolée ») : même
+  // correctif que le widget flottant, voir son commentaire pour le détail
+  // (aucun défilement automatique n'existait, `#zoneMessages` du template
+  // n'était référencé par aucun `@ViewChild`).
+  @ViewChild('zoneMessages') private zoneMessagesRef?: ElementRef<HTMLDivElement>;
+  private premierChargement = false;
+  private enChargementAnciens = false;
+  private hauteurAvantChargementAnciens = 0;
+
+  private readonly injector = inject(Injector);
+
+  constructor() {
+    // afterNextRender (pas queueMicrotask) — voir le commentaire identique
+    // dans messagerie-widget.component.ts : sans zone.js, un microtask peut
+    // s'exécuter avant qu'Angular n'ait fini d'appliquer au DOM le
+    // changement déclenché par ce même signal. `runInInjectionContext`
+    // nécessaire : NG0203 sinon (afterNextRender hors contexte d'injection
+    // direct — trouvé en vérifiant visuellement).
+    effect(() => {
+      this.messagerie.messagesActifs();
+      runInInjectionContext(this.injector, () => afterNextRender(() => this.ajusterDefilement()));
+    });
+  }
+
+  private ajusterDefilement(): void {
+    const el = this.zoneMessagesRef?.nativeElement;
+    if (!el) return;
+    // 🐛 Bug trouvé en vérifiant visuellement : `ouvrirConversation()` vide
+    // d'abord `messagesActifs` ([]) avant de charger la vraie liste — cette
+    // 1ʳᵉ exécution (tableau encore vide) de l'effet consommait déjà
+    // `premierChargement` (presDuBas trivialement vrai sur un fil vide),
+    // si bien que l'arrivée RÉELLE des messages, juste après, ne forçait
+    // plus le défilement. Un fil vide n'a rien à positionner — on sort
+    // sans toucher aux drapeaux.
+    if (!this.messagerie.messagesActifs().length) return;
+    if (this.enChargementAnciens) {
+      el.scrollTop += el.scrollHeight - this.hauteurAvantChargementAnciens;
+      this.enChargementAnciens = false;
+      return;
+    }
+    const presDuBas = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (this.premierChargement || presDuBas) {
+      el.scrollTop = el.scrollHeight;
+      this.premierChargement = false;
+    }
+  }
+
+  chargerPlusAnciens(): void {
+    const el = this.zoneMessagesRef?.nativeElement;
+    this.enChargementAnciens = true;
+    this.hauteurAvantChargementAnciens = el?.scrollHeight ?? 0;
+    this.messagerie.chargerMessagesPlusAnciens();
+  }
+
+  renommer(): void {
+    const id = this.messagerie.conversationActiveId();
+    if (!id) return;
+    const nouveau = prompt('Nouveau titre de la conversation (laisser vide pour revenir aux noms des participants) :', this.titreActif());
+    if (nouveau === null) return;
+    this.messagerie.renommerConversation(id, nouveau.trim() || null).subscribe({
+      next: () => this.messagerie.rafraichirConversations(),
+    });
+  }
 
   moi(): string | undefined {
     return this.auth.utilisateur()?.id;
@@ -339,6 +418,7 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   }
 
   ouvrir(c: Conversation): void {
+    this.premierChargement = true;
     this.messagerie.ouvrirConversation(c.id);
     this.chargerUtilisateurs();
   }
@@ -353,16 +433,21 @@ export class MessagerieComponent implements OnInit, OnDestroy {
         this.participantsChoisis = [];
         this.titreChoisi = '';
         this.messagerie.rafraichirConversations();
+        this.premierChargement = true;
         this.messagerie.ouvrirConversation(c.id);
       },
       error: (e) => { this.creationEnCours.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }
 
-  // Pas d'ajout optimiste ici : le message revient via le flux SSE (auquel
-  // l'auteur est lui-même abonné, comme tout participant) et
-  // messagerie.service.ts l'ajoute alors à messagesActifs — évite un
-  // doublon si on l'ajoutait aussi ici à la réponse du POST.
+  // Toujours pas d'ajout optimiste au sens strict : dans le cas normal, le
+  // message revient via le flux SSE (auquel l'auteur est lui-même abonné)
+  // et messagerie.service.ts l'ajoute à messagesActifs. Mais depuis le
+  // 12/10/2026, la réponse du POST est quand même passée au service
+  // (ajouterMessageLocalementSiAbsent, dédoublonnée par id) — filet de
+  // sécurité pour le cas où la diffusion temps réel échoue silencieusement
+  // (message trop long pour pg_notify, voir messagerie-bus.js) : sans lui,
+  // l'émetteur d'un tel message ne le voyait jamais apparaître.
   envoyer(): void {
     const contenu = this.brouillon.trim();
     const id = this.messagerie.conversationActiveId();
@@ -370,7 +455,9 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     this.brouillon = '';
     const important = this.important;
     this.important = false;
-    this.messagerie.envoyerMessage(id, contenu, important).subscribe();
+    this.messagerie.envoyerMessage(id, contenu, important).subscribe({
+      next: (m) => this.messagerie.ajouterMessageLocalementSiAbsent(m),
+    });
   }
 
   // Masquer/archiver/supprimer une conversation (13/09/2026) : purement

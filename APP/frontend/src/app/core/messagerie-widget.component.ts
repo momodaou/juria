@@ -1,4 +1,4 @@
-import { Component, inject, signal, HostListener, OnInit } from '@angular/core';
+import { Component, inject, signal, HostListener, OnInit, ViewChild, ElementRef, effect, afterNextRender, Injector, runInInjectionContext } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, NavigationEnd } from '@angular/router';
@@ -35,6 +35,7 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
                 <span class="mw-point" [class.mw-point-off]="!enLigne" [title]="enLigne ? 'En ligne' : 'Hors ligne'"></span>
               }
               <span class="mw-titre">{{ titreActif() }}</span>
+              <button type="button" class="mw-icon-btn" title="Renommer la conversation" (click)="renommer()">✏️</button>
             } @else {
               <span class="mw-titre">Messagerie</span>
             }
@@ -115,9 +116,9 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
               </div>
             }
           } @else {
-            <div class="mw-messages">
+            <div class="mw-messages" #zoneMessages>
               @if (messagerie.plusAnciensDisponibles()) {
-                <button type="button" class="mw-plus-anciens" (click)="messagerie.chargerMessagesPlusAnciens()">Charger les messages précédents</button>
+                <button type="button" class="mw-plus-anciens" (click)="chargerPlusAnciens()">Charger les messages précédents</button>
               }
               @for (m of messagerie.messagesActifs(); track m.id) {
                 <div class="mw-msg" [class.moi]="m.auteur_id === moi()" [class.important]="m.important">
@@ -281,11 +282,76 @@ export class MessagerieWidgetComponent implements OnInit {
   // par-dessus la page qui fait déjà la même chose en plus grand.
   readonly visible = signal(!this.router.url.startsWith('/messagerie'));
 
+  // 🐛 12/10/2026 (audit messagerie — « fluidité fenêtre isolée ») : aucun
+  // défilement automatique n'existait — ouvrir une conversation ou recevoir
+  // un message laissait la vue là où elle était, obligeant à faire défiler
+  // manuellement à chaque fois. `#zoneMessages` dans le template n'était
+  // jusqu'ici référencé par aucun `@ViewChild`, signe d'une implémentation
+  // commencée puis jamais terminée. Comportement visé : toujours défiler
+  // tout en bas à la première ouverture, et seulement si on y est déjà
+  // (lecture du dernier message) pour un nouveau message — jamais si on
+  // est remonté lire l'historique. "Charger les messages précédents"
+  // préserve la position de lecture (compense la hauteur ajoutée en haut).
+  @ViewChild('zoneMessages') private zoneMessagesRef?: ElementRef<HTMLDivElement>;
+  private premierChargement = false;
+  private enChargementAnciens = false;
+  private hauteurAvantChargementAnciens = 0;
+
+  private readonly injector = inject(Injector);
+
+  constructor() {
+    // afterNextRender (pas queueMicrotask) — sans zone.js, un microtask
+    // peut s'exécuter avant qu'Angular n'ait fini d'appliquer au DOM le
+    // changement déclenché par ce même signal ; `scrollHeight` lu trop tôt
+    // était alors encore celui d'AVANT l'ajout des messages (mesuré faux
+    // de plusieurs centaines de pixels lors de la vérification). Garantit
+    // que le DOM est à jour avant de mesurer/positionner le défilement.
+    // ⚠️ `afterNextRender` exige un contexte d'injection — invalide tel
+    // quel depuis l'intérieur du callback d'un `effect()` (NG0203, trouvé
+    // en vérifiant visuellement) — `runInInjectionContext` le rétablit.
+    effect(() => {
+      this.messagerie.messagesActifs();
+      runInInjectionContext(this.injector, () => afterNextRender(() => this.ajusterDefilement()));
+    });
+  }
+
+  private ajusterDefilement(): void {
+    const el = this.zoneMessagesRef?.nativeElement;
+    if (!el) return;
+    // Même correctif que l'écran plein page : un fil encore vide ne doit
+    // jamais consommer "premierChargement" (voir son commentaire détaillé).
+    if (!this.messagerie.messagesActifs().length) return;
+    if (this.enChargementAnciens) {
+      el.scrollTop += el.scrollHeight - this.hauteurAvantChargementAnciens;
+      this.enChargementAnciens = false;
+      return;
+    }
+    const presDuBas = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (this.premierChargement || presDuBas) {
+      el.scrollTop = el.scrollHeight;
+      this.premierChargement = false;
+    }
+  }
+
+  chargerPlusAnciens(): void {
+    const el = this.zoneMessagesRef?.nativeElement;
+    this.enChargementAnciens = true;
+    this.hauteurAvantChargementAnciens = el?.scrollHeight ?? 0;
+    this.messagerie.chargerMessagesPlusAnciens();
+  }
+
   ngOnInit(): void {
     this.router.events.subscribe((ev) => {
       if (ev instanceof NavigationEnd) {
         this.visible.set(!ev.urlAfterRedirects.startsWith('/messagerie'));
-        if (!this.visible()) this.ouvert.set(false);
+        // 🐛 12/10/2026 (audit messagerie) — masquer directement le panneau
+        // ici (`ouvert.set(false)`) sans passer par fermer() oubliait de
+        // remettre conversationActiveId à null : un message arrivant par
+        // la suite pour cette conversation, désormais invisible, était
+        // alors marqué "lu" silencieusement (voir MessagerieService.
+        // recevoirMessage) — même bug que celui corrigé le 13/09/2026 pour
+        // le clic sur la bulle, réintroduit ici via la navigation.
+        if (!this.visible()) this.fermer();
       }
     });
     this.chargerUtilisateurs();
@@ -372,6 +438,7 @@ export class MessagerieWidgetComponent implements OnInit {
   }
 
   ouvrir(c: Conversation): void {
+    this.premierChargement = true;
     this.messagerie.ouvrirConversation(c.id);
     this.chargerUtilisateurs();
     this.vue.set('fil');
@@ -409,7 +476,9 @@ export class MessagerieWidgetComponent implements OnInit {
     this.brouillon = '';
     const important = this.important;
     this.important = false;
-    this.messagerie.envoyerMessage(id, contenu, important).subscribe();
+    this.messagerie.envoyerMessage(id, contenu, important).subscribe({
+      next: (m) => this.messagerie.ajouterMessageLocalementSiAbsent(m),
+    });
   }
 
   // Masquer/archiver/supprimer (13/09/2026) : mêmes actions, mêmes règles
@@ -474,6 +543,17 @@ export class MessagerieWidgetComponent implements OnInit {
     if (!id) return;
     this.messagerie.supprimerMessage(id, messageId).subscribe({
       next: () => this.messagerie.retirerMessageLocalement(messageId),
+    });
+  }
+
+  // 12/10/2026 — Renommer (audit messagerie, « titre conversation »).
+  renommer(): void {
+    const id = this.messagerie.conversationActiveId();
+    if (!id) return;
+    const nouveau = prompt('Nouveau titre de la conversation (laisser vide pour revenir aux noms des participants) :', this.titreActif());
+    if (nouveau === null) return;
+    this.messagerie.renommerConversation(id, nouveau.trim() || null).subscribe({
+      next: () => this.messagerie.rafraichirConversations(),
     });
   }
 

@@ -139,6 +139,47 @@ router.post("/conversations/:id/desarchiver", requirePermission("messagerie.conv
 router.post("/conversations/:id/supprimer", requirePermission("messagerie.conversation.supprimer"),
   actionPersonnelleConversation("supprimee_le", "now()", "messagerie.conversation.supprimer", "supprimer_conversation"));
 
+// PUT /api/messagerie/conversations/:id/titre  { titre: string|null }
+// 12/10/2026 (audit messagerie demandé par l'utilisateur — « titre
+// conversation ») : jusqu'ici le titre ne pouvait être posé qu'à la
+// création, jamais corrigé — pour un groupe sans titre explicite, le seul
+// affichage possible restait la liste (souvent longue, tronquée à
+// l'écran) de tous les autres participants. `titre` est une propriété
+// PARTAGÉE de la conversation (pas personnelle comme masquer/archiver/
+// supprimer) — réutilise la permission `messagerie.creer_conversation`
+// (gérer les métadonnées d'une conversation, même esprit que la créer)
+// plutôt qu'une nouvelle entrée de catalogue pour un seul bouton.
+// Chaîne vide normalisée en NULL (retour à l'affichage auto par noms).
+router.put("/conversations/:id/titre", requirePermission("messagerie.creer_conversation"), async (req, res) => {
+  const titre = (req.body?.titre || "").trim() || null;
+  try {
+    if (!(await estParticipant(req.params.id, req.user.sub))) {
+      return res.status(403).json({ error: "Vous ne participez pas à cette conversation" });
+    }
+    const { rows } = await pool.query(
+      "UPDATE conversations SET titre = $1 WHERE id = $2 RETURNING id, titre",
+      [titre, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Conversation introuvable" });
+
+    // Diffusé aux autres participants (titre partagé, pas personnel) pour
+    // que leur liste se mette à jour sans attendre un rechargement.
+    const autres = await pool.query(
+      "SELECT utilisateur_id FROM conversation_participants WHERE conversation_id = $1 AND utilisateur_id <> $2",
+      [req.params.id, req.user.sub]
+    );
+    await bus.publier(pool, autres.rows.map((r) => r.utilisateur_id), {
+      type: "titre", conversation_id: req.params.id, titre: rows[0].titre,
+    });
+
+    await logAudit({ utilisateurId: req.user.sub, action: "renommer_conversation", entite: "conversations", entiteId: req.params.id, details: { titre }, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // GET /api/messagerie/non-lus — total, pour la pastille de la barre latérale.
 router.get("/non-lus", async (req, res) => {
   try {

@@ -42,11 +42,26 @@ function pousserLocalement(destinataireIds, evenement) {
 // celle-ci, le recevront via demarrerEcoute) plutôt que d'appeler
 // pousserLocalement() directement, pour que le comportement soit identique
 // qu'il y ait une ou plusieurs instances actives.
+//
+// 🐛 12/10/2026 (audit messagerie demandé par l'utilisateur) — NOTIFY a une
+// limite dure Postgres de 8000 octets de charge utile ; un message un peu
+// long (ou un groupe avec beaucoup de participants) la dépassait et
+// pg_notify() levait une erreur, qui remontait jusqu'à POST /messages —
+// réponse 500/400 au client alors que le message était déjà bien inséré en
+// base (l'INSERT, lui, avait déjà réussi et commité séparément). Résultat
+// perçu : « mon message n'est pas parti » alors qu'il existe déjà, visible
+// seulement après un rafraîchissement — exactement le symptôme "visibilité
+// des messages" signalé. Corrigé en isolant l'échec de la diffusion temps
+// réel (dégradation silencieuse, jamais bloquante) de l'écriture elle-même.
 async function publier(pool, destinataireIds, evenement) {
-  const payload = JSON.stringify({ destinataireIds, evenement });
-  // pg_notify() évite les soucis d'échappement de NOTIFY canal, 'texte'
-  // pour un payload construit dynamiquement.
-  await pool.query("SELECT pg_notify($1, $2)", [CANAL, payload]);
+  try {
+    const payload = JSON.stringify({ destinataireIds, evenement });
+    // pg_notify() évite les soucis d'échappement de NOTIFY canal, 'texte'
+    // pour un payload construit dynamiquement.
+    await pool.query("SELECT pg_notify($1, $2)", [CANAL, payload]);
+  } catch (e) {
+    console.error("Échec de diffusion temps réel messagerie (message déjà enregistré, non poussé en direct) :", e.message);
+  }
 }
 
 let clientEcoute = null;

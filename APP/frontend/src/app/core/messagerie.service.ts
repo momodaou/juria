@@ -88,6 +88,7 @@ export class MessagerieService {
         if (evenement.type === 'message') this.recevoirMessage(evenement.message as Message);
         else if (evenement.type === 'lu') this.recevoirLecture(evenement);
         else if (evenement.type === 'frappe') this.recevoirFrappe(evenement);
+        else if (evenement.type === 'titre') this.rafraichirConversations();
       } catch {
         /* ping ou trame ignorée */
       }
@@ -110,7 +111,11 @@ export class MessagerieService {
 
   private recevoirMessage(message: Message): void {
     if (message.conversation_id === this.conversationActiveId()) {
-      this.messagesActifs.update((liste) => [...liste, message]);
+      // Dédoublonné par id (12/10/2026) : voir ajouterMessageLocalementSiAbsent
+      // ci-dessous — un message déjà ajouté localement par son émetteur
+      // (repli pour un message trop long pour la diffusion temps réel) ne
+      // doit pas apparaître deux fois si son écho SSE arrive quand même.
+      this.messagesActifs.update((liste) => (liste.some((m) => m.id === message.id) ? liste : [...liste, message]));
       // Le message arrive alors que sa conversation est déjà à l'écran :
       // on le marque lu tout de suite, sinon il resterait compté comme
       // non-lu au prochain calcul malgré avoir été vu en direct.
@@ -167,6 +172,17 @@ export class MessagerieService {
     });
   }
 
+  // 🐛 12/10/2026 (audit messagerie) — bug de "visibilité des messages"
+  // confirmé : passer rapidement d'une conversation A à une conversation B
+  // avant que la requête de A ne soit revenue pouvait faire écraser les
+  // messages de B par la réponse tardive de A (tableau remplacé en entier
+  // via `.set()`, sans vérifier que la conversation demandée est toujours
+  // la conversation active). Un message réel arrivé par SSE PENDANT le
+  // chargement pouvait aussi être perdu de la même façon (la réponse HTTP,
+  // antérieure à l'événement temps réel, écrasait ensuite le tableau qui
+  // le contenait déjà). Corrigé par un garde "la conversation demandée est
+  // toujours active ?" avant d'appliquer la réponse, et par une fusion
+  // (jamais un remplacement pur) qui conserve tout message déjà présent.
   ouvrirConversation(id: string): void {
     this.conversationActiveId.set(id);
     this.messagesActifs.set([]);
@@ -174,10 +190,18 @@ export class MessagerieService {
     this.frappeurs.set([]);
     this.plusAnciensDisponibles.set(false);
     this.http.get<Message[]>(`${this.base}/api/messagerie/conversations/${id}/messages`).subscribe({
-      next: (m) => { this.messagesActifs.set(m); this.plusAnciensDisponibles.set(m.length >= 50); },
+      next: (m) => {
+        if (this.conversationActiveId() !== id) return; // on a changé de conversation entre-temps
+        this.messagesActifs.update((liste) => {
+          const idsConnus = new Set(m.map((x) => x.id));
+          const arrivesEntreTemps = liste.filter((x) => !idsConnus.has(x.id));
+          return [...m, ...arrivesEntreTemps].sort((a, b) => a.cree_le.localeCompare(b.cree_le));
+        });
+        this.plusAnciensDisponibles.set(m.length >= 50);
+      },
     });
     this.http.get<Lecture[]>(`${this.base}/api/messagerie/conversations/${id}/lecture`).subscribe({
-      next: (l) => this.lectureActive.set(l),
+      next: (l) => { if (this.conversationActiveId() === id) this.lectureActive.set(l); },
     });
     this.marquerLu(id);
   }
@@ -214,6 +238,19 @@ export class MessagerieService {
     return this.http.post<Message>(`${this.base}/api/messagerie/conversations/${conversationId}/messages`, { contenu, important });
   }
 
+  // 🐛 12/10/2026 (audit messagerie) — correctif du bug "message trop long" :
+  // la diffusion temps réel (pg_notify) peut échouer silencieusement pour
+  // un message dépassant 8000 octets (voir messagerie-bus.js) — le message
+  // est bien enregistré, mais son émetteur ne le voyait alors JAMAIS
+  // apparaître (aucun ajout optimiste par conception, voir le commentaire
+  // historique sur envoyer() des 2 écrans). Appelée par les 2 écrans après
+  // le succès du POST, garantit que l'émetteur voit son propre message —
+  // dédoublonnée par id si l'écho SSE arrive quand même (cas normal).
+  ajouterMessageLocalementSiAbsent(message: Message): void {
+    if (message.conversation_id !== this.conversationActiveId()) return;
+    this.messagesActifs.update((liste) => (liste.some((m) => m.id === message.id) ? liste : [...liste, message]));
+  }
+
   // Indicateur de frappe : limité à un envoi au plus toutes les ~3s pendant
   // la saisie (throttlé ici, une seule fois pour les deux écrans qui
   // l'appellent — widget et plein écran).
@@ -222,6 +259,14 @@ export class MessagerieService {
     if (maintenant - this.dernierEnvoiFrappe < DELAI_MIN_ENTRE_ENVOIS_FRAPPE_MS) return;
     this.dernierEnvoiFrappe = maintenant;
     this.http.post(`${this.base}/api/messagerie/conversations/${conversationId}/frappe`, {}).subscribe({ error: () => {} });
+  }
+
+  // Renommer (12/10/2026, audit messagerie — « titre conversation ») :
+  // propriété PARTAGÉE (contrairement à masquer/archiver/supprimer, qui
+  // sont personnelles) — un rafraîchissement suffit après succès, les
+  // autres participants sont prévenus via l'événement SSE "titre".
+  renommerConversation(id: string, titre: string | null): Observable<Conversation> {
+    return this.http.put<Conversation>(`${this.base}/api/messagerie/conversations/${id}/titre`, { titre });
   }
 
   creerConversation(participants: string[], titre?: string, dossierId?: string): Observable<Conversation> {
