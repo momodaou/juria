@@ -55,6 +55,9 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
           @if (conversationsMasquees().length) {
             @for (c of conversationsMasquees(); track c.id) {
               <div class="conv conv-masquee">
+                <span class="avatar" [class.avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                  @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+                </span>
                 <span class="conv-titre">{{ titreAffiche(c) }}</span>
                 <button class="lien" (click)="afficherConversation(c)">Afficher</button>
               </div>
@@ -63,6 +66,12 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
         } @else if (messagerie.conversations().length) {
           @for (c of messagerie.conversations(); track c.id) {
             <div class="conv" [class.active]="c.id === messagerie.conversationActiveId()">
+              <!-- 12/10/2026 — avatar type WhatsApp (demande utilisateur) :
+                   initiales pour une conversation à 2, icône générique pour
+                   un groupe. -->
+              <span class="avatar" [class.avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+              </span>
               <button class="conv-corps" (click)="ouvrir(c)">
                 <span class="conv-titre">
                   @if (enLigneConversation(c); as enLigne) {
@@ -108,6 +117,11 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
         @if (messagerie.conversationActiveId()) {
           <div class="fil-entete">
             <button type="button" class="retour-mobile" title="Retour aux conversations" (click)="retourListeMobile()">←</button>
+            @if (conversationActive(); as c) {
+              <span class="avatar avatar-entete" [class.avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+              </span>
+            }
             @if (enLigneConversationActive(); as enLigne) {
               <span class="point" [class.point-off]="!enLigne"></span>
             }
@@ -222,6 +236,16 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
        dans la couleur de texte par défaut du navigateur pour un bouton
        (sombre), quasi invisible sur le fond bleu marine. */
     .conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:none;color:inherit;padding:4px 0;cursor:pointer;flex:1;min-width:0;text-align:left}
+    /* 12/10/2026 — avatar type WhatsApp (demande utilisateur) : rond coloré
+       avec initiales (couleur déterministe par personne, pas de photo à
+       gérer) pour une conversation à 2, icône générique pour un groupe. */
+    .avatar{
+      width:34px;height:34px;border-radius:50%;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;
+      font-size:var(--fs-sm);font-weight:700;color:#fff;
+    }
+    .avatar-groupe{background:var(--slate);font-size:var(--fs-md)}
+    .avatar-entete{width:30px;height:30px}
     .conv-titre{font-weight:600;font-size:var(--fs-base)}
     .conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .conv.active .conv-apercu{color:#cfd6e3}
@@ -439,13 +463,42 @@ export class MessagerieComponent implements OnInit, OnDestroy {
     return c ? this.titreAffiche(c) : 'Conversation';
   }
 
+  conversationActive(): Conversation | undefined {
+    const id = this.messagerie.conversationActiveId();
+    return this.messagerie.conversations().find((x) => x.id === id);
+  }
+
   // 12/10/2026 — modèle WhatsApp (confirmé par l'utilisateur) : seul un
   // groupe (2 autres participants ou plus) peut être renommé, jamais une
   // conversation à 2 (son en-tête reste toujours le nom du contact).
+  estGroupe(c: Conversation): boolean {
+    return (c.autres_participants?.length ?? 0) > 1;
+  }
+
   conversationActiveEstGroupe(): boolean {
-    const id = this.messagerie.conversationActiveId();
-    const c = this.messagerie.conversations().find((x) => x.id === id);
-    return (c?.autres_participants?.length ?? 0) > 1;
+    const c = this.conversationActive();
+    return c ? this.estGroupe(c) : false;
+  }
+
+  // Avatar type WhatsApp (12/10/2026, demande utilisateur) : initiales +
+  // couleur déterministe par personne (hash simple de son id — stable même
+  // si 2 personnes partagent un prénom, contrairement à un hash sur le nom).
+  // Pas de photo à gérer : plus simple, aucun stockage/upload nouveau.
+  private readonly PALETTE_AVATAR = ['#B08D57', '#2E7DC2', '#1D6434', '#5B1B1D', '#6b4fa0', '#c0634a', '#3a7d7d', '#8a6d1f'];
+
+  avatarInitiales(c: Conversation): string {
+    const nom = (c.autres_participants?.[0] || '').trim();
+    const mots = nom.split(/\s+/).filter(Boolean);
+    if (!mots.length) return '?';
+    if (mots.length === 1) return mots[0][0].toUpperCase();
+    return (mots[0][0] + mots[mots.length - 1][0]).toUpperCase();
+  }
+
+  avatarCouleur(c: Conversation): string {
+    const cle = c.autres_participants_ids?.[0] || c.id;
+    let h = 0;
+    for (let i = 0; i < cle.length; i++) h = (h * 31 + cle.charCodeAt(i)) >>> 0;
+    return this.PALETTE_AVATAR[h % this.PALETTE_AVATAR.length];
   }
 
   // 10/10/2026 — Bloc C du diagnostic "instruction avocat -> collaborateur" :

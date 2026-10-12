@@ -31,6 +31,12 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
           <div class="mw-entete">
             @if (vue() === 'fil') {
               <button type="button" class="mw-icon-btn" (click)="retourListe()" title="Retour aux conversations">←</button>
+              <!-- 12/10/2026 — avatar type WhatsApp (demande utilisateur). -->
+              @if (conversationActive(); as c) {
+                <span class="mw-avatar" [class.mw-avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                  @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+                </span>
+              }
               @if (enLigneConversationActive(); as enLigne) {
                 <span class="mw-point" [class.mw-point-off]="!enLigne" [title]="enLigne ? 'En ligne' : 'Hors ligne'"></span>
               }
@@ -73,6 +79,9 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
                 @if (conversationsMasquees().length) {
                   @for (c of conversationsMasquees(); track c.id) {
                     <div class="mw-conv mw-conv-masquee">
+                      <span class="mw-avatar" [class.mw-avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                        @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+                      </span>
                       <span class="mw-conv-titre">{{ titreAffiche(c) }}</span>
                       <button type="button" class="mw-lien" (click)="afficherConversation(c)">Afficher</button>
                     </div>
@@ -84,6 +93,9 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
                 @if (messagerie.conversations().length) {
                   @for (c of messagerie.conversations(); track c.id) {
                     <div class="mw-conv">
+                      <span class="mw-avatar" [class.mw-avatar-groupe]="estGroupe(c)" [style.background]="estGroupe(c) ? null : avatarCouleur(c)">
+                        @if (estGroupe(c)) { 👥 } @else { {{ avatarInitiales(c) }} }
+                      </span>
                       <button type="button" class="mw-conv-corps" (click)="ouvrir(c)">
                         <span class="mw-conv-titre">
                           @if (enLigneConversation(c); as enLigne) {
@@ -211,6 +223,16 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     .mw-conv:last-child{border-bottom:none}
     .mw-conv:hover{background:var(--light)}
     .mw-conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:none;padding:6px 0;cursor:pointer;flex:1;min-width:0}
+    /* 12/10/2026 — avatar type WhatsApp, même principe que l'écran plein
+       page (initiales + couleur déterministe, icône générique pour un
+       groupe), tailles réduites pour le format compact du widget. */
+    .mw-avatar{
+      width:30px;height:30px;border-radius:50%;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;
+      font-size:var(--fs-xs);font-weight:700;color:#fff;
+    }
+    .mw-avatar-groupe{background:var(--slate);font-size:var(--fs-base)}
+    .mw-entete .mw-avatar{width:24px;height:24px}
     .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
     .mw-conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .mw-conv-badge{position:absolute;top:8px;right:34px;background:var(--gold);color:#1b2436;font-size:var(--fs-2xs);font-weight:700;padding:1px 6px;border-radius:999px}
@@ -393,11 +415,38 @@ export class MessagerieWidgetComponent implements OnInit {
     return c ? this.titreAffiche(c) : 'Conversation';
   }
 
-  // 12/10/2026 — même règle que l'écran plein page, voir son commentaire.
-  conversationActiveEstGroupe(): boolean {
+  conversationActive(): Conversation | undefined {
     const id = this.messagerie.conversationActiveId();
-    const c = this.messagerie.conversations().find((x) => x.id === id);
-    return (c?.autres_participants?.length ?? 0) > 1;
+    return this.messagerie.conversations().find((x) => x.id === id);
+  }
+
+  // 12/10/2026 — même règle que l'écran plein page, voir son commentaire.
+  estGroupe(c: Conversation): boolean {
+    return (c.autres_participants?.length ?? 0) > 1;
+  }
+
+  conversationActiveEstGroupe(): boolean {
+    const c = this.conversationActive();
+    return c ? this.estGroupe(c) : false;
+  }
+
+  // Avatar type WhatsApp (12/10/2026, demande utilisateur) — même logique
+  // que l'écran plein page, voir son commentaire détaillé.
+  private readonly PALETTE_AVATAR = ['#B08D57', '#2E7DC2', '#1D6434', '#5B1B1D', '#6b4fa0', '#c0634a', '#3a7d7d', '#8a6d1f'];
+
+  avatarInitiales(c: Conversation): string {
+    const nom = (c.autres_participants?.[0] || '').trim();
+    const mots = nom.split(/\s+/).filter(Boolean);
+    if (!mots.length) return '?';
+    if (mots.length === 1) return mots[0][0].toUpperCase();
+    return (mots[0][0] + mots[mots.length - 1][0]).toUpperCase();
+  }
+
+  avatarCouleur(c: Conversation): string {
+    const cle = c.autres_participants_ids?.[0] || c.id;
+    let h = 0;
+    for (let i = 0; i < cle.length; i++) h = (h * 31 + cle.charCodeAt(i)) >>> 0;
+    return this.PALETTE_AVATAR[h % this.PALETTE_AVATAR.length];
   }
 
   // Présence (13/09/2026) : affichée uniquement pour une conversation à
