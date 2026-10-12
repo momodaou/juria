@@ -203,12 +203,19 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn:disabled{opacity:.6;cursor:not-allowed}
 
+    /* 12/10/2026 — constat de l'utilisateur : sans trait de séparation,
+       l'espace entre 2 conversations (juste le "gap" de .liste) se
+       confondait avec le fond blanc, rendant la liste difficile à
+       distinguer d'une entrée à l'autre. border-bottom + léger padding
+       supplémentaire pour que le trait ne colle pas directement au texte. */
     .conv{
       display:flex;align-items:center;gap:2px;text-align:left;position:relative;
-      background:none;border:none;border-radius:10px;padding:6px 6px 6px 12px;width:100%;
+      background:none;border:none;border-bottom:1px solid var(--line);
+      border-radius:10px;padding:8px 6px 10px 12px;width:100%;
     }
+    .conv:last-child{border-bottom:none}
     .conv:hover{background:var(--light)}
-    .conv.active{background:var(--navy);color:#fff}
+    .conv.active{background:var(--navy);color:#fff;border-bottom-color:var(--navy)}
     /* 12/10/2026 — color:inherit indispensable : un <button> ne reprend pas
        automatiquement la couleur de son parent (ici blanche, posée par
        .conv.active) — sans ça, le nom de la conversation active restait

@@ -201,10 +201,14 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     .mw-icon-btn:hover{background:rgba(255,255,255,.15)}
     .mw-liste{flex:1;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
     .mw-vide{color:var(--grey);font-size:var(--fs-base);padding:14px;text-align:center}
+    /* 12/10/2026 — même constat que l'écran plein page : sans trait, les
+       conversations se confondaient les unes avec les autres. */
     .mw-conv{
       display:flex;align-items:center;gap:2px;position:relative;
-      background:none;border:none;border-radius:8px;padding:2px 4px 2px 10px;width:100%;
+      background:none;border:none;border-bottom:1px solid var(--line);
+      border-radius:8px;padding:4px 4px 6px 10px;width:100%;
     }
+    .mw-conv:last-child{border-bottom:none}
     .mw-conv:hover{background:var(--light)}
     .mw-conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:none;border:none;padding:6px 0;cursor:pointer;flex:1;min-width:0}
     .mw-conv-titre{font-weight:600;font-size:var(--fs-base)}
