@@ -209,7 +209,12 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     }
     .conv:hover{background:var(--light)}
     .conv.active{background:var(--navy);color:#fff}
-    .conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:none;padding:4px 0;cursor:pointer;flex:1;min-width:0;text-align:left}
+    /* 12/10/2026 — color:inherit indispensable : un <button> ne reprend pas
+       automatiquement la couleur de son parent (ici blanche, posée par
+       .conv.active) — sans ça, le nom de la conversation active restait
+       dans la couleur de texte par défaut du navigateur pour un bouton
+       (sombre), quasi invisible sur le fond bleu marine. */
+    .conv-corps{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:none;border:none;color:inherit;padding:4px 0;cursor:pointer;flex:1;min-width:0;text-align:left}
     .conv-titre{font-weight:600;font-size:var(--fs-base)}
     .conv-apercu{font-size:var(--fs-sm);color:var(--grey);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .conv.active .conv-apercu{color:#cfd6e3}
