@@ -4298,7 +4298,7 @@ INSERT INTO permissions_role (role, action_code, autorise) VALUES
 ('admin_it','dossiers.parties.gerer',TRUE),
 ('admin_it','dossiers.intervenants.gerer',TRUE),
 ('admin_it','conflits.soumettre',TRUE),
-('admin_it','conflits.decision',TRUE),
+('admin_it','conflits.decision',FALSE),
 ('admin_it','dossiers.creer',TRUE),
 ('admin_it','dossiers.pro_bono.declarer',FALSE),
 ('admin_it','clients.consulter',TRUE),

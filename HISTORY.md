@@ -3590,3 +3590,17 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **Vérification** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **559/559 tests** (3 nouveaux remplaçant les 2 précédents). Aucun changement frontend, build Angular non nécessaire.
 
 **Déploiement** : commité (`f57a330`). Aucune migration nécessaire (aucun changement de schéma). **Déployé et vérifié en production le 13/10/2026** (accord utilisateur) — API `juria-00144-vgb` (précédente `juria-00143-lgw`), aucun changement frontend. Vérifié : `/health` en `200`. Non revérifié avec un compte réel de production (choix délibéré, cohérent avec la pratique suivie sur ce projet — fonctionnalité déjà testée fidèlement en local : 559/559 tests).
+
+## 13/10/2026 — Audit `conflits.decision` : Matrice réelle divergente de `schema.sql`, corrigée
+
+**Déclencheur** : question directe de l'utilisateur (« l'admin IT n'est pas du concerné par ce processus, peux-tu confirmer ? »), vérifiée directement en production (pas supposée depuis `schema.sql`, déjà documenté comme non fiable pour les permissions — audit du 25/09/2026). Connexion avec le compte réel de l'utilisateur (`mda@jfcavocats-mali.com`, lecture `GET /api/acces/permissions`).
+
+**Constat** : `admin_it` a bien `conflits.decision = FALSE` en production — confirmé, non concerné. Mais la vérification a révélé une divergence plus significative : **`of_counsel`, `collaborateur` et `avocat_stagiaire` avaient `conflits.decision = TRUE`** en production — contrairement à `schema.sql` (bloc d'alignement du 25/09/2026), qui les montre tous les trois à `FALSE`. Concrètement, un collaborateur bloqué par un conflit potentiel (cas construit dans la fonctionnalité du même jour) aurait en réalité vu les boutons de décision s'afficher directement sur son propre écran — il n'était pas réellement bloqué, contrairement à l'exemple donné à l'utilisateur.
+
+**Décision de l'utilisateur** : resserrer à `associe`/`associe_fondateur` uniquement (option recommandée).
+
+**Corrigé** : 3 appels authentifiés `PUT /api/acces/permissions` (tracés dans `journal_audit`, pas de SQL brut) — `of_counsel`/`collaborateur`/`avocat_stagiaire` → `conflits.decision = FALSE`. État final vérifié par relecture de `GET /api/acces/permissions` : seuls `associe`/`associe_fondateur` ont `TRUE`.
+
+**`schema.sql` réaligné** : seule la ligne `admin_it` différait réellement du bloc d'alignement du 25/09/2026 (`TRUE` dans le fichier, `FALSE` en production depuis un changement intermédiaire non reporté) — corrigée à `FALSE`. Les 3 autres lignes (`of_counsel`/`collaborateur`/`avocat_stagiaire`) étaient déjà à `FALSE` dans `schema.sql` ; c'est la production qui avait dérivé vers `TRUE` entre-temps, maintenant réalignée dans l'autre sens par les 3 appels ci-dessus.
+
+**Aucune migration, aucun déploiement de code nécessaire** — changement de données (Matrice) + documentation uniquement.
