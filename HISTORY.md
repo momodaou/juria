@@ -3589,4 +3589,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérification** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **559/559 tests** (3 nouveaux remplaçant les 2 précédents). Aucun changement frontend, build Angular non nécessaire.
 
-**Déploiement** : commité. Aucune migration nécessaire (aucun changement de schéma). API seule à redéployer.
+**Déploiement** : commité (`f57a330`). Aucune migration nécessaire (aucun changement de schéma). **Déployé et vérifié en production le 13/10/2026** (accord utilisateur) — API `juria-00144-vgb` (précédente `juria-00143-lgw`), aucun changement frontend. Vérifié : `/health` en `200`. Non revérifié avec un compte réel de production (choix délibéré, cohérent avec la pratique suivie sur ce projet — fonctionnalité déjà testée fidèlement en local : 559/559 tests).
