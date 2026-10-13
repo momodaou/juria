@@ -151,8 +151,12 @@ describe("E-mail — mention de l'audiencier (24/09/2026, complément)", () => {
     const nomComplet = `${utilisateur.prenom} ${utilisateur.nom}`;
 
     await executerJobAlertesRetoursManquants(pool);
-    expect(envoyerEmail).toHaveBeenCalled();
-    const html = envoyerEmail.mock.calls[0][0].html;
+    // 13/10/2026 : creerDossierAvecClient() ci-dessus déclenche désormais
+    // aussi la notification générale "Nouveau dossier créé" — filtrer sur
+    // le sujet propre à ce job plutôt que de supposer calls[0].
+    const appelsJob = envoyerEmail.mock.calls.filter((c) => c[0].subject.includes("sans retour saisi"));
+    expect(appelsJob.length).toBeGreaterThan(0);
+    const html = appelsJob[0][0].html;
     expect(html).toContain(`(audiencier : ${nomComplet})`);
     expect(html).toContain("font-style:italic");
 
@@ -168,9 +172,9 @@ describe("E-mail — mention de l'audiencier (24/09/2026, complément)", () => {
     const dossierId = await creerDossierAvecClient();
     await creerAudience(dossierId, -2); // pas d'avocat_id
     await executerJobAlertesRetoursManquants(pool);
-    expect(envoyerEmail).toHaveBeenCalled();
-    const html = envoyerEmail.mock.calls[0][0].html;
-    expect(html).not.toContain("audiencier :");
+    const appelsJob = envoyerEmail.mock.calls.filter((c) => c[0].subject.includes("sans retour saisi"));
+    expect(appelsJob.length).toBeGreaterThan(0);
+    expect(appelsJob[0][0].html).not.toContain("audiencier :");
   });
 
   test("une diligence en retard ne mentionne jamais d'audiencier (réservé aux audiences)", async () => {
@@ -181,9 +185,9 @@ describe("E-mail — mention de l'audiencier (24/09/2026, complément)", () => {
     await pool.query("UPDATE diligences SET date_diligence = current_date - INTERVAL '2 days' WHERE id = $1", [creation.body.id]);
 
     await executerJobAlertesRetoursManquants(pool);
-    expect(envoyerEmail).toHaveBeenCalled();
-    const html = envoyerEmail.mock.calls[0][0].html;
-    expect(html).not.toContain("audiencier :");
+    const appelsJob = envoyerEmail.mock.calls.filter((c) => c[0].subject.includes("sans retour saisi"));
+    expect(appelsJob.length).toBeGreaterThan(0);
+    expect(appelsJob[0][0].html).not.toContain("audiencier :");
   });
 });
 

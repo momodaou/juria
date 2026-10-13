@@ -114,11 +114,28 @@ async function genererLettreMissionAuto(dossierId, modeHonoraires, clientId, aut
 // à un associé via la Matrice, mais de la notion même de qui dirige le
 // cabinet. Hors chemin critique, même patron que genererLettreMissionAuto
 // ci-dessus (try/catch interne, jamais bloquant).
+// Administrateur général (13/10/2026, précision explicite de l'utilisateur
+// après la 1ʳᵉ passe) : reçoit UNIQUEMENT cette notification générale de
+// création — jamais les e-mails/décisions de conflits.js, qui restent
+// réservés à conflits.decision (« pas les notif d'autorisation de
+// création »). Motif donné : suivi transverse des dossiers créés non
+// encore facturés (réclamations), rôle distinct de celui des associés —
+// elle est donc notifiée de TOUT dossier créé par quelqu'un d'autre
+// qu'elle-même, y compris par un associé (contrairement au volet associés
+// ci-dessous, qui reste muet entre associés).
 async function notifierAssociesNouveauDossier(dossierId, numero, intitule, createurId, createurRole) {
-  if (["associe", "associe_fondateur"].includes(createurRole)) return;
+  const rolesDestinataires = [];
+  if (!["associe", "associe_fondateur"].includes(createurRole)) {
+    rolesDestinataires.push("associe", "associe_fondateur");
+  }
+  if (createurRole !== "admin_general") {
+    rolesDestinataires.push("admin_general");
+  }
+  if (!rolesDestinataires.length) return;
   try {
     const { rows: dests } = await pool.query(
-      `SELECT email, prenom FROM utilisateurs WHERE actif = TRUE AND role IN ('associe','associe_fondateur')`
+      `SELECT email, prenom FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])`,
+      [rolesDestinataires]
     );
     if (!dests.length) return;
     const { rows: [createur] } = await pool.query(

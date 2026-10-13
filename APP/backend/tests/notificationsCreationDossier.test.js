@@ -4,7 +4,12 @@
 // trouvé étant qu'aucun chemin asynchrone n'existait — la décision n'était
 // reachable que depuis l'écran du collaborateur bloqué lui-même) ;
 // (2) notification générale à TOUT dossier créé par un non-associé, par
-// principe d'accountability (jamais bloquant).
+// principe d'accountability (jamais bloquant). Complété le même jour :
+// l'administrateur général reçoit ce 2ᵉ volet (suivi transverse
+// facturation/réclamations) mais JAMAIS le 1ᵉʳ volet conflits — précision
+// explicite de l'utilisateur (« pas les notif d'autorisation de
+// création »), déjà vraie par construction (conflits.decision = FALSE
+// pour admin_general dans la Matrice), non retestée ici.
 jest.mock("../src/mailer", () => ({ envoyerEmail: jest.fn().mockResolvedValue({ envoye: true }) }));
 
 const bcrypt = require("bcryptjs");
@@ -102,23 +107,44 @@ describe("Conflits d'intérêts — registre + e-mail immédiat (13/10/2026)", (
 });
 
 describe("Notification générale à la création d'un dossier (13/10/2026)", () => {
-  test("dossier créé par un collaborateur → e-mail envoyé à l'associé", async () => {
+  // Destinataires filtrés par `to` exact (pas juste un comptage) : la base
+  // de test partagée entre fichiers peut déjà contenir d'autres comptes
+  // associé/admin_general créés par d'autres suites dans le même run.
+  function appelsVers(email) {
+    return envoyerEmail.mock.calls.filter(
+      (c) => c[0].subject.includes("Nouveau dossier créé") && c[0].to === email
+    );
+  }
+
+  test("dossier créé par un collaborateur → e-mail à l'associé ET à l'administrateur général", async () => {
     const collab = await creerUtilisateurRole("collaborateur");
+    const adminGeneral = await creerUtilisateurRole("admin_general");
     const client = await creerClient(token, `Client notif ${Date.now()}`);
     const res = await creerDossier(collab.token, { client_id: client.id, responsable_id: associeId });
     expect(res.status).toBe(201);
 
-    const appels = envoyerEmail.mock.calls.filter((c) => c[0].subject.includes("Nouveau dossier créé"));
-    expect(appels.length).toBeGreaterThan(0);
-    expect(appels.some((c) => c[0].to === EMAIL_TEST)).toBe(true);
-    expect(appels[0][0].html).toContain(res.body.numero);
+    expect(appelsVers(EMAIL_TEST).length).toBeGreaterThan(0);
+    expect(appelsVers(EMAIL_TEST)[0][0].html).toContain(res.body.numero);
+    expect(appelsVers(adminGeneral.email).length).toBeGreaterThan(0);
   });
 
-  test("dossier créé par un associé lui-même → aucun e-mail (pas d'auto-notification)", async () => {
+  test("dossier créé par un associé lui-même → l'administrateur général est notifiée, pas les autres associés (pas d'auto-notification)", async () => {
+    const adminGeneral = await creerUtilisateurRole("admin_general");
     const client = await creerClient(token, `Client notif associe ${Date.now()}`);
     const res = await creerDossier(token, { client_id: client.id, responsable_id: associeId });
     expect(res.status).toBe(201);
-    const appels = envoyerEmail.mock.calls.filter((c) => c[0].subject.includes("Nouveau dossier créé"));
-    expect(appels.length).toBe(0);
+
+    expect(appelsVers(EMAIL_TEST).length).toBe(0);
+    expect(appelsVers(adminGeneral.email).length).toBeGreaterThan(0);
+  });
+
+  test("dossier créé par l'administrateur général elle-même → les associés sont notifiés, pas elle (pas d'auto-notification, « pas les notif d'autorisation de création »)", async () => {
+    const adminGeneral = await creerUtilisateurRole("admin_general");
+    const client = await creerClient(token, `Client notif admin général ${Date.now()}`);
+    const res = await creerDossier(adminGeneral.token, { client_id: client.id, responsable_id: associeId });
+    expect(res.status).toBe(201);
+
+    expect(appelsVers(EMAIL_TEST).length).toBeGreaterThan(0);
+    expect(appelsVers(adminGeneral.email).length).toBe(0);
   });
 });

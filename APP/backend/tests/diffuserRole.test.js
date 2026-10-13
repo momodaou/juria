@@ -67,6 +67,10 @@ describe("POST /api/roles-audience/:id/diffuser — envoi e-mail réel à tout l
     expect(validation.status).toBe(200);
     expect(validation.body.statut).toBe("valide");
 
+    // 13/10/2026 : creerClientEtDossier() ci-dessus déclenche désormais
+    // aussi la notification générale "Nouveau dossier créé" — reclear
+    // juste avant la diffusion pour ne compter que SES propres e-mails.
+    envoyerEmail.mockClear();
     const nbActifs = await compterDestinatairesActifs();
     const diffusion = await request(app).post(`/api/roles-audience/${roleId}/diffuser`).set("Authorization", `Bearer ${token}`);
     expect(diffusion.status).toBe(200);
