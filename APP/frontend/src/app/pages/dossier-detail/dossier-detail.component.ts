@@ -143,15 +143,15 @@ import { libelleRole } from '../../core/roles';
         }
       </div>
 
-      <!-- 10/10/2026 — Dossiers connexes (même client ou même partie
-           adverse), calculé à la volée — voir CLAUDE.md/HISTORY.md. -->
+      <!-- 10/10/2026 — Dossiers connexes (même partie adverse), calculé à
+           la volée — voir CLAUDE.md/HISTORY.md. « Même client » retiré le
+           13/10/2026 (signal trop faible, déjà couvert par « Voir N
+           dossiers » sur la fiche client). -->
       @if (connexes().length) {
         <div class="liens-rapides dossiers-connexes">
-          <span class="dc-titre">Dossiers connexes :</span>
+          <span class="dc-titre">Dossiers connexes (même partie adverse) :</span>
           @for (c of connexes(); track c.id) {
-            <a class="lien" [routerLink]="['/dossiers', c.id]" [title]="c.intitule">
-              {{ c.numero }}@if (c.meme_client && c.meme_partie) { (même client et même partie adverse) } @else if (c.meme_client) { (même client) } @else { (même partie adverse) }
-            </a>
+            <a class="lien" [routerLink]="['/dossiers', c.id]" [title]="c.intitule">{{ c.numero }}</a>
           }
         </div>
       }
