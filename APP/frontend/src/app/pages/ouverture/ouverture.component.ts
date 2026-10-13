@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
@@ -14,7 +14,29 @@ import { libelleRole } from '../../core/roles';
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
 
-    <section class="panel">
+    @if (mesControles().length) {
+      <section class="panel mes-controles">
+        <h3>Vos contrôles de conflit</h3>
+        <p class="hint">Vos propres contrôles encore en attente ou tout juste décidés — reprenez-en un ci-dessous, ou masquez-le si vous l'avez déjà traité autrement.</p>
+        @for (c of mesControles(); track c.id) {
+          <div class="mc-ligne">
+            <div class="mc-info">
+              <b>{{ c.intitule_projet || c.noms_recherches }}</b>
+              <span class="mc-statut" [class.mc-attente]="c.decision === 'en_attente'" [class.mc-accepte]="c.decision === 'accepte'" [class.mc-refuse]="c.decision === 'refuse' || c.decision === 'oriente'">
+                {{ c.decision === 'en_attente' ? 'En attente de décision' : c.decision === 'accepte' ? 'Accepté — reprenez l’ouverture' : c.decision === 'refuse' ? 'Refusé' : 'Orienté vers un confrère' }}
+              </span>
+              <span class="muted"> · {{ c.cree_le | date: 'dd/MM/yyyy à HH:mm' }}</span>
+            </div>
+            <div class="mc-actions">
+              <button class="lien" (click)="reprendreControle(c)">Reprendre</button>
+              <button class="lien mc-masquer" (click)="masquerControle(c)">Masquer</button>
+            </div>
+          </div>
+        }
+      </section>
+    }
+
+    <section class="panel" id="etape-conflit">
       <h3>Étape 1 — Contrôle des conflits d'intérêts (obligatoire)</h3>
 
       <label>Client</label>
@@ -377,6 +399,16 @@ import { libelleRole } from '../../core/roles';
     .terme{font-weight:600}
     .chip{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:2px 9px;margin:2px;font-size:var(--fs-sm)}
     .lien-x{background:none;border:none;color:var(--slate);cursor:pointer;font-size:var(--fs-xs);padding:0 0 0 4px}
+    .mc-ligne{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+    .mc-ligne:last-child{border-bottom:none}
+    .mc-info{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:var(--fs-base)}
+    .mc-statut{font-size:var(--fs-xs);font-weight:600;border-radius:10px;padding:2px 9px}
+    .mc-statut.mc-attente{background:#fffaf0;color:#9a6c12}
+    .mc-statut.mc-accepte{background:#e3f5ec;color:#1e7a4c}
+    .mc-statut.mc-refuse{background:#fdeeee;color:#a13b3b}
+    .mc-actions{display:flex;gap:10px;flex-shrink:0}
+    .mc-masquer{color:var(--grey)}
+    button.lien{background:none;border:none;font:inherit;padding:0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .decision{margin-top:14px}
@@ -402,6 +434,7 @@ import { libelleRole } from '../../core/roles';
 export class OuvertureComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   readonly auth = inject(AuthService);
   readonly libelleRole = libelleRole;
 
@@ -687,7 +720,13 @@ export class OuvertureComponent implements OnInit {
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
-    this.restaurerConflitEnCours();
+    // Lien du mail de décision (?conflit=id, 13/10/2026) — prioritaire sur
+    // le localStorage : même si le collaborateur a lancé un autre contrôle
+    // entre-temps (localStorage écrasé), cliquer le lien ramène toujours
+    // au BON contrôle, celui que le mail concerne précisément.
+    const idLien = this.route.snapshot.queryParamMap.get('conflit');
+    if (idLien) { this.restaurerControle(idLien); } else { this.restaurerConflitEnCours(); }
+    this.chargerMesControles();
   }
 
   // Bug signalé (13/10/2026) : un rafraîchissement de page pendant l'attente
@@ -697,6 +736,14 @@ export class OuvertureComponent implements OnInit {
   // contrôle dans localStorage, le relire au chargement, reconstituer
   // l'écran depuis l'état RÉEL du contrôle côté serveur (pas depuis une
   // copie figée) — il a pu être décidé entre-temps.
+  //
+  // Limite de ce patch, signalée par l'utilisateur et comblée le même jour
+  // par le panneau « Vos contrôles de conflit » ci-dessous : localStorage
+  // ne retient qu'UN SEUL contrôle, écrasé dès qu'un nouveau est lancé — si
+  // le collaborateur est passé à un autre dossier entre-temps, il perd
+  // toute trace du précédent. Le panneau (GET /mes-controles, par
+  // créateur, pas par localStorage) retrouve TOUS ses contrôles encore
+  // pertinents, quel que soit leur nombre.
   private static readonly CLE_CONFLIT = 'juria.conflit.enattente';
 
   private memoriserConflitEnCours(id: string): void {
@@ -710,19 +757,49 @@ export class OuvertureComponent implements OnInit {
   private restaurerConflitEnCours(): void {
     let id: string | null = null;
     try { id = localStorage.getItem(OuvertureComponent.CLE_CONFLIT); } catch { /* idem */ }
-    if (!id) return;
+    if (id) this.restaurerControle(id);
+  }
+
+  // Factorisé (13/10/2026) : utilisé à la fois par le localStorage
+  // (restaurerConflitEnCours), le lien du mail (?conflit=, ngOnInit) et
+  // « Reprendre » depuis le panneau « Vos contrôles de conflit ».
+  private restaurerControle(id: string): void {
     this.api.conflitCheckEtat(id).subscribe({
-      next: (c) => {
-        this.resultat.set(c);
-        if (c.resultat === 'potentiel' && c.decision !== 'en_attente') this.decisionPrise.set(c.decision);
-        // noms_recherches = "client, partie1, partie2" — 1er élément =
-        // client, le reste = parties adverses (même format que verifier()).
-        const noms = String(c.noms_recherches || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-        this.clientNom = noms[0] || '';
-        this.partiesAdverses = noms.slice(1).join(', ');
-        this.preselectionnerClient();
-      },
+      next: (c) => this.appliquerControle(c),
       error: () => this.oublierConflitEnCours(), // contrôle introuvable/inaccessible : rien à restaurer
+    });
+  }
+
+  private appliquerControle(c: any): void {
+    this.resultat.set(c);
+    this.decisionPrise.set(c.resultat === 'potentiel' && c.decision !== 'en_attente' ? c.decision : null);
+    // noms_recherches = "client, partie1, partie2" — 1er élément =
+    // client, le reste = parties adverses (même format que verifier()).
+    const noms = String(c.noms_recherches || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    this.clientNom = noms[0] || '';
+    this.partiesAdverses = noms.slice(1).join(', ');
+    this.preselectionnerClient();
+    this.memoriserConflitEnCours(c.id);
+  }
+
+  // Panneau « Vos contrôles de conflit » (13/10/2026, demande explicite de
+  // l'utilisateur) — tous MES contrôles encore pertinents, indépendamment
+  // du localStorage. « Reprendre » restaure le contrôle choisi dans le
+  // formulaire ; « Masquer » l'acquitte sans toucher à sa décision.
+  readonly mesControles = signal<any[]>([]);
+
+  private chargerMesControles(): void {
+    this.api.mesControlesConflit().subscribe({ next: (l) => this.mesControles.set(l) });
+  }
+
+  reprendreControle(c: any): void {
+    this.appliquerControle(c);
+    document.getElementById('etape-conflit')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  masquerControle(c: any): void {
+    this.api.marquerConflitVu(c.id).subscribe({
+      next: () => this.mesControles.update((l) => l.filter((x) => x.id !== c.id)),
     });
   }
 
@@ -828,7 +905,15 @@ export class OuvertureComponent implements OnInit {
       instance_initiale: instanceInitiale,
       ...(ignorerDoublon ? { ignorer_doublon: true } : {}),
     }).subscribe({
-      next: (r) => { this.creation.set(false); this.oublierConflitEnCours(); this.router.navigate(['/dossiers', r.id]); },
+      next: (r) => {
+        this.creation.set(false);
+        // Acquitte aussi côté serveur (panneau « Vos contrôles ») — pas
+        // seulement le localStorage, qui ne couvrait qu'un seul appareil.
+        const idControle = this.resultat()?.id;
+        if (idControle) this.api.marquerConflitVu(idControle).subscribe();
+        this.oublierConflitEnCours();
+        this.router.navigate(['/dossiers', r.id]);
+      },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }

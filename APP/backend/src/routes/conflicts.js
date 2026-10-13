@@ -40,6 +40,61 @@ function lienConflit(id) {
   return `${base}/conflits?id=${id}`;
 }
 
+// Lien de retour pour le COLLABORATEUR (13/10/2026, suite de la
+// réflexion sur « que se passe-t-il si entre-temps il est passé à autre
+// chose ») — pointe vers /ouverture?conflit=<id>, lu par
+// ouverture.component.ts pour restaurer CE contrôle précis, en priorité
+// sur tout ce qui se trouve dans son localStorage à ce moment-là (qui a
+// pu être écrasé par un contrôle plus récent entre-temps).
+function lienOuverture(id) {
+  const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
+  return `${base}/ouverture?conflit=${id}`;
+}
+
+const LIBELLES_DECISION = {
+  accepte: "accepté",
+  refuse: "refusé",
+  oriente: "orienté vers un confrère",
+};
+
+// Notification au CRÉATEUR une fois la décision prise (13/10/2026) —
+// jusqu'ici aucun signal ne revenait vers lui : il ne découvrait la
+// décision qu'en revenant par hasard sur l'écran d'ouverture (et perdait
+// même cette trace s'il avait entre-temps lancé un autre contrôle,
+// écrasant son localStorage). Complète le panneau « Vos contrôles de
+// conflit » (GET /mes-controles) plutôt que de s'y substituer : la tuile
+// garantit que rien n'est jamais perdu, l'e-mail évite d'attendre qu'il
+// retourne par hasard sur « Nouveau dossier » pour le découvrir.
+async function notifierDecisionConflit(checkId, decision) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT cc.intitule_projet, u.email, u.prenom
+       FROM conflict_checks cc JOIN utilisateurs u ON u.id = cc.cree_par
+       WHERE cc.id = $1 AND u.actif = TRUE`,
+      [checkId]
+    );
+    const d = rows[0];
+    if (!d || !d.email) return;
+    const libelle = LIBELLES_DECISION[decision] || decision;
+    const suite = decision === "accepte"
+      ? `<p>Vous pouvez reprendre l'ouverture du dossier dès maintenant.</p>`
+      : `<p>L'ouverture de ce dossier reste bloquée.</p>`;
+    await envoyerEmail({
+      to: d.email,
+      subject: `Conflit d'intérêts ${libelle} — ${d.intitule_projet || "dossier en préparation"}`,
+      html: `<p>Bonjour ${d.prenom},</p>
+             <p>Votre contrôle de conflit d'intérêts (projet : <strong>${d.intitule_projet || "non précisé"}</strong>)
+             a été <strong>${libelle}</strong>.</p>
+             ${suite}
+             <p>Voir <a href="${lienOuverture(checkId)}">ce contrôle sur l'écran d'ouverture</a>
+             pour continuer — ce lien reste valable même si vous avez entre-temps commencé
+             l'ouverture d'un autre dossier.</p>`,
+    });
+  } catch (e) {
+    console.error("Notification de décision de conflit échouée (non bloquant) :", e);
+  }
+}
+
 async function notifierConflitPotentiel(check, termes) {
   try {
     const dests = await destinatairesConflit();
@@ -164,6 +219,44 @@ router.get("/", requirePermission("conflits.decision"), async (req, res) => {
   res.json(rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] })));
 });
 
+// GET /api/conflict-checks/mes-controles — panneau personnel du
+// CRÉATEUR (13/10/2026, demande explicite de l'utilisateur : « une tuile
+// séparée dans Nouveau dossier pour lui permettre de reprendre
+// l'ouverture »). Contrairement à GET / (registre de décision, réservé
+// aux titulaires conflits.decision), ici chacun ne voit QUE ses propres
+// contrôles — aucune permission particulière requise. Montre à la fois
+// les contrôles encore en attente ET ceux déjà décidés mais pas encore
+// `vu` par leur créateur (POST /:id/vu) — règle le vrai problème du
+// patch localStorage : celui-ci n'en retient qu'UN seul (le plus récent),
+// écrasé dès qu'un nouveau contrôle est lancé ; ce panneau, lui, retrouve
+// TOUS les contrôles du créateur, quel que soit leur nombre.
+// Placée AVANT GET /:id (sinon Express la capturerait comme si
+// "mes-controles" était un id).
+router.get("/mes-controles", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, intitule_projet, noms_recherches, resultat, details, decision, motif, cree_le, decide_le
+     FROM conflict_checks
+     WHERE cree_par = $1 AND resultat = 'potentiel' AND vu_le IS NULL
+     ORDER BY cree_le DESC`,
+    [req.user.sub]
+  );
+  res.json(rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] })));
+});
+
+// POST /api/conflict-checks/:id/vu — le créateur masque/acquitte un
+// contrôle de son propre panneau (13/10/2026) : purement personnel,
+// aucun effet sur `decision` ni sur le registre de l'associé (GET /).
+// Appelée aussi automatiquement quand le dossier est effectivement créé
+// à partir de ce contrôle (voir ouverture.component.ts).
+router.post("/:id/vu", async (req, res) => {
+  const { rows } = await pool.query(
+    "UPDATE conflict_checks SET vu_le = now() WHERE id = $1 AND cree_par = $2 RETURNING id",
+    [req.params.id, req.user.sub]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Contrôle introuvable" });
+  res.status(204).send();
+});
+
 // GET /api/conflict-checks/:id — consulter l'état d'UN contrôle précis
 // (13/10/2026, patch minimal retenu par l'utilisateur pour le bug « en
 // actualisant, tout le processus nouveau dossier se réinitialise ») : le
@@ -223,6 +316,10 @@ router.post("/:id/decision", requirePermission("conflits.decision"), async (req,
         error: existe.rows[0] ? "Ce contrôle a déjà reçu une décision (par quelqu'un d'autre entre-temps ?)" : "Contrôle introuvable",
       });
     }
+    // Hors chemin critique (même principe que notifierConflitPotentiel
+    // ci-dessus) : un échec d'envoi ne doit jamais faire échouer la
+    // décision elle-même, déjà enregistrée.
+    await notifierDecisionConflit(req.params.id, decision);
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

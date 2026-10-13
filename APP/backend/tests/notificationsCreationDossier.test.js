@@ -300,3 +300,74 @@ describe("DELETE /api/conflict-checks/:id — retirer une entrée sans décision
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/conflict-checks/mes-controles + POST /:id/vu — panneau personnel (13/10/2026, « que se passe-t-il s'il est passé à autre chose »)", () => {
+  test("ne montre QUE mes propres contrôles potentiel, jamais ceux d'un autre, jamais une 'absence'", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement MesControles ${Date.now()}`;
+    await creerClient(token, denomination);
+
+    const absence = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Absence", noms: `Inconnu${Date.now()}` });
+    const potentiel = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Potentiel", noms: denomination });
+    const dunAutre = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${token}`)
+      .send({ intitule_projet: "Autre createur", noms: denomination });
+
+    const mesControles = await request(app).get("/api/conflict-checks/mes-controles").set("Authorization", `Bearer ${collab.token}`);
+    expect(mesControles.status).toBe(200);
+    const ids = mesControles.body.map((c) => c.id);
+    expect(ids).toContain(potentiel.body.id);
+    expect(ids).not.toContain(absence.body.id);
+    expect(ids).not.toContain(dunAutre.body.id);
+  });
+
+  test("un contrôle déjà décidé reste visible tant qu'il n'est pas 'vu', puis disparait après POST /vu", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement VuApres ${Date.now()}`;
+    await creerClient(token, denomination);
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "A decider", noms: denomination });
+
+    await request(app).post(`/api/conflict-checks/${check.body.id}/decision`)
+      .set("Authorization", `Bearer ${token}`).send({ decision: "accepte", motif: "Verifie." });
+
+    const avant = await request(app).get("/api/conflict-checks/mes-controles").set("Authorization", `Bearer ${collab.token}`);
+    expect(avant.body.find((c) => c.id === check.body.id)?.decision).toBe("accepte");
+
+    const vu = await request(app).post(`/api/conflict-checks/${check.body.id}/vu`).set("Authorization", `Bearer ${collab.token}`);
+    expect(vu.status).toBe(204);
+
+    const apres = await request(app).get("/api/conflict-checks/mes-controles").set("Authorization", `Bearer ${collab.token}`);
+    expect(apres.body.find((c) => c.id === check.body.id)).toBeUndefined();
+  });
+
+  test("POST /:id/vu refuse pour quelqu'un d'autre que le créateur (404, pas de fuite)", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const autre = await creerUtilisateurRole("collaborateur");
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Prive", noms: `Prive${Date.now()}` });
+
+    const res = await request(app).post(`/api/conflict-checks/${check.body.id}/vu`).set("Authorization", `Bearer ${autre.token}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("Notification de décision au créateur (13/10/2026, « comment le collaborateur sait-il »)", () => {
+  test("un e-mail part vers le créateur avec un lien /ouverture?conflit= vers CE contrôle précis", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement NotifCreateur ${Date.now()}`;
+    await creerClient(token, denomination);
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Projet notif createur", noms: denomination });
+
+    envoyerEmail.mockClear();
+    await request(app).post(`/api/conflict-checks/${check.body.id}/decision`)
+      .set("Authorization", `Bearer ${token}`).send({ decision: "accepte", motif: "Verifie, homonyme." });
+
+    const appel = envoyerEmail.mock.calls.find((c) => c[0].to === collab.email);
+    expect(appel).toBeDefined();
+    expect(appel[0].subject).toContain("accepté");
+    expect(appel[0].html).toContain(`/ouverture?conflit=${check.body.id}`);
+  });
+});

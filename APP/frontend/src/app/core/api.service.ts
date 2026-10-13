@@ -448,6 +448,18 @@ export class ApiService {
     return this.http.delete<void>(`${this.base}/api/conflict-checks/${id}`);
   }
 
+  // Panneau personnel « Vos contrôles de conflit » (13/10/2026) — tous
+  // MES contrôles encore pertinents (en attente ou décidés non acquittés),
+  // quel que soit leur nombre (contrairement au localStorage, limité au
+  // dernier). Voir ouverture.component.ts.
+  mesControlesConflit(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/conflict-checks/mes-controles`);
+  }
+
+  marquerConflitVu(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/conflict-checks/${id}/vu`, {});
+  }
+
   // État d'un contrôle précis (13/10/2026) — utilisé pour restaurer l'écran
   // du créateur après un rafraîchissement (voir ouverture.component.ts).
   conflitCheckEtat(id: string): Observable<any> {

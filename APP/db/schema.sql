@@ -233,7 +233,11 @@ CREATE TABLE conflict_checks (
     decide_par    UUID REFERENCES utilisateurs(id),      -- associé
     decide_le     TIMESTAMPTZ,
     cree_par      UUID REFERENCES utilisateurs(id),
-    cree_le       TIMESTAMPTZ NOT NULL DEFAULT now()
+    cree_le       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    vu_le         TIMESTAMPTZ  -- 13/10/2026 : créateur a masqué/repris ce
+                               -- contrôle depuis son panneau « Vos contrôles
+                               -- de conflit » (ouverture.component.ts) —
+                               -- purement personnel, sans effet sur `decision`.
 );
 CREATE INDEX idx_conflict_dossier ON conflict_checks(dossier_id);
 
