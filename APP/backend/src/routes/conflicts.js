@@ -1,7 +1,7 @@
 // JURIA — Contrôle des conflits d'intérêts (phase obligatoire avant ouverture)
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerEmail } = require("../mailer");
 const router = express.Router();
 
@@ -140,6 +140,44 @@ router.get("/", requirePermission("conflits.decision"), async (req, res) => {
      ORDER BY cc.cree_le ASC`
   );
   res.json(rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] })));
+});
+
+// GET /api/conflict-checks/:id — consulter l'état d'UN contrôle précis
+// (13/10/2026, patch minimal retenu par l'utilisateur pour le bug « en
+// actualisant, tout le processus nouveau dossier se réinitialise ») : le
+// collaborateur qui a lancé le contrôle n'avait jusqu'ici aucun moyen de
+// retrouver son état après un rafraîchissement de page — son seul repère
+// vivait dans la mémoire du composant Angular, perdu au moindre F5, ce qui
+// le poussait à relancer un second contrôle (doublon + 2e e-mail). Cette
+// route sert à restaurer l'écran côté créateur (voir ouverture.component.ts,
+// localStorage) — reachable par le créateur du contrôle OU par un titulaire
+// de conflits.decision (cohérence avec le registre GET / ci-dessus).
+router.get("/:id", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT cc.id, cc.intitule_projet, cc.noms_recherches, cc.resultat, cc.details, cc.decision, cc.motif, cc.cree_par
+     FROM conflict_checks cc WHERE cc.id = $1`,
+    [req.params.id]
+  );
+  const check = rows[0];
+  if (!check) return res.status(404).json({ error: "Contrôle introuvable" });
+  const estCreateur = check.cree_par === req.user.sub;
+  const estDecideur = await estAutorise(req.user.role, "conflits.decision", req.user.sub);
+  if (!estCreateur && !estDecideur) return res.status(403).json({ error: "Non autorisé" });
+  const details = check.details ? JSON.parse(check.details) : [];
+  res.json({
+    id: check.id,
+    intitule_projet: check.intitule_projet,
+    noms_recherches: check.noms_recherches,
+    resultat: check.resultat,
+    decision: check.decision,
+    motif: check.motif,
+    details,
+    message: check.resultat === "potentiel"
+      ? (check.decision === "en_attente"
+          ? "Rapprochement(s) trouvé(s) : décision d'un associé requise avant ouverture."
+          : `Décision enregistrée : ${check.decision}.`)
+      : "Aucun conflit détecté : l'ouverture peut se poursuivre.",
+  });
 });
 
 // POST /api/conflict-checks/:id/decision  (réservé aux associés)

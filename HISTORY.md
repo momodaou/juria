@@ -3620,3 +3620,29 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **Déploiement** : commité (`b1946ab`). Aucune migration nécessaire. **Déployé et vérifié en production le 13/10/2026** (accord implicite, suite directe de la demande) — API `juria-00145-zvt` (précédente `juria-00144-vgb`), aucun changement frontend. Vérifié : `/health` en `200`.
 
 ⚠️ **Instruction à respecter impérativement dans les sessions futures** : ne pas réactiver `associe_fondateur` sur l'un ou l'autre de ces deux volets sans demande explicite — « on verra après le déblocage » (déblocage non précisé par l'utilisateur, probablement un sujet externe au développement de JURIA).
+
+## 13/10/2026 — 2 bugs réels sur le dispositif « Conflits à distance » (même jour, suite de la session précédente)
+
+**Constat de l'utilisateur** : « le lien mail de validation conflit renvoi pas au nom de domaine correct (juria.jfcavocats-mali) et aussi chez le collaborateur en actualisant tout le processus nouveau dossier se réinitialise ».
+
+### Bug 1 — domaine incorrect dans TOUS les liens e-mail de l'application (systémique, pas isolé au conflit)
+
+`FRONTEND_URL` n'avait **jamais été positionnée** sur le service Cloud Run `juria` — les 9 fichiers qui construisent un lien (`conflicts.js`, `dossiers.js`, `routes/auth.js`, et les 6 jobs `backend/src/jobs/*.js`) retombent tous sur le même repli codé en dur, l'URL brute Cloud Run (`https://juria-web-552099340909.europe-west1.run.app`) plutôt que le domaine réel du cabinet (`https://juria.jfcavocats-mali.com`, déjà mappé — confirmé via `gcloud beta run domain-mappings list` — et déjà présent dans `ALLOWED_ORIGINS`, qui l'utilise correctement depuis le début). **Corrigé par une seule variable d'environnement** (`gcloud run services update juria --update-env-vars=FRONTEND_URL=https://juria.jfcavocats-mali.com`) — aucun changement de code nécessaire, le code préférait déjà `process.env.FRONTEND_URL` quand elle existe. Corrige d'un coup les liens de : conflits, nouveau dossier créé, mot de passe oublié, et les 6 jobs d'alerte/notification.
+
+### Bug 2 — rafraîchissement de page pendant l'attente d'une décision de conflit perdait tout
+
+**Diagnostic demandé explicitement par l'utilisateur** (« fais une analyse nouvelle en fonction de ces problèmes et observations ») avant toute correction — révèle une asymétrie de conception : côté associé, un registre persistant (`/conflits`, construit plus tôt le même jour) permet de revenir n'importe quand ; côté collaborateur bloqué, rien d'équivalent — son seul lien vers le contrôle qu'il a lancé vivait uniquement dans la mémoire du composant Angular (`resultat`/`decisionPrise`, signaux), perdu au moindre F5. Pire : la seule voie de secours (le lien du mail) souffrait du Bug 1 ci-dessus.
+
+**2 options présentées** : (1) symétrie complète — un écran « Mes contrôles de conflit » pour le collaborateur, même patron que `/conflits` côté associé (recommandé, robuste même en changeant d'appareil) ; (2) patch minimal — mémoriser juste l'id du dernier contrôle dans `localStorage`, le relire au chargement (fragile si changement d'appareil/navigateur, mais couvre directement le cas signalé — un simple F5). **L'utilisateur choisit l'option 2.**
+
+**Implémenté** :
+- **Backend** (`conflicts.js`) : nouvelle route `GET /api/conflict-checks/:id` — reachable par le créateur du contrôle (restaurer son propre écran) OU par un titulaire de `conflits.decision` (cohérence avec le registre). Renvoie l'état RÉEL du contrôle, pas une copie figée — important si la décision est tombée pendant l'absence du collaborateur.
+- **Frontend** (`ouverture.component.ts`) : `verifier()` mémorise l'id du contrôle dans `localStorage` (clé `juria.conflit.enattente`, try/catch — robuste à un navigateur en mode privé qui bloquerait l'accès). `ngOnInit()` relit cette clé et appelle la nouvelle route pour reconstituer l'écran (résultat, décision déjà prise le cas échéant, client/parties adverses reconstruits depuis `noms_recherches`). `creerDossierReellement()` l'oublie une fois le dossier effectivement créé.
+
+**Vérifié** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **566/566 tests** (4 nouveaux dans `backend/tests/notificationsCreationDossier.test.js` — créateur peut relire son propre contrôle sans `conflits.decision`, un tiers reçoit `403`, la relecture reflète une décision prise entre-temps, contrôle inexistant → `404`). Build Angular production OK.
+
+**Vérification visuelle et fonctionnelle réelle de bout en bout** (Playwright, stack Docker locale dédiée, détruite après coup) : (a) collaborateur lance un contrôle « potentiel », **vrai rafraîchissement de page** (`page.reload()`) — état affiché identique avant/après, aucune relance nécessaire ; (b) scénario complet « décision prise pendant l'absence » — collaborateur lance le contrôle, navigue ailleurs dans l'application (pas juste un reload), l'associé décide via l'API pendant ce temps, le collaborateur revient sur l'écran d'ouverture → la décision « accepte » apparaît immédiatement, l'Étape 2 est débloquée, sans qu'il ait eu besoin de relancer quoi que ce soit.
+
+**Non fait, volontairement** (option 1 écartée par l'utilisateur) : pas d'écran « Mes contrôles de conflit » — reste une limite assumée du patch minimal, un changement d'appareil/navigateur perd toujours la référence.
+
+**Déploiement** : commité. Migration : aucune (pas de nouvelle colonne). Bug 1 appliqué en production immédiatement (simple variable d'environnement, révision `juria-00146-hnp`) avant même le commit de code du Bug 2.

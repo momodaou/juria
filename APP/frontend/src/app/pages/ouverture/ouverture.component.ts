@@ -687,6 +687,43 @@ export class OuvertureComponent implements OnInit {
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
+    this.restaurerConflitEnCours();
+  }
+
+  // Bug signalé (13/10/2026) : un rafraîchissement de page pendant l'attente
+  // d'une décision de conflit perdait toute trace du contrôle lancé — le
+  // collaborateur relançait alors un second contrôle (doublon + 2e e-mail).
+  // Patch minimal retenu (option 2) : mémoriser juste l'id du dernier
+  // contrôle dans localStorage, le relire au chargement, reconstituer
+  // l'écran depuis l'état RÉEL du contrôle côté serveur (pas depuis une
+  // copie figée) — il a pu être décidé entre-temps.
+  private static readonly CLE_CONFLIT = 'juria.conflit.enattente';
+
+  private memoriserConflitEnCours(id: string): void {
+    try { localStorage.setItem(OuvertureComponent.CLE_CONFLIT, id); } catch { /* localStorage indisponible, tant pis */ }
+  }
+
+  private oublierConflitEnCours(): void {
+    try { localStorage.removeItem(OuvertureComponent.CLE_CONFLIT); } catch { /* idem */ }
+  }
+
+  private restaurerConflitEnCours(): void {
+    let id: string | null = null;
+    try { id = localStorage.getItem(OuvertureComponent.CLE_CONFLIT); } catch { /* idem */ }
+    if (!id) return;
+    this.api.conflitCheckEtat(id).subscribe({
+      next: (c) => {
+        this.resultat.set(c);
+        if (c.resultat === 'potentiel' && c.decision !== 'en_attente') this.decisionPrise.set(c.decision);
+        // noms_recherches = "client, partie1, partie2" — 1er élément =
+        // client, le reste = parties adverses (même format que verifier()).
+        const noms = String(c.noms_recherches || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        this.clientNom = noms[0] || '';
+        this.partiesAdverses = noms.slice(1).join(', ');
+        this.preselectionnerClient();
+      },
+      error: () => this.oublierConflitEnCours(), // contrôle introuvable/inaccessible : rien à restaurer
+    });
   }
 
   partiesAdversesListe(): string[] {
@@ -791,7 +828,7 @@ export class OuvertureComponent implements OnInit {
       instance_initiale: instanceInitiale,
       ...(ignorerDoublon ? { ignorer_doublon: true } : {}),
     }).subscribe({
-      next: (r) => { this.creation.set(false); this.router.navigate(['/dossiers', r.id]); },
+      next: (r) => { this.creation.set(false); this.oublierConflitEnCours(); this.router.navigate(['/dossiers', r.id]); },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },
     });
   }
@@ -806,7 +843,7 @@ export class OuvertureComponent implements OnInit {
     // non utilisé par la recherche de conflit elle-même) — l'intitulé final
     // du dossier est désormais composé à l'Étape 2 (voir suggererIntitule()).
     this.api.conflictCheck({ intitule_projet: this.clientNom, noms }).subscribe({
-      next: (r) => { this.resultat.set(r); this.chargement.set(false); this.preselectionnerClient(); },
+      next: (r) => { this.resultat.set(r); this.chargement.set(false); this.preselectionnerClient(); this.memoriserConflitEnCours(r.id); },
       error: (e) => { this.chargement.set(false); this.erreur.set(e?.error?.error ?? 'Erreur lors du contrôle'); },
     });
   }

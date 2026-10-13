@@ -182,3 +182,51 @@ describe("Associé-fondateur SUSPENDU de conflits.decision (13/10/2026)", () => 
     expect(res.status).toBe(403);
   });
 });
+
+describe("GET /api/conflict-checks/:id — consulter un contrôle précis (13/10/2026, bug « actualiser réinitialise »)", () => {
+  test("le créateur peut relire SON contrôle même sans conflits.decision", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement Restaure ${Date.now()}`;
+    await creerClient(token, denomination);
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Projet restauration", noms: denomination });
+    expect(check.body.resultat).toBe("potentiel");
+
+    const relecture = await request(app).get(`/api/conflict-checks/${check.body.id}`).set("Authorization", `Bearer ${collab.token}`);
+    expect(relecture.status).toBe(200);
+    expect(relecture.body.decision).toBe("en_attente");
+    expect(relecture.body.noms_recherches).toBe(denomination);
+  });
+
+  test("un tiers (ni créateur, ni conflits.decision) reçoit 403", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const autre = await creerUtilisateurRole("collaborateur");
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Projet tiers", noms: `Tiers${Date.now()}` });
+
+    const res = await request(app).get(`/api/conflict-checks/${check.body.id}`).set("Authorization", `Bearer ${autre.token}`);
+    expect(res.status).toBe(403);
+  });
+
+  test("après décision, la relecture reflète l'état réel (pas 'en_attente')", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement Decide ${Date.now()}`;
+    await creerClient(token, denomination);
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Projet décidé", noms: denomination });
+
+    await request(app).post(`/api/conflict-checks/${check.body.id}/decision`)
+      .set("Authorization", `Bearer ${token}`).send({ decision: "accepte", motif: "Vérifié, homonyme." });
+
+    const relecture = await request(app).get(`/api/conflict-checks/${check.body.id}`).set("Authorization", `Bearer ${collab.token}`);
+    expect(relecture.status).toBe(200);
+    expect(relecture.body.decision).toBe("accepte");
+    expect(relecture.body.message).toContain("accepte");
+  });
+
+  test("contrôle inexistant → 404", async () => {
+    const res = await request(app).get("/api/conflict-checks/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+});

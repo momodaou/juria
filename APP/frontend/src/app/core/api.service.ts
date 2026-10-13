@@ -442,6 +442,12 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/conflict-checks`);
   }
 
+  // État d'un contrôle précis (13/10/2026) — utilisé pour restaurer l'écran
+  // du créateur après un rafraîchissement (voir ouverture.component.ts).
+  conflitCheckEtat(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/conflict-checks/${id}`);
+  }
+
   // Temps
   tempsDossier(dossierId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/temps?dossier_id=${dossierId}`);
