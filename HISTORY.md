@@ -3645,4 +3645,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Non fait, volontairement** (option 1 écartée par l'utilisateur) : pas d'écran « Mes contrôles de conflit » — reste une limite assumée du patch minimal, un changement d'appareil/navigateur perd toujours la référence.
 
-**Déploiement** : commité. Migration : aucune (pas de nouvelle colonne). Bug 1 appliqué en production immédiatement (simple variable d'environnement, révision `juria-00146-hnp`) avant même le commit de code du Bug 2.
+**Déploiement** : commité (`2057a0a`). Migration : aucune (pas de nouvelle colonne). Bug 1 appliqué en production immédiatement (simple variable d'environnement, révision `juria-00146-hnp`) avant même le commit de code du Bug 2. **Bug 2 déployé et vérifié en production le 13/10/2026** (accord utilisateur) — `./scripts/deploy.sh both`, API `juria-00147-58t`, frontend `juria-web-00193-7sn`. Vérifié : `/health` API en `200`, `/` frontend en `200`, `GET /api/conflict-checks/:id` sans jeton en `401` (route correctement montée).
