@@ -3646,3 +3646,28 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **Non fait, volontairement** (option 1 écartée par l'utilisateur) : pas d'écran « Mes contrôles de conflit » — reste une limite assumée du patch minimal, un changement d'appareil/navigateur perd toujours la référence.
 
 **Déploiement** : commité (`2057a0a`). Migration : aucune (pas de nouvelle colonne). Bug 1 appliqué en production immédiatement (simple variable d'environnement, révision `juria-00146-hnp`) avant même le commit de code du Bug 2. **Bug 2 déployé et vérifié en production le 13/10/2026** (accord utilisateur) — `./scripts/deploy.sh both`, API `juria-00147-58t`, frontend `juria-web-00193-7sn`. Vérifié : `/health` API en `200`, `/` frontend en `200`, `GET /api/conflict-checks/:id` sans jeton en `401` (route correctement montée).
+
+## 13/10/2026 — Registre /conflits : 39 entrées à tort, lien du mail générique, en-tête mal organisé (même jour, suite directe)
+
+**Constat de l'utilisateur** : « il y a des dossiers anciens affichés à valider (qui sont déjà créés à mon avis) », « il faut chercher jusqu'en bas pour retrouver le dossier récent », « le mail notifié... doit renvoyer directement dans le menu conflits en attente avec l'affichage du dossier demandé », « l'en-tête est mal organisé ». Vérifié précisément avant toute correction (pas supposé) : lecture directe de la production — **39 entrées dans le registre, dont 32 au résultat `absence`** (aucun conflit trouvé, l'ouverture s'est poursuivie directement sans jamais attendre de décision), remontant jusqu'au 18/08/2026 ; seules 7 sont de vrais contrôles `potentiel`, dont 2 doublons récents du même utilisateur (« BDM SA, Oumar SAMPY », soumis à 2 minutes d'écart le 13/10/2026).
+
+**Cause racine** : `GET /api/conflict-checks` ne filtrait que `decision = 'en_attente'`, jamais `resultat` — un contrôle `absence` garde `decision='en_attente'` **pour toujours**, puisque rien n'appelle jamais `POST /:id/decision` dessus (aucune décision n'a jamais été nécessaire). Chaque contrôle lancé — qu'il trouve un conflit ou non — restait donc indéfiniment dans ce registre, noyant les vrais cas en attente sous des années de bruit historique. Tri par ancienneté croissante (`ASC`) aggravait le symptôme : les vrais contrôles récents se retrouvaient tout en bas d'une liste de 39 entrées.
+
+**Corrigé** (`backend/src/routes/conflicts.js`) :
+- `GET /` : ajout de `AND cc.resultat = 'potentiel'` — élimine instantanément les 32 entrées orphelines, sans migration ni purge (les lignes restent en base pour l'historique, juste hors de ce filtre).
+- Tri inversé en `ORDER BY cc.cree_le DESC` — le plus récent en tête.
+- Le lien du mail pointe désormais vers **le contrôle précis** (`/conflits?id=<id>`, au lieu du registre entier) — lu côté écran pour défiler et surligner directement la bonne entrée.
+- Nouvelle route `DELETE /:id` (réservée `conflits.decision`, tracée dans `journal_audit`) pour retirer une entrée abandonnée ou en double sans forcer un faux « Refuser » — **vérifié et confirmé sans aucun lien avec la table `dossiers`** : `conflict_checks.dossier_id` n'est écrit par aucune route (colonne prévue au schéma, jamais câblée — même famille de gap que `temps.facture_id` avant son branchement), et aucune autre table ne référence `conflict_checks.id`. Supprimer une entrée n'efface donc jamais un dossier déjà créé et n'envoie jamais de mail (l'envoi n'a lieu qu'à la création du contrôle, jamais à sa décision/suppression) — répond directement à l'inquiétude de l'utilisateur.
+
+**Frontend** (`pages/conflits/conflits.component.ts`) :
+- En-tête corrigé : `<h1>` et `<p>` étaient directs enfants de `.page-head` (`display:flex;justify-content:space-between`, conçu pour aligner un titre à gauche et des boutons d'action à droite) — placés côte à côte au lieu de s'empiler, contrairement aux autres écrans (ex. `cabinet.component.ts`). Corrigé en les enveloppant dans un `<div>`, même patron que le reste de l'application.
+- Lecture de `?id=` (`ActivatedRoute`), défilement + surlignage (bordure marine + ombre) de l'entrée ciblée une fois la liste chargée ; message explicite si le contrôle visé a déjà été traité entre-temps par quelqu'un d'autre.
+- Lien « Supprimer (abandon ou doublon — sans lien avec un dossier) » ajouté sous chaque entrée, avec confirmation explicite rappelant qu'aucun dossier n'est touché.
+
+**Pas d'option de tri supplémentaire ajoutée** — avec le filtre + l'ordre DESC, la liste redevient courte et déjà triée dans le sens utile ; un sélecteur de tri aurait été disproportionné pour une poignée d'entrées réellement en attente à un instant donné.
+
+**Vérifié** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **571/571 tests** (5 nouveaux : un `absence` n'apparaît jamais dans le registre, le plus récent `potentiel` apparaît en premier, suppression sans effet sur `dossiers` + tracée dans `journal_audit`, 403 pour un non-titulaire, 404 sur un id inexistant). Build Angular production OK.
+
+**Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : en-tête confirmé empilé (mesure directe des positions, pas juste visuel) ; contrôle `absence` de test confirmé totalement absent de la page ; 2 contrôles `potentiel` créés délibérément espacés dans le temps confirmés dans le bon ordre (le plus récent en premier) ; navigation directe vers `/conflits?id=<id>` confirmée surlignant la bonne section (classe CSS vérifiée par lecture du DOM, pas supposée). Aucune erreur JS.
+
+**Déploiement** : commité. Migration : aucune.

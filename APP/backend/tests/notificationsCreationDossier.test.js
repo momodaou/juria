@@ -230,3 +230,73 @@ describe("GET /api/conflict-checks/:id — consulter un contrôle précis (13/10
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/conflict-checks — filtre 'resultat' + tri (13/10/2026 après-midi, bug « dossiers anciens affichés »)", () => {
+  test("un contrôle 'absence' n'apparaît JAMAIS dans le registre (aucune décision n'a jamais été attendue)", async () => {
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${token}`)
+      .send({ intitule_projet: "Projet sans conflit registre", noms: `Inconnu${Date.now()}` });
+    expect(check.body.resultat).toBe("absence");
+
+    const registre = await request(app).get("/api/conflict-checks").set("Authorization", `Bearer ${token}`);
+    expect(registre.body.find((c) => c.id === check.body.id)).toBeUndefined();
+  });
+
+  test("le plus récent contrôle 'potentiel' apparaît en premier (tri DESC)", async () => {
+    const denomination = `Rapprochement Tri ${Date.now()}`;
+    await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination });
+
+    const ancien = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${token}`)
+      .send({ intitule_projet: "Ancien", noms: denomination });
+    const recent = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${token}`)
+      .send({ intitule_projet: "Recent", noms: denomination });
+
+    const registre = await request(app).get("/api/conflict-checks").set("Authorization", `Bearer ${token}`);
+    const iAncien = registre.body.findIndex((c) => c.id === ancien.body.id);
+    const iRecent = registre.body.findIndex((c) => c.id === recent.body.id);
+    expect(iRecent).toBeLessThan(iAncien); // le plus récent est avant (indice plus petit = plus haut dans la liste)
+  });
+});
+
+describe("DELETE /api/conflict-checks/:id — retirer une entrée sans décision (13/10/2026 après-midi)", () => {
+  test("supprime l'entrée, sans toucher à aucun dossier, réservé à conflits.decision", async () => {
+    const denomination = `Rapprochement Suppr ${Date.now()}`;
+    await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination });
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${token}`)
+      .send({ intitule_projet: "A supprimer", noms: denomination });
+
+    const dossiersAvant = await request(app).get("/api/dossiers").set("Authorization", `Bearer ${token}`);
+
+    const suppr = await request(app).delete(`/api/conflict-checks/${check.body.id}`).set("Authorization", `Bearer ${token}`);
+    expect(suppr.status).toBe(204);
+
+    const registre = await request(app).get("/api/conflict-checks").set("Authorization", `Bearer ${token}`);
+    expect(registre.body.find((c) => c.id === check.body.id)).toBeUndefined();
+
+    const dossiersApres = await request(app).get("/api/dossiers").set("Authorization", `Bearer ${token}`);
+    expect(dossiersApres.body.length).toBe(dossiersAvant.body.length); // aucun dossier touché
+
+    const audit = await request(app).get("/api/acces/audit").query({ action: "supprimer_conflit" })
+      .set("Authorization", `Bearer ${token}`);
+    expect(audit.body.find((a) => a.entite_id === check.body.id)).toBeDefined();
+  });
+
+  test("403 pour un compte sans conflits.decision", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const denomination = `Rapprochement Suppr Collab ${Date.now()}`;
+    await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`)
+      .send({ type: "morale", denomination });
+    const check = await request(app).post("/api/conflict-checks").set("Authorization", `Bearer ${collab.token}`)
+      .send({ intitule_projet: "Collab", noms: denomination });
+
+    const res = await request(app).delete(`/api/conflict-checks/${check.body.id}`).set("Authorization", `Bearer ${collab.token}`);
+    expect(res.status).toBe(403);
+  });
+
+  test("404 sur un id inexistant", async () => {
+    const res = await request(app).delete("/api/conflict-checks/00000000-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+});

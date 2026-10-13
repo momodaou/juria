@@ -3,6 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerEmail } = require("../mailer");
+const { logAudit } = require("../audit");
 const router = express.Router();
 
 // Débloquer les conflits à distance (13/10/2026) — jusqu'ici la décision
@@ -29,9 +30,14 @@ async function destinatairesConflit() {
   return rows;
 }
 
-function lienConflits() {
+// Lien direct vers UN contrôle précis (13/10/2026, constat utilisateur :
+// le lien du mail renvoyait vers le registre entier, sans jamais pointer
+// vers le contrôle concerné — « il faut chercher jusqu'en bas pour
+// retrouver le dossier récent »). ?id= est lu par conflits.component.ts
+// pour défiler/surligner directement la bonne entrée.
+function lienConflit(id) {
   const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
-  return `${base}/conflits`;
+  return `${base}/conflits?id=${id}`;
 }
 
 async function notifierConflitPotentiel(check, termes) {
@@ -48,8 +54,8 @@ async function notifierConflitPotentiel(check, termes) {
                potentiel (projet : <strong>${check.intitule_projet || "non précisé"}</strong>) :</p>
                <ul>${liste}</ul>
                <p>Le collaborateur reste bloqué à l'étape d'ouverture du dossier tant
-               qu'aucune décision n'est prise. Voir <a href="${lienConflits()}">le registre des
-               conflits en attente</a> pour décider depuis votre propre compte.</p>`,
+               qu'aucune décision n'est prise. Voir <a href="${lienConflit(check.id)}">ce
+               contrôle dans le registre</a> pour décider depuis votre propre compte.</p>`,
       });
     }
   } catch (e) {
@@ -130,14 +136,30 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
 // (13/10/2026), réservé aux mêmes titulaires que la décision elle-même.
 // Permet à un associé de décider depuis SON compte, sans avoir à être sur
 // l'écran du collaborateur qui a lancé le contrôle (voir note plus haut).
+//
+// ⚠️ Bug corrigé le 13/10/2026 (après-midi, constat utilisateur : « des
+// dossiers anciens affichés à valider qui sont déjà créés ») : le filtre
+// ne portait QUE sur `decision = 'en_attente'`, jamais sur `resultat` —
+// un contrôle 'absence' (aucun conflit trouvé, l'ouverture se poursuit
+// directement, AUCUNE décision n'a jamais été attendue) garde pourtant
+// `decision = 'en_attente'` pour toujours, puisque rien n'appelle jamais
+// POST /:id/decision dessus. Résultat réel observé en production : 39
+// entrées listées, dont 32 'absence' remontant jusqu'au 18/08/2026 — de
+// purs résidus historiques, jamais de vrais contrôles en attente. Ajout
+// de `AND cc.resultat = 'potentiel'` : élimine le bruit d'un coup, sans
+// migration ni purge (les lignes restent en base, juste hors de ce
+// filtre — aucune perte d'historique).
+// Tri inversé en DESC (le plus récent en tête, demande explicite de
+// l'utilisateur) — avec le filtre ci-dessus, la liste reste courte, mais
+// l'ordre chronologique reste la bonne convention par défaut.
 router.get("/", requirePermission("conflits.decision"), async (req, res) => {
   const { rows } = await pool.query(
     `SELECT cc.id, cc.intitule_projet, cc.noms_recherches, cc.resultat, cc.details, cc.decision, cc.cree_le,
             u.prenom || ' ' || u.nom AS cree_par_nom, u.code AS cree_par_code
      FROM conflict_checks cc
      LEFT JOIN utilisateurs u ON u.id = cc.cree_par
-     WHERE cc.decision = 'en_attente'
-     ORDER BY cc.cree_le ASC`
+     WHERE cc.decision = 'en_attente' AND cc.resultat = 'potentiel'
+     ORDER BY cc.cree_le DESC`
   );
   res.json(rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] })));
 });
@@ -206,6 +228,31 @@ router.post("/:id/decision", requirePermission("conflits.decision"), async (req,
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// DELETE /api/conflict-checks/:id — retirer une entrée du registre sans
+// porter de décision (13/10/2026, demande explicite de l'utilisateur :
+// « voir si on peut supprimer ou valider »). Usage réel visé : un
+// contrôle abandonné ou saisi en double (ex. le collaborateur relance un
+// 2e contrôle après avoir perdu sa référence) — un « Refuser » motivé
+// serait sémantiquement faux pour ce cas (aucun conflit à refuser, juste
+// une entrée à nettoyer). AUCUN lien avec la table dossiers : vérifié
+// qu'aucune route n'écrit jamais `conflict_checks.dossier_id` (colonne
+// jamais câblée, prévue au schéma mais morte) et qu'aucune autre table
+// ne référence `conflict_checks.id` — supprimer cette ligne n'efface
+// donc jamais un dossier déjà créé, et n'envoie jamais de mail (l'envoi
+// n'a lieu qu'à la création du contrôle, pas à sa décision/suppression).
+router.delete("/:id", requirePermission("conflits.decision"), async (req, res) => {
+  const { rows } = await pool.query(
+    "DELETE FROM conflict_checks WHERE id = $1 RETURNING id, noms_recherches, resultat",
+    [req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Contrôle introuvable" });
+  await logAudit({
+    utilisateurId: req.user.sub, action: "supprimer_conflit", entite: "conflict_checks",
+    entiteId: rows[0].id, details: { noms_recherches: rows[0].noms_recherches, resultat: rows[0].resultat }, ip: req.ip,
+  });
+  res.status(204).send();
 });
 
 module.exports = router;

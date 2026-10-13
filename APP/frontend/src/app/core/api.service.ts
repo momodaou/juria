@@ -442,6 +442,12 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/api/conflict-checks`);
   }
 
+  // Retirer une entrée du registre sans décision (13/10/2026 après-midi) —
+  // abandon/doublon, aucun lien avec les dossiers (voir conflicts.js).
+  supprimerConflit(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/conflict-checks/${id}`);
+  }
+
   // État d'un contrôle précis (13/10/2026) — utilisé pour restaurer l'écran
   // du créateur après un rafraîchissement (voir ouverture.component.ts).
   conflitCheckEtat(id: string): Observable<any> {
