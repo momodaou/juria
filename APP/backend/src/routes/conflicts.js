@@ -2,7 +2,60 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { envoyerEmail } = require("../mailer");
 const router = express.Router();
+
+// Débloquer les conflits à distance (13/10/2026) — jusqu'ici la décision
+// (accepte/refuse/oriente) n'était reachable QUE depuis l'écran où le
+// collaborateur a lui-même lancé le contrôle (seul endroit qui affichait
+// les boutons de décision) : aucun registre, aucune notification. Un
+// associé devait physiquement s'asseoir devant la machine du collaborateur
+// bloqué pour pouvoir décider. Corrigé par : (1) un e-mail immédiat aux
+// titulaires de `conflits.decision` dès qu'un contrôle sort "potentiel",
+// (2) GET / ci-dessous, qui liste les contrôles en attente pour que la
+// décision se prenne depuis le propre compte de l'associé, où qu'il soit —
+// la route de décision elle-même (POST /:id/decision) était déjà
+// reachable à distance, seule l'absence d'écran/notification bloquait.
+// Destinataires résolus depuis permissions_role (même principe que
+// alertesDoublons.js : jamais une liste de rôles recopiée à la main, qui a
+// déjà dérivé de la réalité de la matrice sur ce projet).
+async function destinatairesConflit() {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT u.email, u.prenom
+     FROM utilisateurs u
+     JOIN permissions_role pr ON pr.role = u.role AND pr.action_code = 'conflits.decision' AND pr.autorise = TRUE
+     WHERE u.actif = TRUE`
+  );
+  return rows;
+}
+
+function lienConflits() {
+  const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
+  return `${base}/conflits`;
+}
+
+async function notifierConflitPotentiel(check, termes) {
+  try {
+    const dests = await destinatairesConflit();
+    if (!dests.length) return;
+    const liste = termes.map((t) => `<li>${t.terme} — ${t.correspondances.length} rapprochement(s)</li>`).join("");
+    for (const d of dests) {
+      await envoyerEmail({
+        to: d.email,
+        subject: `Conflit d'intérêts à valider — ${check.intitule_projet || "dossier en préparation"}`,
+        html: `<p>Bonjour ${d.prenom},</p>
+               <p>Un contrôle de conflit d'intérêts vient de signaler un rapprochement
+               potentiel (projet : <strong>${check.intitule_projet || "non précisé"}</strong>) :</p>
+               <ul>${liste}</ul>
+               <p>Le collaborateur reste bloqué à l'étape d'ouverture du dossier tant
+               qu'aucune décision n'est prise. Voir <a href="${lienConflits()}">le registre des
+               conflits en attente</a> pour décider depuis votre propre compte.</p>`,
+      });
+    }
+  } catch (e) {
+    console.error("Notification de conflit potentiel échouée (non bloquant) :", e);
+  }
+}
 
 // POST /api/conflict-checks
 // body : { intitule_projet, noms: "SODIMA, Bâtir-SA, ..." }
@@ -48,6 +101,16 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
       [b.intitule_projet || null, termes.join(", "), resultat, JSON.stringify(details), req.user.sub]
     );
 
+    if (resultat === "potentiel") {
+      // Hors chemin critique (même principe que la lettre de mission auto
+      // de dossiers.js) : un échec d'envoi ne doit jamais faire échouer le
+      // contrôle lui-même, dont la réponse est déjà prête.
+      await notifierConflitPotentiel(
+        { id: ins.rows[0].id, intitule_projet: b.intitule_projet || null },
+        details
+      );
+    }
+
     res.status(201).json({
       id: ins.rows[0].id,
       resultat,
@@ -61,6 +124,22 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// GET /api/conflict-checks — registre des contrôles en attente de décision
+// (13/10/2026), réservé aux mêmes titulaires que la décision elle-même.
+// Permet à un associé de décider depuis SON compte, sans avoir à être sur
+// l'écran du collaborateur qui a lancé le contrôle (voir note plus haut).
+router.get("/", requirePermission("conflits.decision"), async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT cc.id, cc.intitule_projet, cc.noms_recherches, cc.resultat, cc.details, cc.decision, cc.cree_le,
+            u.prenom || ' ' || u.nom AS cree_par_nom, u.code AS cree_par_code
+     FROM conflict_checks cc
+     LEFT JOIN utilisateurs u ON u.id = cc.cree_par
+     WHERE cc.decision = 'en_attente'
+     ORDER BY cc.cree_le ASC`
+  );
+  res.json(rows.map((r) => ({ ...r, details: r.details ? JSON.parse(r.details) : [] })));
 });
 
 // POST /api/conflict-checks/:id/decision  (réservé aux associés)

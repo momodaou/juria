@@ -143,6 +143,9 @@ export class AppComponent implements OnInit {
     ouverture: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
     ),
+    conflits: this.icon(
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3Z"/><line x1="12" y1="9" x2="12" y2="14"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    ),
     clients: this.icon(
       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10.5" r="2.25"/><path d="M5.5 17c.6-2.1 2.2-3.2 3.5-3.2s2.9 1.1 3.5 3.2"/><line x1="14.5" y1="9" x2="18.5" y2="9"/><line x1="14.5" y1="12.5" x2="18.5" y2="12.5"/></svg>',
     ),
@@ -209,6 +212,10 @@ export class AppComponent implements OnInit {
     // que créer un dossier — la garde dossiers.creer suffit (aucune raison
     // de le voir sans pouvoir créer).
     { path: '/ouverture', label: 'Nouveau dossier', icon: this.icons.ouverture, requiert: 'dossiers.creer', groupe: 'Dossiers & clients' },
+    // Conflits en attente de décision (13/10/2026) : masqué pour qui n'a
+    // pas conflits.decision — même garde que la route GET côté serveur,
+    // pas un nouveau concept de permission.
+    { path: '/conflits', label: 'Conflits en attente', icon: this.icons.conflits, requiert: 'conflits.decision', groupe: 'Dossiers & clients' },
     // clients.consulter : masque uniquement le menu — GET /api/clients
     // reste volontairement non gardé côté serveur, partagé avec le
     // sélecteur de client (<app-client-picker>) utilisé sur les écrans

@@ -12,6 +12,7 @@ const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../factu
 const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const { logAudit, diffChamps } = require("../audit");
+const { envoyerEmail } = require("../mailer");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -101,6 +102,43 @@ async function genererLettreMissionAuto(dossierId, modeHonoraires, clientId, aut
   } catch (e) {
     console.error("Génération automatique de la lettre de mission échouée (non bloquant) :", e);
     return null;
+  }
+}
+
+// Notification générale à la création d'un dossier (13/10/2026, demande
+// explicite de l'utilisateur) — porte à la connaissance des associés
+// CHAQUE dossier créé par quelqu'un d'autre qu'eux, par principe
+// d'accountability (pas une autorisation, rien n'est bloqué). Volontairement
+// par RÔLE directement (associe/associe_fondateur), pas par une permission
+// du catalogue : il ne s'agit pas d'un droit qu'on pourrait vouloir retirer
+// à un associé via la Matrice, mais de la notion même de qui dirige le
+// cabinet. Hors chemin critique, même patron que genererLettreMissionAuto
+// ci-dessus (try/catch interne, jamais bloquant).
+async function notifierAssociesNouveauDossier(dossierId, numero, intitule, createurId, createurRole) {
+  if (["associe", "associe_fondateur"].includes(createurRole)) return;
+  try {
+    const { rows: dests } = await pool.query(
+      `SELECT email, prenom FROM utilisateurs WHERE actif = TRUE AND role IN ('associe','associe_fondateur')`
+    );
+    if (!dests.length) return;
+    const { rows: [createur] } = await pool.query(
+      "SELECT prenom, nom, code FROM utilisateurs WHERE id = $1", [createurId]
+    );
+    const nomCreateur = createur ? `${createur.prenom} ${createur.nom} (${createur.code})` : "un collaborateur";
+    const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
+    const lien = `${base}/dossiers/${dossierId}`;
+    for (const d of dests) {
+      await envoyerEmail({
+        to: d.email,
+        subject: `Nouveau dossier créé — ${numero}`,
+        html: `<p>Bonjour ${d.prenom},</p>
+               <p><strong>${nomCreateur}</strong> vient de créer le dossier
+               <strong>${numero}</strong> — ${intitule}.</p>
+               <p><a href="${lien}">Voir la fiche du dossier</a></p>`,
+      });
+    }
+  } catch (e) {
+    console.error("Notification de nouveau dossier échouée (non bloquant) :", e);
   }
 }
 
@@ -783,6 +821,7 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     // exécutée après la création, son échec éventuel n'empêche jamais la
     // réponse 201 (le dossier existe déjà à ce stade).
     const lettreMissionId = await genererLettreMissionAuto(rows[0].id, modeEffectif, b.client_id, req.user.sub);
+    await notifierAssociesNouveauDossier(rows[0].id, rows[0].numero, b.intitule, req.user.sub, req.user.role);
 
     // Traçabilité des doublons (12/10/2026) : `ignorer_doublon` n'est envoyé
     // par le frontend que sur le chemin "Créer quand même" (après qu'un

@@ -435,6 +435,13 @@ export class ApiService {
     return this.http.post<any>(`${this.base}/api/conflict-checks/${id}/decision`, payload);
   }
 
+  // Registre des conflits en attente (13/10/2026) — décider à distance,
+  // depuis son propre compte, sans être sur l'écran du collaborateur
+  // bloqué. Réservé aux titulaires de conflits.decision (403 sinon).
+  conflitsEnAttente(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/conflict-checks`);
+  }
+
   // Temps
   tempsDossier(dossierId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/temps?dossier_id=${dossierId}`);

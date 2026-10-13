@@ -50,6 +50,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/ouverture/ouverture.component').then((m) => m.OuvertureComponent),
       },
       {
+        path: 'conflits',
+        loadComponent: () => import('./pages/conflits/conflits.component').then((m) => m.ConflitsComponent),
+      },
+      {
         path: 'echeancier',
         loadComponent: () => import('./pages/echeancier/echeancier.component').then((m) => m.EcheancierComponent),
       },
