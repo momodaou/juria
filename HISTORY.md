@@ -3709,4 +3709,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : reproduction exacte du scénario BDM — client avec 7 dossiers à parties adverses toutes différentes créé via l'API, confirmé **0 connexe retourné** (contre 6 avant correctif) et **panneau absent de la fiche** ; cas témoin « même partie adverse exacte, clients différents » confirmé toujours détecté avec le nouveau libellé statique affiché correctement. Aucune erreur console.
 
-**Déploiement** : commité. Aucune migration nécessaire (aucun changement de schéma, juste une requête SQL simplifiée et des champs retirés de la réponse JSON).
+**Déploiement** : commité (`44b7365`). Aucune migration nécessaire (aucun changement de schéma, juste une requête SQL simplifiée et des champs retirés de la réponse JSON). **Déployé et vérifié en production le 13/10/2026** — `./scripts/deploy.sh both`, API `juria-00150-ccs` (précédente `juria-00149-d55`), frontend `juria-web-00196-v6j` (précédente `juria-web-00195-cmm`). Vérifié : `/health` API en `200`, `/` frontend en `200`.
