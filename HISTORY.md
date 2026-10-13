@@ -3617,4 +3617,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérification** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **562/562 tests**. Aucun changement frontend, build Angular non nécessaire.
 
+**Déploiement** : commité (`b1946ab`). Aucune migration nécessaire. **Déployé et vérifié en production le 13/10/2026** (accord implicite, suite directe de la demande) — API `juria-00145-zvt` (précédente `juria-00144-vgb`), aucun changement frontend. Vérifié : `/health` en `200`.
+
 ⚠️ **Instruction à respecter impérativement dans les sessions futures** : ne pas réactiver `associe_fondateur` sur l'un ou l'autre de ces deux volets sans demande explicite — « on verra après le déblocage » (déblocage non précisé par l'utilisateur, probablement un sujet externe au développement de JURIA).
