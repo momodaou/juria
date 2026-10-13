@@ -10,6 +10,13 @@
 // explicite de l'utilisateur (« pas les notif d'autorisation de
 // création »), déjà vraie par construction (conflits.decision = FALSE
 // pour admin_general dans la Matrice), non retestée ici.
+// ⚠️ Même jour, complément ultérieur : l'associé-fondateur est SUSPENDU
+// des deux volets (demande explicite, motif externe non précisé, « on
+// verra après le déblocage ») — `conflits.decision` repassée à FALSE pour
+// ce rôle en production (déjà FALSE dans schema.sql, c'est la production
+// qui avait dérivé), et `notifierAssociesNouveauDossier()` ne le pousse
+// plus jamais dans ses destinataires (voir dossiers.js). Ne PAS réactiver
+// sans demande explicite future.
 jest.mock("../src/mailer", () => ({ envoyerEmail: jest.fn().mockResolvedValue({ envoye: true }) }));
 
 const bcrypt = require("bcryptjs");
@@ -146,5 +153,32 @@ describe("Notification générale à la création d'un dossier (13/10/2026)", ()
 
     expect(appelsVers(EMAIL_TEST).length).toBeGreaterThan(0);
     expect(appelsVers(adminGeneral.email).length).toBe(0);
+  });
+
+  test("associé-fondateur SUSPENDU : ne reçoit jamais cette notification, même pour un dossier créé par un collaborateur", async () => {
+    const collab = await creerUtilisateurRole("collaborateur");
+    const fondateur = await creerUtilisateurRole("associe_fondateur");
+    const client = await creerClient(token, `Client notif fondateur ${Date.now()}`);
+    const res = await creerDossier(collab.token, { client_id: client.id, responsable_id: associeId });
+    expect(res.status).toBe(201);
+
+    expect(appelsVers(EMAIL_TEST).length).toBeGreaterThan(0); // l'associé classique continue de recevoir
+    expect(appelsVers(fondateur.email).length).toBe(0); // le fondateur, suspendu, ne reçoit rien
+  });
+
+  test("associé-fondateur SUSPENDU : un dossier qu'il crée lui-même reste muet pour les associés (comportement inchangé)", async () => {
+    const fondateur = await creerUtilisateurRole("associe_fondateur");
+    const client = await creerClient(token, `Client notif fondateur createur ${Date.now()}`);
+    const res = await creerDossier(fondateur.token, { client_id: client.id, responsable_id: associeId });
+    expect(res.status).toBe(201);
+    expect(appelsVers(EMAIL_TEST).length).toBe(0);
+  });
+});
+
+describe("Associé-fondateur SUSPENDU de conflits.decision (13/10/2026)", () => {
+  test("403 sur GET /api/conflict-checks pour un compte associé-fondateur", async () => {
+    const fondateur = await creerUtilisateurRole("associe_fondateur");
+    const res = await request(app).get("/api/conflict-checks").set("Authorization", `Bearer ${fondateur.token}`);
+    expect(res.status).toBe(403);
   });
 });

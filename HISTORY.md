@@ -3604,3 +3604,17 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **`schema.sql` réaligné** : seule la ligne `admin_it` différait réellement du bloc d'alignement du 25/09/2026 (`TRUE` dans le fichier, `FALSE` en production depuis un changement intermédiaire non reporté) — corrigée à `FALSE`. Les 3 autres lignes (`of_counsel`/`collaborateur`/`avocat_stagiaire`) étaient déjà à `FALSE` dans `schema.sql` ; c'est la production qui avait dérivé vers `TRUE` entre-temps, maintenant réalignée dans l'autre sens par les 3 appels ci-dessus.
 
 **Aucune migration, aucun déploiement de code nécessaire** — changement de données (Matrice) + documentation uniquement.
+
+## 13/10/2026 — Associé-fondateur suspendu des 2 volets (conflits + notification dossier)
+
+**Demande explicite de l'utilisateur** (motif externe à JURIA, non précisé) : « mettre les notif et autorisation ouvertes à associé fondateur (uniquement lui) pour l'instant en suspend. On verra après le déblocage. »
+
+**`conflits.decision`** : repassée à `FALSE` pour `associe_fondateur` en production (`PUT /api/acces/permissions`, tracé dans `journal_audit`) — déjà `FALSE` dans `schema.sql` (ligne 3501), c'est la production qui avait dérivé vers `TRUE` (cohérent avec le principe documenté « associé-fondateur = mêmes droits qu'un associé classique sur toute la matrice », mais mis en suspens ici sur demande explicite). Aucun changement de `schema.sql` nécessaire pour ce point.
+
+**Notification générale « Nouveau dossier créé »** (`backend/src/routes/dossiers.js`, `notifierAssociesNouveauDossier()`) : ne pousse plus `associe_fondateur` dans ses destinataires — seul `associe` classique continue de recevoir cette notification. Le reste du comportement est inchangé : un dossier créé PAR l'associé-fondateur reste muet pour les associés (même règle qu'avant, il est toujours regroupé avec `associe` dans la condition d'auto-silence) ; `admin_general` continue de recevoir indépendamment de ce changement.
+
+**2 nouveaux tests verrouillant la suspension** (`backend/tests/notificationsCreationDossier.test.js`) : l'associé-fondateur ne reçoit rien pour un dossier créé par un collaborateur (l'associé classique, lui, reçoit toujours) ; un dossier qu'il crée lui-même reste muet pour les associés (comportement inchangé) ; `GET /api/conflict-checks` renvoie `403` pour un compte associé-fondateur.
+
+**Vérification** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **562/562 tests**. Aucun changement frontend, build Angular non nécessaire.
+
+⚠️ **Instruction à respecter impérativement dans les sessions futures** : ne pas réactiver `associe_fondateur` sur l'un ou l'autre de ces deux volets sans demande explicite — « on verra après le déblocage » (déblocage non précisé par l'utilisateur, probablement un sujet externe au développement de JURIA).

@@ -123,10 +123,18 @@ async function genererLettreMissionAuto(dossierId, modeHonoraires, clientId, aut
 // elle est donc notifiée de TOUT dossier créé par quelqu'un d'autre
 // qu'elle-même, y compris par un associé (contrairement au volet associés
 // ci-dessous, qui reste muet entre associés).
+// ⚠️ Associé-fondateur SUSPENDU de ce volet (13/10/2026, demande explicite
+// de l'utilisateur — « mettre les notif et autorisation ouvertes à
+// associé fondateur (uniquement lui) pour l'instant en suspend. On verra
+// après le déblocage »), motif externe à JURIA, non précisé. Ne reçoit
+// donc plus cette notification (seul `associe` classique la reçoit) — ne
+// PAS réactiver `associe_fondateur` ici sans demande explicite future.
+// Le reste du comportement (associé classique silencieux entre pairs,
+// admin_general toujours notifiée) est inchangé.
 async function notifierAssociesNouveauDossier(dossierId, numero, intitule, createurId, createurRole) {
   const rolesDestinataires = [];
   if (!["associe", "associe_fondateur"].includes(createurRole)) {
-    rolesDestinataires.push("associe", "associe_fondateur");
+    rolesDestinataires.push("associe");
   }
   if (createurRole !== "admin_general") {
     rolesDestinataires.push("admin_general");
