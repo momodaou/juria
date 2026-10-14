@@ -3763,3 +3763,13 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **Vérifié** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **577/577 tests** (aucun test cassé, colonne purement additive). Build Angular production OK. **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : dossier/événement/tâche de test créés avec un intitulé distinctif — confirmé affiché sous la référence sur les deux sections, classes CSS `.dossier-ref`/`.dossier-nom` présentes. Aucune erreur console.
 
 **Déploiement** : aucune migration nécessaire (colonne déjà existante, juste ajoutée au `SELECT`). Commité (`08e3dcb`). **Déployé et vérifié en production le 14/10/2026** — `./scripts/deploy.sh both`, API `juria-00152-kvq` (précédente `juria-00151-pjv`), frontend `juria-web-00199-btd` (précédente `juria-web-00198-gbr`). Vérifié : `/health` API en `200`, `/` frontend en `200`.
+
+## 14/10/2026 (même jour) — Renommage « Plan d'action » → « Tâches »
+
+**Contexte** : clôture de la discussion sur la clarté du menu, démarrée plus tôt dans la journée — l'utilisateur demande le renommage pour plus de compréhension des collaborateurs. Recommandation confirmée : « Tâches » plutôt que des alternatives plus longues (« Suivi des tâches », « Gestion des tâches ») — cohérent avec la convention de nommage déjà en place dans le menu (noms concrets et courts : « Dossiers », « Clients & KYC », « Échéances »...).
+
+**Portée** (même convention que le renommage Cockpit → Tableau de bord, 04/09/2026) : **renommage d'affichage uniquement** — libellé du menu latéral (`app.component.ts`) et titre `<h1>` de l'écran (`plan-action.component.ts`) changés ; route (`/plan-action`), nom de fichier/composant (`PlanActionComponent`) et commentaires internes du code laissés inchangés. Les 2 mentions utilisateur restantes dans Échéances (lien « Gérer les tâches dans le Plan d'action → » et le texte d'accompagnement, ajoutés le même jour lors du retrait du doublon de tâches) mises à jour pour cohérence terminologique : « Gérer dans l'écran Tâches → » et « ... la création et le suivi se font dans l'écran Tâches. ».
+
+**Vérifié** : build Angular production OK (aucun changement backend). **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : libellé du menu confirmé « Tâches » (plus aucune entrée « Plan d'action »), titre de l'écran confirmé « Tâches », route toujours `/plan-action`, lien depuis Échéances confirmé « Gérer dans l'écran Tâches → ». Aucune erreur console.
+
+**Déploiement** : aucune migration nécessaire (frontend seul, libellés uniquement).

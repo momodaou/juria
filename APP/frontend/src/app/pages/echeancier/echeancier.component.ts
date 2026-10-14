@@ -96,9 +96,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     <section class="panel">
       <div class="entete-section">
         <h3>Tâches à venir</h3>
-        <a class="lien" routerLink="/plan-action" [queryParams]="filtreDossierId() ? {dossier: filtreDossierId(), dossierLabel: filtreDossierNumero()} : {}">Gérer les tâches dans le Plan d'action →</a>
+        <a class="lien" routerLink="/plan-action" [queryParams]="filtreDossierId() ? {dossier: filtreDossierId(), dossierLabel: filtreDossierNumero()} : {}">Gérer dans l'écran Tâches →</a>
       </div>
-      <p class="muted" style="margin-bottom:12px">Rappel des tâches non terminées ayant une échéance — la création et le suivi se font dans le Plan d'action.</p>
+      <p class="muted" style="margin-bottom:12px">Rappel des tâches non terminées ayant une échéance — la création et le suivi se font dans l'écran Tâches.</p>
       @if (tachesAVenir().length) {
         <table>
           <tr><th>Tâche</th><th>Dossier</th><th>Responsable</th><th>Échéance</th></tr>

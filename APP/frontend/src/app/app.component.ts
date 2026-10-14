@@ -228,7 +228,11 @@ export class AppComponent implements OnInit {
 
     { path: '/actes', label: "Atelier d'actes", icon: this.icons.actes, requiert: 'actes.consulter', groupe: 'Production' },
     { path: '/biblio', label: 'Bibliothèque', icon: this.icons.biblio, groupe: 'Production' },
-    { path: '/plan-action', label: "Plan d'action", icon: this.icons.planAction, requiert: 'taches.consulter', groupe: 'Production' },
+    // 14/10/2026 — libellé renommé "Tâches" pour plus de clarté auprès du
+    // personnel (demande explicite de l'utilisateur, voir CLAUDE.md) ;
+    // route/nom de composant/fichier inchangés (même convention que le
+    // renommage Cockpit -> Tableau de bord du 04/09/2026).
+    { path: '/plan-action', label: 'Tâches', icon: this.icons.planAction, requiert: 'taches.consulter', groupe: 'Production' },
     { path: '/assistant-ia', label: 'Assistant IA', icon: this.icons.assistantIa, requiert: 'ia.consulter', groupe: 'Production' },
 
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter', groupe: 'Finance' },

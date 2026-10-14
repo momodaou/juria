@@ -25,7 +25,9 @@ const COLONNES = [
   template: `
     <header class="page-head">
       <div>
-        <h1>Plan d'action</h1>
+        <!-- 14/10/2026 — titre renommé "Tâches" (menu latéral idem),
+             sous-titre inchangé — voir CLAUDE.md. -->
+        <h1>Tâches</h1>
         <p>Suivi des tâches du cabinet.</p>
       </div>
       <div class="entete-actions">
