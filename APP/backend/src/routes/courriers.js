@@ -84,7 +84,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT c.id, c.reference, c.sens, c.type, c.date_courrier, c.correspondant, c.objet,
+      `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
               c.imputation_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
        FROM courriers c
@@ -126,7 +126,7 @@ router.get("/:id", requirePermission("courriers.consulter"), async (req, res) =>
 });
 
 // POST /api/courriers
-// body : { sens, type, date_courrier?, acteur_type?, correspondant, objet?, dossier_id?, support?, imputation_id? }
+// body : { sens, type, type_precision?, date_courrier?, acteur_type?, correspondant, objet?, dossier_id?, support?, imputation_id? }
 router.post("/", requirePermission("courriers.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.sens || !b.type) return res.status(400).json({ error: "sens et type requis" });
@@ -137,13 +137,13 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
     const reference = await genererReference(client, b.sens, dateCourrier);
     const ins = await client.query(
       `INSERT INTO courriers
-         (reference, sens, type, date_courrier, acteur_type, correspondant, objet,
+         (reference, sens, type, type_precision, date_courrier, acteur_type, correspondant, objet,
           dossier_id, support, imputation_id, recu_par, cree_par,
           statut, a_numeriser)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::support_courrier,'papier'),$10::uuid,$11,$11,
-               (CASE WHEN $12::uuid IS NOT NULL THEN 'impute' ELSE 'recu' END)::statut_courrier, $13)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::support_courrier,'papier'),$11::uuid,$12,$12,
+               (CASE WHEN $13::uuid IS NOT NULL THEN 'impute' ELSE 'recu' END)::statut_courrier, $14)
        RETURNING *`,
-      [reference, b.sens, b.type, dateCourrier, b.acteur_type || null, b.correspondant || null,
+      [reference, b.sens, b.type, b.type_precision || null, dateCourrier, b.acteur_type || null, b.correspondant || null,
        b.objet || null, b.dossier_id || null, b.support, b.imputation_id || null, req.user.sub,
        b.imputation_id || null, b.support === "papier" || !b.support]
     );
@@ -222,11 +222,13 @@ router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, r
          date_courrier = COALESCE($4, date_courrier),
          acteur_type = COALESCE($5, acteur_type),
          dossier_id = COALESCE($6::uuid, dossier_id),
-         imputation_id = COALESCE($7::uuid, imputation_id)
+         imputation_id = COALESCE($7::uuid, imputation_id),
+         type_precision = COALESCE($9, type_precision)
        WHERE id = $8
-       RETURNING id, reference, correspondant, objet, type, date_courrier, acteur_type, dossier_id, imputation_id`,
+       RETURNING id, reference, correspondant, objet, type, type_precision, date_courrier, acteur_type, dossier_id, imputation_id`,
       [b.correspondant || null, b.objet || null, b.type || null, b.date_courrier || null,
-       b.acteur_type || null, b.dossier_id || null, b.imputation_id || null, req.params.id]
+       b.acteur_type || null, b.dossier_id || null, b.imputation_id || null, req.params.id,
+       b.type_precision || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
     res.json(rows[0]);

@@ -49,6 +49,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <option value="autre">Autre</option>
           </select>
         </div>
+        <!-- 14/10/2026 — libellé libre si "Autre" (gap signalé par
+             l'utilisateur), même patron que Rôle d'audience/type_audience. -->
+        @if (form.type === 'autre') {
+          <div><label>Préciser</label><input class="in" [(ngModel)]="form.type_precision" name="typePrecision" /></div>
+        }
         <div><label>Date</label><input class="in" type="date" [(ngModel)]="form.date_courrier" name="date" /></div>
         <div>
           <label>Nature du correspondant</label>
@@ -150,7 +155,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <tr>
               <td>{{ c.reference }}</td>
               <td><span class="tag" [class.ok]="c.sens === 'arrivee'">{{ c.sens === 'arrivee' ? 'Arrivée' : 'Départ' }}</span></td>
-              <td>{{ libelleType(c.type) }}</td>
+              <td>{{ libelleType(c.type, c.type_precision) }}</td>
               <td>{{ c.date_courrier | date:'dd/MM/yyyy' }}</td>
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
@@ -198,6 +203,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         <option value="autre">Autre</option>
                       </select>
                     </div>
+                    @if (editForm.type === 'autre') {
+                      <div><label>Préciser</label><input class="in" [(ngModel)]="editForm.type_precision" name="edTypePrecision" /></div>
+                    }
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_courrier" name="edDate" /></div>
                     <div class="col2"><label>Correspondant</label><input class="in" [(ngModel)]="editForm.correspondant" name="edCorrespondant" /></div>
                     <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="editForm.objet" name="edObjet" /></div>
@@ -307,7 +315,10 @@ export class CourrierComponent implements OnInit {
   // le code ENUM brut ("acte_huissier") au lieu d'un libellé français,
   // contrairement à la colonne Sens juste à côté (déjà traduite). Mêmes
   // intitulés que le <select> de création/filtre ci-dessus.
-  libelleType(code: string): string {
+  // 14/10/2026 — libellé libre pour "Autre" (gap signalé par l'utilisateur),
+  // même patron que libelleTypeAudience() (Rôle d'audience, même jour).
+  libelleType(code: string, precision?: string | null): string {
+    if (code === 'autre') return precision || 'Autre';
     return ({
       lettre: 'Lettre', assignation: 'Assignation', convocation: 'Convocation',
       acte_huissier: "Acte d'huissier", acte_notaire: 'Acte de notaire',
@@ -406,7 +417,7 @@ export class CourrierComponent implements OnInit {
   commencerEdition(c: any): void {
     this.erreur.set('');
     this.editForm = {
-      type: c.type, date_courrier: c.date_courrier?.slice(0, 10), correspondant: c.correspondant,
+      type: c.type, type_precision: c.type_precision || '', date_courrier: c.date_courrier?.slice(0, 10), correspondant: c.correspondant,
       objet: c.objet, imputation_id: c.imputation_id || '',
     };
     this.editionId.set(c.id);

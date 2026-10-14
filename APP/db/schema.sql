@@ -4726,3 +4726,13 @@ ALTER TABLE audiences ADD COLUMN IF NOT EXISTS prochaine_heure TIME;  -- heure d
 -- à "Procédure" (nature_procedure/nature_precision) et au motif de renvoi,
 -- qui ont déjà ce même patron "autre" + précision libre.
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type = autre
+
+-- ---- Registre du courrier : précision du type "Autre" (14/10/2026) ----
+-- Même demande explicite de l'utilisateur, même jour, appliquée au type de
+-- courrier — même patron que ci-dessus (et que nature_precision) : un
+-- champ TEXT dédié plutôt que le `courriers.description` déjà existant
+-- (11/09/2026), resté une colonne morte jamais câblée et dont l'intention
+-- documentée ("précision libre à côté du correspondant / de la partie")
+-- est plus large que le seul cas "type = autre" — pas réutilisé ici pour
+-- ne pas mélanger 2 usages distincts sous un même nom ambigu.
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type = autre

@@ -74,6 +74,36 @@ describe("GET /api/courriers?type= — filtre par type de courrier", () => {
   });
 });
 
+// 14/10/2026 — gap signalé par l'utilisateur : le type "Autre" n'avait aucun
+// champ de saisie du libellé réel, contrairement à "Procédure"/type_audience
+// (même jour, Rôle d'audience) qui ont déjà ce patron.
+describe("courriers.type_precision — libellé libre pour le type 'Autre'", () => {
+  test("se persiste à la création et se relit via GET /api/courriers", async () => {
+    const creation = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "autre", type_precision: "Carte de vœux du confrère", correspondant: "Un confrère" });
+    expect(creation.status).toBe(201);
+    expect(creation.body.type_precision).toBe("Carte de vœux du confrère");
+
+    const relu = await request(app).get("/api/courriers").set("Authorization", `Bearer ${token}`);
+    const ligne = relu.body.find((c) => c.id === creation.body.id);
+    expect(ligne.type_precision).toBe("Carte de vœux du confrère");
+  });
+
+  test("corrigeable via PUT /:id, sans effacement si non fourni (COALESCE)", async () => {
+    const creation = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "autre", type_precision: "Premier libellé", correspondant: "Un correspondant" });
+
+    const maj = await request(app).put(`/api/courriers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`).send({ type_precision: "Libellé corrigé" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.type_precision).toBe("Libellé corrigé");
+
+    const majSansPrecision = await request(app).put(`/api/courriers/${creation.body.id}`)
+      .set("Authorization", `Bearer ${token}`).send({ objet: "Objet corrigé" });
+    expect(majSansPrecision.body.type_precision).toBe("Libellé corrigé");
+  });
+});
+
 describe("Diligences (planning des rendez-vous/démarches de terrain)", () => {
   test("création sans dossier acceptée (formalité générale)", async () => {
     const res = await request(app).post("/api/diligences").set("Authorization", `Bearer ${token}`)
