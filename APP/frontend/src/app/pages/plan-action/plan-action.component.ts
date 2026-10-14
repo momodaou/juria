@@ -29,6 +29,12 @@ const COLONNES = [
         <p>Suivi des tâches du cabinet.</p>
       </div>
       <div class="entete-actions">
+        <!-- 14/10/2026 — vue par défaut selon le rôle (avocats : tout le
+             cabinet ; les autres : Mes tâches), mais toujours basculable —
+             jamais une restriction dure, voir CLAUDE.md. -->
+        <button class="lien" (click)="basculerVue()">
+          {{ vueFiltre() === 'mine' ? 'Voir tout le cabinet' : 'Voir mes tâches seulement' }}
+        </button>
         <button class="lien" (click)="basculerAnciennes()">
           {{ afficherAnciennes() ? 'Masquer les tâches anciennes' : 'Voir les tâches plus anciennes' }}
         </button>
@@ -146,7 +152,10 @@ const COLONNES = [
               } @else {
               <div class="carte-titre">{{ t.titre }}</div>
               <div class="carte-meta">
-                <span class="tag">{{ t.type }}</span>
+                <!-- 14/10/2026 — libellé français + couleur par catégorie
+                     (technique/administratif), voir libelleType()/
+                     categorieType() ci-dessous. -->
+                <span class="tag" [class.technique]="categorieType(t.type) === 'technique'" [class.administratif]="categorieType(t.type) === 'administratif'">{{ libelleType(t.type) }}</span>
                 @if (t.priorite !== 'normale') { <span class="tag" [class.haute]="t.priorite === 'haute' || t.priorite === 'urgente'">{{ t.priorite }}</span> }
               </div>
               @if (t.dossier_id) { <div class="carte-info"><a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a></div> }
@@ -207,6 +216,9 @@ const COLONNES = [
     .vide{font-size:var(--fs-sm)}
     .carte-edition .in{margin:0 0 6px;padding:6px 8px;font-size:var(--fs-sm)}
     .tag.haute{background:#fbe6e5;color:#b13a36}
+    /* 14/10/2026 — distinction visuelle technique/administratif (voir CLAUDE.md) */
+    .tag.technique{background:#e3edfb;color:#1f5fa8}
+    .tag.administratif{background:#f3ecdf;color:#8a6a2f}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .entete-actions{display:flex;gap:14px;align-items:center}
   `],
@@ -243,8 +255,45 @@ export class PlanActionComponent implements OnInit {
   dossierLabel = '';
   form: any = { type: 'autre', priorite: 'normale', validation_requise: false };
 
+  // 14/10/2026 — vue par défaut selon le rôle (discussion avec
+  // l'utilisateur, voir CLAUDE.md) : les profils habilités à déléguer
+  // (avocats) démarrent sur tout le cabinet, cohérent avec leur visibilité
+  // déjà complète sur la délégation ; les autres démarrent sur "Mes
+  // tâches" (assignées à eux + celles qu'ils ont eux-mêmes confiées, pour
+  // le juriste) — mais PEUVENT basculer sur tout le cabinet, ce n'est
+  // jamais une permission qui retire l'accès (recommandation retenue :
+  // un filtre d'affichage par défaut, pas une restriction dure). Un
+  // juriste reste traité comme "les autres" ici : son droit de délégation
+  // est restreint (pas vers un avocat, pas de tâche technique), donc son
+  // confort par défaut doit rester "Mes tâches", pas tout le cabinet.
+  readonly vueFiltre = signal<'mine' | 'tout'>('mine');
+
+  basculerVue(): void {
+    this.vueFiltre.update((v) => (v === 'mine' ? 'tout' : 'mine'));
+    this.charger();
+  }
+
   parStatut(statut: string): any[] {
     return this.taches().filter((t) => t.statut === statut);
+  }
+
+  // 14/10/2026 — libellé français + catégorie (technique/administratif)
+  // du type de tâche, même découpage que verifierDelegationTache() et le
+  // regroupement du formulaire de création ci-dessous — affichage
+  // uniquement, la donnée en base reste le code ENUM.
+  private readonly LIBELLES_TYPE: Record<string, string> = {
+    recherche: 'Recherche', redaction: 'Rédaction', revue: 'Revue', depot: 'Dépôt',
+    appel_client: 'Appel client', facturation: 'Facturation', relance: 'Relance',
+    collecte_pieces: 'Collecte de pièces', autre: 'Autre',
+  };
+  private readonly TYPES_ADMINISTRATIFS = ['facturation', 'relance', 'collecte_pieces', 'autre'];
+
+  libelleType(type: string): string {
+    return this.LIBELLES_TYPE[type] ?? type;
+  }
+
+  categorieType(type: string): 'technique' | 'administratif' {
+    return this.TYPES_ADMINISTRATIFS.includes(type) ? 'administratif' : 'technique';
   }
 
   // 10/10/2026 — Bloc D du diagnostic "instruction avocat -> collaborateur"
@@ -281,6 +330,11 @@ export class PlanActionComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    // 14/10/2026 — vue par défaut : tout le cabinet pour qui peut déléguer
+    // librement (avocats), "Mes tâches" pour les autres (dont le juriste,
+    // au droit de délégation restreint) — voir le commentaire sur
+    // vueFiltre ci-dessus.
+    this.vueFiltre.set(this.estAvocat() ? 'tout' : 'mine');
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
 
@@ -304,6 +358,10 @@ export class PlanActionComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     const params = new URLSearchParams();
     if (dossierId) params.set('dossier_id', dossierId);
+    // 14/10/2026 — le filtre dossier (navigation inter-modules) prime sur
+    // "Mes tâches" : arriver sur un dossier précis doit montrer toutes ses
+    // tâches, pas seulement les miennes.
+    else if (this.vueFiltre() === 'mine') params.set('mine', '1');
     if (this.afficherAnciennes()) params.set('anciennes', 'true');
     const qs = params.toString();
     this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => this.taches.set(t) });

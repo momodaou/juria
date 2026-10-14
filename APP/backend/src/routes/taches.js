@@ -55,7 +55,13 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
   const params = [];
   const conditions = [];
   if (dossier_id) { params.push(dossier_id); conditions.push(`t.dossier_id = $${params.length}`); }
-  else if (mine) { params.push(req.user.sub); conditions.push(`t.responsable_id = $${params.length}`); }
+  // 14/10/2026 — "mine" couvre désormais aussi ce que l'appelant a confié
+  // à quelqu'un d'autre (cree_par), pas seulement ce qui lui est assigné :
+  // sert la vue par défaut "Mes tâches" du Plan d'action (gap du
+  // 14/10/2026, voir CLAUDE.md) — un juriste doit y retrouver ce qu'il a
+  // délégué, pas seulement ses propres tâches. Sans effet pour un profil
+  // qui ne délègue jamais (cree_par = responsable_id dans ce cas).
+  else if (mine) { params.push(req.user.sub); conditions.push(`(t.responsable_id = $${params.length} OR t.cree_par = $${params.length})`); }
   if (anciennes !== "true") {
     conditions.push(`(t.statut NOT IN ('termine','annule') OR t.maj_le >= now() - interval '30 days')`);
   }
