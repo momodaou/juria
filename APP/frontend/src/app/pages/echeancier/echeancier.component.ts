@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -79,54 +79,32 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       } @else { <p class="muted">Aucune échéance enregistrée.</p> }
     </section>
 
+    <!-- 14/10/2026 — cette section était un doublon intégral de Plan
+         d'action (même table, création/édition/kanban en double) :
+         confusion signalée par l'utilisateur entre les deux écrans.
+         Devenue un simple rappel en lecture seule des tâches à échéance,
+         cohérent avec la logique propre à cette page (délais à venir) ;
+         toute action réelle (créer, modifier, déplacer, déléguer) se fait
+         désormais exclusivement dans le Plan d'action — voir CLAUDE.md. -->
     <section class="panel">
       <div class="entete-section">
-        <h3>Plan d'action — tâches</h3>
-        <button class="lien" (click)="basculerAnciennesTaches()">
-          {{ afficherAnciennesTaches() ? 'Masquer les tâches anciennes' : 'Voir les tâches plus anciennes' }}
-        </button>
+        <h3>Tâches à venir</h3>
+        <a class="lien" routerLink="/plan-action" [queryParams]="filtreDossierId() ? {dossier: filtreDossierId(), dossierLabel: filtreDossierNumero()} : {}">Gérer les tâches dans le Plan d'action →</a>
       </div>
-      @if (auth.peut('taches.creer')) {
-        <div class="add">
-          <input [(ngModel)]="ntTitre" name="nt" placeholder="Nouvelle tâche" style="flex:1;min-width:200px" />
-          <input type="date" [(ngModel)]="ntEch" name="ne" />
-          <button class="btn" (click)="ajouterTache()" [disabled]="!ntTitre || ajoutTacheEnCours()">{{ ajoutTacheEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
-        </div>
-      }
-      @if (taches().length) {
+      <p class="muted" style="margin-bottom:12px">Rappel des tâches non terminées ayant une échéance — la création et le suivi se font dans le Plan d'action.</p>
+      @if (tachesAVenir().length) {
         <table>
-          <tr><th>Tâche</th><th>Dossier</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th></th></tr>
-          @for (t of taches(); track t.id) {
+          <tr><th>Tâche</th><th>Dossier</th><th>Responsable</th><th>Échéance</th></tr>
+          @for (t of tachesAVenir(); track t.id) {
             <tr>
               <td>{{ t.titre }}</td>
               <td>@if (t.dossier_id) { <a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a> } @else { — }</td>
               <td>{{ t.responsable || '—' }}</td>
-              <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
-              <td><span class="tag" [class.done]="t.statut === 'termine'">{{ t.statut }}</span></td>
-              <td><app-menu-actions [actions]="actionsPourTache(t)" /></td>
+              <td>{{ t.echeance | date:'dd/MM/yyyy' }}</td>
             </tr>
-            @if (editionTacheId() === t.id) {
-              <tr class="edition">
-                <td colspan="6">
-                  <div class="add">
-                    <input [(ngModel)]="tForm.titre" name="tTitre" placeholder="Titre" style="flex:1;min-width:200px" />
-                    <input type="date" [(ngModel)]="tForm.echeance" name="tEch" />
-                    <select [(ngModel)]="tForm.priorite" name="tPrio">
-                      @for (p of priorites; track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
-                    </select>
-                    <select [(ngModel)]="tForm.responsable_id" name="tResp">
-                      <option value="">Responsable…</option>
-                      @for (u of membres(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
-                    </select>
-                  </div>
-                  <button class="lien" (click)="enregistrerTache()" [disabled]="!tForm.titre">Enregistrer</button>
-                  <button class="lien" (click)="editionTacheId.set(null)">Annuler</button>
-                </td>
-              </tr>
-            }
           }
         </table>
-      } @else { <p class="muted">Aucune tâche.</p> }
+      } @else { <p class="muted">Aucune tâche à venir.</p> }
     </section>
   `,
   styles: [`
@@ -150,26 +128,21 @@ export class EcheancierComponent implements OnInit {
 
   readonly evenements = signal<any[]>([]);
   readonly taches = signal<any[]>([]);
+  // 14/10/2026 — rappel en lecture seule (voir commentaire dans le
+  // template) : tâches non terminées/annulées ayant une échéance.
+  readonly tachesAVenir = computed(() => this.taches().filter((t) => t.echeance && t.statut !== 'termine' && t.statut !== 'annule'));
   readonly dossiers = signal<Dossier[]>([]);
   readonly erreur = signal('');
-  readonly afficherAnciennesTaches = signal(false);
   // 26/09/2026 — audit doublons : garde anti-double-clic (priorité basse
   // pour ce module, titres/objets souvent légitimement répétés — pas
   // d'avertissement de doublon métier ici, contrairement à Facturation/
   // Rôle d'audience/Dépenses/Rétrocessions).
   readonly ajoutEvEnCours = signal(false);
-  readonly ajoutTacheEnCours = signal(false);
   readonly membres = signal<any[]>([]);
 
-  // Correction des échéances et des tâches (25/09/2026).
+  // Correction des échéances (25/09/2026).
   readonly editionEvId = signal<string | null>(null);
   evForm: any = {};
-  readonly editionTacheId = signal<string | null>(null);
-  tForm: any = {};
-  readonly priorites = [
-    { code: 'basse', libelle: 'Basse' }, { code: 'normale', libelle: 'Normale' },
-    { code: 'haute', libelle: 'Haute' }, { code: 'urgente', libelle: 'Urgente' },
-  ];
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -193,7 +166,6 @@ export class EcheancierComponent implements OnInit {
   ];
 
   nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = ''; nvPrecision = '';
-  ntTitre = ''; ntEch = '';
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
@@ -207,16 +179,7 @@ export class EcheancierComponent implements OnInit {
   charger(): void {
     const dossierId = this.filtreDossierId();
     this.api.evenements(dossierId ?? undefined).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
-    const params = new URLSearchParams();
-    if (dossierId) params.set('dossier_id', dossierId);
-    if (this.afficherAnciennesTaches()) params.set('anciennes', 'true');
-    const qs = params.toString();
-    this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
-  }
-
-  basculerAnciennesTaches(): void {
-    this.afficherAnciennesTaches.update((v) => !v);
-    this.charger();
+    this.api.taches(dossierId ? `?dossier_id=${dossierId}` : '').subscribe({ next: (t) => this.taches.set(t), error: () => {} });
   }
 
   libelleType(code: string): string {
@@ -238,14 +201,6 @@ export class EcheancierComponent implements OnInit {
     }).subscribe({
       next: () => { this.ajoutEvEnCours.set(false); this.nvTitre = ''; this.nvDate = ''; this.nvPrecision = ''; this.charger(); },
       error: (e) => { this.ajoutEvEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible'); },
-    });
-  }
-
-  ajouterTache(): void {
-    this.ajoutTacheEnCours.set(true);
-    this.api.creerTache({ titre: this.ntTitre, echeance: this.ntEch || null }).subscribe({
-      next: () => { this.ajoutTacheEnCours.set(false); this.ntTitre = ''; this.ntEch = ''; this.charger(); },
-      error: (e) => { this.ajoutTacheEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible'); },
     });
   }
 
@@ -288,53 +243,5 @@ export class EcheancierComponent implements OnInit {
       next: () => this.charger(),
       error: (err) => this.erreur.set(err?.error?.error ?? 'Action impossible'),
     });
-  }
-
-  // Menu "⋮" (19/09/2026) ; « Modifier » ajouté le 25/09/2026.
-  actionsPourTache(t: any): ActionMenuItem[] {
-    const items: ActionMenuItem[] = [];
-    const peutStatut = this.auth.peut('taches.statut.modifier');
-    if (t.statut === 'annule') return peutStatut ? [{ label: 'Réactiver', action: () => this.reactiverTache(t) }] : [];
-    if (t.statut === 'termine') return [];
-    if (peutStatut) items.push({ label: 'Marquer fait', action: () => this.terminer(t) });
-    if (this.auth.peut('taches.creer')) items.push({ label: 'Modifier', action: () => this.modifierTache(t) });
-    if (peutStatut) items.push({ label: 'Annuler', action: () => this.annulerTache(t), danger: true });
-    return items;
-  }
-
-  modifierTache(t: any): void {
-    this.erreur.set('');
-    this.tForm = {
-      titre: t.titre, echeance: t.echeance ? String(t.echeance).slice(0, 10) : '',
-      priorite: t.priorite, responsable_id: t.responsable_id ?? '',
-    };
-    this.editionTacheId.set(t.id);
-  }
-
-  enregistrerTache(): void {
-    const id = this.editionTacheId();
-    if (!id) return;
-    const f = this.tForm;
-    this.api.majDetailsTache(id, {
-      titre: f.titre, echeance: f.echeance || null, priorite: f.priorite, responsable_id: f.responsable_id || undefined,
-    }).subscribe({
-      next: () => { this.editionTacheId.set(null); this.charger(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Modification impossible'),
-    });
-  }
-
-  terminer(t: any): void {
-    this.api.majTache(t.id, 'termine').subscribe({ next: () => this.charger(), error: () => {} });
-  }
-
-  // Statut "annulé" (13/09/2026) — voir plan-action.component.ts pour le
-  // même comblement côté kanban.
-  annulerTache(t: any): void {
-    if (!confirm(`Annuler la tâche « ${t.titre} » ?`)) return;
-    this.api.majTache(t.id, 'annule').subscribe({ next: () => this.charger(), error: () => {} });
-  }
-
-  reactiverTache(t: any): void {
-    this.api.majTache(t.id, 'a_faire').subscribe({ next: () => this.charger(), error: () => {} });
   }
 }
