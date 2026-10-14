@@ -236,6 +236,65 @@ describe("PUT /api/roles-audience/audiences/:id — correction d'une audience", 
   });
 });
 
+// 14/10/2026 — gap signalé par l'utilisateur sur "Programmer une audience" :
+// le type "Autre" n'avait aucun champ de saisie du libellé réel (contrairement
+// à "Procédure", qui a déjà ce patron type/precision).
+describe("type_precision — libellé libre pour le type d'audience 'Autre'", () => {
+  test("se persiste à la création et s'affiche sur le Rôle d'audience", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-01", juridiction: "TGI Bamako", type: "autre", type_precision: "Audition d'un témoin" });
+    expect(creation.status).toBe(201);
+
+    const role = await request(app).get("/api/roles-audience?semaine=2027-03-01").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.audience_id === creation.body.audience_id);
+    expect(ligne.type).toBe("autre");
+    expect(ligne.type_precision).toBe("Audition d'un témoin");
+  });
+
+  test("corrigeable via PUT /audiences/:id, sans effacer si non fourni (COALESCE)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-02", juridiction: "TGI Bamako", type: "autre", type_precision: "Premier libellé" });
+
+    const maj = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`).send({ type_precision: "Libellé corrigé" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.type_precision).toBe("Libellé corrigé");
+
+    // Un PUT qui ne fournit pas type_precision ne l'efface pas.
+    const majSansPrecision = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}`)
+      .set("Authorization", `Bearer ${token}`).send({ juridiction: "TGI Commune V" });
+    expect(majSansPrecision.body.type_precision).toBe("Libellé corrigé");
+  });
+
+  test("reporté sur l'audience suite d'un renvoi (même type conservé)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-03", juridiction: "TGI Bamako", type: "autre", type_precision: "Audition d'un témoin" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "renvoi", prochaine_date: "2027-03-17" });
+    expect(retour.status).toBe(200);
+
+    const suite = await pool.query("SELECT type, type_precision FROM audiences WHERE id = $1", [retour.body.prochaine_inscrite.audience_id]);
+    expect(suite.rows[0].type).toBe("autre");
+    expect(suite.rows[0].type_precision).toBe("Audition d'un témoin");
+  });
+
+  test("NON reporté sur l'audience de prononcé d'un délibéré vidé (le type change)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-04", juridiction: "TGI Bamako", type: "autre", type_precision: "Audition d'un témoin" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "delibere", prochaine_date: "2027-03-18" });
+    expect(retour.status).toBe(200);
+
+    const suite = await pool.query("SELECT type, type_precision FROM audiences WHERE id = $1", [retour.body.prochaine_inscrite.audience_id]);
+    expect(suite.rows[0].type).toBe("prononce");
+    expect(suite.rows[0].type_precision).toBeNull();
+  });
+});
+
 // 24/09/2026 — gap signalé par l'utilisateur (« aucune action... de sorte à
 // ce que les rôles des semaines qui suivent aient matérialisé ces
 // informations ») : "prochaine_date" devient obligatoire pour un renvoi, et

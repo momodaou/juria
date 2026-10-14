@@ -4719,3 +4719,10 @@ WHERE mode_honoraires = 'abonnement';
 -- `synchroniserProchaineAudience()`, lue par la jointure déjà en place
 -- côté Rôle d'audience — voir audiences.js).
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS prochaine_heure TIME;  -- heure de la prochaine audience (renvoi/délibéré), miroir de prochaine_date
+
+-- ---- Rôle d'audience : précision du type d'audience "Autre" (14/10/2026) ----
+-- Demande explicite de l'utilisateur, « Programmer une audience » : le
+-- type « Autre » n'avait aucun champ de saisie du libellé réel, contrairement
+-- à "Procédure" (nature_procedure/nature_precision) et au motif de renvoi,
+-- qui ont déjà ce même patron "autre" + précision libre.
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type = autre

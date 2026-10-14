@@ -84,7 +84,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 </td>
                 <td>{{ abregeJuridiction(l.juridiction) }}</td>
                 <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
-                <td>{{ libelleTypeAudience(l.type) }}</td>
+                <td>{{ libelleTypeAudience(l.type, l.type_precision) }}</td>
                 <td>{{ libelleMotif(l.motif_dernier_renvoi, l.dernier_motif_precision) }}</td>
                 <td>{{ l.instructions || '—' }}</td>
                 <td>{{ l.responsable_dossier_code || '—' }}</td>
@@ -175,6 +175,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                           <option value="autre">Autre</option>
                         </select>
                       </div>
+                      @if (editAudience.type === 'autre') {
+                        <div><label>Préciser</label><input class="in" [(ngModel)]="editAudience.type_precision" name="eaTypePrecision" /></div>
+                      }
                       <div>
                         <label>Motif dernier renvoi</label>
                         <select class="in" [(ngModel)]="editAudience.dernier_motif_id" name="eaDernierMotif">
@@ -421,6 +424,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <option value="autre">Autre</option>
           </select>
         </div>
+        <!-- 14/10/2026 — libellé libre si "Autre" (gap signalé par
+             l'utilisateur), même patron que "Procédure" ci-dessous. -->
+        @if (nouvelleLigne.type === 'autre') {
+          <div><label>Préciser</label><input class="in" [(ngModel)]="nouvelleLigne.type_precision" name="typePrecision" /></div>
+        }
         <div>
           <label>Audiencier (facultatif)</label>
           <select class="in" [(ngModel)]="nouvelleLigne.avocat_id" name="audiencier">
@@ -676,7 +684,11 @@ export class RoleAudienceComponent implements OnInit {
   // 21/09/2026 — l.type affichait jusqu'ici le code d'ENUM brut
   // ("mise_en_etat"/"refere") au lieu d'un libellé français, seul le
   // <select> de saisie avait déjà ces intitulés.
-  libelleTypeAudience(code: string): string {
+  // 14/10/2026 — libellé libre pour "Autre" (gap signalé par l'utilisateur
+  // sur "Programmer une audience" — aucun champ de saisie jusqu'ici),
+  // même patron que libelleNatureProcedure() juste en dessous.
+  libelleTypeAudience(code: string, precision?: string | null): string {
+    if (code === 'autre') return precision || 'Autre';
     return ({
       mise_en_etat: 'Mise en état', plaidoirie: 'Plaidoirie', conciliation: 'Conciliation',
       refere: 'Référé', prononce: 'Prononcé', autre: 'Autre',
@@ -1084,6 +1096,7 @@ export class RoleAudienceComponent implements OnInit {
       heure: this.formaterHeure(l.heure) === '—' ? '' : this.formaterHeure(l.heure),
       juridiction: l.juridiction || '',
       type: l.type || 'mise_en_etat',
+      type_precision: l.type_precision || '',
       avocat_id: l.avocat_id || '',
       instructions: l.instructions || '',
       nature_procedure: l.nature_procedure || '',

@@ -91,7 +91,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               ur.prenom || ' ' || ur.nom AS responsable_dossier_nom, ur.code AS responsable_dossier_code,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
               a.resultat, a.prochaine_date, a.prochaine_heure, a.observations,
-              a.nature_procedure, a.nature_precision,
+              a.nature_procedure, a.nature_precision, a.type_precision,
               a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
               a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
               a.decision_document_id, dd.nom AS decision_document_nom, dd.type_mime AS decision_document_mime,
@@ -153,7 +153,7 @@ router.get("/verifier-doublon", requirePermission("audiences.ligne.creer"), asyn
 
 // POST /api/roles-audience/lignes
 // { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente?,
-//   nature_procedure?, nature_precision? }
+//   nature_procedure?, nature_precision?, type_precision? }
 router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.date_prevue) return res.status(400).json({ error: "dossier_id et date_prevue requis" });
@@ -166,11 +166,11 @@ router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, r
     const audience = await client.query(
       `INSERT INTO audiences
          (dossier_id, avocat_id, juridiction, date_audience, type, heure, instructions, urgente,
-          nature_procedure, nature_precision, cree_par)
-       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9,$10,$11) RETURNING id`,
+          nature_procedure, nature_precision, type_precision, cree_par)
+       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9,$10,$11,$12) RETURNING id`,
       [b.dossier_id, b.avocat_id || null, b.juridiction || null, b.date_prevue, b.type,
        b.heure || null, b.instructions || null, b.urgente,
-       b.nature_procedure || null, b.nature_precision || null, req.user.sub]
+       b.nature_procedure || null, b.nature_precision || null, b.type_precision || null, req.user.sub]
     );
     const ligne = await client.query(
       `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
@@ -332,7 +332,7 @@ router.get("/motifs-renvoi", async (req, res) => {
 // jamais les laisser diverger.
 // body : { date_audience?, heure?, juridiction?, type?, avocat_id?,
 //          instructions?, urgente?, nature_procedure?, nature_precision?,
-//          dernier_motif_id? } — jamais resultat/motif_renvoi_id/
+//          type_precision?, dernier_motif_id? } — jamais resultat/motif_renvoi_id/
 // prochaine_date/observations, qui restent le rôle exclusif de /retour.
 // 23/09/2026 — "dernier_motif_id" (motif de renvoi reporté depuis
 // l'audience précédente par /retour, affiché en lecture seule jusqu'ici)
@@ -346,9 +346,13 @@ router.get("/motifs-renvoi", async (req, res) => {
 // "dernier_motif_precision" (texte libre du motif "Autre (préciser)")
 // suit le même déclencheur que "dernier_motif_id" -- un seul et même
 // geste de correction, pas un champ à part qui pourrait diverger.
+// 14/10/2026 — "type_precision" (libellé libre pour un type d'audience
+// "Autre") suit le même patron COALESCE que "nature_precision" ci-dessus,
+// jamais le déclencheur explicite réservé à dernier_motif_id/precision
+// (qui doit pouvoir être EFFACÉ, pas seulement complété).
 const CHAMPS_PROCEDURAUX_AUDIENCE = [
   "date_audience", "heure", "juridiction", "type", "avocat_id", "instructions", "urgente",
-  "nature_procedure", "nature_precision", "dernier_motif_id", "dernier_motif_precision",
+  "nature_procedure", "nature_precision", "type_precision", "dernier_motif_id", "dernier_motif_precision",
 ];
 
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
@@ -375,13 +379,15 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
          urgente = COALESCE($7, urgente),
          nature_procedure = COALESCE($8, nature_procedure),
          nature_precision = COALESCE($9, nature_precision),
+         type_precision = COALESCE($14, type_precision),
          dernier_motif_id = CASE WHEN $10::boolean THEN $11::uuid ELSE dernier_motif_id END,
          dernier_motif_precision = CASE WHEN $10::boolean THEN $13 ELSE dernier_motif_precision END
        WHERE id = $12 RETURNING *`,
       [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
        b.avocat_id || null, b.instructions || null, b.urgente ?? null,
        b.nature_procedure || null, b.nature_precision || null,
-       toucheMotif, b.dernier_motif_id || null, req.params.id, b.dernier_motif_precision || null]
+       toucheMotif, b.dernier_motif_id || null, req.params.id, b.dernier_motif_precision || null,
+       b.type_precision || null]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
@@ -465,13 +471,18 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
   // motif_renvoi_precision -> dernier_motif_precision (motif "Autre
   // (préciser)").
   const typeSuite = resultat === "delibere" ? "prononce" : audienceOriginale.type;
+  // 14/10/2026 — le libellé "Autre" n'a de sens que si le type est
+  // réellement reporté tel quel (renvoi) : sur un délibéré vidé, le type
+  // change pour "prononce", donc l'ancien libellé "Autre" ne doit pas
+  // survivre dessus.
+  const typePrecisionSuite = typeSuite === audienceOriginale.type ? audienceOriginale.type_precision : null;
   const nouvelleAudience = await client.query(
     `INSERT INTO audiences
-       (dossier_id, avocat_id, juridiction, date_audience, heure, type,
+       (dossier_id, avocat_id, juridiction, date_audience, heure, type, type_precision,
         nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
         dernier_motif_precision, cree_par)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, prochaineHeure || null, typeSuite,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+    [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, prochaineHeure || null, typeSuite, typePrecisionSuite,
      audienceOriginale.nature_procedure, audienceOriginale.nature_precision, audienceOriginale.id, audienceOriginale.motif_renvoi_id,
      audienceOriginale.motif_renvoi_precision, creePar]
   );
