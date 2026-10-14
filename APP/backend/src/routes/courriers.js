@@ -3,7 +3,7 @@
 const express = require("express");
 const multer = require("multer");
 const { pool } = require("../db");
-const { saveObject } = require("../storage");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
@@ -13,6 +13,28 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }, // 25 Mo, même limite que documents.js
   fileFilter: filtreTypeFichier,
 });
+
+// Classe un fichier dans la GED d'un dossier (categorie "correspondance") —
+// extrait le 14/10/2026 du corps de POST /:id/document pour être réutilisé
+// à la fois au dépôt direct (courrier déjà rattaché à un dossier) et à la
+// migration automatique d'un fichier déposé avant que le dossier n'existe
+// (voir PUT /:id plus bas). Retourne l'id du document créé.
+async function classerDansGed(poolOuClient, dossierId, nom, buffer, mimetype, taille, auteurId) {
+  const v = await poolOuClient.query(
+    "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM documents WHERE dossier_id = $1 AND nom = $2",
+    [dossierId, nom]
+  );
+  const dest = `${dossierId}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
+  const chemin = await saveObject(buffer, dest, mimetype);
+  const doc = await poolOuClient.query(
+    `INSERT INTO documents
+       (dossier_id, nom, categorie, version, statut, confidentialite, chemin_storage, type_mime, taille_octets, auteur_id)
+     VALUES ($1,$2,'correspondance',$3,'brouillon','dossier',$4,$5,$6,$7)
+     RETURNING id`,
+    [dossierId, nom, v.rows[0].v, chemin, mimetype, taille, auteurId]
+  );
+  return doc.rows[0].id;
+}
 
 // Génère la référence ARR-2026-000123 / DEP-2026-000045 (par sens + année).
 async function genererReference(client, sens, dateCourrier) {
@@ -86,7 +108,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
-              c.imputation_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
+              c.fichier_brut_nom, c.imputation_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
@@ -161,39 +183,71 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
 });
 
 // POST /api/courriers/:id/document  (multipart/form-data, champ "fichier")
-// Joint le scan du courrier à la GED du dossier — gap comblé le
-// 11/09/2026 : courriers.document_id existait déjà mais n'était jamais
-// renseigné. Comme documents.dossier_id est NOT NULL (voir documents.js),
-// un courrier doit déjà être rattaché à un dossier avant d'y joindre une
-// pièce ; message explicite sinon plutôt qu'une erreur SQL brute.
+// Joint le scan du courrier. Gap comblé le 11/09/2026 (document_id jamais
+// renseigné), puis le 14/10/2026 (gap signalé par l'utilisateur : un
+// courrier arrivé/sorti AVANT l'ouverture d'un dossier — le cas le plus
+// courant pour une demande initiale — ne pouvait jamais être scanné, la
+// GED exigeant un dossier dès le départ, documents.dossier_id NOT NULL).
+// Un dossier déjà rattaché → classement direct dans la GED (comportement
+// historique, via classerDansGed()). Pas encore de dossier → dépôt
+// TEMPORAIRE sur le courrier lui-même (fichier_brut_*), migré
+// automatiquement dans la GED dès qu'un dossier est rattaché (PUT /:id).
 router.post("/:id/document", requirePermission("courriers.creer"), upload.single("fichier"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
   try {
-    const { rows } = await pool.query("SELECT dossier_id FROM courriers WHERE id = $1", [req.params.id]);
+    const { rows } = await pool.query(
+      "SELECT dossier_id, document_id, fichier_brut_chemin FROM courriers WHERE id = $1",
+      [req.params.id]
+    );
     if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
-    const dossierId = rows[0].dossier_id;
-    if (!dossierId) {
-      return res.status(400).json({ error: "Ce courrier doit d'abord être rattaché à un dossier avant d'y joindre une pièce (la GED est organisée par dossier)." });
+    if (rows[0].document_id || rows[0].fichier_brut_chemin) {
+      return res.status(409).json({ error: "Une pièce est déjà jointe à ce courrier." });
     }
+    const dossierId = rows[0].dossier_id;
     const nom = req.file.originalname;
-    const v = await pool.query(
-      "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM documents WHERE dossier_id = $1 AND nom = $2",
-      [dossierId, nom]
-    );
-    const dest = `${dossierId}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
+    if (dossierId) {
+      const docId = await classerDansGed(pool, dossierId, nom, req.file.buffer, req.file.mimetype, req.file.size, req.user.sub);
+      await pool.query("UPDATE courriers SET document_id = $1 WHERE id = $2", [docId, req.params.id]);
+      return res.status(201).json({ document_id: docId, nom });
+    }
+    const dest = `courriers/${req.params.id}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
     const chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
-    const doc = await pool.query(
-      `INSERT INTO documents
-         (dossier_id, nom, categorie, version, statut, confidentialite, chemin_storage, type_mime, taille_octets, auteur_id)
-       VALUES ($1,$2,'correspondance',$3,'brouillon','dossier',$4,$5,$6,$7)
-       RETURNING id, nom`,
-      [dossierId, nom, v.rows[0].v, chemin, req.file.mimetype, req.file.size, req.user.sub]
+    await pool.query(
+      `UPDATE courriers SET fichier_brut_chemin = $1, fichier_brut_nom = $2,
+         fichier_brut_type_mime = $3, fichier_brut_taille = $4 WHERE id = $5`,
+      [chemin, nom, req.file.mimetype, req.file.size, req.params.id]
     );
-    await pool.query("UPDATE courriers SET document_id = $1 WHERE id = $2", [doc.rows[0].id, req.params.id]);
-    res.status(201).json({ document_id: doc.rows[0].id, nom: doc.rows[0].nom });
+    res.status(201).json({ fichier_brut_nom: nom });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/courriers/:id/fichier-brut — télécharge le fichier déposé AVANT
+// qu'un dossier n'existe (voir POST /:id/document ci-dessus). Une fois un
+// dossier rattaché, la pièce est migrée dans la GED (PUT /:id) et devient
+// accessible comme tout document via GET /api/documents/:id/download —
+// cette route-ci ne sert donc que pour la fenêtre "courrier sans dossier
+// encore". Gardée par courriers.consulter (comme la liste elle-même) plutôt
+// que par une confidentialité documentaire : pas encore un vrai document GED.
+router.get("/:id/fichier-brut", requirePermission("courriers.consulter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT fichier_brut_nom, fichier_brut_type_mime, fichier_brut_chemin FROM courriers WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows[0] || !rows[0].fichier_brut_chemin) return res.status(404).json({ error: "Aucune pièce jointe pour ce courrier" });
+    const buf = await readObject(rows[0].fichier_brut_chemin);
+    res.setHeader("Content-Type", rows[0].fichier_brut_type_mime || "application/octet-stream");
+    res.setHeader("Content-Disposition", enteteContentDisposition(rows[0].fichier_brut_nom));
+    res.send(buf);
+  } catch (e) {
+    if (e instanceof FichierIntrouvableError) {
+      return res.status(404).json({ error: "Fichier introuvable dans le stockage." });
+    }
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
@@ -211,10 +265,17 @@ router.post("/:id/document", requirePermission("courriers.creer"), upload.single
 // `imputation_id` accepté ici aussi (simple correction de donnée, sans
 // toucher transmis_par/transmis_le — ces 2 colonnes de traçabilité restent
 // l'exclusivité de la transition de statut ci-dessous, PUT /:id/statut).
+// 14/10/2026 — si un dossier est (ou était déjà) rattaché ET qu'une pièce
+// attend encore dans fichier_brut_* (déposée avant qu'aucun dossier
+// n'existe, voir POST /:id/document), elle est migrée ici automatiquement
+// dans la GED du dossier — jamais besoin de la retéléverser à la main.
 router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, res) => {
   const b = req.body || {};
+  const client = await pool.connect();
+  let ancienCheminBrut = null;
   try {
-    const { rows } = await pool.query(
+    await client.query("BEGIN");
+    const { rows } = await client.query(
       `UPDATE courriers SET
          correspondant = COALESCE($1, correspondant),
          objet = COALESCE($2, objet),
@@ -225,16 +286,38 @@ router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, r
          imputation_id = COALESCE($7::uuid, imputation_id),
          type_precision = COALESCE($9, type_precision)
        WHERE id = $8
-       RETURNING id, reference, correspondant, objet, type, type_precision, date_courrier, acteur_type, dossier_id, imputation_id`,
+       RETURNING id, reference, correspondant, objet, type, type_precision, date_courrier, acteur_type,
+                 dossier_id, imputation_id, document_id, fichier_brut_chemin, fichier_brut_nom,
+                 fichier_brut_type_mime, fichier_brut_taille`,
       [b.correspondant || null, b.objet || null, b.type || null, b.date_courrier || null,
        b.acteur_type || null, b.dossier_id || null, b.imputation_id || null, req.params.id,
        b.type_precision || null]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
-    res.json(rows[0]);
+    if (!rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Courrier introuvable" }); }
+    const c = rows[0];
+    if (c.dossier_id && c.fichier_brut_chemin && !c.document_id) {
+      const buf = await readObject(c.fichier_brut_chemin);
+      const docId = await classerDansGed(
+        client, c.dossier_id, c.fichier_brut_nom, buf, c.fichier_brut_type_mime, c.fichier_brut_taille, req.user.sub
+      );
+      await client.query(
+        `UPDATE courriers SET document_id = $1, fichier_brut_chemin = NULL, fichier_brut_nom = NULL,
+           fichier_brut_type_mime = NULL, fichier_brut_taille = NULL WHERE id = $2`,
+        [docId, req.params.id]
+      );
+      ancienCheminBrut = c.fichier_brut_chemin;
+      c.document_id = docId;
+      c.fichier_brut_chemin = null; c.fichier_brut_nom = null; c.fichier_brut_type_mime = null; c.fichier_brut_taille = null;
+    }
+    await client.query("COMMIT");
+    if (ancienCheminBrut) await deleteObject(ancienCheminBrut);
+    res.json(c);
   } catch (e) {
+    await client.query("ROLLBACK");
     console.error(e);
     res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

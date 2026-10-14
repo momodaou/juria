@@ -32,15 +32,6 @@ async function creerClientEtDossier() {
 }
 
 describe("Courrier -> GED (courriers.document_id)", () => {
-  test("refuse le téléversement si le courrier n'a pas de dossier", async () => {
-    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur sans dossier" });
-    expect(courrier.status).toBe(201);
-    const res = await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
-      .attach("fichier", Buffer.from("contenu"), { filename: "scan.txt", contentType: "text/plain" });
-    expect(res.status).toBe(400);
-  });
-
   test("accepte le téléversement quand le courrier est rattaché à un dossier, met à jour document_id", async () => {
     const dossierId = await creerClientEtDossier();
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
@@ -53,6 +44,79 @@ describe("Courrier -> GED (courriers.document_id)", () => {
     const relu = await request(app).get(`/api/courriers?dossier_id=${dossierId}`).set("Authorization", `Bearer ${token}`);
     const ligne = relu.body.find((c) => c.id === courrier.body.id);
     expect(ligne.document_id).toBe(upload.body.document_id);
+  });
+});
+
+// 14/10/2026 — gap signalé par l'utilisateur : un courrier arrivé/sorti
+// AVANT l'ouverture d'un dossier (demande initiale, premier contact) ne
+// pouvait jamais être scanné — documents.dossier_id est NOT NULL, et la
+// route refusait alors tout téléversement (test retiré ci-dessus, devenu
+// obsolète). Dépôt temporaire sur le courrier lui-même (fichier_brut_*),
+// migré automatiquement dans la GED dès qu'un dossier est rattaché.
+describe("Courrier sans dossier : dépôt temporaire (fichier_brut_*) puis migration automatique", () => {
+  test("accepte le téléversement sans dossier, expose fichier_brut_nom (pas document_id)", async () => {
+    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur sans dossier" });
+    expect(courrier.status).toBe(201);
+    const upload = await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
+      .attach("fichier", Buffer.from("contenu avant dossier"), { filename: "demande-initiale.txt", contentType: "text/plain" });
+    expect(upload.status).toBe(201);
+    expect(upload.body.document_id).toBeUndefined();
+    expect(upload.body.fichier_brut_nom).toBe("demande-initiale.txt");
+
+    const relu = await request(app).get("/api/courriers").set("Authorization", `Bearer ${token}`);
+    const ligne = relu.body.find((c) => c.id === courrier.body.id);
+    expect(ligne.document_id).toBeNull();
+    expect(ligne.fichier_brut_nom).toBe("demande-initiale.txt");
+  });
+
+  test("téléchargeable via GET /:id/fichier-brut avec le contenu exact", async () => {
+    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+    await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
+      .attach("fichier", Buffer.from("contenu exact à relire"), { filename: "scan.txt", contentType: "text/plain" });
+
+    const telechargement = await request(app).get(`/api/courriers/${courrier.body.id}/fichier-brut`).set("Authorization", `Bearer ${token}`);
+    expect(telechargement.status).toBe(200);
+    expect(telechargement.text).toBe("contenu exact à relire");
+  });
+
+  test("404 sur GET /:id/fichier-brut si aucune pièce n'a été déposée", async () => {
+    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+    const res = await request(app).get(`/api/courriers/${courrier.body.id}/fichier-brut`).set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(404);
+  });
+
+  test("refuse un 2e téléversement si une pièce est déjà présente (brute ou classée)", async () => {
+    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+    await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
+      .attach("fichier", Buffer.from("premier dépôt"), { filename: "premier.txt", contentType: "text/plain" });
+    const deuxieme = await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
+      .attach("fichier", Buffer.from("second dépôt"), { filename: "second.txt", contentType: "text/plain" });
+    expect(deuxieme.status).toBe(409);
+  });
+
+  test("migration automatique vers la GED quand un dossier est rattaché via PUT /:id", async () => {
+    const dossierId = await creerClientEtDossier();
+    const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
+      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+    await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
+      .attach("fichier", Buffer.from("contenu migré"), { filename: "a-migrer.txt", contentType: "text/plain" });
+
+    const maj = await request(app).put(`/api/courriers/${courrier.body.id}`).set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId });
+    expect(maj.status).toBe(200);
+    expect(maj.body.document_id).toBeTruthy();
+    expect(maj.body.fichier_brut_chemin).toBeNull();
+
+    // La pièce brute n'existe plus (migrée) ; le vrai document GED, si.
+    const brutApres = await request(app).get(`/api/courriers/${courrier.body.id}/fichier-brut`).set("Authorization", `Bearer ${token}`);
+    expect(brutApres.status).toBe(404);
+    const documentApres = await request(app).get(`/api/documents/${maj.body.document_id}/download`).set("Authorization", `Bearer ${token}`);
+    expect(documentApres.status).toBe(200);
+    expect(documentApres.text).toBe("contenu migré");
   });
 });
 

@@ -219,6 +219,12 @@ export class ApiService {
   telechargerDocument(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/documents/${id}/download`, { responseType: 'blob' });
   }
+  // 14/10/2026 — pièce d'un courrier déposée avant qu'un dossier n'existe
+  // (voir courriers.js, POST /:id/document) — migrée automatiquement dans
+  // la GED (telechargerDocument ci-dessus) dès qu'un dossier est rattaché.
+  telechargerFichierBrutCourrier(courrierId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/courriers/${courrierId}/fichier-brut`, { responseType: 'blob' });
+  }
   // GED — supprimer une pièce (28/08/2026, gap comblé : aucune route n'existait)
   supprimerDocument(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/api/documents/${id}`);

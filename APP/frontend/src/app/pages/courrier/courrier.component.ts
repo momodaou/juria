@@ -108,9 +108,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </select>
         </div>
         <div class="col2">
-          <label>Scan / pièce jointe (GED)</label>
-          <input class="in" type="file" (change)="fichierChoisi($event)" [disabled]="!form.dossier_id" />
-          @if (!form.dossier_id) { <p class="muted" style="margin:-6px 0 12px">Sélectionnez d'abord un dossier ci-dessus pour pouvoir y joindre le scan.</p> }
+          <label>Scan / pièce jointe</label>
+          <input class="in" type="file" (change)="fichierChoisi($event)" />
+          <!-- 14/10/2026 — gap signalé par l'utilisateur : un courrier (ex.
+               demande initiale) précède souvent l'ouverture du dossier ;
+               le scan n'a plus besoin d'attendre un dossier pour être
+               conservé, voir courriers.js. -->
+          @if (!form.dossier_id) { <p class="muted" style="margin:-6px 0 12px">Sans dossier, le scan est conservé directement sur le courrier — il rejoint automatiquement la GED dès qu'un dossier lui sera rattaché.</p> }
         </div>
       </div>
       <button class="btn" (click)="creer()" [disabled]="!form.correspondant || creation()">
@@ -165,7 +169,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 @if (c.document_id) {
                   <button class="lien" (click)="apercuPiece(c)">Aperçu</button> ·
                   <button class="lien" (click)="ouvrirPiece(c)">Ouvrir</button>
-                } @else if (c.dossier_id && auth.peut('courriers.creer')) {
+                } @else if (c.fichier_brut_nom) {
+                  <!-- 14/10/2026 — pièce déposée avant qu'un dossier
+                       n'existe (fichier_brut_*) : même actions, lues
+                       depuis le courrier plutôt que la GED tant qu'aucun
+                       dossier n'est rattaché. -->
+                  <button class="lien" (click)="apercuPieceBrute(c)">Aperçu</button> ·
+                  <button class="lien" (click)="ouvrirPieceBrute(c)">Ouvrir</button>
+                } @else if (auth.peut('courriers.creer')) {
                   <input type="file" class="mini-file" (change)="joindrePiece(c, $event)" title="Joindre le scan de ce courrier" />
                 } @else { — }
               </td>
@@ -216,8 +227,28 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
                       </select>
                     </div>
+                    <!-- 14/10/2026 — gap trouvé en construisant la migration
+                         automatique de pièce : PUT /api/courriers/:id accepte
+                         dossier_id depuis le 28/09/2026, mais aucun écran ne
+                         l'exposait (le texte d'aide ci-dessous promettait une
+                         « fiche du courrier » qui n'a jamais existé). Sans ce
+                         champ, impossible de rattacher un dossier après coup
+                         et donc de déclencher la migration de la pièce. -->
+                    <div class="col2">
+                      <label>Dossier (optionnel)</label>
+                      <input class="in" [(ngModel)]="editDossierRecherche" name="edDossierRecherche"
+                             (ngModelChange)="rechercherDossiersEdition()" placeholder="Rechercher un dossier…" />
+                      @if (editDossierResultats().length) {
+                        <div class="suggestions">
+                          @for (d of editDossierResultats(); track d.id) {
+                            <button type="button" class="chip" (click)="choisirDossierEdition(d)">{{ d.numero }} — {{ d.intitule }}</button>
+                          }
+                        </div>
+                      }
+                      @if (editForm.dossier_id) { <p class="muted">Sélectionné : {{ editDossierLabel }}</p> }
+                    </div>
                   </div>
-                  <p class="hint">La référence n'est pas modifiable — le dossier rattaché se corrige depuis la fiche du courrier concerné.</p>
+                  <p class="hint">La référence n'est pas modifiable.</p>
                   <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
                   <button class="lien" (click)="annulerEdition()">Annuler</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -258,6 +289,11 @@ export class CourrierComponent implements OnInit {
   private readonly preview = inject(DocumentPreviewService);
   readonly courriers = signal<any[]>([]);
   readonly dossierResultats = signal<Dossier[]>([]);
+  // 14/10/2026 — recherche de dossier dans le formulaire de correction
+  // (état distinct de dossierResultats ci-dessus, propre à la création).
+  readonly editDossierResultats = signal<Dossier[]>([]);
+  editDossierRecherche = '';
+  editDossierLabel = '';
   readonly dernierDeclenchement = signal<any | null>(null);
   readonly erreur = signal('');
   readonly creation = signal(false);
@@ -401,6 +437,26 @@ export class CourrierComponent implements OnInit {
     });
   }
 
+  // 14/10/2026 — même patron qu'apercuPiece()/ouvrirPiece() ci-dessus, mais
+  // pour la pièce d'un courrier encore sans dossier (fichier_brut_*,
+  // voir courriers.js) : migrée automatiquement vers la GED (et donc vers
+  // les 2 méthodes ci-dessus) dès qu'un dossier est rattaché.
+  apercuPieceBrute(c: any): void {
+    this.preview.ouvrir(c.reference, this.api.telechargerFichierBrutCourrier(c.id));
+  }
+
+  ouvrirPieceBrute(c: any): void {
+    this.erreur.set('');
+    this.api.telechargerFichierBrutCourrier(c.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: (e) => this.erreur.set(e?.status === 404 ? 'Fichier introuvable dans le stockage.' : 'Téléchargement impossible'),
+    });
+  }
+
   changerStatut(c: any, statut: string): void {
     this.api.majStatutCourrier(c.id, { statut }).subscribe({ next: () => this.charger() });
   }
@@ -418,14 +474,35 @@ export class CourrierComponent implements OnInit {
     this.erreur.set('');
     this.editForm = {
       type: c.type, type_precision: c.type_precision || '', date_courrier: c.date_courrier?.slice(0, 10), correspondant: c.correspondant,
-      objet: c.objet, imputation_id: c.imputation_id || '',
+      objet: c.objet, imputation_id: c.imputation_id || '', dossier_id: c.dossier_id || '',
     };
+    this.editDossierLabel = c.dossier_id ? (c.dossier_numero || '') : '';
+    this.editDossierRecherche = '';
+    this.editDossierResultats.set([]);
     this.editionId.set(c.id);
   }
 
   annulerEdition(): void {
     this.editionId.set(null);
     this.editForm = {};
+    this.editDossierLabel = '';
+    this.editDossierRecherche = '';
+    this.editDossierResultats.set([]);
+  }
+
+  // 14/10/2026 — même patron que rechercherDossiers()/choisirDossier() de
+  // la création, dupliqué pour le formulaire de correction (état séparé).
+  rechercherDossiersEdition(): void {
+    this.editForm.dossier_id = '';
+    if (this.editDossierRecherche.length < 2) { this.editDossierResultats.set([]); return; }
+    this.api.dossiers(this.editDossierRecherche).subscribe({ next: (d) => this.editDossierResultats.set(d) });
+  }
+
+  choisirDossierEdition(d: Dossier): void {
+    this.editForm.dossier_id = d.id;
+    this.editDossierLabel = `${d.numero} — ${d.intitule}`;
+    this.editDossierResultats.set([]);
+    this.editDossierRecherche = '';
   }
 
   enregistrerEdition(): void {

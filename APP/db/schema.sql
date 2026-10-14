@@ -4746,3 +4746,20 @@ ALTER TABLE courriers ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type 
 -- nature_precision/type_precision (pas le déclencheur explicite réservé
 -- à dernier_motif_id/motif_renvoi_id, qui doivent pouvoir être EFFACÉS).
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS resultat_precision TEXT;  -- si resultat = autre
+
+-- ---- Registre du courrier : scan conservé avant même qu'un dossier
+--      n'existe (14/10/2026) ----
+-- Gap signalé par l'utilisateur : `documents.dossier_id` est NOT NULL
+-- (la GED est organisée par dossier depuis le premier schéma), donc
+-- POST /api/courriers/:id/document refusait tout téléversement tant
+-- qu'aucun dossier n'était rattaché — alors qu'en pratique un courrier
+-- (demande initiale, premier contact) précède souvent l'ouverture du
+-- dossier. Ces 4 colonnes servent de dépôt TEMPORAIRE, hors GED, pour
+-- un courrier encore sans dossier ; dès qu'un dossier lui est rattaché
+-- (PUT /api/courriers/:id), le fichier est migré automatiquement dans
+-- la GED (categorie "correspondance", comme le circuit normal) et ces
+-- 4 colonnes sont vidées — voir courriers.js, classerDansGed().
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_chemin VARCHAR(500);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_nom VARCHAR(240);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_type_mime VARCHAR(120);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_taille BIGINT;
