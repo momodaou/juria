@@ -3762,4 +3762,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérifié** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **577/577 tests** (aucun test cassé, colonne purement additive). Build Angular production OK. **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : dossier/événement/tâche de test créés avec un intitulé distinctif — confirmé affiché sous la référence sur les deux sections, classes CSS `.dossier-ref`/`.dossier-nom` présentes. Aucune erreur console.
 
-**Déploiement** : aucune migration nécessaire (colonne déjà existante, juste ajoutée au `SELECT`).
+**Déploiement** : aucune migration nécessaire (colonne déjà existante, juste ajoutée au `SELECT`). Commité (`08e3dcb`). **Déployé et vérifié en production le 14/10/2026** — `./scripts/deploy.sh both`, API `juria-00152-kvq` (précédente `juria-00151-pjv`), frontend `juria-web-00199-btd` (précédente `juria-web-00198-gbr`). Vérifié : `/health` API en `200`, `/` frontend en `200`.
