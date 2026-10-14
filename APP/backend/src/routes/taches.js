@@ -70,6 +70,7 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT t.id, t.titre, t.type, t.priorite, t.statut, t.echeance, t.validation_requise,
               t.description, t.dossier_id, t.responsable_id, d.numero AS dossier_numero,
+              d.intitule AS dossier_intitule,
               u.prenom || ' ' || u.nom AS responsable,
               t.cree_par, cp.prenom || ' ' || cp.nom AS cree_par_nom
        FROM taches t

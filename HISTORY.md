@@ -3749,3 +3749,17 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 **Vérifié** : build Angular production OK (aucun changement backend, pas de suite Jest à relancer). **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : 3 tâches de test créées (avec échéance / sans échéance / terminée avec échéance) — confirmé que seule la première apparaît dans le rappel, aucun kanban ni formulaire de création présent sur Échéances, lien « Gérer les tâches dans le Plan d'action → » fonctionnel et menant bien vers le kanban complet. Aucune erreur console.
 
 **Déploiement** : aucune migration nécessaire (frontend seul, aucun changement de schéma/route backend). Commité (`2a10a56`). **Déployé et vérifié en production le 14/10/2026** — `./scripts/deploy.sh web`, révision `juria-web-00198-gbr` (précédente `juria-web-00197-68b`). Vérifié : `/` frontend en `200`.
+
+## 14/10/2026 (même jour) — Échéances : nom du dossier à côté de la référence
+
+**Contexte** : question de l'utilisateur sur la section « Prochaines échéances » — seule la référence du dossier identifie la ligne, alors que la tuile « Délais à venir » du Tableau de bord affiche déjà `numéro — intitulé` sur la même ligne. Incohérence entre les deux écrans, confirmée en lisant le code (`v_delais_a_venir`/`GET /api/evenements` exposaient déjà `dossier_intitule`, jamais affiché dans Échéances).
+
+**Décision** (recommandation donnée puis confirmée, « oui, vas-y ») : ajouter le nom du dossier, mais **dans la même cellule** que la référence (référence en gras, nom en dessous en plus petit/gris) plutôt qu'une nouvelle colonne — même principe déjà retenu pour le Rôle d'audience (21/09/2026 : parties en gras, référence en dessous), évite d'alourdir un tableau déjà dense et d'entrer en conflit avec la colonne « Intitulé » existante (qui est le titre de l'échéance elle-même, pas celui du dossier).
+
+**Implémentation** :
+- `backend/src/routes/taches.js`, `GET /` : ajout de `d.intitule AS dossier_intitule` au `SELECT` (`GET /api/evenements` l'exposait déjà, rien à changer côté backend pour les échéances).
+- `echeancier.component.ts` : colonne « Dossier » des deux sections (« Prochaines échéances » et « Tâches à venir ») affiche désormais la référence (`.dossier-ref`, gras, lien cliquable) suivie du nom du dossier (`.dossier-nom`, petit/gris) quand il est renseigné.
+
+**Vérifié** : suite complète relancée via la méthode documentée du `README.md` (conteneur `node:22`, base neuve) — **577/577 tests** (aucun test cassé, colonne purement additive). Build Angular production OK. **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : dossier/événement/tâche de test créés avec un intitulé distinctif — confirmé affiché sous la référence sur les deux sections, classes CSS `.dossier-ref`/`.dossier-nom` présentes. Aucune erreur console.
+
+**Déploiement** : aucune migration nécessaire (colonne déjà existante, juste ajoutée au `SELECT`).

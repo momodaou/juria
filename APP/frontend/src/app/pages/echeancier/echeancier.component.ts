@@ -47,7 +47,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @for (e of evenements(); track e.id) {
             <tr>
               <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
-              <td><a class="lien" [routerLink]="['/dossiers', e.dossier_id]">{{ e.dossier_numero }}</a></td>
+              <!-- 14/10/2026 — nom du dossier en plus de la seule référence,
+                   pour reconnaître le dossier sans avoir à cliquer (même
+                   besoin que la tuile "Délais à venir" du Tableau de bord,
+                   qui l'affichait déjà). -->
+              <td>
+                <a class="lien dossier-ref" [routerLink]="['/dossiers', e.dossier_id]">{{ e.dossier_numero }}</a>
+                @if (e.dossier_intitule) { <div class="dossier-nom">{{ e.dossier_intitule }}</div> }
+              </td>
               <td>{{ libelleType(e.type) }}@if (e.type === 'autre' && e.precision) { : {{ e.precision }} }</td>
               <td>{{ e.titre || '—' }}</td>
               <td>{{ e.responsable || '—' }}</td>
@@ -98,7 +105,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @for (t of tachesAVenir(); track t.id) {
             <tr>
               <td>{{ t.titre }}</td>
-              <td>@if (t.dossier_id) { <a class="lien" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a> } @else { — }</td>
+              <td>
+                @if (t.dossier_id) {
+                  <a class="lien dossier-ref" [routerLink]="['/dossiers', t.dossier_id]">{{ t.dossier_numero }}</a>
+                  @if (t.dossier_intitule) { <div class="dossier-nom">{{ t.dossier_intitule }}</div> }
+                } @else { — }
+              </td>
               <td>{{ t.responsable || '—' }}</td>
               <td>{{ t.echeance | date:'dd/MM/yyyy' }}</td>
             </tr>
@@ -119,6 +131,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .entete-section h3{margin:0}
     .edition td{background:var(--light);padding:12px 14px}
     .hint{font-size:var(--fs-sm);color:var(--slate);margin:4px 0 8px}
+    /* 14/10/2026 — référence + nom du dossier empilés dans la même
+       cellule (plus de visibilité sans cliquer), même besoin que la
+       tuile "Délais à venir" du Tableau de bord. */
+    .dossier-ref{font-weight:600}
+    .dossier-nom{font-size:var(--fs-xs);color:var(--grey)}
   `],
 })
 export class EcheancierComponent implements OnInit {
