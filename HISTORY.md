@@ -3748,4 +3748,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérifié** : build Angular production OK (aucun changement backend, pas de suite Jest à relancer). **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : 3 tâches de test créées (avec échéance / sans échéance / terminée avec échéance) — confirmé que seule la première apparaît dans le rappel, aucun kanban ni formulaire de création présent sur Échéances, lien « Gérer les tâches dans le Plan d'action → » fonctionnel et menant bien vers le kanban complet. Aucune erreur console.
 
-**Déploiement** : aucune migration nécessaire (frontend seul, aucun changement de schéma/route backend).
+**Déploiement** : aucune migration nécessaire (frontend seul, aucun changement de schéma/route backend). Commité (`2a10a56`). **Déployé et vérifié en production le 14/10/2026** — `./scripts/deploy.sh web`, révision `juria-web-00198-gbr` (précédente `juria-web-00197-68b`). Vérifié : `/` frontend en `200`.
