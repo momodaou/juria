@@ -777,7 +777,7 @@ import { libelleRole } from '../../core/roles';
                 <td>{{ a.avocat_nom || '—' }}</td>
                 <td>
                   @if (a.resultat) {
-                    {{ libelleResultat(a.resultat) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
+                    {{ libelleResultat(a.resultat, a.resultat_precision) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
                     @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }}@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
                     @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
                       <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
@@ -837,6 +837,11 @@ import { libelleRole } from '../../core/roles';
                           @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
                         </select>
                       </div>
+                      <!-- 14/10/2026 — même gap que le Rôle d'audience, même
+                           jour : libellé libre si "Autre". -->
+                      @if (retourCorrection.resultat === 'autre') {
+                        <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.resultat_precision" name="rcResultatPrecision" /></div>
+                      }
                       @if (retourCorrection.resultat === 'avant_dire_droit') {
                         <div class="col2"><p class="muted">Décision intermédiaire — aucune audience suivante n'est programmée automatiquement. Le dossier apparaît dans la tuile « En attente de réenrôlement » du Tableau de bord jusqu'à la demande de réenrôlement auprès du tribunal.</p></div>
                       }
@@ -1514,8 +1519,11 @@ export class DossierDetailComponent implements OnInit {
 
   // 26/09/2026 — le tableau Audiences affichait le code ENUM brut du
   // résultat, gap trouvé en câblant la distinction délibéré/délibéré vidé.
-  libelleResultat(code: string | null | undefined): string {
+  // 14/10/2026 — libellé libre pour "Autre" (gap signalé par l'utilisateur),
+  // même patron que côté Rôle d'audience.
+  libelleResultat(code: string | null | undefined, precision?: string | null): string {
     if (!code) return '—';
+    if (code === 'autre') return precision || 'Autre';
     return this.resultats().find((r) => r.code === code)?.libelle ?? code;
   }
 
@@ -1927,6 +1935,7 @@ export class DossierDetailComponent implements OnInit {
     this.erreurCorrectionRetour.set('');
     this.retourCorrection = {
       resultat: a.resultat || 'renvoi',
+      resultat_precision: a.resultat_precision || '',
       motif_renvoi_id: a.motif_renvoi_id || '',
       motif_renvoi_precision: a.motif_renvoi_precision || '',
       prochaine_date: a.prochaine_date ? new Date(a.prochaine_date).toISOString().slice(0, 10) : '',
@@ -1950,6 +1959,7 @@ export class DossierDetailComponent implements OnInit {
       prochaine_heure: this.retourCorrection.prochaine_heure || null,
       motif_renvoi_id: this.retourCorrection.motif_renvoi_id || null,
       motif_renvoi_precision: precisionValide ? (this.retourCorrection.motif_renvoi_precision || null) : null,
+      resultat_precision: this.retourCorrection.resultat === 'autre' ? (this.retourCorrection.resultat_precision || null) : null,
     };
     // 24/09/2026 — a.resultat (état AU MOMENT DE L'OUVERTURE du formulaire,
     // non muté entre-temps) distingue la 1re saisie (POST, refusée en

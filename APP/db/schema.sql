@@ -4736,3 +4736,13 @@ ALTER TABLE audiences ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type 
 -- est plus large que le seul cas "type = autre" — pas réutilisé ici pour
 -- ne pas mélanger 2 usages distincts sous un même nom ambigu.
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS type_precision TEXT;  -- si type = autre
+
+-- ---- Retour d'audience : précision du résultat "Autre" (14/10/2026) ----
+-- 3e demande du même jour, même motif : "Résultat" (resultat_audience)
+-- compte "autre" parmi ses 18 valeurs mais n'avait aucun champ dédié pour
+-- le préciser (contrairement à "Motif du renvoi", qui a déjà
+-- motif_renvoi_id/motif_renvoi_precision) — seule la case "Observations",
+-- générale, pouvait servir de repli. Même patron COALESCE simple que
+-- nature_precision/type_precision (pas le déclencheur explicite réservé
+-- à dernier_motif_id/motif_renvoi_id, qui doivent pouvoir être EFFACÉS).
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS resultat_precision TEXT;  -- si resultat = autre

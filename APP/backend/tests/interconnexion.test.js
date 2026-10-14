@@ -325,6 +325,48 @@ describe("type_precision — libellé libre pour le type d'audience 'Autre'", ()
   });
 });
 
+// 14/10/2026 — gap signalé par l'utilisateur sur "Retour d'audience" : le
+// résultat "Autre" (18 valeurs possibles) n'avait aucun champ de saisie du
+// libellé réel, contrairement au motif de renvoi (motif_renvoi_id/
+// motif_renvoi_precision) qui a déjà ce patron.
+describe("resultat_precision — libellé libre pour le résultat 'Autre'", () => {
+  test("se persiste à la 1re saisie du retour et se relit via GET /roles-audience", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-05", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    const retour = await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "autre", resultat_precision: "Rabat d'audience sur incident" });
+    expect(retour.status).toBe(200);
+    expect(retour.body.audience.resultat_precision).toBe("Rabat d'audience sur incident");
+
+    const role = await request(app).get("/api/roles-audience?semaine=2027-03-05").set("Authorization", `Bearer ${token}`);
+    const ligne = role.body.lignes.find((l) => l.audience_id === creation.body.audience_id);
+    expect(ligne.resultat).toBe("autre");
+    expect(ligne.resultat_precision).toBe("Rabat d'audience sur incident");
+
+    // Exposée aussi sur la fiche dossier (GET /api/dossiers/:id/audiences).
+    const fiche = await request(app).get(`/api/dossiers/${dossierId}/audiences`).set("Authorization", `Bearer ${token}`);
+    expect(fiche.body[0].resultat_precision).toBe("Rabat d'audience sur incident");
+  });
+
+  test("corrigeable via PUT /audiences/:id/retour, sans effacer si non fourni (COALESCE)", async () => {
+    const dossierId = await creerClientEtDossier();
+    const creation = await request(app).post("/api/roles-audience/lignes").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, date_prevue: "2027-03-06", juridiction: "TGI Bamako", type: "mise_en_etat" });
+    await request(app).post(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat: "autre", resultat_precision: "Premier libellé" });
+
+    const maj = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ resultat_precision: "Libellé corrigé" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.audience.resultat_precision).toBe("Libellé corrigé");
+
+    const majSansPrecision = await request(app).put(`/api/roles-audience/audiences/${creation.body.audience_id}/retour`)
+      .set("Authorization", `Bearer ${token}`).send({ observations: "Observation corrigée" });
+    expect(majSansPrecision.body.audience.resultat_precision).toBe("Libellé corrigé");
+  });
+});
+
 // 24/09/2026 — gap signalé par l'utilisateur (« aucune action... de sorte à
 // ce que les rôles des semaines qui suivent aient matérialisé ces
 // informations ») : "prochaine_date" devient obligatoire pour un renvoi, et

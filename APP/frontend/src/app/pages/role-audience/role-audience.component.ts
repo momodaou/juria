@@ -91,7 +91,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 <td>{{ l.avocat_code || '—' }}</td>
                 <td>
                   @if (l.resultat) {
-                    <span class="tag">{{ libelleResultat(l.resultat) }}</span>
+                    <span class="tag">{{ libelleResultat(l.resultat, l.resultat_precision) }}</span>
                     @if (l.motif_renvoi) { <span class="muted"> · {{ libelleMotif(l.motif_renvoi, l.motif_renvoi_precision) }}</span> }
                     @if (l.resultat === 'decision_rendue' && l.decision_document_id) {
                       <br><button type="button" class="lien" (click)="ouvrirDecision(l)">📄 Décision</button>
@@ -231,6 +231,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
               </select>
             </div>
+            <!-- 14/10/2026 — libellé libre si "Autre" (gap signalé par
+                 l'utilisateur), même patron que "Motif du renvoi" ci-dessous. -->
+            @if (retourForm.resultat === 'autre') {
+              <div><label>Préciser</label><input class="in" [(ngModel)]="retourForm.resultat_precision" name="resultatPrecision" /></div>
+            }
             @if (retourForm.resultat === 'avant_dire_droit') {
               <!-- 26/09/2026 — ADD (avant dire droit) : décision
                    intermédiaire, aucune date de suite automatique (il faut
@@ -649,7 +654,7 @@ export class RoleAudienceComponent implements OnInit {
   dossierRecherche = '';
   dossierLabel = '';
   nouvelleLigne: any = { type: 'mise_en_etat', urgente: false };
-  retourForm: any = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
+  retourForm: any = { resultat: 'renvoi', resultat_precision: '', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
 
   libelleStatut(s: string): string {
     return ({ brouillon: 'Brouillon', valide: 'Validé', diffuse: 'Diffusé' } as Record<string, string>)[s] ?? s;
@@ -704,8 +709,11 @@ export class RoleAudienceComponent implements OnInit {
   // 26/09/2026 — le tableau affichait jusqu'ici le code ENUM brut (ex.
   // "delibere") au lieu d'un libellé français, gap trouvé en câblant la
   // distinction délibéré/délibéré vidé demandée par l'utilisateur.
-  libelleResultat(code: string | null | undefined): string {
+  // 14/10/2026 — libellé libre pour "Autre" (gap signalé par l'utilisateur),
+  // même patron que libelleNatureProcedure()/libelleTypeAudience().
+  libelleResultat(code: string | null | undefined, precision?: string | null): string {
     if (!code) return '—';
+    if (code === 'autre') return precision || 'Autre';
     return this.resultats().find((r) => r.code === code)?.libelle ?? code;
   }
 
@@ -978,7 +986,7 @@ export class RoleAudienceComponent implements OnInit {
   ouvrirRetour(l: any): void {
     this.erreur.set('');
     this.correctionRetour.set(false);
-    this.retourForm = { resultat: 'renvoi', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
+    this.retourForm = { resultat: 'renvoi', resultat_precision: '', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
     this.ligneRetour.set(l);
     // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
     // hors écran si la ligne cliquée est loin dans le tableau : défilement auto.
@@ -995,6 +1003,7 @@ export class RoleAudienceComponent implements OnInit {
     this.correctionRetour.set(true);
     this.retourForm = {
       resultat: l.resultat || 'renvoi',
+      resultat_precision: l.resultat_precision || '',
       motif_renvoi_id: l.motif_renvoi_id || '',
       motif_renvoi_precision: l.motif_renvoi_precision || '',
       prochaine_date: l.prochaine_date ? new Date(l.prochaine_date).toISOString().slice(0, 10) : '',
@@ -1031,6 +1040,10 @@ export class RoleAudienceComponent implements OnInit {
       prochaine_heure: this.retourForm.prochaine_heure || null,
       motif_renvoi_id: this.retourForm.motif_renvoi_id || null,
       motif_renvoi_precision: precisionValide ? (this.retourForm.motif_renvoi_precision || null) : null,
+      // 14/10/2026 — même garde que motif_renvoi_precision ci-dessus : ne
+      // jamais envoyer un texte resté en mémoire pour un résultat qui n'en
+      // a plus besoin.
+      resultat_precision: this.retourForm.resultat === 'autre' ? (this.retourForm.resultat_precision || null) : null,
     };
     const appel = this.correctionRetour()
       ? this.api.corrigerRetourAudience(audienceId, payload)

@@ -90,7 +90,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               u.prenom || ' ' || u.nom AS avocat_nom, u.code AS avocat_code,
               ur.prenom || ' ' || ur.nom AS responsable_dossier_nom, ur.code AS responsable_dossier_code,
               a.id AS audience_id, a.heure, a.instructions, a.urgente,
-              a.resultat, a.prochaine_date, a.prochaine_heure, a.observations,
+              a.resultat, a.resultat_precision, a.prochaine_date, a.prochaine_heure, a.observations,
               a.nature_procedure, a.nature_precision, a.type_precision,
               a.motif_renvoi_id, a.motif_renvoi_precision, mr.libelle AS motif_renvoi,
               a.dernier_motif_id, a.dernier_motif_precision, mrd.libelle AS motif_dernier_renvoi,
@@ -508,8 +508,8 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
 // /retour pour corriger (jusqu'ici un second POST était accepté et
 // dupliquait l'audience suivante déjà créée, bug latent jamais rencontré
 // faute d'UI de correction).
-// body : { resultat, motif_renvoi_id?, motif_renvoi_precision?, prochaine_date?,
-//          observations? }
+// body : { resultat, resultat_precision?, motif_renvoi_id?, motif_renvoi_precision?,
+//          prochaine_date?, observations? }
 // Si prochaine_date est fourni, inscrit automatiquement l'audience suivante au rôle
 // de la semaine correspondante (renvoi -> compilation du rôle N+1).
 router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
@@ -528,10 +528,10 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
       return res.status(409).json({ error: "Un retour est déjà saisi pour cette audience — utilisez la correction (« Modifier le retour »)." });
     }
     const maj = await client.query(
-      `UPDATE audiences SET resultat = $1, motif_renvoi_id = $2, motif_renvoi_precision = $3,
-         prochaine_date = $4, prochaine_heure = $5, observations = $6
-       WHERE id = $7 RETURNING *`,
-      [b.resultat, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
+      `UPDATE audiences SET resultat = $1, resultat_precision = $2, motif_renvoi_id = $3, motif_renvoi_precision = $4,
+         prochaine_date = $5, prochaine_heure = $6, observations = $7
+       WHERE id = $8 RETURNING *`,
+      [b.resultat, b.resultat_precision || null, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
        b.prochaine_date || null, b.prochaine_heure || null, b.observations || null, req.params.id]
     );
     const a = maj.rows[0];
@@ -572,7 +572,7 @@ router.post("/audiences/:id/retour", requirePermission("audiences.retour.saisir"
 // déclencheur explicite que dans PUT /audiences/:id (un seul geste, une
 // clé absente = "ne pas toucher", présente avec valeur vide = "effacer").
 const CHAMPS_PROCEDURAUX_RETOUR = [
-  "resultat", "motif_renvoi_id", "motif_renvoi_precision", "prochaine_date", "prochaine_heure", "observations",
+  "resultat", "resultat_precision", "motif_renvoi_id", "motif_renvoi_precision", "prochaine_date", "prochaine_heure", "observations",
 ];
 
 router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir"), async (req, res) => {
@@ -593,6 +593,7 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
     const maj = await client.query(
       `UPDATE audiences SET
          resultat = COALESCE($1::resultat_audience, resultat),
+         resultat_precision = COALESCE($9, resultat_precision),
          motif_renvoi_id = CASE WHEN $2::boolean THEN $3::uuid ELSE motif_renvoi_id END,
          motif_renvoi_precision = CASE WHEN $2::boolean THEN $4 ELSE motif_renvoi_precision END,
          prochaine_date = COALESCE($5, prochaine_date),
@@ -600,7 +601,8 @@ router.put("/audiences/:id/retour", requirePermission("audiences.retour.saisir")
          observations = COALESCE($7, observations)
        WHERE id = $8 RETURNING *`,
       [b.resultat || null, toucheMotif, b.motif_renvoi_id || null, b.motif_renvoi_precision || null,
-       b.prochaine_date || null, b.prochaine_heure || null, b.observations || null, req.params.id]
+       b.prochaine_date || null, b.prochaine_heure || null, b.observations || null, req.params.id,
+       b.resultat_precision || null]
     );
     const a = maj.rows[0];
     if (a.resultat === "renvoi" && !a.prochaine_date) {
