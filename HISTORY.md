@@ -3772,4 +3772,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **Vérifié** : build Angular production OK (aucun changement backend). **Vérification visuelle et fonctionnelle réelle** (Playwright, stack Docker locale dédiée, détruite après coup) : libellé du menu confirmé « Tâches » (plus aucune entrée « Plan d'action »), titre de l'écran confirmé « Tâches », route toujours `/plan-action`, lien depuis Échéances confirmé « Gérer dans l'écran Tâches → ». Aucune erreur console.
 
-**Déploiement** : aucune migration nécessaire (frontend seul, libellés uniquement).
+**Déploiement** : aucune migration nécessaire (frontend seul, libellés uniquement). Commité (`f734eaa`). **Déployé et vérifié en production le 14/10/2026** — `./scripts/deploy.sh web`, révision `juria-web-00200-669` (précédente `juria-web-00199-btd`). Vérifié : `/` frontend en `200`.
