@@ -75,6 +75,10 @@ const CATALOGUE = [
   { code: "courriers.consulter", module: "Registre du courrier", label: "Consulter le registre du courrier", restreinte: true },
   { code: "courriers.creer", module: "Registre du courrier", label: "Enregistrer un courrier" },
   { code: "courriers.statut.modifier", module: "Registre du courrier", label: "Faire évoluer le statut" },
+  // 15/10/2026 — réflexion "Registre courrier" (Q1) : visa de l'avocat,
+  // réservé par défaut aux rôles avocat (vérifié en plus, côté route,
+  // être le responsable ou un intervenant du dossier concerné).
+  { code: "courriers.viser", module: "Registre du courrier", label: "Viser un courrier (avocat du dossier)", restreinte: true },
 
   { code: "actes.consulter", module: "Atelier d'actes", label: "Consulter l'atelier d'actes", restreinte: true },
   { code: "actes.generer", module: "Atelier d'actes", label: "Générer un acte" },

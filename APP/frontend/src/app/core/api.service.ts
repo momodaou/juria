@@ -691,7 +691,7 @@ export class ApiService {
   }
 
   // Registre du courrier
-  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string } = {}): Observable<any[]> {
+  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';
@@ -716,6 +716,10 @@ export class ApiService {
     const fd = new FormData();
     fd.append('fichier', fichier);
     return this.http.post<any>(`${this.base}/api/courriers/${id}/document`, fd);
+  }
+  // 15/10/2026 — Q1 de la réflexion "Registre courrier" : visa de l'avocat.
+  viserCourrier(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/viser`, {});
   }
 
   // Atelier d'actes

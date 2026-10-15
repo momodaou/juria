@@ -4763,3 +4763,64 @@ ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_chemin VARCHAR(500);
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_nom VARCHAR(240);
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_type_mime VARCHAR(120);
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS fichier_brut_taille BIGINT;
+
+-- ---- Registre du courrier : visa avocat, envoi effectif, échéance
+--      interne, types manquants (15/10/2026) ----
+-- Suite directe du document de réflexion "Priompt Registre courrier
+-- JURIA.docx" (DOC/CLAUDE CODE - JURIA/), 10 questions tranchées avec
+-- l'utilisateur avant toute implémentation.
+--
+-- 1) Visa de l'avocat (vise_par/vise_le) : `vise_le` existait déjà dans le
+--    schéma depuis le tout premier jour ("visa de l'avocat") mais jamais
+--    câblé à aucune route ni écran — `vise_par` n'existait pas du tout,
+--    ajouté ici pour savoir QUI a visé, pas seulement quand. Le visa
+--    (POST /api/courriers/:id/viser) est réservé à un avocat du dossier
+--    (responsable ou intervenant — voir ROLES_AVOCAT dans dossiers.js/
+--    courriers.js), surtout utile quand l'imputation_id n'est pas déjà un
+--    avocat (collaborateur non-avocat, stagiaire, personnel administratif) :
+--    c'est la seule trace formelle qu'une supervision par un avocat a eu
+--    lieu avant que le courrier passe au statut "traité".
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS vise_par UUID REFERENCES utilisateurs(id);
+
+-- 2) Envoi effectif côté départ (expedie_par/expedie_le), symétrique à
+--    transmis_par/transmis_le déjà posés automatiquement côté arrivée
+--    quand le statut passe à "impute" (PUT /:id/statut) — l'envoi
+--    effectif (statut "expedie") n'avait jusqu'ici aucune trace de qui/
+--    quand, alors que la date d'envoi peut faire courir un délai côté
+--    adverse (utile en cas de contestation).
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS expedie_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS expedie_le  TIMESTAMPTZ;
+
+-- 3) Échéance interne vs délai légal réel (Q5) : le déclencheur automatique
+--    sur une Assignation/Convocation créait jusqu'ici une tâche/diligence
+--    à échéance "aujourd'hui" (date_courrier elle-même, declencheurs.
+--    delai_jours étant NULL) — peu utile comme rappel et dangereux si
+--    jamais pris pour un vrai délai de procédure. Décision actée : JAMAIS
+--    de délai légal calculé seul par JURIA (dépend du degré/juridiction,
+--    seul l'avocat peut le déterminer correctement) — seulement un rappel
+--    interne générique à très court terme (J+3), pour qu'un document reçu
+--    ne reste jamais sans réaction immédiate. Le vrai délai légal reste à
+--    saisir manuellement par l'avocat dans Échéances (delai_procedure),
+--    via un raccourci proposé au moment du visa (frontend uniquement).
+UPDATE declencheurs SET delai_jours = 3
+ WHERE source_domaine = 'type_courrier' AND source_code IN ('assignation','convocation') AND delai_jours IS NULL;
+
+-- 4) Types de courrier manquants : "Requête" et "Notification" figurent
+--    dans le référentiel `listes_valeurs('type_courrier')` depuis le tout
+--    premier schéma (destinés à couvrir notamment la "notification
+--    d'avocat à avocat" citée explicitement par l'utilisateur) mais
+--    n'avaient JAMAIS été ajoutés à l'ENUM Postgres `type_courrier`
+--    lui-même (seuls 'assignation'/'convocation' l'avaient été, le
+--    11/09/2026) — ni donc au menu déroulant réel de l'écran. Comblé ici,
+--    pas réinventé.
+ALTER TYPE type_courrier ADD VALUE IF NOT EXISTS 'requete';
+ALTER TYPE type_courrier ADD VALUE IF NOT EXISTS 'notification';
+
+-- 5) Nouvelle action cataloguée `courriers.viser`, ouverte par défaut aux
+--    seuls rôles avocat (même liste que ROLES_AVOCAT) — absence de ligne
+--    pour les 8 autres rôles = refus par défaut, comportement standard de
+--    la matrice, aucune ligne FALSE à écrire explicitement.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'courriers.viser', TRUE
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','avocat_stagiaire','collaborateur']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;

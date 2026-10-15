@@ -39,7 +39,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <select class="in" [(ngModel)]="form.type" name="type">
             <option value="lettre">Lettre</option>
             <option value="assignation">Assignation</option>
+            <option value="requete">Requête</option>
             <option value="convocation">Convocation</option>
+            <option value="notification">Notification (avocat à avocat, notaire…)</option>
             <option value="acte_huissier">Acte d'huissier</option>
             <option value="acte_notaire">Acte de notaire</option>
             <option value="decision_justice">Décision de justice</option>
@@ -140,7 +142,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           <option value="">Tous types</option>
           <option value="lettre">Lettre</option>
           <option value="assignation">Assignation</option>
+          <option value="requete">Requête</option>
           <option value="convocation">Convocation</option>
+          <option value="notification">Notification</option>
           <option value="acte_huissier">Acte d'huissier</option>
           <option value="acte_notaire">Acte de notaire</option>
           <option value="decision_justice">Décision de justice</option>
@@ -151,7 +155,16 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         </select>
         <input class="search" placeholder="Rechercher (référence, correspondant, objet)…"
                [(ngModel)]="recherche" (ngModelChange)="charger()" />
+        <!-- 15/10/2026 — Q3 : file de travail "papier reçu, pas encore
+             numérisé" pour l'accueil. -->
+        <label class="chk"><input type="checkbox" [(ngModel)]="filtreNumerisation" (ngModelChange)="charger()" /> En attente de numérisation</label>
       </div>
+      <!-- 15/10/2026 — Q5 : le visa ne calcule jamais le vrai délai légal
+           (dépend du degré/juridiction, seul l'avocat peut le déterminer) —
+           simple raccourci vers Échéances pour le saisir soi-même. -->
+      @if (dernierVisa(); as v) {
+        <p class="ok-msg">✓ Courrier visé — <a class="lien" [routerLink]="['/echeancier']" [queryParams]="{ dossier: v.dossierId, dossierLabel: v.dossierNumero }">ajouter l'échéance procédurale réelle sur {{ v.dossierNumero }} →</a></p>
+      }
       @if (courriers().length) {
         <table>
           <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Imputé à</th><th>Pièce</th><th>Statut</th><th></th></tr>
@@ -164,7 +177,14 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td>{{ c.correspondant }}</td>
               <td>{{ c.objet || '—' }}</td>
               <td>@if (c.dossier_id) { <a class="lien" [routerLink]="['/dossiers', c.dossier_id]">{{ c.dossier_numero }}</a> } @else { — }</td>
-              <td>{{ c.impute_a || '—' }}</td>
+              <td>
+                {{ c.impute_a || '—' }}
+                <!-- 15/10/2026 — transmis_par/transmis_le existaient déjà
+                     (depuis le tout premier schéma) mais n'étaient jamais
+                     affichés ; vise_par/vise_le sont nouveaux (Q1). -->
+                @if (c.transmis_le) { <br><span class="muted-sm">transmis le {{ c.transmis_le | date:'dd/MM/yyyy HH:mm' }}</span> }
+                @if (c.vise_le) { <br><span class="muted-sm">visé par {{ c.vise_par_nom }} le {{ c.vise_le | date:'dd/MM/yyyy HH:mm' }}</span> }
+              </td>
               <td>
                 @if (c.document_id) {
                   <button class="lien" (click)="apercuPiece(c)">Aperçu</button> ·
@@ -192,6 +212,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 } @else {
                   {{ c.statut }}
                 }
+                <!-- 15/10/2026 — Q4 : envoi effectif tracé symétriquement
+                     à l'imputation côté arrivée. -->
+                @if (c.expedie_le) { <br><span class="muted-sm">expédié le {{ c.expedie_le | date:'dd/MM/yyyy HH:mm' }}</span> }
               </td>
               <td><app-menu-actions [actions]="actionsPour(c)" /></td>
             </tr>
@@ -204,7 +227,9 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                       <select class="in" [(ngModel)]="editForm.type" name="edType">
                         <option value="lettre">Lettre</option>
                         <option value="assignation">Assignation</option>
+                        <option value="requete">Requête</option>
                         <option value="convocation">Convocation</option>
+                        <option value="notification">Notification</option>
                         <option value="acte_huissier">Acte d'huissier</option>
                         <option value="acte_notaire">Acte de notaire</option>
                         <option value="decision_justice">Décision de justice</option>
@@ -280,6 +305,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:var(--grey);margin:0 0 10px}
     .mini-file{max-width:110px;font-size:var(--fs-xs)}
+    .muted-sm{font-size:var(--fs-xs);color:var(--grey)}
+    .chk{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--slate);font-weight:400;white-space:nowrap}
   `],
 })
 export class CourrierComponent implements OnInit {
@@ -295,6 +322,8 @@ export class CourrierComponent implements OnInit {
   editDossierRecherche = '';
   editDossierLabel = '';
   readonly dernierDeclenchement = signal<any | null>(null);
+  // 15/10/2026 — Q1 : raccourci affiché après un visa réussi, voir viser().
+  readonly dernierVisa = signal<{ dossierId: string; dossierNumero: string } | null>(null);
   readonly erreur = signal('');
   readonly creation = signal(false);
   // Annuaire (GET /api/utilisateurs, ouvert à tous) pour le sélecteur
@@ -311,6 +340,7 @@ export class CourrierComponent implements OnInit {
   recherche = '';
   filtreSens = '';
   filtreType = '';
+  filtreNumerisation = false;
   dossierRecherche = '';
   dossierLabel = '';
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
@@ -326,7 +356,11 @@ export class CourrierComponent implements OnInit {
 
   charger(): void {
     const dossierId = this.filtreDossierId();
-    this.api.courriers({ sens: this.filtreSens, type: this.filtreType, q: this.recherche, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (c) => this.courriers.set(c) });
+    this.api.courriers({
+      sens: this.filtreSens, type: this.filtreType, q: this.recherche,
+      ...(dossierId ? { dossier_id: dossierId } : {}),
+      ...(this.filtreNumerisation ? { en_attente_numerisation: 'true' } : {}),
+    }).subscribe({ next: (c) => this.courriers.set(c) });
   }
 
   rechercherDossiers(): void {
@@ -356,7 +390,8 @@ export class CourrierComponent implements OnInit {
   libelleType(code: string, precision?: string | null): string {
     if (code === 'autre') return precision || 'Autre';
     return ({
-      lettre: 'Lettre', assignation: 'Assignation', convocation: 'Convocation',
+      lettre: 'Lettre', assignation: 'Assignation', requete: 'Requête', convocation: 'Convocation',
+      notification: 'Notification',
       acte_huissier: "Acte d'huissier", acte_notaire: 'Acte de notaire',
       decision_justice: 'Décision de justice', conclusions: 'Conclusions',
       courrier_officiel: 'Courrier officiel', administratif: 'Administratif', autre: 'Autre',
@@ -466,8 +501,25 @@ export class CourrierComponent implements OnInit {
   // action pour corriger une faute de frappe (correspondant, objet, type,
   // date) ou l'imputation.
   actionsPour(c: any): ActionMenuItem[] {
-    if (!this.auth.peut('courriers.statut.modifier')) return [];
-    return [{ label: 'Modifier', action: () => this.commencerEdition(c) }];
+    const actions: ActionMenuItem[] = [];
+    if (this.auth.peut('courriers.statut.modifier')) {
+      actions.push({ label: 'Modifier', action: () => this.commencerEdition(c) });
+    }
+    // 15/10/2026 — Q1 : réservé à un avocat du dossier (vérifié côté
+    // serveur) — n'a de sens que si un dossier est déjà rattaché.
+    if (this.auth.peut('courriers.viser') && c.dossier_id) {
+      actions.push({ label: c.vise_le ? 'Re-viser' : 'Viser', action: () => this.viser(c) });
+    }
+    return actions;
+  }
+
+  viser(c: any): void {
+    this.erreur.set('');
+    this.dernierVisa.set(null);
+    this.api.viserCourrier(c.id).subscribe({
+      next: () => { this.dernierVisa.set({ dossierId: c.dossier_id, dossierNumero: c.dossier_numero }); this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Visa impossible.'),
+    });
   }
 
   commencerEdition(c: any): void {

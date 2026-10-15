@@ -8,6 +8,12 @@ const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 const router = express.Router();
 
+// 15/10/2026 — même liste que ROLES_AVOCAT dans dossiers.js (dupliquée
+// ici, convention déjà suivie dans ce projet pour ce genre de petite
+// constante plutôt qu'un module partagé) : seul un avocat peut "viser"
+// un courrier (voir POST /:id/viser).
+const ROLES_AVOCAT = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }, // 25 Mo, même limite que documents.js
@@ -91,9 +97,9 @@ async function appliquerDeclencheurs(client, courrier, utilisateurId) {
   return { type: "tache", ...ins.rows[0] };
 }
 
-// GET /api/courriers?sens=&type=&dossier_id=&statut=&q=
+// GET /api/courriers?sens=&type=&dossier_id=&statut=&q=&en_attente_numerisation=true
 router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
-  const { sens, type, dossier_id, statut, q } = req.query;
+  const { sens, type, dossier_id, statut, q, en_attente_numerisation } = req.query;
   const params = [];
   const clauses = [];
   if (sens) { params.push(sens); clauses.push(`c.sens = $${params.length}`); }
@@ -103,15 +109,24 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   if (dossier_id) { params.push(dossier_id); clauses.push(`c.dossier_id = $${params.length}`); }
   if (statut) { params.push(statut); clauses.push(`c.statut = $${params.length}`); }
   if (q) { params.push(`%${q}%`); clauses.push(`(c.correspondant ILIKE $${params.length} OR c.objet ILIKE $${params.length} OR c.reference ILIKE $${params.length})`); }
+  // 15/10/2026 — Q3 : file de travail "papier reçu, pas encore numérisé"
+  // pour l'accueil (a_numeriser posé à la création, numerise désormais
+  // mis à jour réellement — voir POST /:id/document et PUT /:id).
+  if (en_attente_numerisation === "true") { clauses.push(`c.a_numeriser = TRUE AND c.numerise = FALSE`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
-              c.fichier_brut_nom, c.imputation_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
+              c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
+              c.expedie_par, c.expedie_le,
+              d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
+              t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
+       LEFT JOIN utilisateurs t ON t.id = c.transmis_par
+       LEFT JOIN utilisateurs v ON v.id = c.vise_par
        ${where}
        ORDER BY c.date_courrier DESC, c.cree_le DESC LIMIT 300`,
       params
@@ -132,10 +147,13 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
 router.get("/:id", requirePermission("courriers.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT c.*, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a
+      `SELECT c.*, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
+              t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
        FROM courriers c
        LEFT JOIN dossiers d ON d.id = c.dossier_id
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
+       LEFT JOIN utilisateurs t ON t.id = c.transmis_par
+       LEFT JOIN utilisateurs v ON v.id = c.vise_par
        WHERE c.id = $1`,
       [req.params.id]
     );
@@ -207,7 +225,10 @@ router.post("/:id/document", requirePermission("courriers.creer"), upload.single
     const nom = req.file.originalname;
     if (dossierId) {
       const docId = await classerDansGed(pool, dossierId, nom, req.file.buffer, req.file.mimetype, req.file.size, req.user.sub);
-      await pool.query("UPDATE courriers SET document_id = $1 WHERE id = $2", [docId, req.params.id]);
+      // 15/10/2026 — Q3 : numerise reflète désormais la réalité ("rattaché
+      // à la GED") plutôt que de rester une colonne morte jamais mise à
+      // jour, sans action supplémentaire côté utilisateur.
+      await pool.query("UPDATE courriers SET document_id = $1, numerise = TRUE WHERE id = $2", [docId, req.params.id]);
       return res.status(201).json({ document_id: docId, nom });
     }
     const dest = `courriers/${req.params.id}/${Date.now()}_${nom}`.replace(/\s+/g, "_");
@@ -301,7 +322,7 @@ router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, r
         client, c.dossier_id, c.fichier_brut_nom, buf, c.fichier_brut_type_mime, c.fichier_brut_taille, req.user.sub
       );
       await client.query(
-        `UPDATE courriers SET document_id = $1, fichier_brut_chemin = NULL, fichier_brut_nom = NULL,
+        `UPDATE courriers SET document_id = $1, numerise = TRUE, fichier_brut_chemin = NULL, fichier_brut_nom = NULL,
            fichier_brut_type_mime = NULL, fichier_brut_taille = NULL WHERE id = $2`,
         [docId, req.params.id]
       );
@@ -327,19 +348,63 @@ router.put("/:id/statut", requirePermission("courriers.statut.modifier"), async 
   const permis = ["recu", "impute", "en_traitement", "traite", "expedie"];
   if (!permis.includes(statut)) return res.status(400).json({ error: "Statut invalide" });
   const estImpute = statut === "impute";
+  // 15/10/2026 — Q4 (confirmé) : trace symétrique de l'envoi effectif
+  // côté départ, même mécanisme que transmis_par/transmis_le côté arrivée.
+  const estExpedie = statut === "expedie";
   try {
     const { rows } = await pool.query(
       `UPDATE courriers SET
          statut = $1::statut_courrier,
          imputation_id = COALESCE($2, imputation_id),
          transmis_par = CASE WHEN $5 THEN $3 ELSE transmis_par END,
-         transmis_le = CASE WHEN $5 THEN now() ELSE transmis_le END
+         transmis_le = CASE WHEN $5 THEN now() ELSE transmis_le END,
+         expedie_par = CASE WHEN $6 THEN $3 ELSE expedie_par END,
+         expedie_le = CASE WHEN $6 THEN now() ELSE expedie_le END
        WHERE id = $4
        RETURNING id, statut, imputation_id`,
-      [statut, imputation_id || null, req.user.sub, req.params.id, estImpute]
+      [statut, imputation_id || null, req.user.sub, req.params.id, estImpute, estExpedie]
     );
     if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
     res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/courriers/:id/viser — 15/10/2026, réponse à Q1 de la réflexion
+// "Registre courrier" : marque qu'un avocat du dossier a pris connaissance
+// et validé le traitement du courrier, distinct de l'imputation (qui dit
+// seulement "à qui c'est confié"). Réservé à un avocat (ROLES_AVOCAT) qui
+// est responsable OU intervenant du dossier rattaché — jamais quelqu'un
+// d'extérieur au dossier. Idempotent : re-viser met juste à jour qui/quand,
+// ce n'est pas une transition d'état irréversible (pas de garde 409).
+router.post("/:id/viser", requirePermission("courriers.viser"), async (req, res) => {
+  if (!ROLES_AVOCAT.includes(req.user.role)) {
+    return res.status(403).json({ error: "Seul un avocat peut viser un courrier." });
+  }
+  try {
+    const { rows } = await pool.query("SELECT dossier_id FROM courriers WHERE id = $1", [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
+    const dossierId = rows[0].dossier_id;
+    if (!dossierId) {
+      return res.status(400).json({ error: "Un dossier doit être rattaché avant de pouvoir viser ce courrier." });
+    }
+    const { rows: affRows } = await pool.query(
+      `SELECT 1 FROM dossiers WHERE id = $1 AND responsable_id = $2
+       UNION
+       SELECT 1 FROM dossier_intervenants WHERE dossier_id = $1 AND utilisateur_id = $2`,
+      [dossierId, req.user.sub]
+    );
+    if (!affRows[0]) {
+      return res.status(403).json({ error: "Seul un avocat affecté à ce dossier (responsable ou intervenant) peut le viser." });
+    }
+    const upd = await pool.query(
+      `UPDATE courriers SET vise_par = $1, vise_le = now() WHERE id = $2
+       RETURNING id, vise_par, vise_le`,
+      [req.user.sub, req.params.id]
+    );
+    res.json(upd.rows[0]);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
