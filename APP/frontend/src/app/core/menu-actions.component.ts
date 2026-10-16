@@ -31,7 +31,7 @@ export interface ActionMenuItem {
     <button type="button" class="menu-btn" [class.menu-btn-ouvert]="ouvert()" title="Actions" (click)="basculer($event)">⋮</button>
     }
     @if (ouvert()) {
-      <div class="menu-actions" [style.top.px]="pos()?.top" [style.left.px]="pos()?.left">
+      <div class="menu-actions" [style.top.px]="pos()?.top" [style.right.px]="pos()?.right">
         @for (a of actions; track a.label) {
           <button type="button" class="menu-item" [class.menu-item-danger]="a.danger" [class.menu-item-disabled]="a.disabled"
                   [disabled]="a.disabled" [title]="a.title || ''" (click)="choisir(a, $event)">{{ a.label }}</button>
@@ -100,7 +100,7 @@ export interface ActionMenuItem {
        qu'il dépasse la hauteur visible, bug déjà rencontré et corrigé une
        fois pour la Messagerie, évité ici dès le départ. */
     .menu-actions{
-      position:fixed;z-index:1000;min-width:150px;
+      position:fixed;z-index:1000;min-width:150px;width:max-content;max-width:calc(100vw - 16px);
       background:#fff;border:1px solid var(--line);border-radius:10px;
       box-shadow:0 6px 18px rgba(0,0,0,.16);padding:4px;display:flex;flex-direction:column;
     }
@@ -117,13 +117,21 @@ export interface ActionMenuItem {
 export class MenuActionsComponent {
   @Input() actions: ActionMenuItem[] = [];
   readonly ouvert = signal(false);
-  readonly pos = signal<{ top: number; left: number } | null>(null);
+  readonly pos = signal<{ top: number; right: number } | null>(null);
 
   basculer(ev: Event): void {
     ev.stopPropagation();
     if (this.ouvert()) { this.ouvert.set(false); return; }
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    this.pos.set({ top: rect.bottom + 4, left: Math.max(8, rect.right - 156) });
+    // Ancré par la droite (16/10/2026) : un libellé plus long que la largeur
+    // minimale n'est plus coupé par le bord de l'écran ; le menu s'ouvre vers
+    // le haut s'il n'y a pas la place en dessous.
+    const hauteur = this.actions.length * 34 + 12;
+    const dessous = rect.bottom + 4 + hauteur <= window.innerHeight;
+    this.pos.set({
+      top: dessous ? rect.bottom + 4 : Math.max(8, rect.top - 4 - hauteur),
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
     this.ouvert.set(true);
   }
 

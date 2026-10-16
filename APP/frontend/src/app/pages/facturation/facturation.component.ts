@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -32,7 +32,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </select>
         </label>
         @if (dossierId === '__autre__') {
-          <label style="min-width:260px">Client
+          <label class="large">Client
             <app-client-picker [valeur]="factureClientId" (valeurChange)="factureClientId = $event" />
           </label>
         }
@@ -48,8 +48,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <label>Montant HT
           <input type="number" [(ngModel)]="montantHt" name="ht" />
         </label>
-        <label>Objet (facultatif)
-          <input [(ngModel)]="objet" name="objet" placeholder="Pré-rempli depuis l'objet du dossier — modifiable" style="min-width:260px" />
+        <label class="large">Objet (facultatif)
+          <input [(ngModel)]="objet" name="objet" placeholder="Pré-rempli depuis l'objet du dossier — modifiable" />
         </label>
         <label>Devise
           <select [(ngModel)]="devise" name="devise">
@@ -76,8 +76,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             }
           </select>
         </label>
-        <label>Mention (facultatif)
-          <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
+        <label class="large">Mention (facultatif)
+          <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" />
         </label>
         @if (auth.peut('factures.paiement.ajouter')) {
           <label>Acompte reçu à l'émission (facultatif)
@@ -126,8 +126,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             }
           </select>
         </label>
-        <label>Mention (facultatif)
-          <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
+        <label class="large">Mention (facultatif)
+          <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" />
         </label>
         @if (auth.peut('factures.paiement.ajouter')) {
           <label>Acompte reçu à l'émission (facultatif)
@@ -195,7 +195,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @for (f of impayees(); track f.id) {
             <tr>
               <td>{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
-              <td>{{ f.reste | number }} {{ f.devise }}</td>
+              <td>{{ f.reste | number }} {{ dev(f.devise) }}</td>
               <td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td>
                 @if (auth.peut('factures.paiement.ajouter')) {
@@ -297,7 +297,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 <td class="nowrap">{{ p.facture_numero }}</td>
                 <td class="nowrap">@if (p.dossier_id) { <a class="lien" [routerLink]="['/dossiers', p.dossier_id]">{{ p.dossier_numero }}</a> } @else { — }</td>
                 <td>{{ libelleMoyen(p.mode) }}</td>
-                <td>{{ p.montant | number }} {{ p.devise }}</td>
+                <td>{{ p.montant | number }} {{ dev(p.devise) }}</td>
                 <td>{{ p.reference || '—' }}</td>
               </tr>
             }
@@ -325,26 +325,26 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       @if (factures().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
+          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th>@if (afficherContreValeur()) { <th>Contre-valeur FCFA</th> }<th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
               <td class="nowrap">{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
-              <td>{{ f.mode }}</td>
-              <td>{{ f.montant_ht | number }} {{ f.devise }}</td>
-              <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
-              <td>{{ f.encaisse | number }} {{ f.devise }}</td>
-              <td [style.fontWeight]="f.reliquat > 0 ? '700' : '400'">{{ f.reliquat | number }} {{ f.devise }}</td>
-              <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
-              <td><span class="tag" [class.haute]="f.statut !== 'payee'">{{ f.statut }}</span></td>
+              <td class="nowrap-n">{{ libelleMode(f.mode) }}</td>
+              <td class="nowrap-n">{{ f.montant_ht | number }} {{ dev(f.devise) }}</td>
+              <td class="nowrap-n">{{ f.montant_ttc | number }} {{ dev(f.devise) }}</td>
+              <td class="nowrap-n">{{ f.encaisse | number }} {{ dev(f.devise) }}</td>
+              <td class="nowrap-n" [style.fontWeight]="f.reliquat > 0 ? '700' : '400'">{{ f.reliquat | number }} {{ dev(f.devise) }}</td>
+              @if (afficherContreValeur()) { <td class="nowrap-n">{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td> }
+              <td class="nowrap-n"><span class="tag" [class.ok]="f.statut === 'payee'" [class.attente]="f.statut === 'emise' || f.statut === 'partielle'">{{ libelleStatut(f.statut) }}</span>@if (enRetard(f)) { <span class="tag haute" style="margin-left:4px">En retard</span> }</td>
               <td><app-menu-actions [actions]="actionsPourFacture(f)" /></td>
             </tr>
             @if (editionId() === f.id) {
               <tr class="edition">
-                <td colspan="11">
+                <td [attr.colspan]="nbColonnes()">
                   <div class="form">
                     <label>Objet
-                      <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" style="min-width:220px" />
+                      <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" />
                     </label>
                     <label>Montant HT
                       <input type="number" [(ngModel)]="edit.montant_ht" [name]="'edHt' + f.id" [disabled]="f.statut !== 'emise'" />
@@ -366,8 +366,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         }
                       </select>
                     </label>
-                    <label>Mention
-                      <input [(ngModel)]="edit.mention" [name]="'edMention' + f.id" style="min-width:220px" />
+                    <label class="large">Mention
+                      <input [(ngModel)]="edit.mention" [name]="'edMention' + f.id" />
                     </label>
                   </div>
                   @if (f.statut !== 'emise') {
@@ -381,16 +381,16 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             }
             @if (paiementsOuvertsId() === f.id) {
               <tr class="edition">
-                <td colspan="11">
+                <td [attr.colspan]="nbColonnes()">
                   <b>Paiements enregistrés</b>
                   @if (paiements().length) {
                     <table class="paiements">
                       @for (p of paiements(); track p.id) {
                         <tr>
                           <td>{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
-                          <td>{{ p.montant | number }} {{ p.devise }}</td>
+                          <td>{{ p.montant | number }} {{ dev(p.devise) }}</td>
                           <td>{{ libelleMoyenPaiement(p.mode) }}</td>
-                          <td class="muted">reste {{ p.reste_apres | number }} {{ p.devise }}</td>
+                          <td class="muted">reste {{ p.reste_apres | number }} {{ dev(p.devise) }}</td>
                           <td>{{ p.reference || '—' }}</td>
                           <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
                         </tr>
@@ -398,7 +398,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     </table>
                     <p class="hint">Supprimer un paiement saisi par erreur recalcule le statut de la facture. Action tracée dans le journal d'audit.</p>
                   } @else { <p class="muted">Aucun paiement.</p> }
-                  <p><b>Reste à payer : {{ f.reliquat | number }} {{ f.devise }}</b> sur {{ f.montant_ttc | number }} {{ f.devise }}</p>
+                  <p class="recap"><b>Reste à payer : {{ f.reliquat | number }} {{ dev(f.devise) }}</b> sur {{ f.montant_ttc | number }} {{ dev(f.devise) }}</p>
                   @if (auth.peut('factures.paiement.ajouter') && f.statut !== 'annulee' && f.reliquat > 0) {
                     <div class="form">
                       <label>Montant reçu <input type="number" [(ngModel)]="pMontant" [name]="'pMnt' + f.id" style="max-width:150px" /></label>
@@ -410,9 +410,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                       <label>Date <input type="date" [(ngModel)]="pDate" [name]="'pDate' + f.id" /></label>
                       <label>Référence <input [(ngModel)]="pRef" [name]="'pRef' + f.id" placeholder="n° chèque, virement…" /></label>
                     </div>
-                    <button class="btn" (click)="enregistrerPaiement(f)" [disabled]="!pMontant || paiementEnCours()">{{ paiementEnCours() ? 'Enregistrement…' : 'Enregistrer le paiement' }}</button>
+                    <p class="hint">Le montant est prérempli au reste dû : modifiez-le pour enregistrer un paiement partiel.</p>
+                    <div class="btns-ligne">
+                      <button class="btn" (click)="enregistrerPaiement(f)" [disabled]="!pMontant || paiementEnCours()">{{ paiementEnCours() ? 'Enregistrement…' : 'Enregistrer le paiement' }}</button>
+                      <button class="btn" (click)="encaisserTotalite(f)" [disabled]="paiementEnCours()">Encaisser la totalité ({{ f.reliquat | number }} {{ dev(f.devise) }})</button>
+                      <button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button>
+                    </div>
+                  } @else {
+                    <div class="btns-ligne"><button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button></div>
                   }
-                  <button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
               </tr>
@@ -425,15 +431,20 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
   `,
   styles: [`
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
-    .form{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+    .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:start}
+    .form .large{grid-column:span 2}
+    @media (max-width:760px){.form .large{grid-column:span 1}}
     .form label{display:flex;flex-direction:column;font-size:var(--fs-sm);color:var(--slate);font-weight:600;gap:4px}
-    .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);min-width:150px}
+    .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:0 10px;height:36px;box-sizing:border-box;width:100%;min-width:0;font-size:var(--fs-base);font-family:inherit}
+    .nowrap-n{white-space:nowrap}
+    .btns-ligne{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+    .recap{font-size:var(--fs-base);margin:10px 0}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
     .paiements{margin:8px 0;width:auto}
-    .paiements td{padding:4px 14px 4px 0}
+    .paiements td{padding:4px 18px 4px 0;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
-    .hint{font-weight:400;color:var(--slate);font-size:var(--fs-xs);white-space:normal;max-width:220px}
+    .hint{font-weight:400;color:var(--slate);font-size:var(--fs-xs);white-space:normal;max-width:none;line-height:1.35}
     .desc{font-size:var(--fs-sm);color:var(--slate);max-width:640px;margin:0 0 10px}
     h4{margin:14px 0 6px;font-size:var(--fs-base)}
     .actions{display:flex;gap:10px;flex-wrap:nowrap;white-space:nowrap}
@@ -645,6 +656,26 @@ export class FacturationComponent implements OnInit {
   }
 
   // Menu "⋮" (19/09/2026).
+  dev(code: string): string { return code === 'XOF' ? 'FCFA' : code; }
+  libelleMode(m: string): string {
+    return ({ temps_passe: 'Temps passé', forfait: 'Forfait', success_fee: 'Success fee', abonnement: 'Abonnement', consultation: 'Consultation', autre: 'Autre' } as any)[m] ?? m;
+  }
+  libelleStatut(st: string): string {
+    return ({ emise: 'Émise', partielle: 'Partielle', payee: 'Payée', annulee: 'Annulée', brouillon: 'Brouillon', impayee: 'Impayée' } as any)[st] ?? st;
+  }
+  // « En retard » : dérivé (échéance dépassée avec un reliquat), jamais stocké.
+  enRetard(f: any): boolean {
+    return (f.statut === 'emise' || f.statut === 'partielle') && !!f.date_echeance && new Date(f.date_echeance) < new Date(new Date().toDateString()) && f.reliquat > 0;
+  }
+  readonly afficherContreValeur = computed(() => this.factures().some((f) => f.devise !== 'XOF'));
+  nbColonnes(): number { return this.afficherContreValeur() ? 11 : 10; }
+
+  // Paiement du reste dû en une fois (avec le moyen choisi dans le panneau).
+  encaisserTotalite(f: any): void {
+    this.pMontant = Number(f.reliquat);
+    this.enregistrerPaiement(f);
+  }
+
   libelleMoyenPaiement(code: string): string { return this.moyensPaiement.find((m) => m.code === code)?.libelle ?? code; }
 
   // Paiement partiel (ou solde) après l'émission — avec le reste à chaque fois.
@@ -687,7 +718,7 @@ export class FacturationComponent implements OnInit {
       { label: 'Télécharger', action: () => this.ouvrirPdf(f) },
     ];
     if (f.statut !== 'annulee' && (f.statut !== 'emise' || this.auth.peut('factures.paiement.ajouter'))) {
-      items.push({ label: 'Paiements', action: () => this.ouvrirPaiements(f) });
+      items.push({ label: f.statut === 'emise' ? 'Encaisser un paiement' : (f.statut === 'partielle' ? `Paiements (reste ${Number(f.reliquat).toLocaleString('fr-FR')})` : 'Historique des paiements'), action: () => this.ouvrirPaiements(f) });
     }
     // 10/10/2026 — Modifier/Annuler/Supprimer restent désormais TOUJOURS
     // visibles (quand la permission factures.annuler est présente — le
