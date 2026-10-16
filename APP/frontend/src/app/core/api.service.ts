@@ -836,7 +836,7 @@ export class ApiService {
   }
   // 08/10/2026 — "utilisation" retiré : la consommation passe désormais par
   // enregistrerVignetteInstance() (liée à une instance précise).
-  approvisionnerVignettes(payload: { quantite?: number; numero_debut?: number; numero_fin?: number }): Observable<any> {
+  approvisionnerVignettes(payload: { quantite?: number; numeros?: string; numero_debut?: number; numero_fin?: number }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/vignettes`, payload);
   }
   numerosVignettesDisponibles(): Observable<number[]> {

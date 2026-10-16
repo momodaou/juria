@@ -106,6 +106,29 @@ describe("Vignettes de plaidoirie — ancrage instance + facturation (08/10/2026
     expect(dispo.body).toEqual(expect.arrayContaining([10000, 10001, 10002, 10003, 10004]));
   });
 
+  test("achat d'un lot NON continu (plages + numéros isolés, 7 chiffres) : seuls les vrais numéros entrent au pool", async () => {
+    const base = 4000000 + Math.floor(Math.random() * 400000);
+    const p = (n) => String(n).padStart(7, "0");
+    const texte = `${p(base)}-${p(base + 2)}, ${p(base + 50)}; ${p(base + 90)}`;
+    const res = await achat({ numeros: texte });
+    expect(res.status).toBe(201);
+    expect(res.body.quantite).toBe(5);
+    const dispo = await request(app).get("/api/depenses/vignettes/numeros-disponibles").set("Authorization", `Bearer ${token}`);
+    for (const n of [base, base + 1, base + 2, base + 50, base + 90]) expect(dispo.body).toContain(n);
+    // Un numéro situé entre deux plages n'a jamais été acheté : absent du pool.
+    expect(dispo.body).not.toContain(base + 10);
+    // Un numéro déjà enregistré est refusé (409), sans rien ajouter.
+    const doublon = await achat({ numeros: p(base + 50) });
+    expect(doublon.status).toBe(409);
+  });
+
+  test("achat : un numéro qui n'a pas exactement 7 chiffres est refusé (400)", async () => {
+    expect((await achat({ numeros: "123456" })).status).toBe(400);
+    expect((await achat({ numeros: "12345678" })).status).toBe(400);
+    expect((await achat({ numeros: "1000001-1000000" })).status).toBe(400);
+    expect((await achat({ numeros: "1000001, 1000001" })).status).toBe(400);
+  });
+
   test("numero_fin < numero_debut est refusé (400)", async () => {
     const res = await achat({ numero_debut: 500, numero_fin: 400 });
     expect(res.status).toBe(400);

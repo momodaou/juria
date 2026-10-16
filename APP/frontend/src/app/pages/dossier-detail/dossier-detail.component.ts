@@ -492,7 +492,7 @@ import { libelleRole } from '../../core/roles';
                   <td>{{ i.numero_role || '—' }}</td>
                   <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
-                  <td>{{ i.numero_vignette ? 'N° ' + i.numero_vignette : '—' }}</td>
+                  <td>{{ i.numero_vignette ? 'N° ' + pad7(i.numero_vignette) : '—' }}</td>
                   <td><app-menu-actions [actions]="actionsPourInstance(i)" /></td>
                 </tr>
                 @if (instanceVignetteEnEdition() === i.id) {
@@ -504,7 +504,7 @@ import { libelleRole } from '../../core/roles';
                         <button class="lien" (click)="annulerVignetteInstance()">Annuler</button>
                       </div>
                       @if (numerosVignettesDisponibles().length) {
-                        <p class="muted">Numéros connus disponibles (achat avec plage renseignée) : {{ numerosVignettesDisponibles().join(', ') }}</p>
+                        <p class="muted">Numéros connus disponibles (achat avec plage renseignée) : {{ numerosVignettesAffiches() }}</p>
                       }
                       @if (erreurInstance()) { <p class="err">{{ erreurInstance() }}</p> }
                     </td>
@@ -1742,6 +1742,9 @@ export class DossierDetailComponent implements OnInit {
     }
     return items;
   }
+
+  numerosVignettesAffiches(): string { return this.numerosVignettesDisponibles().map((n) => this.pad7(n)).join(', '); }
+  pad7(n: number): string { return String(n).padStart(7, '0'); }
 
   commencerVignetteInstance(i: any): void {
     this.erreurInstance.set('');

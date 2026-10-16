@@ -3,6 +3,7 @@
 // comptes du cabinet, vignettes de plaidoirie (stock).
 const express = require("express");
 const { pool } = require("../db");
+const { parserNumeros } = require("../vignettesNumeros");
 const { requirePermission, estAutorise } = require("../permissions");
 const router = express.Router();
 
@@ -296,12 +297,27 @@ router.post("/vignettes", requirePermission("depenses.vignettes.mouvement"), asy
   if (b.mouvement && b.mouvement !== "achat") {
     return res.status(400).json({ error: "La consommation d'une vignette se fait désormais depuis l'instance du dossier concerné (fiche dossier → Instances)." });
   }
-  const plageFournie = b.numero_debut != null || b.numero_fin != null;
+  // Liste libre de numéros/plages (16/10/2026) — prioritaire sur l'ancienne
+  // saisie "début/fin" (continue uniquement), conservée pour compatibilité.
+  let numeros = null;
+  if (b.numeros != null && String(b.numeros).trim() !== "") {
+    const r = parserNumeros(b.numeros);
+    if (r.erreur) return res.status(400).json({ error: r.erreur });
+    numeros = r.numeros;
+  }
+  const plageFournie = numeros === null && (b.numero_debut != null || b.numero_fin != null);
   if (plageFournie && (b.numero_debut == null || b.numero_fin == null || b.numero_fin < b.numero_debut)) {
     return res.status(400).json({ error: "numero_debut et numero_fin doivent être fournis ensemble, avec numero_fin >= numero_debut." });
   }
-  const quantite = plageFournie ? (b.numero_fin - b.numero_debut + 1) : b.quantite;
-  if (!quantite) return res.status(400).json({ error: "quantite (ou une plage numero_debut/numero_fin) requise" });
+  if (plageFournie) numeros = Array.from({ length: b.numero_fin - b.numero_debut + 1 }, (_, i) => b.numero_debut + i);
+  const quantite = numeros ? numeros.length : b.quantite;
+  if (!quantite) return res.status(400).json({ error: "quantite (ou une liste de numéros) requise" });
+  if (numeros) {
+    const deja = await pool.query("SELECT numero FROM vignettes_numeros_stock WHERE numero = ANY($1::int[]) LIMIT 5", [numeros]);
+    if (deja.rows.length) {
+      return res.status(409).json({ error: `Numéro(s) déjà enregistré(s) : ${deja.rows.map((r) => String(r.numero).padStart(7, "0")).join(", ")}.` });
+    }
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -309,10 +325,9 @@ router.post("/vignettes", requirePermission("depenses.vignettes.mouvement"), asy
       `INSERT INTO vignettes_plaidoirie (mouvement, quantite, numero_debut, numero_fin, cree_par)
        VALUES ('achat', $1, $2, $3, $4)
        RETURNING id, mouvement, quantite, date_mouvement`,
-      [quantite, b.numero_debut ?? null, b.numero_fin ?? null, req.user.sub]
+      [quantite, plageFournie ? b.numero_debut : null, plageFournie ? b.numero_fin : null, req.user.sub]
     );
-    if (plageFournie) {
-      const numeros = Array.from({ length: quantite }, (_, i) => b.numero_debut + i);
+    if (numeros) {
       await client.query(
         "INSERT INTO vignettes_numeros_stock (numero, achat_id) SELECT unnest($1::int[]), $2",
         [numeros, achat.id]

@@ -232,9 +232,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
       @if (auth.peut('depenses.vignettes.mouvement')) {
         <div class="upload">
           <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" style="max-width:120px" />
-          <input class="sel" type="number" [(ngModel)]="vignetteNumeroDebut" name="vndebut" placeholder="N° début (facultatif)" style="max-width:180px" />
-          <input class="sel" type="number" [(ngModel)]="vignetteNumeroFin" name="vnfin" placeholder="N° fin (facultatif)" style="max-width:180px" />
-          <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !(vignetteNumeroDebut && vignetteNumeroFin)) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
+          <input class="sel" [(ngModel)]="vignetteNumeros" name="vnums" placeholder="N° à 7 chiffres : 1000200-1000204, 1000300 (facultatif)" style="min-width:380px" />
+          <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !vignetteNumeros.trim()) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
         </div>
         <p class="muted" style="margin-top:6px">Les numéros de début/fin sont facultatifs — à renseigner seulement si l'Ordre les fournit à l'avance pour ce ravitaillement ; la quantité se déduit alors automatiquement de la plage.</p>
       }
@@ -291,8 +290,9 @@ export class DepensesComponent implements OnInit {
   dotationMois = this.moisCourant;
   dotationMontant: number | null = null;
   vignetteQuantite: number | null = null;
-  vignetteNumeroDebut: number | null = null;
-  vignetteNumeroFin: number | null = null;
+  // Numéros à 7 chiffres : plages et/ou numéros isolés (16/10/2026) — un lot
+  // acheté n'est pas forcément une suite continue.
+  vignetteNumeros = '';
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
@@ -451,19 +451,17 @@ export class DepensesComponent implements OnInit {
   readonly vignetteEnCours = signal(false);
   approvisionnerVignette(): void {
     if (this.vignetteEnCours()) return;
-    if (!this.vignetteQuantite && !(this.vignetteNumeroDebut && this.vignetteNumeroFin)) return;
+    if (!this.vignetteQuantite && !this.vignetteNumeros.trim()) return;
     this.erreur.set('');
     this.vignetteEnCours.set(true);
     this.api.approvisionnerVignettes({
-      quantite: this.vignetteQuantite ?? undefined,
-      numero_debut: this.vignetteNumeroDebut ?? undefined,
-      numero_fin: this.vignetteNumeroFin ?? undefined,
+      quantite: this.vignetteNumeros.trim() ? undefined : (this.vignetteQuantite ?? undefined),
+      numeros: this.vignetteNumeros.trim() || undefined,
     }).subscribe({
       next: () => {
         this.vignetteEnCours.set(false);
         this.vignetteQuantite = null;
-        this.vignetteNumeroDebut = null;
-        this.vignetteNumeroFin = null;
+        this.vignetteNumeros = '';
         this.chargerStockVignettes();
       },
       error: (e) => { this.vignetteEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Approvisionnement impossible.'); },

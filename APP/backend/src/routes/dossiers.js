@@ -1279,8 +1279,8 @@ router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instance
 router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
   const b = req.body || {};
   const numero = Number(b.numero_vignette);
-  if (!Number.isInteger(numero) || numero <= 0) {
-    return res.status(400).json({ error: "numero_vignette (entier positif) requis" });
+  if (!Number.isInteger(numero) || numero <= 0 || numero > 9999999) {
+    return res.status(400).json({ error: "numero_vignette requis : un numéro de 7 chiffres au maximum" });
   }
   const client = await pool.connect();
   try {

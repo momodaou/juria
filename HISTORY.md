@@ -3884,3 +3884,11 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - `GET /api/factures/encaissements?mode=&debut=&fin=&client_id=&dossier_id=` (garde `factures.consulter`) : une ligne par paiement + totaux par moyen (FCFA, `montant_xof`) ; limité à 500 lignes (indicateur `tronque`).
 - Écran Facturation : panneau « Encaissements — moyens de paiement » (filtres moyen / période, total général et par moyen, tableau avec liens client/dossier). Export Excel via le bouton générique existant.
 - Tests **603/603**, build Angular OK, aucune migration. Non déployé (en attente d'accord).
+
+## 16/10/2026 — Vignettes de plaidoirie : achat de lots non continus, numéros à 7 chiffres (chantier n°3 de l'audit retraité)
+- Réponses de l'utilisateur : numéro = **7 chiffres** ; les lots achetés sont **souvent non continus**.
+- Risque corrigé : l'ancienne saisie « début-fin » fabriquait tous les numéros intermédiaires (faux numéros « disponibles » si le lot a des trous).
+- `POST /api/depenses/vignettes` accepte `numeros` (texte libre : plages et/ou numéros isolés séparés par virgule/point-virgule/espace, ex. `1000200-1000204, 1000300`), parsé par le nouveau `backend/src/vignettesNumeros.js` : exactement 7 chiffres chacun, plage croissante, pas de doublon dans la saisie, max 5000 par achat. La quantité = nombre réel de numéros. Un numéro déjà connu en base → `409`. L'ancienne saisie début/fin et l'achat « quantité seule » restent possibles (compatibilité).
+- Consommation (`POST /api/dossiers/:id/instances/:instanceId/vignette`) : numéro limité à 7 chiffres max (≤ 9 999 999).
+- Affichage toujours sur 7 chiffres (zéros initiaux conservés : stockage entier inchangé, `padStart` à l'affichage) sur la fiche dossier ; formulaire d'achat de Dépenses & caisse = un seul champ « N° à 7 chiffres » à la place de début/fin.
+- Tests **605/605** (2 nouveaux), build Angular OK, aucune migration. Non déployé.
