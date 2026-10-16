@@ -286,7 +286,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <input class="sel" [(ngModel)]="vignetteNumeros" name="vnums" placeholder="N° à 7 chiffres : 1000200-1000204, 1000300 (facultatif)" style="min-width:380px" />
           <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !vignetteNumeros.trim()) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
         </div>
-        <p class="muted" style="margin-top:6px">Les numéros de début/fin sont facultatifs — à renseigner seulement si l'Ordre les fournit à l'avance pour ce ravitaillement ; la quantité se déduit alors automatiquement de la plage.</p>
+        <p class="muted" style="margin-top:6px">Saisissez les plages et/ou numéros isolés du lot (7 chiffres chacun) : la quantité se déduit du nombre réel de numéros. Sans numéros, indiquez seulement la quantité.</p>
       }
     </section>
   `,
