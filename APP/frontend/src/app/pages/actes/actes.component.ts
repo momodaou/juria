@@ -1,10 +1,11 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 // Atelier d'actes — réécrit le 13/09/2026 (demande explicite de l'utilisateur,
 // suite à une analyse des pratiques du secteur, voir HISTORY.md) :
@@ -16,7 +17,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 @Component({
   selector: 'app-actes',
   standalone: true,
-  imports: [FormsModule, RouterLink, MenuActionsComponent],
+  imports: [FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -27,16 +28,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>1. Dossier concerné</h3>
-      <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-             (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier par numéro ou intitulé…" />
-      @if (dossierResultats().length) {
-        <div class="suggestions">
-          @for (d of dossierResultats(); track d.id) {
-            <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-          }
-        </div>
-      }
-      @if (dossierId) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
+      <app-dossier-picker [valeur]="dossierId" (valeurChange)="dossierId = $event ?? ''"></app-dossier-picker>
     </section>
 
     <section class="panel">
@@ -171,8 +163,6 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .mode-switch{display:flex;gap:8px;margin-bottom:14px}
     .mode-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:var(--fs-base);cursor:pointer;color:var(--slate)}
     .mode-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
@@ -197,15 +187,12 @@ export class ActesComponent implements OnInit {
   private readonly preview = inject(DocumentPreviewService);
 
   readonly modeles = signal<{ code: string; nom: string; categorie: string }[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
   readonly resultat = signal<any | null>(null);
   readonly erreur = signal('');
   readonly generation = signal(false);
   readonly enregistrement = signal(false);
   readonly erreurEdition = signal('');
 
-  dossierRecherche = '';
-  dossierLabel = '';
   dossierId = '';
   mode: 'modele' | 'ia' = 'modele';
   modeleCode = '';
@@ -216,19 +203,6 @@ export class ActesComponent implements OnInit {
   ngOnInit(): void {
     this.api.modelesActes().subscribe({ next: (m) => this.modeles.set(m) });
     if (this.auth.peut('actes.modeles.gerer')) this.chargerModelesGestion();
-  }
-
-  rechercherDossiers(): void {
-    this.dossierId = '';
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.dossierId = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
   }
 
   // Recherche par mot-clé plutôt qu'un <select> géant (13/09/2026) — filtre

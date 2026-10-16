@@ -2,15 +2,16 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { libelleRole } from '../../core/roles';
 
 @Component({
   selector: 'app-retrocessions',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -67,16 +68,7 @@ import { libelleRole } from '../../core/roles';
           <div><label>Taux appliqué (%, optionnel)</label><input class="in" type="number" [(ngModel)]="form.taux" name="taux" placeholder="Par défaut selon la qualité" /></div>
           <div class="col2">
             <label>Dossier (optionnel)</label>
-            <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-                   (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
-            @if (dossierResultats().length) {
-              <div class="suggestions">
-                @for (d of dossierResultats(); track d.id) {
-                  <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-                }
-              </div>
-            }
-            @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
+            <app-dossier-picker [valeur]="form.dossier_id" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
           </div>
         </div>
         <button class="btn" (click)="creer()" [disabled]="!form.beneficiaire_id || !form.qualite || !form.base_ht || creationEnCours()">{{ creationEnCours() ? 'Création…' : 'Créer' }}</button>
@@ -168,8 +160,6 @@ import { libelleRole } from '../../core/roles';
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .lien:disabled{opacity:.4;cursor:not-allowed}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
@@ -185,7 +175,6 @@ export class RetrocessionsComponent implements OnInit {
   readonly qualites = signal<{ code: string; libelle: string; taux: number }[]>([]);
   readonly utilisateurs = signal<any[]>([]);
   readonly proBono = signal<any[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
   readonly afficherForm = signal(false);
   readonly erreur = signal('');
   // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
@@ -200,8 +189,6 @@ export class RetrocessionsComponent implements OnInit {
   readonly filtreDossierId = signal<string | null>(null);
   readonly filtreDossierNumero = signal<string | null>(null);
 
-  dossierRecherche = '';
-  dossierLabel = '';
   form: any = { qualite: 'associe' };
 
   ngOnInit(): void {
@@ -273,19 +260,6 @@ export class RetrocessionsComponent implements OnInit {
   private readonly libellesStatut: Record<string, string> = { attente: 'En attente', decaissee: 'Décaissée' };
   libelleStatut(code: string): string { return this.libellesStatut[code] ?? code; }
 
-  rechercherDossiers(): void {
-    this.form.dossier_id = null;
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.form.dossier_id = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
-  }
-
   creer(): void {
     this.erreur.set('');
     this.doublonsRetro.set([]);
@@ -307,7 +281,6 @@ export class RetrocessionsComponent implements OnInit {
         this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { qualite: 'associe' };
-        this.dossierLabel = '';
         this.doublonsRetro.set([]);
         this.charger();
       },

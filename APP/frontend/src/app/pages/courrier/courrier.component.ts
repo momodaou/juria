@@ -2,15 +2,16 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 @Component({
   selector: 'app-courrier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -78,16 +79,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
         <div class="col2">
           <label>Dossier concerné (optionnel)</label>
-          <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-                 (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
-          @if (dossierResultats().length) {
-            <div class="suggestions">
-              @for (d of dossierResultats(); track d.id) {
-                <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-              }
-            </div>
-          }
-          @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }} <button class="lien" (click)="viderDossier()">retirer</button></p> }
+          <app-dossier-picker [valeur]="form.dossier_id" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
         </div>
 
         <div>
@@ -261,16 +253,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                          et donc de déclencher la migration de la pièce. -->
                     <div class="col2">
                       <label>Dossier (optionnel)</label>
-                      <input class="in" [(ngModel)]="editDossierRecherche" name="edDossierRecherche"
-                             (ngModelChange)="rechercherDossiersEdition()" placeholder="Rechercher un dossier…" />
-                      @if (editDossierResultats().length) {
-                        <div class="suggestions">
-                          @for (d of editDossierResultats(); track d.id) {
-                            <button type="button" class="chip" (click)="choisirDossierEdition(d)">{{ d.numero }} — {{ d.intitule }}</button>
-                          }
-                        </div>
-                      }
-                      @if (editForm.dossier_id) { <p class="muted">Sélectionné : {{ editDossierLabel }}</p> }
+                      <app-dossier-picker [valeur]="editForm.dossier_id" [nomInitial]="editDossierLabel" (valeurChange)="editForm.dossier_id = $event"></app-dossier-picker>
                     </div>
                   </div>
                   <p class="hint">La référence n'est pas modifiable.</p>
@@ -294,8 +277,6 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
@@ -315,11 +296,6 @@ export class CourrierComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly preview = inject(DocumentPreviewService);
   readonly courriers = signal<any[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
-  // 14/10/2026 — recherche de dossier dans le formulaire de correction
-  // (état distinct de dossierResultats ci-dessus, propre à la création).
-  readonly editDossierResultats = signal<Dossier[]>([]);
-  editDossierRecherche = '';
   editDossierLabel = '';
   readonly dernierDeclenchement = signal<any | null>(null);
   // 15/10/2026 — Q1 : raccourci affiché après un visa réussi, voir viser().
@@ -341,8 +317,6 @@ export class CourrierComponent implements OnInit {
   filtreSens = '';
   filtreType = '';
   filtreNumerisation = false;
-  dossierRecherche = '';
-  dossierLabel = '';
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
   fichierNouveauCourrier: File | null = null;
 
@@ -361,24 +335,6 @@ export class CourrierComponent implements OnInit {
       ...(dossierId ? { dossier_id: dossierId } : {}),
       ...(this.filtreNumerisation ? { en_attente_numerisation: 'true' } : {}),
     }).subscribe({ next: (c) => this.courriers.set(c) });
-  }
-
-  rechercherDossiers(): void {
-    this.form.dossier_id = null;
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.form.dossier_id = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
-  }
-
-  viderDossier(): void {
-    this.form.dossier_id = null;
-    this.dossierLabel = '';
   }
 
   // 24/09/2026 — gap signalé par l'utilisateur : la colonne Type affichait
@@ -415,7 +371,6 @@ export class CourrierComponent implements OnInit {
         this.creation.set(false);
         if (c.declenchement) this.dernierDeclenchement.set(c.declenchement);
         this.form = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
-        this.dossierLabel = '';
         this.fichierNouveauCourrier = null;
         // Le scan n'est joint qu'une fois le courrier créé (il faut son id) —
         // n'échoue jamais la création elle-même si le téléversement rate.
@@ -529,8 +484,6 @@ export class CourrierComponent implements OnInit {
       objet: c.objet, imputation_id: c.imputation_id || '', dossier_id: c.dossier_id || '',
     };
     this.editDossierLabel = c.dossier_id ? (c.dossier_numero || '') : '';
-    this.editDossierRecherche = '';
-    this.editDossierResultats.set([]);
     this.editionId.set(c.id);
   }
 
@@ -538,23 +491,6 @@ export class CourrierComponent implements OnInit {
     this.editionId.set(null);
     this.editForm = {};
     this.editDossierLabel = '';
-    this.editDossierRecherche = '';
-    this.editDossierResultats.set([]);
-  }
-
-  // 14/10/2026 — même patron que rechercherDossiers()/choisirDossier() de
-  // la création, dupliqué pour le formulaire de correction (état séparé).
-  rechercherDossiersEdition(): void {
-    this.editForm.dossier_id = '';
-    if (this.editDossierRecherche.length < 2) { this.editDossierResultats.set([]); return; }
-    this.api.dossiers(this.editDossierRecherche).subscribe({ next: (d) => this.editDossierResultats.set(d) });
-  }
-
-  choisirDossierEdition(d: Dossier): void {
-    this.editForm.dossier_id = d.id;
-    this.editDossierLabel = `${d.numero} — ${d.intitule}`;
-    this.editDossierResultats.set([]);
-    this.editDossierRecherche = '';
   }
 
   enregistrerEdition(): void {

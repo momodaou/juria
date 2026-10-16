@@ -1,12 +1,13 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 @Component({
   selector: 'app-portail-client',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule],
+  imports: [DatePipe, DecimalPipe, FormsModule, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -17,15 +18,7 @@ import { ApiService, Dossier } from '../../core/api.service';
 
     <section class="panel">
       <label>Choisir un dossier à prévisualiser</label>
-      <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-             (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
-      @if (dossierResultats().length) {
-        <div class="suggestions">
-          @for (d of dossierResultats(); track d.id) {
-            <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-          }
-        </div>
-      }
+      <app-dossier-picker [valeur]="dossier()?.id ?? null" [nomInitial]="labelDossierCourant()" (dossierChoisi)="choisirDossier($event)"></app-dossier-picker>
     </section>
 
     @if (dossier(); as d) {
@@ -73,10 +66,7 @@ import { ApiService, Dossier } from '../../core/api.service';
     }
   `,
   styles: [`
-    .in{display:block;width:100%;max-width:480px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin-top:-6px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .soon{background:#f0ecf9;border:1px solid #ddd3f0;color:#5b3fa0;border-radius:12px;padding:2px 9px;font-size:var(--fs-2xs);font-weight:700;margin-left:8px;vertical-align:middle}
     .apercu-frame{border:2px dashed var(--line);border-radius:12px;padding:18px;margin-top:18px}
     .apercu-banner{text-align:center;font-size:var(--fs-xs);letter-spacing:.5px;text-transform:uppercase;color:var(--grey);margin-bottom:14px}
@@ -84,21 +74,17 @@ import { ApiService, Dossier } from '../../core/api.service';
 })
 export class PortailClientComponent {
   private readonly api = inject(ApiService);
-  readonly dossierResultats = signal<Dossier[]>([]);
   readonly dossier = signal<any | null>(null);
   readonly documents = signal<any[]>([]);
   readonly factures = signal<any[]>([]);
 
-  dossierRecherche = '';
+  readonly labelDossierCourant = computed(() => {
+    const d = this.dossier();
+    return d ? `${d.numero} — ${d.intitule}` : null;
+  });
 
-  rechercherDossiers(): void {
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
+  choisirDossier(d: Dossier | null): void {
+    if (!d) { this.dossier.set(null); this.documents.set([]); this.factures.set([]); return; }
     this.api.dossier(d.id).subscribe({ next: (full) => this.dossier.set(full) });
     this.api.dossierDocuments(d.id, true).subscribe({ next: (docs) => this.documents.set(docs) });
     this.api.factures('', { dossier_id: d.id }).subscribe({ next: (f) => this.factures.set(f) });

@@ -2,9 +2,10 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 const COLONNES = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -21,7 +22,7 @@ const COLONNES = [
 @Component({
   selector: 'app-plan-action',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -103,16 +104,7 @@ const COLONNES = [
           </div>
           <div class="col2">
             <label>Dossier (optionnel)</label>
-            <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-                   (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
-            @if (dossierResultats().length) {
-              <div class="suggestions">
-                @for (d of dossierResultats(); track d.id) {
-                  <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-                }
-              </div>
-            }
-            @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
+            <app-dossier-picker [valeur]="form.dossier_id" [nomInitial]="dossierLabel" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
           </div>
           <div><label><input type="checkbox" [(ngModel)]="form.validation_requise" name="validation" /> Validation associé requise</label></div>
           <!-- 10/10/2026 — champ "description" exposé (diagnostic
@@ -201,8 +193,6 @@ const COLONNES = [
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
     @media(max-width:1180px){.kanban{grid-template-columns:1fr 1fr}}
     .colonne{background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:12px;min-height:140px}
@@ -232,7 +222,6 @@ export class PlanActionComponent implements OnInit {
   readonly colonnes = COLONNES;
   readonly taches = signal<any[]>([]);
   readonly utilisateurs = signal<any[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
   readonly afficherForm = signal(false);
   readonly afficherAnciennes = signal(false);
   readonly erreur = signal('');
@@ -253,7 +242,6 @@ export class PlanActionComponent implements OnInit {
   readonly filtreDossierId = signal<string | null>(null);
   readonly filtreDossierNumero = signal<string | null>(null);
 
-  dossierRecherche = '';
   dossierLabel = '';
   form: any = { type: 'autre', priorite: 'normale', validation_requise: false };
 
@@ -372,19 +360,6 @@ export class PlanActionComponent implements OnInit {
   basculerAnciennes(): void {
     this.afficherAnciennes.update((v) => !v);
     this.charger();
-  }
-
-  rechercherDossiers(): void {
-    this.form.dossier_id = null;
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.form.dossier_id = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
   }
 
   creer(): void {

@@ -2,14 +2,15 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 @Component({
   selector: 'app-depenses',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -98,16 +99,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                  dans le tableau (lien vers la fiche, resté silencieusement
                  toujours vide en pratique). -->
             <label>Dossier concerné (optionnel)</label>
-            <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-                   (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier…" />
-            @if (dossierResultats().length) {
-              <div class="suggestions">
-                @for (d of dossierResultats(); track d.id) {
-                  <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-                }
-              </div>
-            }
-            @if (form.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }} <button class="lien" (click)="viderDossier()">retirer</button></p> }
+            <app-dossier-picker [valeur]="form.dossier_id" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
           </div>
           <div class="col2 checks">
             <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse</label>
@@ -261,8 +253,6 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     .col2{grid-column:1 / -1}
     .checks{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
     .checks label{font-weight:400}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn:disabled{opacity:.6}
@@ -289,7 +279,6 @@ export class DepensesComponent implements OnInit {
   // ressaisie, même patron que clients.component.ts.
   readonly creationEnCours = signal(false);
   readonly doublonsDepense = signal<any[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
 
   // Navigation inter-modules (06/09/2026) — voir facturation.component.ts.
   readonly filtreDossierId = signal<string | null>(null);
@@ -298,8 +287,6 @@ export class DepensesComponent implements OnInit {
   filtreStatut = '';
   filtreType = '';
   form: any = { type: 'ponctuelle', categorie: 'autre' };
-  dossierRecherche = '';
-  dossierLabel = '';
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
   dotationMois = this.moisCourant;
   dotationMontant: number | null = null;
@@ -345,24 +332,6 @@ export class DepensesComponent implements OnInit {
   };
   libelleStatut(s: string): string { return this.libellesStatut[s] ?? s; }
 
-  rechercherDossiers(): void {
-    this.form.dossier_id = null;
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.form.dossier_id = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
-  }
-
-  viderDossier(): void {
-    this.form.dossier_id = null;
-    this.dossierLabel = '';
-  }
-
   creer(): void {
     this.erreur.set('');
     this.doublonsDepense.set([]);
@@ -384,7 +353,6 @@ export class DepensesComponent implements OnInit {
         this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'ponctuelle', categorie: 'autre' };
-        this.dossierLabel = '';
         this.doublonsDepense.set([]);
         this.charger();
         this.chargerCaisse();

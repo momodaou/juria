@@ -2,15 +2,16 @@ import { Component, inject, signal, computed, OnInit, ViewChild, ElementRef } fr
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 @Component({
   selector: 'app-role-audience',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -354,16 +355,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           }
           <div class="col2">
             <label>Dossier (optionnel)</label>
-            <input class="in" [(ngModel)]="dlDossierRecherche" name="dlDossierRecherche"
-                   (ngModelChange)="rechercherDossiersDiligence()" placeholder="Rechercher un dossier par numéro ou intitulé…" />
-            @if (dlDossierResultats().length) {
-              <div class="suggestions">
-                @for (d of dlDossierResultats(); track d.id) {
-                  <button type="button" class="chip" (click)="choisirDossierDiligence(d)">{{ d.numero }} — {{ d.intitule }}</button>
-                }
-              </div>
-            }
-            @if (nouvelleDiligence.dossier_id) { <p class="muted">Sélectionné : {{ dlDossierLabel }} <button class="lien" (click)="viderDossierDiligence()">retirer</button></p> }
+            <app-dossier-picker [valeur]="nouvelleDiligence.dossier_id" (valeurChange)="nouvelleDiligence.dossier_id = $event"></app-dossier-picker>
           </div>
           <div>
             <label>Membre assigné</label>
@@ -404,16 +396,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <div class="grid2">
         <div class="col2">
           <label>Dossier</label>
-          <input class="in" [(ngModel)]="dossierRecherche" name="dossierRecherche"
-                 (ngModelChange)="rechercherDossiers()" placeholder="Rechercher un dossier par numéro ou intitulé…" />
-          @if (dossierResultats().length) {
-            <div class="suggestions">
-              @for (d of dossierResultats(); track d.id) {
-                <button type="button" class="chip" (click)="choisirDossier(d)">{{ d.numero }} — {{ d.intitule }}</button>
-              }
-            </div>
-          }
-          @if (nouvelleLigne.dossier_id) { <p class="muted">Sélectionné : {{ dossierLabel }}</p> }
+          <app-dossier-picker [valeur]="nouvelleLigne.dossier_id" (valeurChange)="nouvelleLigne.dossier_id = $event"></app-dossier-picker>
         </div>
         <div><label>Date</label><input class="in" type="date" [(ngModel)]="nouvelleLigne.date_prevue" name="date" /></div>
         <div><label>Heure</label><input class="in" type="time" [(ngModel)]="nouvelleLigne.heure" name="heure" /></div>
@@ -580,8 +563,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:720px}
     .col2{grid-column:1 / -1}
-    .suggestions{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 12px}
-    .chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px;font-size:var(--fs-sm);cursor:pointer}
   `],
 })
 export class RoleAudienceComponent implements OnInit {
@@ -590,7 +571,6 @@ export class RoleAudienceComponent implements OnInit {
   private readonly preview = inject(DocumentPreviewService);
   readonly role = signal<any | null>(null);
   readonly motifs = signal<{ id: string; libelle: string }[]>([]);
-  readonly dossierResultats = signal<Dossier[]>([]);
   readonly ligneRetour = signal<any | null>(null);
   // 24/09/2026 — distingue la 1re saisie (POST, panneau vierge) de la
   // correction d'un retour déjà enregistré (PUT, panneau pré-rempli) —
@@ -633,7 +613,6 @@ export class RoleAudienceComponent implements OnInit {
   readonly membresAudiencier = computed(() =>
     this.membres().filter((m) => !['admin_general', 'admin_it', 'assistante'].includes(m.role))
   );
-  readonly dlDossierResultats = signal<Dossier[]>([]);
   // 21/09/2026 — « Nature de la procédure » : gap comblé — colonne
   // `audiences.nature_procedure` prévue au schéma (catalogue
   // `listes_valeurs('nature_procedure')`, déjà seedé : Bail/expulsion,
@@ -646,13 +625,9 @@ export class RoleAudienceComponent implements OnInit {
   readonly resultats = signal<{ code: string; libelle: string }[]>([]);
   decisionFichier: File | null = null;
   erreurDecision = '';
-  dlDossierRecherche = '';
-  dlDossierLabel = '';
   nouvelleDiligence: any = { type_diligence: 'diligence' };
 
   semaine = new Date().toISOString().slice(0, 10);
-  dossierRecherche = '';
-  dossierLabel = '';
   nouvelleLigne: any = { type: 'mise_en_etat', urgente: false };
   retourForm: any = { resultat: 'renvoi', resultat_precision: '', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
 
@@ -835,24 +810,6 @@ export class RoleAudienceComponent implements OnInit {
     this.api.diligences({ statut: 'a_faire' }).subscribe({ next: (d) => this.diligences.set(d) });
   }
 
-  rechercherDossiersDiligence(): void {
-    this.nouvelleDiligence.dossier_id = null;
-    if (this.dlDossierRecherche.length < 2) { this.dlDossierResultats.set([]); return; }
-    this.api.dossiers(this.dlDossierRecherche).subscribe({ next: (d) => this.dlDossierResultats.set(d) });
-  }
-
-  choisirDossierDiligence(d: Dossier): void {
-    this.nouvelleDiligence.dossier_id = d.id;
-    this.dlDossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dlDossierResultats.set([]);
-    this.dlDossierRecherche = '';
-  }
-
-  viderDossierDiligence(): void {
-    this.nouvelleDiligence.dossier_id = null;
-    this.dlDossierLabel = '';
-  }
-
   ajouterDiligence(): void {
     this.erreur.set('');
     this.doublonsDiligence.set([]);
@@ -873,7 +830,6 @@ export class RoleAudienceComponent implements OnInit {
       next: () => {
         this.ajoutDiligenceEnCours.set(false);
         this.nouvelleDiligence = { type_diligence: 'diligence' };
-        this.dlDossierLabel = '';
         this.doublonsDiligence.set([]);
         this.chargerDiligences();
       },
@@ -923,19 +879,6 @@ export class RoleAudienceComponent implements OnInit {
     this.charger();
   }
 
-  rechercherDossiers(): void {
-    this.nouvelleLigne.dossier_id = null;
-    if (this.dossierRecherche.length < 2) { this.dossierResultats.set([]); return; }
-    this.api.dossiers(this.dossierRecherche).subscribe({ next: (d) => this.dossierResultats.set(d) });
-  }
-
-  choisirDossier(d: Dossier): void {
-    this.nouvelleLigne.dossier_id = d.id;
-    this.dossierLabel = `${d.numero} — ${d.intitule}`;
-    this.dossierResultats.set([]);
-    this.dossierRecherche = '';
-  }
-
   ajouter(): void {
     this.erreur.set('');
     this.doublonsAudience.set([]);
@@ -956,7 +899,6 @@ export class RoleAudienceComponent implements OnInit {
       next: () => {
         this.ajoutLigneEnCours.set(false);
         this.nouvelleLigne = { type: 'mise_en_etat', urgente: false };
-        this.dossierLabel = '';
         this.charger();
       },
       error: (e) => { this.ajoutLigneEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
