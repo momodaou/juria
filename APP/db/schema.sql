@@ -4824,3 +4824,39 @@ INSERT INTO permissions_role (role, action_code, autorise)
 SELECT r, 'courriers.viser', TRUE
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','avocat_stagiaire','collaborateur']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+-- =====================================================================
+--  16/10/2026 — Dépenses : « Nature » (dossier / cabinet) + pièces multiples
+--  (audit Dépenses & Facturation retraité, chantier n°4). Idempotent.
+-- =====================================================================
+-- Nature : distinction demandée par l'utilisateur entre les charges liées
+-- aux dossiers/procédures et les charges propres au fonctionnement du cabinet.
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS nature VARCHAR(10);
+UPDATE depenses SET nature = CASE WHEN dossier_id IS NOT NULL THEN 'dossier' ELSE 'cabinet' END WHERE nature IS NULL;
+ALTER TABLE depenses ALTER COLUMN nature SET DEFAULT 'cabinet';
+ALTER TABLE depenses ALTER COLUMN nature SET NOT NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_depenses_nature') THEN
+    ALTER TABLE depenses ADD CONSTRAINT chk_depenses_nature CHECK (nature IN ('dossier','cabinet'));
+  END IF;
+END $$;
+
+-- Pièces d'une dépense : devis (plusieurs possibles, un seul « retenu » par
+-- le valideur), facture, preuve de paiement, autre. Stockées hors GED (une
+-- charge du cabinet n'a pas de dossier, et documents.dossier_id est NOT NULL).
+CREATE TABLE IF NOT EXISTS depense_pieces (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    depense_id     UUID NOT NULL REFERENCES depenses(id) ON DELETE CASCADE,
+    type           VARCHAR(20) NOT NULL CHECK (type IN ('devis','facture','preuve_paiement','autre')),
+    nom            VARCHAR(240) NOT NULL,
+    type_mime      VARCHAR(120),
+    taille_octets  BIGINT,
+    chemin_storage TEXT NOT NULL,
+    retenu         BOOLEAN NOT NULL DEFAULT FALSE,
+    retenu_par     UUID REFERENCES utilisateurs(id),
+    retenu_le      TIMESTAMPTZ,
+    ajoute_par     UUID REFERENCES utilisateurs(id),
+    ajoute_le      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_depense_pieces_depense ON depense_pieces(depense_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_depense_devis_retenu ON depense_pieces(depense_id) WHERE retenu = TRUE;

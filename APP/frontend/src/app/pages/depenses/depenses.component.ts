@@ -6,6 +6,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
   selector: 'app-depenses',
@@ -92,22 +93,25 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
             </select>
           </div>
           <div class="col2">
-            <!-- 28/09/2026 — audit menu par menu : aucune dépense ne
-                 pouvait jamais être rattachée à un dossier depuis cet
-                 écran (le champ n'existait tout simplement pas), alors que
-                 le backend l'accepte depuis toujours et l'affiche déjà
-                 dans le tableau (lien vers la fiche, resté silencieusement
-                 toujours vide en pratique). -->
-            <label>Dossier concerné (optionnel)</label>
-            <app-dossier-picker [valeur]="form.dossier_id" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
+            <label>Nature de la charge</label>
+            <select class="in" [(ngModel)]="form.nature" name="nature">
+              <option value="cabinet">Charge propre au cabinet (fonctionnement, gestion)</option>
+              <option value="dossier">Charge liée à un dossier / une procédure</option>
+            </select>
           </div>
+          @if (form.nature === 'dossier') {
+            <div class="col2">
+              <label>Dossier concerné</label>
+              <app-dossier-picker [valeur]="form.dossier_id" (valeurChange)="form.dossier_id = $event"></app-dossier-picker>
+            </div>
+          }
           <div class="col2 checks">
             <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse</label>
             <label><input type="checkbox" [(ngModel)]="form.justificatif" name="just" /> Justificatif disponible</label>
-            <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label>
+            @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label> }
           </div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
+        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || (form.nature === 'dossier' && !form.dossier_id) || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
         @if (doublonsDepense().length) {
           <div class="doublon">
             <b>⚠ Une dépense très proche existe déjà :</b>
@@ -143,20 +147,21 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
       @if (erreur() && !editionId() && !afficherForm()) { <p class="err">{{ erreur() }}</p> }
       @if (depenses().length) {
         <table>
-          <tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Dossier</th><th>Statut</th><th></th></tr>
+          <tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Nature / dossier</th><th>Pièces</th><th>Statut</th><th></th></tr>
           @for (d of depenses(); track d.id) {
             <tr>
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
               <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }</td>
               <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
-              <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { — }</td>
+              <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
+              <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
               <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span></td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
             @if (editionId() === d.id) {
               <tr class="edition">
-                <td colspan="7">
+                <td colspan="8">
                   <div class="grid2">
                     <div>
                       <label>Type</label>
@@ -198,6 +203,17 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                         <option value="wave">Wave</option><option value="moov_money">Moov Money</option>
                       </select>
                     </div>
+                    <div class="col2">
+                      <label>Nature de la charge</label>
+                      <select class="in" [(ngModel)]="editForm.nature" name="edNature">
+                        <option value="cabinet">Charge propre au cabinet</option>
+                        <option value="dossier">Charge liée à un dossier / une procédure</option>
+                      </select>
+                    </div>
+                    @if (editForm.nature === 'dossier') {
+                      <div class="col2"><label>Dossier concerné</label>
+                        <app-dossier-picker [valeur]="editForm.dossier_id" (valeurChange)="editForm.dossier_id = $event"></app-dossier-picker></div>
+                    }
                     <div class="col2 checks">
                       <label><input type="checkbox" [(ngModel)]="editForm.petite_caisse" name="edPc" /> Sur petite caisse</label>
                       <label><input type="checkbox" [(ngModel)]="editForm.justificatif" name="edJust" /> Justificatif disponible</label>
@@ -206,6 +222,41 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                   </div>
                   <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
                   <button class="lien" (click)="annulerEdition()">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
+            @if (piecesId() === d.id) {
+              <tr class="edition">
+                <td colspan="8">
+                  <b>Pièces de la dépense</b> — devis (plusieurs possibles, facultatifs), facture, preuve de paiement.
+                  @if (pieces().length) {
+                    <table>
+                      <tr><th>Type</th><th>Fichier</th><th>Ajouté par</th><th></th></tr>
+                      @for (p of pieces(); track p.id) {
+                        <tr>
+                          <td>{{ libellePiece(p.type) }} @if (p.retenu) { <span class="tag ok">Retenu</span> }</td>
+                          <td>{{ p.nom }}</td>
+                          <td>{{ p.ajoute_par || '—' }}</td>
+                          <td><app-menu-actions [actions]="actionsPourPiece(d, p)" /></td>
+                        </tr>
+                      }
+                    </table>
+                  } @else { <p class="muted">Aucune pièce.</p> }
+                  <div class="grid2" style="margin-top:8px">
+                    <div>
+                      <label>Type de pièce</label>
+                      <select class="in" [(ngModel)]="pieceType" name="pieceType">
+                        @if (d.statut === 'soumise') { <option value="devis">Devis</option> }
+                        <option value="facture">Facture</option>
+                        <option value="preuve_paiement">Preuve de paiement</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </div>
+                    <div><label>Fichier (PDF, image, Word, Excel)</label><input class="in" type="file" (change)="choisirPiece($event)" /></div>
+                  </div>
+                  <button class="btn" (click)="ajouterPiece(d)" [disabled]="!pieceFichier || pieceEnCours()">{{ pieceEnCours() ? 'Envoi…' : 'Ajouter la pièce' }}</button>
+                  <button class="lien" (click)="piecesId.set(null)">Fermer</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
               </tr>
@@ -266,6 +317,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
 export class DepensesComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private readonly preview = inject(DocumentPreviewService);
   private readonly route = inject(ActivatedRoute);
   readonly depenses = signal<any[]>([]);
   readonly comptes = signal<any[]>([]);
@@ -285,7 +337,7 @@ export class DepensesComponent implements OnInit {
 
   filtreStatut = '';
   filtreType = '';
-  form: any = { type: 'ponctuelle', categorie: 'autre' };
+  form: any = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
   dotationMois = this.moisCourant;
   dotationMontant: number | null = null;
@@ -352,7 +404,7 @@ export class DepensesComponent implements OnInit {
       next: () => {
         this.creationEnCours.set(false);
         this.afficherForm.set(false);
-        this.form = { type: 'ponctuelle', categorie: 'autre' };
+        this.form = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
         this.doublonsDepense.set([]);
         this.charger();
         this.chargerCaisse();
@@ -364,6 +416,7 @@ export class DepensesComponent implements OnInit {
   // Menu "⋮" (19/09/2026).
   actionsPour(d: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [];
+    items.push({ label: d.nb_pieces ? `Pièces (${d.nb_pieces})` : 'Pièces / devis', action: () => this.ouvrirPieces(d) });
     if (d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
       items.push({ label: 'Valider', action: () => this.decision(d, 'validee') });
       items.push({ label: 'Rejeter', action: () => this.decision(d, 'rejetee'), danger: true });
@@ -376,6 +429,63 @@ export class DepensesComponent implements OnInit {
       items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
     }
     return items;
+  }
+
+  // Pièces d'une dépense (16/10/2026).
+  readonly piecesId = signal<string | null>(null);
+  readonly pieces = signal<any[]>([]);
+  readonly pieceEnCours = signal(false);
+  pieceType = 'facture';
+  pieceFichier: File | null = null;
+  libellePiece(t: string): string {
+    return ({ devis: 'Devis', facture: 'Facture', preuve_paiement: 'Preuve de paiement', autre: 'Autre' } as any)[t] ?? t;
+  }
+  ouvrirPieces(d: any): void {
+    this.erreur.set('');
+    this.pieceFichier = null;
+    this.pieceType = d.statut === 'soumise' ? 'devis' : 'facture';
+    this.piecesId.set(d.id);
+    this.chargerPieces(d.id);
+  }
+  chargerPieces(id: string): void {
+    this.api.piecesDepense(id).subscribe({ next: (p) => this.pieces.set(p), error: () => this.pieces.set([]) });
+  }
+  choisirPiece(ev: Event): void { this.pieceFichier = (ev.target as HTMLInputElement).files?.[0] ?? null; }
+  ajouterPiece(d: any): void {
+    if (!this.pieceFichier || this.pieceEnCours()) return;
+    this.erreur.set('');
+    this.pieceEnCours.set(true);
+    this.api.ajouterPieceDepense(d.id, this.pieceType, this.pieceFichier).subscribe({
+      next: () => { this.pieceEnCours.set(false); this.pieceFichier = null; this.chargerPieces(d.id); this.charger(); },
+      error: (e) => { this.pieceEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
+  }
+  actionsPourPiece(d: any, p: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [
+      { label: 'Aperçu', action: () => this.preview.ouvrir(p.nom, this.api.telechargerPieceDepense(d.id, p.id)) },
+    ];
+    if (p.type === 'devis' && !p.retenu && d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
+      items.push({ label: 'Retenir ce devis', action: () => this.retenirDevis(d, p) });
+    }
+    if (d.statut === 'soumise' || this.auth.peut('depenses.decision')) {
+      items.push({ label: 'Retirer', danger: true, action: () => this.retirerPiece(d, p) });
+    }
+    return items;
+  }
+  retenirDevis(d: any, p: any): void {
+    this.erreur.set('');
+    this.api.retenirDevisDepense(d.id, p.id).subscribe({
+      next: () => { this.chargerPieces(d.id); this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Choix impossible.'),
+    });
+  }
+  retirerPiece(d: any, p: any): void {
+    if (!confirm(`Retirer la pièce « ${p.nom} » ?`)) return;
+    this.erreur.set('');
+    this.api.retirerPieceDepense(d.id, p.id).subscribe({
+      next: () => { this.chargerPieces(d.id); this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
   }
 
   // Retirer une dépense soumise par erreur, avant décision (25/09/2026).
@@ -416,6 +526,7 @@ export class DepensesComponent implements OnInit {
       type: d.type, categorie: d.categorie, libelle: d.libelle, montant: d.montant,
       date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '',
       petite_caisse: d.petite_caisse, justificatif: d.justificatif, refacturable_client: d.refacturable_client,
+      nature: d.nature ?? (d.dossier_id ? 'dossier' : 'cabinet'), dossier_id: d.dossier_id ?? null,
     };
     this.editionId.set(d.id);
   }

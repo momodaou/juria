@@ -3,9 +3,26 @@
 // comptes du cabinet, vignettes de plaidoirie (stock).
 const express = require("express");
 const { pool } = require("../db");
+const multer = require("multer");
 const { parserNumeros } = require("../vignettesNumeros");
+const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
+const { filtreTypeFichier } = require("../uploadFilter");
+const { logAudit } = require("../audit");
 const { requirePermission, estAutorise } = require("../permissions");
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
+
+// Nature d'une dépense (16/10/2026) : « dossier » (charge liée à une
+// procédure — dossier obligatoire) ou « cabinet » (fonctionnement propre du
+// cabinet — jamais de dossier). Déduite du dossier_id si non fournie, pour
+// rester compatible avec les appelants antérieurs.
+function resoudreNature(b, existant) {
+  const nature = b.nature || (b.dossier_id ? "dossier" : existant ? existant.nature : "cabinet");
+  if (!["dossier", "cabinet"].includes(nature)) return { erreur: "nature invalide (dossier ou cabinet)." };
+  const dossierId = nature === "cabinet" ? null : (b.dossier_id || (existant && existant.dossier_id) || null);
+  if (nature === "dossier" && !dossierId) return { erreur: "Une charge liée à un dossier doit préciser le dossier." };
+  return { nature, dossierId };
+}
 
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=&a_refacturer=
 // Liste des dépenses du cabinet — donnée financière, pas juste une commodité
@@ -20,12 +37,13 @@ const router = express.Router();
 // une autre forme (avance_pour_client/refacture) mais jamais câblé, cf.
 // HISTORY.md).
 router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
-  const { type, statut, dossier_id, petite_caisse, a_refacturer } = req.query;
+  const { type, statut, dossier_id, petite_caisse, a_refacturer, nature } = req.query;
   const params = [];
   const clauses = [];
   if (type) { params.push(type); clauses.push(`d.type = $${params.length}::type_depense`); }
   if (statut) { params.push(statut); clauses.push(`d.statut = $${params.length}::statut_depense`); }
   if (dossier_id) { params.push(dossier_id); clauses.push(`d.dossier_id = $${params.length}`); }
+  if (nature) { params.push(nature); clauses.push(`d.nature = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
   if (a_refacturer === "true") {
     clauses.push("d.refacturable_client = TRUE", "d.statut = 'decaissee'", "d.facture_id IS NULL");
@@ -35,7 +53,10 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              d.facture_id, d.dossier_id, c.intitule AS compte, dos.numero AS dossier_numero,
+              d.facture_id, d.dossier_id, d.nature, c.intitule AS compte,
+              (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
+              (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
+              EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
               d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
@@ -80,18 +101,20 @@ router.get("/verifier-doublon", requirePermission("depenses.creer"), async (req,
 router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
+  const n = resoudreNature(b, null);
+  if (n.erreur) return res.status(400).json({ error: n.erreur });
   try {
     const { rows } = await pool.query(
       `INSERT INTO depenses
-         (type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
+         (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id, recurrente,
           soumis_par, cree_par)
-       VALUES ($1::type_depense,COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5,current_date),
+       VALUES ($14,$1::type_depense,COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5,current_date),
                $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13)
-       RETURNING id, type, categorie, libelle, montant, statut`,
+       RETURNING id, nature, type, categorie, libelle, montant, statut`,
       [b.type, b.categorie, b.libelle, b.montant, b.date_depense || null, b.mode_paiement || null,
-       b.compte_id || null, b.petite_caisse, b.justificatif, b.refacturable_client,
-       b.dossier_id || null, b.recurrente, req.user.sub]
+       b.compte_id || null, b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : false,
+       n.dossierId, b.recurrente, req.user.sub, n.nature]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -111,8 +134,10 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
 router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
   const b = req.body || {};
   try {
-    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [req.params.id]);
+    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut, nature, dossier_id FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
+    const n = resoudreNature(b, actuelle);
+    if (n.erreur) return res.status(400).json({ error: n.erreur });
     const estDeposant = actuelle.soumis_par === req.user.sub;
     if (!estDeposant && !(await estAutorise(req.user.role, "depenses.decision", req.user.sub))) {
       return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut corriger cette dépense." });
@@ -132,12 +157,13 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
          petite_caisse = COALESCE($8, petite_caisse),
          justificatif = COALESCE($9, justificatif),
          refacturable_client = COALESCE($10, refacturable_client),
-         dossier_id = COALESCE($11, dossier_id)
+         nature = $13,
+         dossier_id = $11
        WHERE id = $12 AND statut = 'soumise'
        RETURNING id, type, categorie, libelle, montant, statut`,
       [b.type || null, b.categorie || null, b.libelle || null, b.montant ?? null,
        b.date_depense || null, b.mode_paiement || null, b.compte_id || null,
-       b.petite_caisse, b.justificatif, b.refacturable_client, b.dossier_id || null, req.params.id]
+       b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : (b.refacturable_client === undefined ? undefined : false), n.dossierId, req.params.id, n.nature]
     );
     if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps — non modifiable." });
     res.json(rows[0]);
@@ -166,6 +192,104 @@ router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// ---------------------------------------------------------------------
+// Pièces d'une dépense (16/10/2026) : devis (plusieurs possibles, soumis
+// pour choix), facture, preuve de paiement. Un devis n'est jamais
+// obligatoire. Seul le valideur (depenses.decision) « retient » un devis.
+// Dépôt de facture / preuve possible à tout moment, y compris après
+// décaissement (justificatif différé) ; un devis seulement tant que la
+// dépense est « soumise » (après décision il n'a plus d'objet).
+// ---------------------------------------------------------------------
+async function peutGererPieces(req, depenseId) {
+  const { rows: [d] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [depenseId]);
+  if (!d) return { code: 404, erreur: "Dépense introuvable" };
+  const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
+  if (d.soumis_par !== req.user.sub && !decideur) {
+    return { code: 403, erreur: "Seul le déposant ou une personne habilitée à décider peut gérer les pièces de cette dépense." };
+  }
+  return { depense: d, decideur };
+}
+
+router.get("/:id/pieces", requirePermission("depenses.consulter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.type, p.nom, p.type_mime, p.taille_octets, p.retenu, p.retenu_le, p.ajoute_le,
+              u.prenom || ' ' || u.nom AS ajoute_par
+       FROM depense_pieces p LEFT JOIN utilisateurs u ON u.id = p.ajoute_par
+       WHERE p.depense_id = $1 ORDER BY p.ajoute_le`, [req.params.id]);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+router.post("/:id/pieces", requirePermission("depenses.creer"), upload.single("fichier"), async (req, res) => {
+  const type = (req.body && req.body.type) || "autre";
+  if (!["devis", "facture", "preuve_paiement", "autre"].includes(type)) return res.status(400).json({ error: "type de pièce invalide" });
+  if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
+  try {
+    const g = await peutGererPieces(req, req.params.id);
+    if (g.erreur) return res.status(g.code).json({ error: g.erreur });
+    if (type === "devis" && g.depense.statut !== "soumise") {
+      return res.status(409).json({ error: "Un devis ne peut être ajouté que tant que la dépense n'a pas été traitée." });
+    }
+    const dest = `depenses/${req.params.id}/${Date.now()}_${req.file.originalname}`.replace(/\s+/g, "_");
+    const chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
+    const { rows } = await pool.query(
+      `INSERT INTO depense_pieces (depense_id, type, nom, type_mime, taille_octets, chemin_storage, ajoute_par)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, type, nom, retenu`,
+      [req.params.id, type, req.file.originalname, req.file.mimetype, req.file.size, chemin, req.user.sub]);
+    await logAudit({ utilisateurId: req.user.sub, action: "ajouter_piece_depense", entite: "depenses", entiteId: req.params.id, details: { piece_id: rows[0].id, type, nom: req.file.originalname }, ip: req.ip });
+    res.status(201).json(rows[0]);
+  } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
+});
+
+router.get("/:id/pieces/:pieceId/fichier", requirePermission("depenses.consulter"), async (req, res) => {
+  try {
+    const { rows: [p] } = await pool.query("SELECT nom, type_mime, chemin_storage FROM depense_pieces WHERE id = $1 AND depense_id = $2", [req.params.pieceId, req.params.id]);
+    if (!p) return res.status(404).json({ error: "Pièce introuvable" });
+    const buf = await readObject(p.chemin_storage);
+    res.setHeader("Content-Type", p.type_mime || "application/octet-stream");
+    res.setHeader("Content-Disposition", enteteContentDisposition(p.nom));
+    res.send(buf);
+  } catch (e) {
+    if (e instanceof FichierIntrouvableError) return res.status(404).json({ error: "Le fichier de cette pièce n'est plus disponible dans le stockage." });
+    console.error(e); res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+router.post("/:id/pieces/:pieceId/retenir", requirePermission("depenses.decision"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [d] } = await client.query("SELECT statut FROM depenses WHERE id = $1 FOR UPDATE", [req.params.id]);
+    if (!d) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Dépense introuvable" }); }
+    if (d.statut !== "soumise") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Le choix du devis se fait avant la décision sur la dépense." }); }
+    const { rows: [p] } = await client.query("SELECT type FROM depense_pieces WHERE id = $1 AND depense_id = $2", [req.params.pieceId, req.params.id]);
+    if (!p) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Pièce introuvable" }); }
+    if (p.type !== "devis") { await client.query("ROLLBACK"); return res.status(400).json({ error: "Seul un devis peut être retenu." }); }
+    await client.query("UPDATE depense_pieces SET retenu = FALSE, retenu_par = NULL, retenu_le = NULL WHERE depense_id = $1 AND retenu", [req.params.id]);
+    await client.query("UPDATE depense_pieces SET retenu = TRUE, retenu_par = $1, retenu_le = now() WHERE id = $2", [req.user.sub, req.params.pieceId]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "retenir_devis_depense", entite: "depenses", entiteId: req.params.id, details: { piece_id: req.params.pieceId }, ip: req.ip });
+    res.json({ depense_id: req.params.id, piece_id: req.params.pieceId, retenu: true });
+  } catch (e) { await client.query("ROLLBACK"); console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+  finally { client.release(); }
+});
+
+router.delete("/:id/pieces/:pieceId", requirePermission("depenses.creer"), async (req, res) => {
+  try {
+    const g = await peutGererPieces(req, req.params.id);
+    if (g.erreur) return res.status(g.code).json({ error: g.erreur });
+    if (g.depense.statut !== "soumise" && !g.decideur) {
+      return res.status(403).json({ error: "Après la décision, seule une personne habilitée à décider peut retirer une pièce." });
+    }
+    const { rows: [p] } = await pool.query("DELETE FROM depense_pieces WHERE id = $1 AND depense_id = $2 RETURNING chemin_storage, nom, type", [req.params.pieceId, req.params.id]);
+    if (!p) return res.status(404).json({ error: "Pièce introuvable" });
+    await deleteObject(p.chemin_storage);
+    await logAudit({ utilisateurId: req.user.sub, action: "retirer_piece_depense", entite: "depenses", entiteId: req.params.id, details: { nom: p.nom, type: p.type }, ip: req.ip });
+    res.status(204).end();
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // POST /api/depenses/:id/decision  { statut: 'validee'|'rejetee', motif_rejet? }  (gérant : associé/admin)

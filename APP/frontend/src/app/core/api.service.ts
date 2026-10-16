@@ -817,6 +817,17 @@ export class ApiService {
   majDepense(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/depenses/${id}`, payload);
   }
+  // Pièces d'une dépense (16/10/2026) : devis (plusieurs, un retenu par le valideur), facture, preuve.
+  piecesDepense(id: string): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/${id}/pieces`); }
+  ajouterPieceDepense(id: string, type: string, fichier: File): Observable<any> {
+    const fd = new FormData(); fd.append('type', type); fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/pieces`, fd);
+  }
+  telechargerPieceDepense(id: string, pieceId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/depenses/${id}/pieces/${pieceId}/fichier`, { responseType: 'blob' });
+  }
+  retenirDevisDepense(id: string, pieceId: string): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/${id}/pieces/${pieceId}/retenir`, {}); }
+  retirerPieceDepense(id: string, pieceId: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/${id}/pieces/${pieceId}`); }
   retirerDepense(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/depenses/${id}`);
   }

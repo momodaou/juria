@@ -3892,3 +3892,11 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Consommation (`POST /api/dossiers/:id/instances/:instanceId/vignette`) : numéro limité à 7 chiffres max (≤ 9 999 999).
 - Affichage toujours sur 7 chiffres (zéros initiaux conservés : stockage entier inchangé, `padStart` à l'affichage) sur la fiche dossier ; formulaire d'achat de Dépenses & caisse = un seul champ « N° à 7 chiffres » à la place de début/fin.
 - Tests **605/605** (2 nouveaux), build Angular OK, aucune migration. Non déployé.
+
+## 16/10/2026 — Dépenses : « Nature » + pièces multiples avec devis retenu par le valideur seul (chantier n°4 de l'audit retraité)
+- Décision de l'utilisateur : **le valideur seul retient le devis** (permission existante `depenses.decision`, aucune nouvelle action cataloguée → pas de report dans le bloc d'alignement de la matrice).
+- **Nature** (`depenses.nature`, `dossier`/`cabinet`, CHECK, backfill depuis `dossier_id`) : « charge liée à un dossier » exige le dossier ; « charge propre au cabinet » n'a jamais de dossier et n'est jamais refacturable. Déduite du `dossier_id` si non fournie (compatibilité). Filtre `?nature=`.
+- **Pièces** (table `depense_pieces`, stockées hors GED car `documents.dossier_id` est NOT NULL) : devis (plusieurs, facultatifs), facture, preuve de paiement, autre. `GET/POST /api/depenses/:id/pieces`, `GET …/:pieceId/fichier`, `POST …/:pieceId/retenir` (valideur seul, devis seulement, avant la décision, un seul retenu à la fois — index unique partiel), `DELETE …/:pieceId`. Déposant ou valideur seulement ; un devis n'est joignable que tant que la dépense est « soumise » ; facture/preuve déposables à tout moment, y compris après décaissement (justificatif différé). Actions journalisées (`ajouter_piece_depense`, `retenir_devis_depense`, `retirer_piece_depense`).
+- Écran Dépenses & caisse : choix de la nature (dossier requis si « liée à un dossier »), colonnes « Nature / dossier » et « Pièces » (📎 n, « n devis — 1 retenu »), action « Pièces / devis » (ajout, aperçu, « Retenir ce devis », retrait).
+- **Migration requise** (idempotente, ajoutée en fin de `APP/db/schema.sql`, section « 16/10/2026 — Dépenses : Nature + pièces multiples »).
+- Tests **609/609** (4 nouveaux, `depensesNaturePieces.test.js`), build Angular OK. Non déployé. Chantier 5 (petite caisse renforcée) dépend de ceci.
