@@ -3900,3 +3900,7 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Écran Dépenses & caisse : choix de la nature (dossier requis si « liée à un dossier »), colonnes « Nature / dossier » et « Pièces » (📎 n, « n devis — 1 retenu »), action « Pièces / devis » (ajout, aperçu, « Retenir ce devis », retrait).
 - **Migration requise** (idempotente, ajoutée en fin de `APP/db/schema.sql`, section « 16/10/2026 — Dépenses : Nature + pièces multiples »).
 - Tests **609/609** (4 nouveaux, `depensesNaturePieces.test.js`), build Angular OK. Non déployé. Chantier 5 (petite caisse renforcée) dépend de ceci.
+
+## 16/10/2026 — Déploiement en production des chantiers 1 à 4 (audit Dépenses & Facturation retraité)
+- Accord de l'utilisateur (« déploie les 4 chantiers »). Migration Cloud SQL (`depenses.nature`, `depense_pieces`) appliquée en un seul import (`--user=postgres`), puis `./scripts/deploy.sh both` : API `juria-00158-s9r`, frontend `juria-web-00207-ffm`.
+- Vérifié : `/health` et `/` en `200` ; routes `encaissements`, `pieces`, `numeros-disponibles` montées (`401` sans jeton) ; lecture authentifiée (compte de l'utilisateur, lecture seule) : `GET /api/depenses` renvoie bien `nature` (cabinet/dossier — migration et backfill effectifs), `GET /api/factures?etat=non_soldee` renvoie `reliquat`, `GET /api/factures/encaissements` répond (3 paiements, 436 000 FCFA). Fichier de migration temporaire supprimé, jamais committé.
