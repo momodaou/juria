@@ -3929,3 +3929,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Export Excel/CSV (`export-print.component.ts`) : les milliers sont recollés (« 1470000 FCFA ») ; une cellule avec unité (« FCFA ») reste du texte pour Excel, comme avant.
 - Au passage : les deux étiquettes de statut (« Partielle » + « En retard ») sont séparées par une espace dans le texte/export ; l'aide du formulaire d'achat de vignettes décrit la nouvelle saisie (plages et numéros isolés).
 - Vérifié par captures locales (Facturation, Dépenses & caisse, Tableau de bord) et export CSV réel ; aucune erreur console. Frontend seul, build OK. Non déployé (en attente d'accord).
+
+## 16/10/2026 — Déploiement : nombres à la française
+- Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00210-zjf`. Vérifié : `/` et `/health` en `200` ; la locale `fr-FR` est présente dans le fichier principal servi.
