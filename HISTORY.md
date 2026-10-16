@@ -3911,3 +3911,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Écran : champs « Acompte reçu à l'émission » (montant, moyen, référence) sur les 2 formulaires d'émission ; panneau « Paiements » complet (liste avec « reste après chaque paiement », reste à payer, formulaire montant/moyen/date/référence) accessible via le menu ⋮ → « Paiements » pour toute facture non annulée ; « Marquer payé » remplacé par « Encaisser un paiement… » (ouvre ce panneau, plus de virement imposé).
 - Le champ `factures.provision` (colonne ancienne, jamais affichée ni calculée) n'est pas utilisé : l'acompte est un vrai paiement.
 - Tests **612/612** (3 nouveaux, `finance.test.js`), build Angular OK. Non déployé (en attente d'accord).
+
+## 16/10/2026 — Déploiement : acompte à l'émission + paiements partiels avec reste
+- Accord de l'utilisateur. Aucune migration. API `juria-00159-79k`, frontend `juria-web-00208-bvl`. Vérifié : `/health` et `/` en `200` ; lecture authentifiée (compte de l'utilisateur, lecture seule) : `GET /api/factures/:id/paiements` renvoie `reste_apres`.
