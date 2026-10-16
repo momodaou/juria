@@ -69,7 +69,7 @@ Permissions : table `permissions_role` + catalogue statique `backend/src/permiss
 
 ## État de la production (au 15/10/2026)
 - Frontend : https://juria-web-552099340909.europe-west1.run.app — API : https://juria-552099340909.europe-west1.run.app
-- Dernières révisions : API `juria-00157-bdp`, frontend `juria-web-00205-mqj`. Tests backend : **601/601**.
+- Dernières révisions : API `juria-00157-bdp`, frontend `juria-web-00206-k9k`. Tests backend : **601/601**.
 - Comptes de service dédiés : `juria-api-sa`, `juria-web-sa`. Sauvegardes Cloud SQL quotidiennes + récupération à l'instant T. CORS restreint (`ALLOWED_ORIGINS`), helmet, limitation de débit sur `/auth`, filtrage de type sur les téléversements, GED sur GCS (`GED_BUCKET=jfc-juria-ged`), supervision e-mail (canal vérifié).
 - **`APP/db/schema.sql` est la source du schéma, mais la production fait foi pour les permissions** : la matrice a été modifiée à la main en prod ; le bloc final « ALIGNEMENT DE LA MATRICE DE PERMISSIONS SUR LA PRODUCTION » (25/09/2026) en est la photographie. Toute case modifiée dans la Matrice doit être reportée dans ce bloc, et toute nouvelle action cataloguée doit y être ajoutée pour les 13 rôles.
 - Documents de référence (hors Git, dans `DOC/CLAUDE CODE - JURIA/`) : registre des notifications par e-mail, registre des identifiants, chartes graphiques et supports physiques, maquettes des 4 chemises à rabat (étiquette JURIA 100×60 mm sur page A4 ; 4 couleurs : bleu, doré, rouge, vert).
