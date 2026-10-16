@@ -3923,3 +3923,9 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 ## 16/10/2026 — Déploiement : Facturation (Encaisser la totalité, libellés de menu, harmonisation visuelle)
 - Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00209-5nx`. Vérifié : `/` et `/health` en `200` ; les nouveaux libellés (« Historique des paiements », « Encaisser la totalité ») sont bien présents dans le chunk Facturation servi (`chunk-d1CSitzI.js` — l'application charge ses écrans à la demande, le fichier principal ne les contient pas).
+
+## 16/10/2026 — Nombres à la française sur toute l'application
+- Demande : « 1 770 000 » au lieu de « 1,770,000 ». `app.config.ts` enregistre la locale `fr` (`LOCALE_ID = 'fr-FR'`) : tous les pipes `number` affichent l'espace insécable fine entre les milliers et la virgule décimale ; les dates (`dd/MM/yyyy`) sont inchangées.
+- Export Excel/CSV (`export-print.component.ts`) : les milliers sont recollés (« 1470000 FCFA ») ; une cellule avec unité (« FCFA ») reste du texte pour Excel, comme avant.
+- Au passage : les deux étiquettes de statut (« Partielle » + « En retard ») sont séparées par une espace dans le texte/export ; l'aide du formulaire d'achat de vignettes décrit la nouvelle saisie (plages et numéros isolés).
+- Vérifié par captures locales (Facturation, Dépenses & caisse, Tableau de bord) et export CSV réel ; aucune erreur console. Frontend seul, build OK. Non déployé (en attente d'accord).

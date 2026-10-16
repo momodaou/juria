@@ -61,7 +61,9 @@ export class ExportPrintComponent implements OnInit {
       if (ti) csv += '\n';
       tb.querySelectorAll('tr').forEach((tr) => {
         const cellules = Array.from(tr.querySelectorAll('th,td')).map((c) => {
-          const texte = (c.textContent || '').replace(/\s+/g, ' ').trim();
+          // Montants à la française (« 1 770 000 » avec espace insécable) : on
+          // recolle les milliers pour qu'Excel reconnaisse un nombre (16/10/2026).
+          const texte = (c.textContent || '').replace(/(\d)[\u00A0\u202F](?=\d{3}(?!\d))/g, '$1').replace(/\s+/g, ' ').trim();
           return '"' + texte.replace(/"/g, '""') + '"';
         });
         if (cellules.join('').replace(/"/g, '').trim()) csv += cellules.join(';') + '\n';

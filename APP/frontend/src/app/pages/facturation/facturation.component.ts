@@ -336,7 +336,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td class="nowrap-n">{{ f.encaisse | number }} {{ dev(f.devise) }}</td>
               <td class="nowrap-n" [style.fontWeight]="f.reliquat > 0 ? '700' : '400'">{{ f.reliquat | number }} {{ dev(f.devise) }}</td>
               @if (afficherContreValeur()) { <td class="nowrap-n">{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td> }
-              <td class="nowrap-n"><span class="tag" [class.ok]="f.statut === 'payee'" [class.attente]="f.statut === 'emise' || f.statut === 'partielle'">{{ libelleStatut(f.statut) }}</span>@if (enRetard(f)) { <span class="tag haute" style="margin-left:4px">En retard</span> }</td>
+              <td class="nowrap-n"><span class="tag" [class.ok]="f.statut === 'payee'" [class.attente]="f.statut === 'emise' || f.statut === 'partielle'">{{ libelleStatut(f.statut) }}</span>@if (enRetard(f)) { {{ ' ' }}<span class="tag haute" style="margin-left:4px">En retard</span> }</td>
               <td><app-menu-actions [actions]="actionsPourFacture(f)" /></td>
             </tr>
             @if (editionId() === f.id) {
