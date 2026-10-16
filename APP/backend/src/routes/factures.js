@@ -79,6 +79,52 @@ router.get("/impayees", requirePermission("factures.consulter"), async (req, res
   }
 });
 
+// GET /api/factures/encaissements?mode=&debut=&fin=&client_id=&dossier_id=
+// Vue "Encaissements" (16/10/2026) : une ligne par PAIEMENT (et non par
+// facture, qui peut être réglée par plusieurs moyens), avec le total par
+// moyen de paiement en FCFA (montant_xof, repli sur montant pour XOF).
+router.get("/encaissements", requirePermission("factures.consulter"), async (req, res) => {
+  const { mode, debut, fin, client_id, dossier_id } = req.query;
+  const params = [];
+  const clauses = [];
+  if (mode) { params.push(mode); clauses.push(`p.mode = $${params.length}::mode_paiement`); }
+  if (debut) { params.push(debut); clauses.push(`p.date_paiement >= $${params.length}::date`); }
+  if (fin) { params.push(fin); clauses.push(`p.date_paiement <= $${params.length}::date`); }
+  if (client_id) { params.push(client_id); clauses.push(`f.client_id = $${params.length}::uuid`); }
+  if (dossier_id) { params.push(dossier_id); clauses.push(`f.dossier_id = $${params.length}::uuid`); }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.facture_id, f.numero AS facture_numero, f.client_id, f.dossier_id,
+              d.numero AS dossier_numero, p.date_paiement, p.mode, p.montant, p.devise,
+              COALESCE(p.montant_xof, p.montant) AS montant_xof, p.reference,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client
+       FROM paiements p
+       JOIN factures f ON f.id = p.facture_id
+       JOIN clients c ON c.id = f.client_id
+       LEFT JOIN dossiers d ON d.id = f.dossier_id
+       ${where}
+       ORDER BY p.date_paiement DESC, p.cree_le DESC LIMIT 500`,
+      params
+    );
+    const totaux = {};
+    for (const r of rows) {
+      const t = (totaux[r.mode] ||= { mode: r.mode, nb: 0, montant_xof: 0 });
+      t.nb += 1;
+      t.montant_xof += Number(r.montant_xof);
+    }
+    res.json({
+      lignes: rows,
+      totaux: Object.values(totaux).sort((a, b) => b.montant_xof - a.montant_xof),
+      total_xof: rows.reduce((s, r) => s + Number(r.montant_xof), 0),
+      tronque: rows.length >= 500,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.get("/", requirePermission("factures.consulter"), async (req, res) => {
   const { statut, dossier_id, client_id, etat } = req.query;
   const params = [];

@@ -3878,3 +3878,9 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Écran Facturation : sélecteur « Afficher » au-dessus de « Toutes les factures » + colonnes Encaissé/Reliquat (reliquat en gras s'il reste à payer).
 - Tests : **602/602** (1 nouveau dans `finance.test.js`), build Angular OK. Aucune migration. **Non déployé** (en attente de l'accord de l'utilisateur).
 - Rappel des points ouverts : « payées » = « soldées » à confirmer ; sens de « qui a fait le paiement » ; chantier 2 (colonne « saisi par » sur `paiements` + vue Encaissements) à lancer tôt car l'historique ne se reconstitue pas.
+
+## 16/10/2026 — Facturation : vue « Encaissements » (chantier n°2 de l'audit retraité)
+- Réponses de l'utilisateur : « payées » = « soldées » (déjà regroupées dans le filtre `payee`) ; « qui a fait le paiement » = **le client** (déjà connu via la facture) → **pas de colonne « saisi par »** ajoutée sur `paiements` (reste possible plus tard si un contrôle interne des espèces est souhaité ; non rétroactif).
+- `GET /api/factures/encaissements?mode=&debut=&fin=&client_id=&dossier_id=` (garde `factures.consulter`) : une ligne par paiement + totaux par moyen (FCFA, `montant_xof`) ; limité à 500 lignes (indicateur `tronque`).
+- Écran Facturation : panneau « Encaissements — moyens de paiement » (filtres moyen / période, total général et par moyen, tableau avec liens client/dossier). Export Excel via le bouton générique existant.
+- Tests **603/603**, build Angular OK, aucune migration. Non déployé (en attente d'accord).

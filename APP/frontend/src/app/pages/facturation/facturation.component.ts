@@ -245,6 +245,44 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     </section>
 
     <section class="panel">
+      <h3>Encaissements — moyens de paiement</h3>
+      <div class="form" style="margin-bottom:8px">
+        <label>Moyen
+          <select [ngModel]="encMode" (ngModelChange)="encMode = $event; chargerEncaissements()" name="encMode">
+            <option value="">Tous les moyens</option>
+            @for (m of moyens; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+          </select>
+        </label>
+        <label>Du <input type="date" [ngModel]="encDebut" (ngModelChange)="encDebut = $event; chargerEncaissements()" name="encDebut" /></label>
+        <label>Au <input type="date" [ngModel]="encFin" (ngModelChange)="encFin = $event; chargerEncaissements()" name="encFin" /></label>
+      </div>
+      @if (encaissements(); as e) {
+        @if (e.lignes.length) {
+          <p><strong>Total encaissé : {{ e.total_xof | number }} FCFA</strong>
+            @for (t of e.totaux; track t.mode) { · {{ libelleMoyen(t.mode) }} : {{ t.montant_xof | number }} ({{ t.nb }}) }
+          </p>
+          <div class="table-scroll">
+          <table>
+            <tr><th class="nowrap">Date</th><th>Client</th><th class="nowrap">Facture</th><th class="nowrap">Dossier</th><th>Moyen</th><th>Montant</th><th>Référence</th></tr>
+            @for (p of e.lignes; track p.id) {
+              <tr>
+                <td class="nowrap">{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
+                <td><a class="lien" [routerLink]="['/clients', p.client_id]">{{ p.client }}</a></td>
+                <td class="nowrap">{{ p.facture_numero }}</td>
+                <td class="nowrap">@if (p.dossier_id) { <a class="lien" [routerLink]="['/dossiers', p.dossier_id]">{{ p.dossier_numero }}</a> } @else { — }</td>
+                <td>{{ libelleMoyen(p.mode) }}</td>
+                <td>{{ p.montant | number }} {{ p.devise }}</td>
+                <td>{{ p.reference || '—' }}</td>
+              </tr>
+            }
+          </table>
+          </div>
+          @if (e.tronque) { <p class="hint">Liste limitée aux 500 derniers paiements — affinez par période.</p> }
+        } @else { <p class="hint">Aucun encaissement pour ces critères.</p> }
+      }
+    </section>
+
+    <section class="panel">
       <h3>Toutes les factures</h3>
       <div class="form" style="margin-bottom:8px">
         <label>Afficher
@@ -447,6 +485,23 @@ export class FacturationComponent implements OnInit {
     this.rafraichir();
   }
 
+  // Vue Encaissements (16/10/2026) : une ligne par paiement + total par moyen.
+  readonly encaissements = signal<any | null>(null);
+  encMode = ''; encDebut = ''; encFin = '';
+  readonly moyens = [
+    { code: 'especes', libelle: 'Espèces' }, { code: 'cheque', libelle: 'Chèque' },
+    { code: 'virement', libelle: 'Virement' }, { code: 'virement_etranger', libelle: 'Virement étranger' },
+    { code: 'orange_money', libelle: 'Orange Money' }, { code: 'moov_money', libelle: 'Moov Money' },
+    { code: 'wave', libelle: 'Wave' }, { code: 'sama_money', libelle: 'Sama Money' },
+    { code: 'mobile_money', libelle: 'Mobile money (autre)' }, { code: 'western_union', libelle: 'Western Union' },
+    { code: 'moneygram', libelle: 'MoneyGram' }, { code: 'autre', libelle: 'Autre' },
+  ];
+  libelleMoyen(code: string): string { return this.moyens.find((m) => m.code === code)?.libelle ?? code; }
+  chargerEncaissements(): void {
+    this.api.encaissements({ mode: this.encMode, debut: this.encDebut, fin: this.encFin })
+      .subscribe({ next: (e) => this.encaissements.set(e), error: () => this.encaissements.set(null) });
+  }
+
   readonly etatFiltre = signal('');
   changerEtat(v: string): void { this.etatFiltre.set(v); this.rafraichir(); }
 
@@ -454,6 +509,7 @@ export class FacturationComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.factures('', { ...(dossierId ? { dossier_id: dossierId } : {}), ...(this.etatFiltre() ? { etat: this.etatFiltre() } : {}) }).subscribe({ next: (f) => this.factures.set(f), error: () => {} });
     this.api.facturesImpayees().subscribe({ next: (f) => this.impayees.set(f), error: () => {} });
+    this.chargerEncaissements();
     // 🐛 Trouvé en vérifiant visuellement le cycle complet (09/10/2026) :
     // émettre une facture (ex. depuis "Facturer" sur le registre
     // abonnement) ne rafraîchissait que les factures/impayées — le statut

@@ -909,3 +909,28 @@ describe("GET /api/factures — filtre etat + colonnes encaissé/reliquat (16/10
     expect(await liste("en_retard")).toEqual([retard.id]);
   });
 });
+
+describe("GET /api/factures/encaissements — une ligne par paiement, total par moyen (16/10/2026)", () => {
+  test("détaille les paiements d'une facture réglée en deux moyens et totalise par moyen", async () => {
+    const clientId = await creerClient();
+    const f = (await request(app).post("/api/factures").set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 100000, taux_tva: 0 })).body;
+    const payer = (montant, mode) =>
+      request(app).post(`/api/factures/${f.id}/paiements`).set("Authorization", `Bearer ${token}`).send({ montant, mode });
+    await payer(30000, "especes");
+    await payer(70000, "virement");
+
+    const res = await request(app).get(`/api/factures/encaissements?client_id=${clientId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.lignes).toHaveLength(2);
+    expect(res.body.total_xof).toBe(100000);
+    const parMode = Object.fromEntries(res.body.totaux.map((t) => [t.mode, t.montant_xof]));
+    expect(parMode).toEqual({ especes: 30000, virement: 70000 });
+
+    const especes = await request(app).get(`/api/factures/encaissements?client_id=${clientId}&mode=especes`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(especes.body.lignes).toHaveLength(1);
+    expect(especes.body.lignes[0].client).toBeTruthy();
+  });
+});

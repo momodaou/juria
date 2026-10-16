@@ -495,6 +495,14 @@ export class ApiService {
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any[]>(`${this.base}/api/factures${q}`);
   }
+  encaissements(f: { mode?: string; debut?: string; fin?: string } = {}): Observable<any> {
+    const params = new URLSearchParams();
+    if (f.mode) params.set('mode', f.mode);
+    if (f.debut) params.set('debut', f.debut);
+    if (f.fin) params.set('fin', f.fin);
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.http.get<any>(`${this.base}/api/factures/encaissements${q}`);
+  }
   facturesImpayees(): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/factures/impayees`);
   }
