@@ -246,10 +246,22 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>Toutes les factures</h3>
+      <div class="form" style="margin-bottom:8px">
+        <label>Afficher
+          <select [ngModel]="etatFiltre()" (ngModelChange)="changerEtat($event)" name="etatFiltre">
+            <option value="">Toutes</option>
+            <option value="payee">Payées (soldées)</option>
+            <option value="non_soldee">Non soldées (reste à payer)</option>
+            <option value="partielle">Partiellement payées</option>
+            <option value="en_retard">En retard (échéance dépassée)</option>
+            <option value="annulee">Annulées</option>
+          </select>
+        </label>
+      </div>
       @if (factures().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
+          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th><th>Contre-valeur FCFA</th><th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
               <td class="nowrap">{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
@@ -257,13 +269,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td>{{ f.mode }}</td>
               <td>{{ f.montant_ht | number }} {{ f.devise }}</td>
               <td>{{ f.montant_ttc | number }} {{ f.devise }}</td>
+              <td>{{ f.encaisse | number }} {{ f.devise }}</td>
+              <td [style.fontWeight]="f.reliquat > 0 ? '700' : '400'">{{ f.reliquat | number }} {{ f.devise }}</td>
               <td>{{ f.devise !== 'XOF' ? (f.montant_ttc_xof | number) + ' FCFA' : '—' }}</td>
               <td><span class="tag" [class.haute]="f.statut !== 'payee'">{{ f.statut }}</span></td>
               <td><app-menu-actions [actions]="actionsPourFacture(f)" /></td>
             </tr>
             @if (editionId() === f.id) {
               <tr class="edition">
-                <td colspan="9">
+                <td colspan="11">
                   <div class="form">
                     <label>Objet
                       <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" style="min-width:220px" />
@@ -303,7 +317,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             }
             @if (paiementsOuvertsId() === f.id) {
               <tr class="edition">
-                <td colspan="9">
+                <td colspan="11">
                   <b>Paiements enregistrés</b>
                   @if (paiements().length) {
                     <table class="paiements">
@@ -433,9 +447,12 @@ export class FacturationComponent implements OnInit {
     this.rafraichir();
   }
 
+  readonly etatFiltre = signal('');
+  changerEtat(v: string): void { this.etatFiltre.set(v); this.rafraichir(); }
+
   rafraichir(): void {
     const dossierId = this.filtreDossierId();
-    this.api.factures('', dossierId ? { dossier_id: dossierId } : {}).subscribe({ next: (f) => this.factures.set(f), error: () => {} });
+    this.api.factures('', { ...(dossierId ? { dossier_id: dossierId } : {}), ...(this.etatFiltre() ? { etat: this.etatFiltre() } : {}) }).subscribe({ next: (f) => this.factures.set(f), error: () => {} });
     this.api.facturesImpayees().subscribe({ next: (f) => this.impayees.set(f), error: () => {} });
     // 🐛 Trouvé en vérifiant visuellement le cycle complet (09/10/2026) :
     // émettre une facture (ex. depuis "Facturer" sur le registre

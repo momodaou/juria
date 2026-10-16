@@ -486,9 +486,10 @@ export class ApiService {
   }
 
   // Factures & paiements
-  factures(statut = '', filtres: { dossier_id?: string; client_id?: string } = {}): Observable<any[]> {
+  factures(statut = '', filtres: { dossier_id?: string; client_id?: string; etat?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     if (statut) params.set('statut', statut);
+    if (filtres.etat) params.set('etat', filtres.etat);
     if (filtres.dossier_id) params.set('dossier_id', filtres.dossier_id);
     if (filtres.client_id) params.set('client_id', filtres.client_id);
     const q = params.toString() ? `?${params.toString()}` : '';

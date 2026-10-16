@@ -80,10 +80,20 @@ router.get("/impayees", requirePermission("factures.consulter"), async (req, res
 });
 
 router.get("/", requirePermission("factures.consulter"), async (req, res) => {
-  const { statut, dossier_id, client_id } = req.query;
+  const { statut, dossier_id, client_id, etat } = req.query;
   const params = [];
   const clauses = [];
   if (statut) { params.push(statut); clauses.push(`f.statut = $${params.length}::statut_facture`); }
+  // Filtres métier (16/10/2026) : "payee" = intégralement réglée (soldée),
+  // "non_soldee" = reste à payer (émise ou partielle), "partielle", "annulee",
+  // "en_retard" = échéance dépassée avec un reliquat. Le statut "impayee"
+  // n'est jamais posé : le retard est dérivé, pas stocké.
+  const REGLE = "COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0)";
+  if (etat === "payee") clauses.push("f.statut = 'payee'");
+  else if (etat === "non_soldee") clauses.push("f.statut IN ('emise','partielle')");
+  else if (etat === "partielle") clauses.push("f.statut = 'partielle'");
+  else if (etat === "annulee") clauses.push("f.statut = 'annulee'");
+  else if (etat === "en_retard") clauses.push(`f.statut IN ('emise','partielle') AND f.date_echeance < current_date AND f.montant_ttc - ${REGLE} > 0`);
   if (dossier_id) { params.push(dossier_id); clauses.push(`f.dossier_id = $${params.length}`); }
   if (client_id) { params.push(client_id); clauses.push(`f.client_id = $${params.length}`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -93,7 +103,10 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
               f.taux_applique, f.montant_ttc_xof, f.statut, f.mention, f.mode_reglement, f.compte_reglement_id,
               f.date_emission, f.date_echeance, f.dossier_id, f.client_id,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
-              d.numero AS dossier_numero
+              d.numero AS dossier_numero,
+              COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS encaisse,
+              CASE WHEN f.statut = 'annulee' THEN 0
+                   ELSE f.montant_ttc - COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) END AS reliquat
        FROM factures f
        JOIN clients c ON c.id = f.client_id
        LEFT JOIN dossiers d ON d.id = f.dossier_id

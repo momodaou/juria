@@ -876,3 +876,36 @@ describe("PUT /api/factures/:id — correction avant tout règlement (diagnostic
     expect(maj.status).toBe(409);
   });
 });
+
+describe("GET /api/factures — filtre etat + colonnes encaissé/reliquat (16/10/2026)", () => {
+  test("encaisse/reliquat calculés et filtres payee / non_soldee / partielle / en_retard", async () => {
+    const clientId = await creerClient();
+    const creer = async (extra = {}) =>
+      (await request(app).post("/api/factures").set("Authorization", `Bearer ${token}`)
+        .send({ client_id: clientId, mode: "forfait", montant_ht: 100000, taux_tva: 0, ...extra })).body;
+    const payer = (id, montant) =>
+      request(app).post(`/api/factures/${id}/paiements`).set("Authorization", `Bearer ${token}`)
+        .send({ montant, mode: "especes" });
+
+    const soldee = await creer();
+    await payer(soldee.id, 100000);
+    const partielle = await creer();
+    await payer(partielle.id, 40000);
+    const retard = await creer({ date_echeance: "2020-01-01" });
+
+    const liste = async (etat) =>
+      (await request(app).get(`/api/factures?client_id=${clientId}&etat=${etat}`)
+        .set("Authorization", `Bearer ${token}`)).body.map((f) => f.id);
+
+    const toutes = (await request(app).get(`/api/factures?client_id=${clientId}`)
+      .set("Authorization", `Bearer ${token}`)).body;
+    const p = toutes.find((f) => f.id === partielle.id);
+    expect(Number(p.encaisse)).toBe(40000);
+    expect(Number(p.reliquat)).toBe(60000);
+
+    expect(await liste("payee")).toEqual([soldee.id]);
+    expect((await liste("non_soldee")).sort()).toEqual([partielle.id, retard.id].sort());
+    expect(await liste("partielle")).toEqual([partielle.id]);
+    expect(await liste("en_retard")).toEqual([retard.id]);
+  });
+});
