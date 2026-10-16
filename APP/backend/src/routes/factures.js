@@ -1,7 +1,7 @@
 // JURIA — Facturation & paiements
 const express = require("express");
 const { pool } = require("../db");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
 const { logAudit } = require("../audit");
 const router = express.Router();
@@ -362,6 +362,28 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
        b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null, b.objet || null]
     );
 
+    // Acompte / provision reçu à l'émission (16/10/2026) : un premier
+    // paiement partiel enregistré dans la même transaction que la facture.
+    let acompteEnregistre = null;
+    if (b.acompte && Number(b.acompte.montant) > 0) {
+      const mnt = Math.round(Number(b.acompte.montant));
+      if (!b.acompte.mode) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Acompte : moyen de paiement requis." }); }
+      if (mnt > Math.round(Number(rows[0].montant_ttc))) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `Acompte : le montant (${mnt}) dépasse le total de la facture (${rows[0].montant_ttc}).` });
+      }
+      if (!(await estAutorise(req.user.role, "factures.paiement.ajouter", req.user.sub))) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ error: "Vous n'avez pas le droit d'enregistrer un paiement." });
+      }
+      await client.query(
+        `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof)
+         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7)`,
+        [rows[0].id, mnt, b.acompte.mode, b.acompte.reference || null, rows[0].devise, rows[0].taux_applique, Math.round(mnt * Number(rows[0].taux_applique))]
+      );
+      acompteEnregistre = mnt;
+    }
+
     if (tempsFactures.length) {
       await client.query("UPDATE temps SET facture_id = $1 WHERE id = ANY($2::uuid[])", [rows[0].id, tempsFactures]);
     }
@@ -370,8 +392,11 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
     }
 
     await client.query("COMMIT");
+    const statutFinal = acompteEnregistre ? await majStatut(rows[0].id) : rows[0].statut;
     res.status(201).json({
       ...rows[0],
+      statut: statutFinal,
+      acompte: acompteEnregistre || undefined,
       temps_factures: tempsFactures.length || undefined,
       depenses_facturees: deboursFactures.length || undefined,
     });
@@ -500,18 +525,32 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
 router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), async (req, res) => {
   const b = req.body || {};
   if (!b.montant || !b.mode) return res.status(400).json({ error: "montant et mode requis" });
+  const montant = Math.round(Number(b.montant));
+  if (!(montant > 0)) return res.status(400).json({ error: "Le montant doit être positif." });
+  if (b.date_paiement && new Date(b.date_paiement) > new Date()) {
+    return res.status(400).json({ error: "La date du paiement ne peut pas être dans le futur." });
+  }
   try {
-    const f = await pool.query("SELECT devise, taux_applique FROM factures WHERE id = $1", [req.params.id]);
+    const f = await pool.query(
+      `SELECT f.devise, f.taux_applique, f.statut, f.montant_ttc,
+              COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS regle
+       FROM factures f WHERE f.id = $1`, [req.params.id]);
     if (!f.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
-    const montant = Math.round(Number(b.montant));
+    if (f.rows[0].statut === "annulee") return res.status(409).json({ error: "Facture annulée : aucun paiement possible." });
+    // Un paiement ne peut pas dépasser le reliquat (contrôle de saisie : un
+    // trop-perçu serait un autre sujet — avoir/remboursement — à traiter à part).
+    const reliquat = Number(f.rows[0].montant_ttc) - Number(f.rows[0].regle);
+    if (montant > reliquat) {
+      return res.status(409).json({ error: `Le montant (${montant}) dépasse le reliquat de la facture (${reliquat}).`, reliquat });
+    }
     const montantXof = Math.round(montant * Number(f.rows[0].taux_applique));
     await pool.query(
-      `INSERT INTO paiements (facture_id, montant, mode, reference, devise, taux_applique, montant_xof)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.params.id, montant, b.mode, b.reference || null, f.rows[0].devise, f.rows[0].taux_applique, montantXof]
+      `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof)
+       VALUES ($1,$2,$3,COALESCE($4::date, current_date),$5,$6,$7,$8)`,
+      [req.params.id, montant, b.mode, b.date_paiement || null, b.reference || null, f.rows[0].devise, f.rows[0].taux_applique, montantXof]
     );
     const statut = await majStatut(req.params.id);
-    res.status(201).json({ facture_id: req.params.id, statut });
+    res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - montant });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
@@ -523,8 +562,10 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
 router.get("/:id/paiements", requirePermission("factures.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, montant, mode, date_paiement, reference, devise, cree_le
-       FROM paiements WHERE facture_id = $1 ORDER BY date_paiement, cree_le`,
+      `SELECT p.id, p.montant, p.mode, p.date_paiement, p.reference, p.devise, p.cree_le,
+              f.montant_ttc - SUM(p.montant) OVER (ORDER BY p.date_paiement, p.cree_le) AS reste_apres
+       FROM paiements p JOIN factures f ON f.id = p.facture_id
+       WHERE p.facture_id = $1 ORDER BY p.date_paiement, p.cree_le`,
       [req.params.id]
     );
     res.json(rows);

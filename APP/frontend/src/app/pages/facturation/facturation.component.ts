@@ -79,6 +79,19 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <label>Mention (facultatif)
           <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
+        @if (auth.peut('factures.paiement.ajouter')) {
+          <label>Acompte reçu à l'émission (facultatif)
+            <input type="number" [(ngModel)]="acompteMontant" name="acMnt" placeholder="Montant déjà payé" style="max-width:170px" />
+          </label>
+          @if (acompteMontant) {
+            <label>Moyen
+              <select [(ngModel)]="acompteMode" name="acMode">
+                @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+              </select>
+            </label>
+            <label>Référence <input [(ngModel)]="acompteRef" name="acRef" placeholder="n° chèque, virement…" /></label>
+          }
+        }
       </div>
       @if (auth.peut('factures.creer')) {
         <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt || creationFactureEnCours()">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre' }}</button>
@@ -116,6 +129,19 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         <label>Mention (facultatif)
           <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" style="min-width:260px" />
         </label>
+        @if (auth.peut('factures.paiement.ajouter')) {
+          <label>Acompte reçu à l'émission (facultatif)
+            <input type="number" [(ngModel)]="acompteMontant" name="acMntT" placeholder="Montant déjà payé" style="max-width:170px" />
+          </label>
+          @if (acompteMontant) {
+            <label>Moyen
+              <select [(ngModel)]="acompteMode" name="acModeT">
+                @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+              </select>
+            </label>
+            <label>Référence <input [(ngModel)]="acompteRef" name="acRefT" placeholder="n° chèque, virement…" /></label>
+          }
+        }
       </div>
       @if (tempsNonFactures().length) {
         <h4>Temps facturables</h4>
@@ -173,7 +199,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td>
               <td>
                 @if (auth.peut('factures.paiement.ajouter')) {
-                  <button class="lien" (click)="encaisser(f)">Marquer payé</button>
+                  <button class="lien" (click)="encaisser(f)">Encaisser un paiement…</button>
                 }
               </td>
             </tr>
@@ -363,7 +389,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         <tr>
                           <td>{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
                           <td>{{ p.montant | number }} {{ p.devise }}</td>
-                          <td>{{ p.mode }}</td>
+                          <td>{{ libelleMoyenPaiement(p.mode) }}</td>
+                          <td class="muted">reste {{ p.reste_apres | number }} {{ p.devise }}</td>
                           <td>{{ p.reference || '—' }}</td>
                           <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
                         </tr>
@@ -371,6 +398,20 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     </table>
                     <p class="hint">Supprimer un paiement saisi par erreur recalcule le statut de la facture. Action tracée dans le journal d'audit.</p>
                   } @else { <p class="muted">Aucun paiement.</p> }
+                  <p><b>Reste à payer : {{ f.reliquat | number }} {{ f.devise }}</b> sur {{ f.montant_ttc | number }} {{ f.devise }}</p>
+                  @if (auth.peut('factures.paiement.ajouter') && f.statut !== 'annulee' && f.reliquat > 0) {
+                    <div class="form">
+                      <label>Montant reçu <input type="number" [(ngModel)]="pMontant" [name]="'pMnt' + f.id" style="max-width:150px" /></label>
+                      <label>Moyen
+                        <select [(ngModel)]="pMode" [name]="'pMode' + f.id">
+                          @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+                        </select>
+                      </label>
+                      <label>Date <input type="date" [(ngModel)]="pDate" [name]="'pDate' + f.id" /></label>
+                      <label>Référence <input [(ngModel)]="pRef" [name]="'pRef' + f.id" placeholder="n° chèque, virement…" /></label>
+                    </div>
+                    <button class="btn" (click)="enregistrerPaiement(f)" [disabled]="!pMontant || paiementEnCours()">{{ paiementEnCours() ? 'Enregistrement…' : 'Enregistrer le paiement' }}</button>
+                  }
                   <button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
@@ -457,6 +498,24 @@ export class FacturationComponent implements OnInit {
   // depuis le 17/08/2026 mais n'étaient acceptés par aucune route avant ce
   // jour ; partagés entre les deux formulaires d'émission ci-dessous.
   compteReglementId = '';
+  // Acompte / provision reçu à l'émission (16/10/2026) — premier paiement partiel
+  // enregistré avec la facture ; les suivants via le panneau « Paiements ».
+  acompteMontant: number | null = null;
+  acompteMode = 'virement';
+  acompteRef = '';
+  readonly moyensPaiement = [
+    { code: 'especes', libelle: 'Espèces' }, { code: 'cheque', libelle: 'Chèque' },
+    { code: 'virement', libelle: 'Virement' }, { code: 'orange_money', libelle: 'Orange Money' },
+    { code: 'moov_money', libelle: 'Moov Money' }, { code: 'wave', libelle: 'Wave' },
+    { code: 'sama_money', libelle: 'Sama Money' }, { code: 'mobile_money', libelle: 'Mobile money (autre)' },
+    { code: 'virement_etranger', libelle: 'Virement étranger' }, { code: 'autre', libelle: 'Autre' },
+  ];
+  // Panneau « Paiements » : saisie d'un paiement partiel après l'émission.
+  pMontant: number | null = null;
+  pMode = 'virement';
+  pDate = '';
+  pRef = '';
+  readonly paiementEnCours = signal(false);
   mention = '';
 
   // Facturer un dossier (temps + débours)
@@ -566,7 +625,11 @@ export class FacturationComponent implements OnInit {
   private ajouterInfosReglement(payload: any): void {
     if (this.compteReglementId) { payload.compte_reglement_id = this.compteReglementId; payload.mode_reglement = 'virement'; }
     if (this.mention) payload.mention = this.mention;
+    if (this.acompteMontant && this.acompteMontant > 0) {
+      payload.acompte = { montant: this.acompteMontant, mode: this.acompteMode, reference: this.acompteRef || undefined };
+    }
   }
+  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompteRef = ''; }
 
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
@@ -576,13 +639,33 @@ export class FacturationComponent implements OnInit {
     this.ajouterInfosReglement(payload);
     this.creationFactureEnCours.set(true);
     this.api.creerFacture(payload).subscribe({
-      next: (f) => { this.creationFactureEnCours.set(false); this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.rafraichir(); },
+      next: (f) => { this.creationFactureEnCours.set(false); this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.reinitialiserAcompte(); this.rafraichir(); },
       error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
     });
   }
 
   // Menu "⋮" (19/09/2026).
+  libelleMoyenPaiement(code: string): string { return this.moyensPaiement.find((m) => m.code === code)?.libelle ?? code; }
+
+  // Paiement partiel (ou solde) après l'émission — avec le reste à chaque fois.
+  enregistrerPaiement(f: any): void {
+    if (!this.pMontant || this.paiementEnCours()) return;
+    this.erreur.set('');
+    this.paiementEnCours.set(true);
+    this.api.ajouterPaiement(f.id, { montant: this.pMontant, mode: this.pMode, date_paiement: this.pDate || undefined, reference: this.pRef || undefined }).subscribe({
+      next: (r) => {
+        this.paiementEnCours.set(false);
+        this.pMontant = null; this.pRef = ''; this.pDate = '';
+        this.message.set(r.reliquat > 0 ? `Paiement enregistré — reste ${Number(r.reliquat).toLocaleString('fr-FR')} ${f.devise}.` : 'Paiement enregistré — facture soldée.');
+        this.api.paiementsFacture(f.id).subscribe({ next: (p) => this.paiements.set(p), error: () => {} });
+        this.rafraichir();
+      },
+      error: (e) => { this.paiementEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Paiement impossible'); },
+    });
+  }
+
   ouvrirPaiements(f: any): void {
+    this.pMontant = f.reliquat > 0 ? Number(f.reliquat) : null; this.pDate = ''; this.pRef = ''; this.pMode = 'virement';
     this.erreur.set('');
     this.paiements.set([]);
     this.paiementsOuvertsId.set(f.id);
@@ -603,7 +686,7 @@ export class FacturationComponent implements OnInit {
       { label: 'Aperçu', action: () => this.apercuPdf(f) },
       { label: 'Télécharger', action: () => this.ouvrirPdf(f) },
     ];
-    if (f.statut === 'partielle' || f.statut === 'payee') {
+    if (f.statut !== 'annulee' && (f.statut !== 'emise' || this.auth.peut('factures.paiement.ajouter'))) {
       items.push({ label: 'Paiements', action: () => this.ouvrirPaiements(f) });
     }
     // 10/10/2026 — Modifier/Annuler/Supprimer restent désormais TOUJOURS
@@ -835,18 +918,20 @@ export class FacturationComponent implements OnInit {
     this.api.creerFacture(payload).subscribe({
       next: (f) => {
         this.creationFactureEnCours.set(false);
-        this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`);
-        this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null;
+        this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise})${f.acompte ? ' — acompte de ' + f.acompte + ' enregistré, statut : ' + f.statut : ''}.`);
+        this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null; this.reinitialiserAcompte();
         this.rafraichir();
       },
       error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
     });
   }
 
+  // Ouvre le panneau « Paiements » de la facture (montant, moyen, date, référence)
+  // au lieu d'un paiement intégral en virement imposé (16/10/2026).
   encaisser(f: any): void {
-    this.api.ajouterPaiement(f.id, { montant: f.reste, mode: 'virement' }).subscribe({
-      next: () => this.rafraichir(),
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Paiement impossible'),
-    });
+    const complete = this.factures().find((x) => x.id === f.id);
+    if (!complete) { this.erreur.set('Facture introuvable dans la liste affichée — retirez les filtres.'); return; }
+    this.ouvrirPaiements(complete);
+    setTimeout(() => document.querySelector('tr.edition')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
   }
 }

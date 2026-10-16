@@ -934,3 +934,45 @@ describe("GET /api/factures/encaissements — une ligne par paiement, total par 
     expect(especes.body.lignes[0].client).toBeTruthy();
   });
 });
+
+describe("Acompte à l'émission + paiements partiels successifs avec reste (16/10/2026)", () => {
+  const post = (url, body) => request(app).post(url).set("Authorization", `Bearer ${token}`).send(body);
+
+  test("acompte enregistré avec la facture : statut partielle, reliquat exact", async () => {
+    const clientId = await creerClient();
+    const f = (await post("/api/factures", { client_id: clientId, mode: "forfait", montant_ht: 100000, taux_tva: 0,
+      acompte: { montant: 30000, mode: "cheque", reference: "CHQ-123" } })).body;
+    expect(f.statut).toBe("partielle");
+    expect(f.acompte).toBe(30000);
+    const liste = (await request(app).get(`/api/factures?client_id=${clientId}`).set("Authorization", `Bearer ${token}`)).body;
+    expect(Number(liste[0].encaisse)).toBe(30000);
+    expect(Number(liste[0].reliquat)).toBe(70000);
+  });
+
+  test("acompte supérieur au total ou sans moyen : refusé, aucune facture créée", async () => {
+    const clientId = await creerClient();
+    const avant = (await request(app).get(`/api/factures?client_id=${clientId}`).set("Authorization", `Bearer ${token}`)).body.length;
+    expect((await post("/api/factures", { client_id: clientId, mode: "forfait", montant_ht: 1000, taux_tva: 0, acompte: { montant: 5000, mode: "especes" } })).status).toBe(400);
+    expect((await post("/api/factures", { client_id: clientId, mode: "forfait", montant_ht: 1000, taux_tva: 0, acompte: { montant: 500 } })).status).toBe(400);
+    const apres = (await request(app).get(`/api/factures?client_id=${clientId}`).set("Authorization", `Bearer ${token}`)).body.length;
+    expect(apres).toBe(avant);
+  });
+
+  test("paiements partiels après émission : reste à chaque fois, dépassement refusé, solde final", async () => {
+    const clientId = await creerClient();
+    const f = (await post("/api/factures", { client_id: clientId, mode: "forfait", montant_ht: 100000, taux_tva: 0 })).body;
+    const p1 = await post(`/api/factures/${f.id}/paiements`, { montant: 40000, mode: "especes", date_paiement: "2026-10-01" });
+    expect(p1.status).toBe(201);
+    expect(p1.body.reliquat).toBe(60000);
+    expect(p1.body.statut).toBe("partielle");
+    const trop = await post(`/api/factures/${f.id}/paiements`, { montant: 70000, mode: "virement" });
+    expect(trop.status).toBe(409);
+    const p2 = await post(`/api/factures/${f.id}/paiements`, { montant: 60000, mode: "virement", reference: "VIR-9" });
+    expect(p2.body.reliquat).toBe(0);
+    expect(p2.body.statut).toBe("payee");
+    expect((await post(`/api/factures/${f.id}/paiements`, { montant: 1, mode: "virement" })).status).toBe(409);
+    const hist = (await request(app).get(`/api/factures/${f.id}/paiements`).set("Authorization", `Bearer ${token}`)).body;
+    expect(hist.map((h) => Number(h.reste_apres))).toEqual([60000, 0]);
+    expect((await post(`/api/factures/${f.id}/paiements`, { montant: 1, mode: "virement", date_paiement: "2999-01-01" })).status).toBe(400);
+  });
+});
