@@ -3922,4 +3922,4 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Frontend seul, aucune migration. Build Angular OK. Non déployé (en attente d'accord). Piste signalée non faite : séparateurs de milliers à la française (« 1 770 000 » au lieu de « 1,770,000 »), changement global à valider.
 
 ## 16/10/2026 — Déploiement : Facturation (Encaisser la totalité, libellés de menu, harmonisation visuelle)
-- Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00209-5nx`. Vérifié : `/` et `/health` en `200` ; le bundle servi contient bien « Encaisser la totalité ».
+- Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00209-5nx`. Vérifié : `/` et `/health` en `200` ; les nouveaux libellés (« Historique des paiements », « Encaisser la totalité ») sont bien présents dans le chunk Facturation servi (`chunk-d1CSitzI.js` — l'application charge ses écrans à la demande, le fichier principal ne les contient pas).
