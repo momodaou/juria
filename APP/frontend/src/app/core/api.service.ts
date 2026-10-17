@@ -839,6 +839,12 @@ export class ApiService {
   comptesBancaires(): Observable<{ id: string; intitule: string; type: string }[]> {
     return this.http.get<{ id: string; intitule: string; type: string }[]>(`${this.base}/api/depenses/comptes`);
   }
+  // Annulation avec motif, historique des dotations, achats de vignettes (17/10/2026)
+  annulerDepense(id: string, motif: string): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/${id}/annuler`, { motif }); }
+  dotationsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/dotations`); }
+  achatsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/achats`); }
+  supprimerAchatVignettes(id: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/vignettes/achats/${id}`); }
+
   // Petite caisse renforcée (17/10/2026)
   engagerDepense(payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/engager`, payload); }
   validerDepenseApresCoup(id: string, decision: 'validee' | 'contestee', motif?: string): Observable<any> {

@@ -4900,3 +4900,15 @@ SELECT r, 'depenses.engager', r IN ('associe','associe_fondateur','admin_general
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+
+-- =====================================================================
+--  17/10/2026 (suite) — Annulation d'une dépense validée/décaissée avec
+--  motif (associés). Une dépense annulée passe en statut « rejetee »
+--  (donc exclue d'elle-même de toutes les sommes : solde de petite caisse,
+--  coûts par dossier, débours à refacturer, résultat du mois) et garde la
+--  trace de l'annulation. Idempotent.
+-- =====================================================================
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulee_le              TIMESTAMPTZ;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulee_par             UUID REFERENCES utilisateurs(id);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulation_motif        TEXT;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS statut_avant_annulation VARCHAR(12);

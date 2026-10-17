@@ -58,7 +58,8 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
               EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
               d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par,
-              d.engagee_par AS engagee_par_id, d.apres_coup_statut, d.apres_coup_motif
+              d.engagee_par AS engagee_par_id, d.apres_coup_statut, d.apres_coup_motif,
+              d.annulee_le, d.annulation_motif, d.statut_avant_annulation
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
        LEFT JOIN dossiers dos ON dos.id = d.dossier_id
@@ -229,6 +230,90 @@ router.get("/petite-caisse/rapprochements", requirePermission("depenses.consulte
        ORDER BY r.fait_le DESC LIMIT 24`);
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// Annulation d'une dépense VALIDÉE ou DÉCAISSÉE, avec motif (associés,
+// depenses.decision) — 17/10/2026. Jamais de suppression : la ligne reste,
+// barrée et tracée. Passe en statut « rejetee » pour être exclue d'elle-même
+// de toutes les sommes. Refusée si la dépense est déjà refacturée sur une
+// facture, liée à une vignette de plaidoirie ou à une échéance administrative
+// (il faudrait d'abord défaire ces liens).
+router.post("/:id/annuler", requirePermission("depenses.decision"), async (req, res) => {
+  const motif = ((req.body || {}).motif || "").trim();
+  if (!motif) return res.status(400).json({ error: "Un motif est requis pour annuler une dépense." });
+  try {
+    const { rows: [d] } = await pool.query("SELECT statut, facture_id FROM depenses WHERE id = $1", [req.params.id]);
+    if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    if (!["validee", "decaissee"].includes(d.statut)) {
+      return res.status(409).json({ error: "Seule une dépense validée ou décaissée peut être annulée (une dépense soumise se rejette ou se retire)." });
+    }
+    if (d.facture_id) return res.status(409).json({ error: "Dépense déjà refacturée sur une facture : retirez-la de la facture (ou annulez la facture) avant de l'annuler." });
+    const lie = await pool.query(
+      `SELECT (SELECT count(*) FROM vignettes_plaidoirie WHERE depense_id = $1) AS vignettes,
+              (SELECT count(*) FROM echeances_administratives WHERE depense_id = $1) AS echeances`, [req.params.id]);
+    if (Number(lie.rows[0].vignettes) > 0) return res.status(409).json({ error: "Dépense liée à une vignette de plaidoirie : non annulable ici." });
+    if (Number(lie.rows[0].echeances) > 0) return res.status(409).json({ error: "Dépense liée à une échéance administrative : non annulable ici." });
+    const { rows } = await pool.query(
+      `UPDATE depenses SET statut_avant_annulation = statut, statut = 'rejetee'::statut_depense,
+              annulee_le = now(), annulee_par = $1::uuid, annulation_motif = $2, motif_rejet = $2
+       WHERE id = $3 AND statut IN ('validee','decaissee') AND facture_id IS NULL
+       RETURNING id, statut, statut_avant_annulation`,
+      [req.user.sub, motif, req.params.id]
+    );
+    if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
+    await logAudit({ utilisateurId: req.user.sub, action: "annuler_depense", entite: "depenses", entiteId: req.params.id, details: { motif, statut_avant: rows[0].statut_avant_annulation }, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// Historique des dotations mensuelles de la petite caisse.
+router.get("/petite-caisse/dotations", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.mois, d.montant_alloue, d.cree_le, u.prenom || ' ' || u.nom AS par
+       FROM dotations_petite_caisse d LEFT JOIN utilisateurs u ON u.id = d.administrateur_id
+       ORDER BY d.mois DESC LIMIT 24`);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// Achats de vignettes (approvisionnements) — consultation et suppression d'un
+// achat saisi par erreur, tant qu'aucun de ses numéros n'a servi.
+router.get("/vignettes/achats", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT v.id, v.quantite, v.numero_debut, v.numero_fin, v.date_mouvement, u.prenom || ' ' || u.nom AS par,
+              (SELECT count(*) FROM vignettes_numeros_stock n WHERE n.achat_id = v.id)::int AS nb_numeros,
+              (SELECT count(*) FROM vignettes_numeros_stock n WHERE n.achat_id = v.id AND NOT n.disponible)::int AS nb_utilises
+       FROM vignettes_plaidoirie v LEFT JOIN utilisateurs u ON u.id = v.cree_par
+       WHERE v.mouvement = 'achat' ORDER BY v.date_mouvement DESC, v.id LIMIT 50`);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+router.delete("/vignettes/achats/:id", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [a] } = await client.query("SELECT quantite FROM vignettes_plaidoirie WHERE id = $1 AND mouvement = 'achat' FOR UPDATE", [req.params.id]);
+    if (!a) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Achat introuvable" }); }
+    const utilises = await client.query("SELECT count(*) AS n FROM vignettes_numeros_stock WHERE achat_id = $1 AND NOT disponible", [req.params.id]);
+    if (Number(utilises.rows[0].n) > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Des vignettes de cet achat ont déjà été utilisées : suppression impossible." });
+    }
+    const stock = await client.query("SELECT stock FROM v_stock_vignettes");
+    if (Number(stock.rows[0].stock) - Number(a.quantite) < 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Supprimer cet achat rendrait le stock négatif (des vignettes ont déjà été utilisées)." });
+    }
+    await client.query("DELETE FROM vignettes_numeros_stock WHERE achat_id = $1", [req.params.id]);
+    await client.query("DELETE FROM vignettes_plaidoirie WHERE id = $1", [req.params.id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "supprimer_achat_vignettes", entite: "vignettes_plaidoirie", entiteId: req.params.id, details: { quantite: a.quantite }, ip: req.ip });
+    res.status(204).end();
+  } catch (e) { await client.query("ROLLBACK"); console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+  finally { client.release(); }
 });
 
 // PUT /api/depenses/:id — corriger une dépense avant décision (19/09/2026,

@@ -149,15 +149,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <table>
           <tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Nature / dossier</th><th>Pièces</th><th>Statut</th><th></th></tr>
           @for (d of depenses(); track d.id) {
-            <tr>
+            <tr [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
               <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }</td>
               <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
-              <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span>
-                @if (d.apres_coup_statut === 'a_valider') { {{ ' ' }}<span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
+              <td>@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span> }
+                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { {{ ' ' }}<span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
                 @if (d.apres_coup_statut === 'validee') { {{ ' ' }}<span class="tag ok">Validée après coup</span> }
                 @if (d.apres_coup_statut === 'contestee') { {{ ' ' }}<span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
               </td>
@@ -278,6 +278,18 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <input class="sel" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
           <button class="btn sm" (click)="definirDotation()" [disabled]="!dotationMontant || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
         </div>
+        <p class="muted" style="margin-top:6px">Réenregistrer un mois déjà doté remplace son montant (correction).</p>
+        @if (dotations().length) {
+          <table>
+            <tr><th>Mois</th><th>Dotation (FCFA)</th><th>Enregistrée par</th><th></th></tr>
+            @for (dt of dotations(); track dt.mois) {
+              <tr>
+                <td>{{ dt.mois | date:'MM/yyyy' }}</td><td>{{ dt.montant_alloue | number }}</td><td>{{ dt.par || '—' }}</td>
+                <td><button class="lien" (click)="corrigerDotation(dt)">Corriger</button></td>
+              </tr>
+            }
+          </table>
+        }
       </section>
     }
 
@@ -351,10 +363,24 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !vignetteNumeros.trim()) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
         </div>
         <p class="muted" style="margin-top:6px">Saisissez les plages et/ou numéros isolés du lot (7 chiffres chacun) : la quantité se déduit du nombre réel de numéros. Sans numéros, indiquez seulement la quantité.</p>
+        @if (achatsVignettes().length) {
+          <table style="margin-top:10px">
+            <tr><th>Date</th><th>Quantité</th><th>Numéros</th><th>Par</th><th></th></tr>
+            @for (a of achatsVignettes(); track a.id) {
+              <tr>
+                <td>{{ a.date_mouvement | date:'dd/MM/yyyy' }}</td><td>{{ a.quantite }}</td>
+                <td>{{ a.nb_numeros ? a.nb_numeros + ' numéros' + (a.nb_utilises ? ' (' + a.nb_utilises + ' utilisés)' : '') : 'quantité seule' }}</td>
+                <td>{{ a.par || '—' }}</td>
+                <td><button class="lien" (click)="supprimerAchat(a)">Supprimer</button></td>
+              </tr>
+            }
+          </table>
+        }
       }
     </section>
   `,
   styles: [`
+    tr.annulee td{color:var(--grey)} tr.annulee td:not(:last-child):not(:nth-last-child(2)){text-decoration:line-through}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px;max-width:680px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
@@ -417,7 +443,8 @@ export class DepensesComponent implements OnInit {
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.chargerCaisse();
-    if (this.auth.peut('depenses.petite_caisse.doter')) this.chargerRapprochements();
+    if (this.auth.peut('depenses.petite_caisse.doter')) { this.chargerRapprochements(); this.chargerDotations(); }
+    this.chargerAchatsVignettes();
     this.chargerStockVignettes();
   }
 
@@ -493,11 +520,44 @@ export class DepensesComponent implements OnInit {
     if (d.statut === 'validee' && this.auth.peut('depenses.decaisser')) {
       items.push({ label: 'Décaisser', action: () => this.decaisser(d) });
     }
+    if (this.auth.peut('depenses.decision') && (d.statut === 'validee' || d.statut === 'decaissee') && !d.annulee_le && !d.facture_id) {
+      items.push({ label: 'Annuler (avec motif)', action: () => this.annulerDepense(d), danger: true });
+    }
     if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });
       items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
     }
     return items;
+  }
+
+  // Annulation, dotations, achats de vignettes (17/10/2026).
+  annulerDepense(d: any): void {
+    const motif = window.prompt(`Annuler la dépense « ${d.libelle} » (${Number(d.montant).toLocaleString('fr-FR')} FCFA).\nMotif de l'annulation (obligatoire) :`);
+    if (!motif || !motif.trim()) return;
+    this.erreur.set('');
+    this.api.annulerDepense(d.id, motif.trim()).subscribe({
+      next: () => { this.charger(); this.chargerCaisse(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Annulation impossible.'),
+    });
+  }
+  readonly dotations = signal<any[]>([]);
+  chargerDotations(): void { this.api.dotationsPetiteCaisse().subscribe({ next: (r) => this.dotations.set(r), error: () => {} }); }
+  corrigerDotation(dt: any): void {
+    this.dotationMois = String(dt.mois).slice(0, 10);
+    this.dotationMontant = Number(dt.montant_alloue);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  readonly achatsVignettes = signal<any[]>([]);
+  chargerAchatsVignettes(): void {
+    if (this.auth.peut('depenses.vignettes.mouvement')) this.api.achatsVignettes().subscribe({ next: (r) => this.achatsVignettes.set(r), error: () => {} });
+  }
+  supprimerAchat(a: any): void {
+    if (!confirm(`Supprimer cet achat de ${a.quantite} vignette(s) ?`)) return;
+    this.erreur.set('');
+    this.api.supprimerAchatVignettes(a.id).subscribe({
+      next: () => { this.chargerAchatsVignettes(); this.chargerStockVignettes(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Suppression impossible.'),
+    });
   }
 
   // Petite caisse renforcée (17/10/2026).
@@ -669,7 +729,7 @@ export class DepensesComponent implements OnInit {
     this.erreur.set('');
     this.dotationEnCours.set(true);
     this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant).subscribe({
-      next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.chargerCaisse(); },
+      next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.chargerCaisse(); this.chargerDotations(); },
       error: (e) => { this.dotationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Dotation impossible.'); },
     });
   }
@@ -689,6 +749,7 @@ export class DepensesComponent implements OnInit {
         this.vignetteQuantite = null;
         this.vignetteNumeros = '';
         this.chargerStockVignettes();
+        this.chargerAchatsVignettes();
       },
       error: (e) => { this.vignetteEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Approvisionnement impossible.'); },
     });
