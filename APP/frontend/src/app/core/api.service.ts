@@ -121,6 +121,7 @@ export interface ParametresHonoraires {
   frais_procedure_pro_bono_min_xof: number;
   quota_pro_bono_mensuel: number;
   seuil_alerte_vignettes: number;
+  petite_caisse_plafond_depense: number | null;
 }
 
 // Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
@@ -835,6 +836,15 @@ export class ApiService {
   comptesBancaires(): Observable<{ id: string; intitule: string; type: string }[]> {
     return this.http.get<{ id: string; intitule: string; type: string }[]>(`${this.base}/api/depenses/comptes`);
   }
+  // Petite caisse renforcée (17/10/2026)
+  engagerDepense(payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/engager`, payload); }
+  validerDepenseApresCoup(id: string, decision: 'validee' | 'contestee', motif?: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/valider-apres-coup`, { decision, motif });
+  }
+  rapprocherPetiteCaisse(payload: { solde_reel: number; note?: string; mois?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/petite-caisse/rapprochement`, payload);
+  }
+  rapprochementsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/rapprochements`); }
   petiteCaisse(mois?: string): Observable<any> {
     const q = mois ? `?mois=${mois}` : '';
     return this.http.get<any>(`${this.base}/api/depenses/petite-caisse${q}`);

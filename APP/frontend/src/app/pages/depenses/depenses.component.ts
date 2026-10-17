@@ -156,7 +156,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
-              <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span></td>
+              <td><span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span>
+                @if (d.apres_coup_statut === 'a_valider') { {{ ' ' }}<span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
+                @if (d.apres_coup_statut === 'validee') { {{ ' ' }}<span class="tag ok">Validée après coup</span> }
+                @if (d.apres_coup_statut === 'contestee') { {{ ' ' }}<span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
+              </td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
             @if (editionId() === d.id) {
@@ -277,6 +281,66 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
+    @if (auth.peut('depenses.engager')) {
+      <section class="panel">
+        <h3>Petite caisse — engager une petite dépense</h3>
+        <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
+          Plafond par dépense : <b>{{ caisse()?.plafond_depense != null ? (caisse()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
+          solde du mois : <b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).</p>
+        <div class="grid2">
+          <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
+          <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="engagement.montant" name="engMontant" /></div>
+          <div>
+            <label>Moyen de paiement</label>
+            <select class="in" [(ngModel)]="engagement.mode_paiement" name="engMode">
+              <option value="orange_money">Orange Money</option><option value="moov_money">Moov Money</option>
+              <option value="mobile_money">Mobile money (autre)</option><option value="virement">Virement</option>
+              <option value="cheque">Chèque</option><option value="especes">Espèces (exception)</option>
+            </select>
+          </div>
+          <div>
+            <label>Nature</label>
+            <select class="in" [(ngModel)]="engagement.nature" name="engNature">
+              <option value="cabinet">Charge propre au cabinet</option>
+              <option value="dossier">Charge liée à un dossier</option>
+            </select>
+          </div>
+          @if (engagement.nature === 'dossier') {
+            <div><label>Dossier concerné</label>
+              <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
+          }
+        </div>
+        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
+        @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
+        @if (erreur() && !afficherForm() && !editionId()) { <p class="err">{{ erreur() }}</p> }
+      </section>
+    }
+
+    @if (auth.peut('depenses.petite_caisse.doter')) {
+      <section class="panel">
+        <h3>Petite caisse — rapprochement mensuel</h3>
+        <p class="muted">Comparez le solde calculé par JURIA (<b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>) au solde réel du porte-monnaie mobile money (relevé de l'opérateur) ou au comptage des espèces.</p>
+        <div class="upload">
+          <input class="sel" type="number" [(ngModel)]="rapSoldeReel" name="rapSoldeReel" placeholder="Solde réel constaté (FCFA)" style="min-width:220px" />
+          <input class="sel" [(ngModel)]="rapNote" name="rapNote" placeholder="Note (facultatif)" style="min-width:240px" />
+          <button class="btn sm" (click)="rapprocher()" [disabled]="rapSoldeReel === null || rapEnCours()">{{ rapEnCours() ? 'Enregistrement…' : 'Enregistrer le rapprochement' }}</button>
+        </div>
+        @if (rapprochements().length) {
+          <table>
+            <tr><th>Fait le</th><th>Mois</th><th>Solde JURIA</th><th>Solde réel</th><th>Écart</th><th>Par</th><th>Note</th></tr>
+            @for (r of rapprochements(); track r.id) {
+              <tr>
+                <td>{{ r.fait_le | date:'dd/MM/yyyy' }}</td><td>{{ r.mois | date:'MM/yyyy' }}</td>
+                <td>{{ r.solde_calcule | number }}</td><td>{{ r.solde_reel | number }}</td>
+                <td><span class="tag" [class.ok]="+r.ecart === 0" [class.haute]="+r.ecart !== 0">{{ +r.ecart | number }}</span></td>
+                <td>{{ r.fait_par || '—' }}</td><td>{{ r.note || '—' }}</td>
+              </tr>
+            }
+          </table>
+        }
+      </section>
+    }
+
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
       <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>
@@ -353,6 +417,7 @@ export class DepensesComponent implements OnInit {
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.chargerCaisse();
+    if (this.auth.peut('depenses.petite_caisse.doter')) this.chargerRapprochements();
     this.chargerStockVignettes();
   }
 
@@ -417,6 +482,10 @@ export class DepensesComponent implements OnInit {
   actionsPour(d: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [];
     items.push({ label: d.nb_pieces ? `Pièces (${d.nb_pieces})` : 'Pièces / devis', action: () => this.ouvrirPieces(d) });
+    if (d.apres_coup_statut === 'a_valider' && this.auth.peut('depenses.decision') && d.engagee_par_id !== this.auth.utilisateur()?.id) {
+      items.push({ label: 'Valider après coup', action: () => this.validerApresCoup(d, 'validee') });
+      items.push({ label: 'Contester', action: () => this.validerApresCoup(d, 'contestee'), danger: true });
+    }
     if (d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
       items.push({ label: 'Valider', action: () => this.decision(d, 'validee') });
       items.push({ label: 'Rejeter', action: () => this.decision(d, 'rejetee'), danger: true });
@@ -429,6 +498,52 @@ export class DepensesComponent implements OnInit {
       items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
     }
     return items;
+  }
+
+  // Petite caisse renforcée (17/10/2026).
+  engagement: any = { nature: 'cabinet', mode_paiement: 'orange_money' };
+  readonly engagementEnCours = signal(false);
+  readonly engagementMessage = signal('');
+  engager(): void {
+    if (this.engagementEnCours()) return;
+    this.erreur.set(''); this.engagementMessage.set('');
+    this.engagementEnCours.set(true);
+    this.api.engagerDepense(this.engagement).subscribe({
+      next: (r) => {
+        this.engagementEnCours.set(false);
+        this.engagementMessage.set(`Dépense engagée — solde restant : ${Number(r.solde_restant).toLocaleString('fr-FR')} FCFA. Elle doit être validée par un autre associé.`);
+        this.engagement = { nature: 'cabinet', mode_paiement: this.engagement.mode_paiement };
+        this.charger(); this.chargerCaisse();
+      },
+      error: (e) => { this.engagementEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Engagement impossible.'); },
+    });
+  }
+  validerApresCoup(d: any, decision: 'validee' | 'contestee'): void {
+    let motif: string | undefined;
+    if (decision === 'contestee') {
+      motif = window.prompt('Motif de la contestation (obligatoire) :') || undefined;
+      if (!motif) return;
+    }
+    this.erreur.set('');
+    this.api.validerDepenseApresCoup(d.id, decision, motif).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Action impossible.'),
+    });
+  }
+  readonly rapprochements = signal<any[]>([]);
+  rapSoldeReel: number | null = null;
+  rapNote = '';
+  readonly rapEnCours = signal(false);
+  chargerRapprochements(): void {
+    this.api.rapprochementsPetiteCaisse().subscribe({ next: (r) => this.rapprochements.set(r), error: () => {} });
+  }
+  rapprocher(): void {
+    if (this.rapSoldeReel === null || this.rapEnCours()) return;
+    this.rapEnCours.set(true);
+    this.api.rapprocherPetiteCaisse({ solde_reel: this.rapSoldeReel, note: this.rapNote || undefined }).subscribe({
+      next: () => { this.rapEnCours.set(false); this.rapSoldeReel = null; this.rapNote = ''; this.chargerRapprochements(); },
+      error: (e) => { this.rapEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Enregistrement impossible.'); },
+    });
   }
 
   // Pièces d'une dépense (16/10/2026).

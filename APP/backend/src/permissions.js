@@ -102,6 +102,7 @@ const CATALOGUE = [
   { code: "depenses.creer", module: "Dépenses & caisse", label: "Soumettre une dépense" },
   { code: "depenses.decision", module: "Dépenses & caisse", label: "Valider / rejeter une dépense", restreinte: true },
   { code: "depenses.decaisser", module: "Dépenses & caisse", label: "Décaisser une dépense", restreinte: true },
+  { code: "depenses.engager", module: "Dépenses & caisse", label: "Engager une dépense sur la petite caisse (validation après coup)", restreinte: true },
   { code: "depenses.petite_caisse.doter", module: "Dépenses & caisse", label: "Doter la petite caisse du mois", restreinte: true },
   { code: "depenses.vignettes.mouvement", module: "Dépenses & caisse", label: "Mouvement de vignettes" },
 

@@ -4860,3 +4860,43 @@ CREATE TABLE IF NOT EXISTS depense_pieces (
 );
 CREATE INDEX IF NOT EXISTS idx_depense_pieces_depense ON depense_pieces(depense_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_depense_devis_retenu ON depense_pieces(depense_id) WHERE retenu = TRUE;
+
+-- =====================================================================
+--  17/10/2026 — Petite caisse renforcée : engagement avec validation après
+--  coup, plafond par dépense, rapprochement mensuel (audit Dépenses &
+--  Facturation retraité, chantier n°5). Idempotent.
+-- =====================================================================
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS petite_caisse_plafond_depense NUMERIC(14,0);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS engagee_par       UUID REFERENCES utilisateurs(id);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS engagee_le        TIMESTAMPTZ;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS apres_coup_statut VARCHAR(10);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS apres_coup_par    UUID REFERENCES utilisateurs(id);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS apres_coup_le     TIMESTAMPTZ;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS apres_coup_motif  TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_depenses_apres_coup') THEN
+    ALTER TABLE depenses ADD CONSTRAINT chk_depenses_apres_coup
+      CHECK (apres_coup_statut IS NULL OR apres_coup_statut IN ('a_valider','validee','contestee'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_depenses_apres_coup ON depenses(apres_coup_statut) WHERE apres_coup_statut IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS rapprochements_petite_caisse (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    mois          DATE NOT NULL,
+    solde_calcule NUMERIC(14,0) NOT NULL,
+    solde_reel    NUMERIC(14,0) NOT NULL,
+    ecart         NUMERIC(14,0) NOT NULL,
+    note          TEXT,
+    fait_par      UUID REFERENCES utilisateurs(id),
+    fait_le       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rapprochements_mois ON rapprochements_petite_caisse(mois);
+
+-- Nouvelle action cataloguée : engager une dépense sur la petite caisse
+-- (administrateur général, comptable et associés — décision du 17/10/2026).
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'depenses.engager', r IN ('associe','associe_fondateur','admin_general','comptable')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;

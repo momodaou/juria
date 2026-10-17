@@ -57,7 +57,8 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
               EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
-              d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par
+              d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par,
+              d.engagee_par AS engagee_par_id, d.apres_coup_statut, d.apres_coup_motif
        FROM depenses d
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
        LEFT JOIN dossiers dos ON dos.id = d.dossier_id
@@ -121,6 +122,113 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
     console.error(e);
     res.status(400).json({ error: e.message });
   }
+});
+
+// ---------------------------------------------------------------------
+// Petite caisse renforcée (17/10/2026) : engagement d'une petite dépense
+// SANS validation préalable, validée APRÈS COUP par un associé AUTRE que
+// l'engageur. Garde-fous : plafond par dépense (paramétré), solde du mois
+// (dotation − dépenses) jamais dépassé, moyen de paiement obligatoire,
+// tout est tracé. Au-delà du plafond : circuit normal (soumise → validée).
+// ---------------------------------------------------------------------
+router.post("/engager", requirePermission("depenses.engager"), async (req, res) => {
+  const b = req.body || {};
+  const montant = Math.round(Number(b.montant));
+  if (!b.libelle || !(montant > 0)) return res.status(400).json({ error: "libelle et montant positif requis" });
+  if (!b.mode_paiement) return res.status(400).json({ error: "Moyen de paiement requis (mobile money recommandé)." });
+  const n = resoudreNature(b, null);
+  if (n.erreur) return res.status(400).json({ error: n.erreur });
+  try {
+    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
+    const plafond = par.rows[0]?.plafond;
+    if (plafond == null) {
+      return res.status(409).json({ error: "Le plafond par dépense de la petite caisse n'est pas encore défini (Accès & permissions → Seuils). Passez par le circuit normal de validation." });
+    }
+    if (montant > Number(plafond)) {
+      return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}). Soumettez la dépense au circuit normal de validation.` });
+    }
+    const mois = premierDuMois(b.date_depense ? new Date(b.date_depense) : new Date());
+    const caisse = await soldePetiteCaisse(mois);
+    if (!caisse.dotee) {
+      return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
+    }
+    if (montant > caisse.solde) {
+      return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${caisse.solde}).`, solde: caisse.solde });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO depenses
+         (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
+          petite_caisse, justificatif, refacturable_client, dossier_id,
+          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut)
+       VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
+               TRUE,COALESCE($8,false),$9,$10,
+               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider')
+       RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
+      [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, b.mode_paiement, b.compte_id || null,
+       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub]
+    );
+    await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
+      details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde }, ip: req.ip });
+    res.status(201).json({ ...rows[0], solde_restant: caisse.solde - montant });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Validation (ou contestation) APRÈS COUP d'une dépense engagée — associés
+// (depenses.decision), jamais l'engageur lui-même.
+router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), async (req, res) => {
+  const { decision, motif } = req.body || {};
+  if (!["validee", "contestee"].includes(decision)) return res.status(400).json({ error: "decision : validee ou contestee" });
+  if (decision === "contestee" && !motif) return res.status(400).json({ error: "Un motif est requis pour contester une dépense." });
+  try {
+    const { rows: [d] } = await pool.query("SELECT engagee_par, apres_coup_statut FROM depenses WHERE id = $1", [req.params.id]);
+    if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Cette dépense n'est pas en attente de validation après coup." });
+    if (d.engagee_par === req.user.sub) {
+      return res.status(403).json({ error: "Vous ne pouvez pas valider une dépense que vous avez vous-même engagée : un autre associé doit le faire." });
+    }
+    const { rows } = await pool.query(
+      `UPDATE depenses SET apres_coup_statut = $1::varchar, apres_coup_par = $2::uuid, apres_coup_le = now(), apres_coup_motif = $3,
+              valide_par = CASE WHEN $1::varchar = 'validee' THEN $2::uuid ELSE valide_par END,
+              valide_le = CASE WHEN $1::varchar = 'validee' THEN now() ELSE valide_le END
+       WHERE id = $4 AND apres_coup_statut = 'a_valider' RETURNING id, apres_coup_statut`,
+      [decision, req.user.sub, motif || null, req.params.id]
+    );
+    if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
+    await logAudit({ utilisateurId: req.user.sub, action: decision === "validee" ? "valider_apres_coup" : "contester_depense", entite: "depenses", entiteId: req.params.id, details: { motif: motif || null }, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// Rapprochement mensuel : le solde réel du porte-monnaie (relevé de
+// l'opérateur ou comptage des espèces) est comparé au solde calculé par JURIA.
+router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
+  const b = req.body || {};
+  if (b.solde_reel == null || isNaN(Number(b.solde_reel))) return res.status(400).json({ error: "solde_reel requis" });
+  try {
+    const mois = b.mois || premierDuMois();
+    const { solde } = await soldePetiteCaisse(mois);
+    const reel = Math.round(Number(b.solde_reel));
+    const { rows } = await pool.query(
+      `INSERT INTO rapprochements_petite_caisse (mois, solde_calcule, solde_reel, ecart, note, fait_par)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, mois, solde_calcule, solde_reel, ecart, note, fait_le`,
+      [mois, solde, reel, reel - solde, b.note || null, req.user.sub]
+    );
+    await logAudit({ utilisateurId: req.user.sub, action: "rapprochement_petite_caisse", entite: "depenses", entiteId: rows[0].id, details: { mois, ecart: rows[0].ecart }, ip: req.ip });
+    res.status(201).json(rows[0]);
+  } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
+});
+
+router.get("/petite-caisse/rapprochements", requirePermission("depenses.consulter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id, r.mois, r.solde_calcule, r.solde_reel, r.ecart, r.note, r.fait_le, u.prenom || ' ' || u.nom AS fait_par
+       FROM rapprochements_petite_caisse r LEFT JOIN utilisateurs u ON u.id = r.fait_par
+       ORDER BY r.fait_le DESC LIMIT 24`);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // PUT /api/depenses/:id — corriger une dépense avant décision (19/09/2026,
@@ -337,22 +445,27 @@ router.get("/comptes", async (req, res) => {
   }
 });
 
+// Solde de la petite caisse d'un mois : dotation − dépenses (hors rejetées).
+async function soldePetiteCaisse(mois) {
+  const dotation = await pool.query("SELECT montant_alloue FROM dotations_petite_caisse WHERE mois = $1", [mois]);
+  const depense = await pool.query(
+    `SELECT COALESCE(SUM(montant),0) AS total FROM depenses
+     WHERE petite_caisse = TRUE AND statut <> 'rejetee' AND date_trunc('month', date_depense) = $1::date`,
+    [mois]
+  );
+  const alloue = Number(dotation.rows[0]?.montant_alloue ?? 0);
+  const total = Number(depense.rows[0].total);
+  return { dotation: alloue, dotee: dotation.rows.length > 0, depense: total, solde: alloue - total };
+}
+const premierDuMois = (d = new Date()) => d.toISOString().slice(0, 8) + "01";
+
 // GET /api/depenses/petite-caisse?mois=YYYY-MM-01
 router.get("/petite-caisse", async (req, res) => {
-  const mois = req.query.mois || new Date().toISOString().slice(0, 8) + "01";
+  const mois = req.query.mois || premierDuMois();
   try {
-    const dotation = await pool.query("SELECT * FROM dotations_petite_caisse WHERE mois = $1", [mois]);
-    const depense = await pool.query(
-      `SELECT COALESCE(SUM(montant),0) AS total FROM depenses
-       WHERE petite_caisse = TRUE AND date_trunc('month', date_depense) = $1::date`,
-      [mois]
-    );
-    res.json({
-      mois,
-      dotation: dotation.rows[0]?.montant_alloue ?? 0,
-      depense: Number(depense.rows[0].total),
-      solde: Number(dotation.rows[0]?.montant_alloue ?? 0) - Number(depense.rows[0].total),
-    });
+    const { dotation, depense, solde } = await soldePetiteCaisse(mois);
+    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
+    res.json({ mois, dotation, depense, solde, plafond_depense: par.rows[0]?.plafond ?? null });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
