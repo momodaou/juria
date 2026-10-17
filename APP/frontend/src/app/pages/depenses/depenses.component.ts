@@ -273,11 +273,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     @if (auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
         <h3>Petite caisse — dotation mensuelle</h3>
-        <div class="upload">
+        <div class="upload" id="formDotation">
           <input class="sel" type="date" [(ngModel)]="dotationMois" name="dotationMois" />
-          <input class="sel" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
+          <input class="sel" id="champDotation" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
           <button class="btn sm" (click)="definirDotation()" [disabled]="!dotationMontant || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
         </div>
+        @if (dotationCorrection()) { <p class="ok-msg">{{ dotationCorrection() }}</p> }
         <p class="muted" style="margin-top:6px">Réenregistrer un mois déjà doté remplace son montant (correction).</p>
         @if (dotations().length) {
           <table>
@@ -380,6 +381,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     </section>
   `,
   styles: [`
+    .ok-msg{color:var(--green);font-size:var(--fs-base);margin:8px 0 0}
     tr.annulee td{color:var(--grey)} tr.annulee td:not(:last-child):not(:nth-last-child(2)){text-decoration:line-through}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px;max-width:680px}
@@ -542,10 +544,16 @@ export class DepensesComponent implements OnInit {
   }
   readonly dotations = signal<any[]>([]);
   chargerDotations(): void { this.api.dotationsPetiteCaisse().subscribe({ next: (r) => this.dotations.set(r), error: () => {} }); }
+  readonly dotationCorrection = signal('');
   corrigerDotation(dt: any): void {
     this.dotationMois = String(dt.mois).slice(0, 10);
     this.dotationMontant = Number(dt.montant_alloue);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.dotationCorrection.set(`Correction de la dotation ${String(dt.mois).slice(5, 7)}/${String(dt.mois).slice(0, 4)} : modifiez le montant ci-dessus puis cliquez sur « Enregistrer ».`);
+    // Amène le formulaire (et non le haut de la page) à l'écran et place le curseur dans le montant.
+    setTimeout(() => {
+      document.getElementById('formDotation')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      (document.getElementById('champDotation') as HTMLInputElement | null)?.focus();
+    }, 50);
   }
   readonly achatsVignettes = signal<any[]>([]);
   chargerAchatsVignettes(): void {
@@ -729,7 +737,7 @@ export class DepensesComponent implements OnInit {
     this.erreur.set('');
     this.dotationEnCours.set(true);
     this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant).subscribe({
-      next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.chargerCaisse(); this.chargerDotations(); },
+      next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.dotationCorrection.set(''); this.chargerCaisse(); this.chargerDotations(); },
       error: (e) => { this.dotationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Dotation impossible.'); },
     });
   }
