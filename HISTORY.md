@@ -3952,3 +3952,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - Tuile Tableau de bord (groupe Facturation & rentabilité, comptage + aperçu + détail triable), visible seulement avec `depenses.decision` (associés) ; `dashboard.depenses_apres_coup_n` et `GET /api/dashboard/detail/depenses_apres_coup` (403 sinon). Tests **620/620**.
 - Déployé avec l'accord de l'utilisateur : migration (section « 17/10/2026 — Petite caisse renforcée », y compris l'action `depenses.engager` pour les 13 rôles) appliquée en un import (`--user=postgres`), puis API `juria-00160-bc7` et frontend `juria-web-00212-6d6`. Fichier de migration temporaire supprimé.
 - ⚠️ Le **plafond par dépense** n'est pas défini en production : tant que l'utilisateur ne le renseigne pas (Accès & permissions → Seuils), tout engagement est refusé (comportement voulu). La dotation mensuelle de la petite caisse reste à saisir.
+
+## 17/10/2026 — Décision mise en réserve : assouplir « engageur ≠ valideur »
+- L'utilisateur demande de mettre en réserve l'idée d'assouplir la règle (petite caisse : l'engageur ne peut pas valider sa propre dépense). La règle reste stricte ; aucune modification de code. Consigné dans `CLAUDE.md` (règles de conduite) et en mémoire.
