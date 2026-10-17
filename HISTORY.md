@@ -3968,3 +3968,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 ## 17/10/2026 — Correctif : action « Corriger » d'une dotation sans effet visible
 - Constat de l'utilisateur. Cause : l'action préremplissait bien le formulaire mais faisait remonter la page tout en haut (`window.scrollTo`), éloignant l'utilisateur du formulaire. Corrigé : défilement vers le formulaire de dotation, curseur placé dans le montant, message « Correction de la dotation MM/AAAA : modifiez le montant… » (style `.ok-msg` aussi défini pour le message d'engagement). Vérifié en local (montant prérempli, formulaire à l'écran, focus). Frontend seul, build OK. Non déployé (en attente d'accord).
+
+## 17/10/2026 — Déploiement : correctif de l'action « Corriger » (dotation)
+- Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00214-dwr`. Vérifié : `/` et `/health` en `200` ; le nouveau formulaire (`formDotation`) est présent dans le chunk Dépenses servi (`chunk-BgwGjvpA.js`).
