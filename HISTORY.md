@@ -3947,3 +3947,8 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - **Migration requise** (idempotente, fin de `APP/db/schema.sql`, section « 17/10/2026 — Petite caisse renforcée »), qui ajoute aussi l'action `depenses.engager` pour les 13 rôles.
 - ⚠️ **Valeurs à renseigner par l'utilisateur après déploiement** : le plafond par dépense (Accès & permissions → Seuils) — tant qu'il est vide, l'engagement est refusé — et la dotation mensuelle de la petite caisse.
 - Tests **619/619** (10 nouveaux, `depensesPetiteCaisse.test.js`), build Angular OK, vérification visuelle locale (panneaux, étiquettes, menu). Non déployé. Non fait : tuile Tableau de bord « dépenses à valider après coup », e-mail aux associés à chaque engagement, règle « engageur ≠ valideur » sur le circuit normal (non demandée).
+
+## 17/10/2026 — Tuile « Dépenses à valider après coup » + déploiement du chantier 5
+- Tuile Tableau de bord (groupe Facturation & rentabilité, comptage + aperçu + détail triable), visible seulement avec `depenses.decision` (associés) ; `dashboard.depenses_apres_coup_n` et `GET /api/dashboard/detail/depenses_apres_coup` (403 sinon). Tests **620/620**.
+- Déployé avec l'accord de l'utilisateur : migration (section « 17/10/2026 — Petite caisse renforcée », y compris l'action `depenses.engager` pour les 13 rôles) appliquée en un import (`--user=postgres`), puis API `juria-00160-bc7` et frontend `juria-web-00212-6d6`. Fichier de migration temporaire supprimé.
+- ⚠️ Le **plafond par dépense** n'est pas défini en production : tant que l'utilisateur ne le renseigne pas (Accès & permissions → Seuils), tout engagement est refusé (comportement voulu). La dotation mensuelle de la petite caisse reste à saisir.
