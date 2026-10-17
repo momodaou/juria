@@ -3978,3 +3978,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 - `POST /api/courriers/:id/orienter` (rattacher / créer le dossier / sans suite) puis `POST /:id/imputer` (cibles : avocat stagiaire, juriste, stagiaire ; instructions obligatoires, échéance facultative → tâche liée au dossier, visible dans « Mes tâches »). Déclencheurs rattrapés au rattachement (idempotent). Tâche liée clôturée automatiquement (`cloturerCourrierLie` dans `taches.js`).
 - Écran : sélecteur de destinataire, étiquette « À orienter », panneaux Orienter… / Imputer…, filtre « À orienter », tuile du Tableau de bord « Courriers à orienter », bandeau de courrier source à l'ouverture de dossier (orientation `cree` automatique).
 - Limites : parties non préremplies automatiquement ; un collaborateur avocat n'est pas imputable. **Migration requise** (section « 17/10/2026 — Registre du courrier » de `APP/db/schema.sql`). Tests **634/634**, build OK, vérification visuelle locale (correctif d'une apostrophe échappée dans le libellé du bouton). Non déployé.
+
+## 17/10/2026 — Déploiement : registre du courrier (orientation / imputation)
+- Accord de l'utilisateur. Migration (colonnes courriers/taches) appliquée en un import (`--user=postgres`), fichier temporaire supprimé ; puis API `juria-00162-pmr` et frontend `juria-web-00215-ss8`. Vérifié : `/health` et `/` en `200`.
