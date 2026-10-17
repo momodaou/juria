@@ -1,3 +1,4 @@
+import { transformerMontants } from './export-montants';
 import { Component, OnInit, inject } from '@angular/core';
 import { ApiService } from './api.service';
 
@@ -59,14 +60,16 @@ export class ExportPrintComponent implements OnInit {
     let csv = '';
     tables.forEach((tb, ti) => {
       if (ti) csv += '\n';
+      const lignes: string[][] = [];
       tb.querySelectorAll('tr').forEach((tr) => {
-        const cellules = Array.from(tr.querySelectorAll('th,td')).map((c) => {
+        const cellules = Array.from(tr.querySelectorAll('th,td')).map((c) =>
           // Montants à la française (« 1 770 000 » avec espace insécable) : on
           // recolle les milliers pour qu'Excel reconnaisse un nombre (16/10/2026).
-          const texte = (c.textContent || '').replace(/(\d)[\u00A0\u202F](?=\d{3}(?!\d))/g, '$1').replace(/\s+/g, ' ').trim();
-          return '"' + texte.replace(/"/g, '""') + '"';
-        });
-        if (cellules.join('').replace(/"/g, '').trim()) csv += cellules.join(';') + '\n';
+          (c.textContent || '').replace(/(\d)[\u00A0\u202F](?=\d{3}(?!\d))/g, '$1').replace(/\s+/g, ' ').trim());
+        if (cellules.join('').trim()) lignes.push(cellules);
+      });
+      transformerMontants(lignes).forEach((l) => {
+        csv += l.map((t) => '"' + t.replace(/"/g, '""') + '"').join(';') + '\n';
       });
     });
     // BOM UTF-8 : Excel n'interprète correctement les accents qu'avec lui.
