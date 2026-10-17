@@ -3936,3 +3936,6 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 ## 17/10/2026 — Export Excel/CSV : montants en nombres purs, devise conservée
 - Nouveau `core/export-montants.ts` (`transformerMontants`), branché sur `export-print.component.ts` : une colonne dont tous les montants sont dans la même devise devient numérique avec l'unité dans l'en-tête (« Montant (FCFA) ») ; des colonnes à devises mélangées (ex. HT/TTC/Encaissé/Reliquat d'une facture en euros et d'une en FCFA) deviennent numériques + **une** colonne « Devise » (une par colonne seulement si les devises diffèrent d'une colonne à l'autre sur une même ligne). La devise n'est jamais perdue.
 - Vérifié par export CSV réel sur la copie locale avec une facture en FCFA et une en EUR (contre-valeur FCFA conservée). Frontend seul, build OK. Non déployé (en attente d'accord).
+
+## 17/10/2026 — Déploiement : export Excel en nombres purs, devise conservée
+- Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00211-4xm`. Vérifié : `/` et `/health` en `200` ; le code d'export (colonne « Devise », recollage des milliers) est présent dans le fichier principal servi (`main-DI27JKWV.js`).
