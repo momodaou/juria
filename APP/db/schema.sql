@@ -4912,3 +4912,37 @@ ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulee_le              TIMESTAMPT
 ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulee_par             UUID REFERENCES utilisateurs(id);
 ALTER TABLE depenses ADD COLUMN IF NOT EXISTS annulation_motif        TEXT;
 ALTER TABLE depenses ADD COLUMN IF NOT EXISTS statut_avant_annulation VARCHAR(12);
+
+-- =====================================================================
+--  17/10/2026 — Registre du courrier : destinataire, orientation, imputation
+--  avec instructions (acte reçu sans dossier, ex. assignation). Idempotent.
+--  Parcours : enregistré avec le destinataire avocat → orienté (rattaché à
+--  un dossier existant / dossier créé / sans suite) → imputé à un collaborateur
+--  avec instructions (crée une tâche liée au courrier).
+-- =====================================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS destinataire_id  UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS orientation      VARCHAR(12);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS oriente_par      UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS oriente_le       TIMESTAMPTZ;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS orientation_motif TEXT;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS instructions_imputation TEXT;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS imputee_par      UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS imputee_le       TIMESTAMPTZ;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_courriers_orientation') THEN
+    ALTER TABLE courriers ADD CONSTRAINT chk_courriers_orientation
+      CHECK (orientation IS NULL OR orientation IN ('a_orienter','rattache','cree','sans_suite'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_courriers_orientation ON courriers(orientation) WHERE orientation = 'a_orienter';
+CREATE INDEX IF NOT EXISTS idx_courriers_destinataire ON courriers(destinataire_id);
+
+ALTER TABLE taches ADD COLUMN IF NOT EXISTS courrier_id    UUID REFERENCES courriers(id) ON DELETE SET NULL;
+ALTER TABLE taches ADD COLUMN IF NOT EXISTS courrier_etape VARCHAR(12);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_taches_courrier_etape') THEN
+    ALTER TABLE taches ADD CONSTRAINT chk_taches_courrier_etape
+      CHECK (courrier_etape IS NULL OR courrier_etape IN ('orienter','imputation','declencheur'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_taches_courrier ON taches(courrier_id) WHERE courrier_id IS NOT NULL;

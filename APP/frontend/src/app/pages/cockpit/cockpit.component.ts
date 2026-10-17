@@ -52,6 +52,8 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
   // doublons, réservé direction/admin IT (agrège plusieurs modules).
   doublons: 'parametres.cabinet.modifier',
+  // Courriers reçus sans dossier, à orienter (17/10/2026) — associés : tout ; destinataire : les siens.
+  courriers_a_orienter: null,
   // Dépenses engagées à valider après coup (17/10/2026) — réservé à qui peut valider.
   depenses_apres_coup: 'depenses.decision',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
@@ -182,6 +184,21 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
       { label: 'Date (la plus récente)', key: 'date_audience', dir: 'desc' },
+    ],
+  },
+  // Courriers reçus sans dossier, à orienter (17/10/2026).
+  courriers_a_orienter: {
+    titre: 'Courriers à orienter',
+    cols: [
+      { key: 'date_courrier', label: 'Reçu le', format: 'date' },
+      { key: 'reference', label: 'Référence' },
+      { key: 'type', label: 'Type' },
+      { key: 'correspondant', label: 'Expéditeur' },
+      { key: 'destinataire', label: 'Avocat destinataire' },
+      { key: 'jours_attente', label: 'Jours d\'attente', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
     ],
   },
   // Dépenses engagées sur la petite caisse, à valider après coup (17/10/2026).
@@ -506,6 +523,23 @@ const CONFIG: Record<string, TuileConfig> = {
               </div>
             }
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.reenrolement_n }}</span>
+          </button>
+        }
+        @if (d.courriers_a_orienter_n !== null) {
+          <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'courriers_a_orienter'" (click)="clic('courriers_a_orienter')">
+            <span class="tico" [innerHTML]="icons['audiences']"></span>
+            <span class="n">{{ d.courriers_a_orienter_n }}</span><span class="l">Courriers à orienter</span>
+            @if (d.courriers_a_orienter_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.courriers_a_orienter_apercu; track l.id) {
+                  <div class="mini-ligne">
+                    <a class="principal" routerLink="/courrier" [queryParams]="{ orientation: 'a_orienter' }" (click)="$event.stopPropagation()">{{ l.reference }} — {{ l.correspondant }}</a>
+                    <span class="secondaire">{{ l.date_courrier | date:'dd/MM' }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.courriers_a_orienter_n }}</span>
           </button>
         }
         @if (d.doublons_n !== null) {

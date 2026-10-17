@@ -100,7 +100,7 @@ describe("Régression — champs enum/UUID optionnels omis", () => {
     const res = await request(app)
       .post("/api/courriers")
       .set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Correspondant test" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Correspondant test" });
     expect(res.status).toBe(201);
   });
 

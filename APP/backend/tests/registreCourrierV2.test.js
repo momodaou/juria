@@ -75,7 +75,7 @@ describe("numerise — enfin réellement mis à jour (Q3)", () => {
 
   test("passe à TRUE aussi lors de la migration automatique (PUT /:id)", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Expéditeur", support: "papier" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Expéditeur", support: "papier" });
     await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
       .attach("fichier", Buffer.from("scan en attente"), { filename: "scan.txt", contentType: "text/plain" });
     const dossierId = await creerClientEtDossier();
@@ -174,7 +174,7 @@ describe("POST /api/courriers/:id/viser — Q1", () => {
 
   test("refusé (400) si aucun dossier n'est rattaché au courrier", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "assignation", correspondant: "Huissier" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "assignation", correspondant: "Huissier" });
     const visa = await request(app).post(`/api/courriers/${courrier.body.id}/viser`).set("Authorization", `Bearer ${token}`);
     expect(visa.status).toBe(400);
   });

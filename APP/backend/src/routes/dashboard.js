@@ -212,6 +212,24 @@ router.get("/", async (req, res) => {
         WHERE d.apres_coup_statut = 'a_valider' ORDER BY d.engagee_le ASC LIMIT 2`);
       apresCoupApercu = aca.rows;
     }
+    // Courriers reçus à orienter (17/10/2026) : actes reçus sans dossier, en
+    // attente de la décision de l'avocat destinataire. Les associés voient tout ;
+    // un destinataire voit les siens (la tuile n'apparaît que s'il y en a).
+    let courriersOrienterN = null, courriersOrienterApercu = [];
+    {
+      const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
+      const filtre = estAssocie ? "" : "AND c.destinataire_id = $1::uuid";
+      const args = estAssocie ? [] : [req.user.sub];
+      const cn = await pool.query(`SELECT count(*) AS n FROM courriers c WHERE c.orientation = 'a_orienter' ${filtre}`, args);
+      if (estAssocie || Number(cn.rows[0].n) > 0) {
+        courriersOrienterN = Number(cn.rows[0].n);
+        const ca = await pool.query(
+          `SELECT c.id, c.reference, c.type, c.correspondant, c.date_courrier, dest.prenom || ' ' || dest.nom AS destinataire
+           FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
+           WHERE c.orientation = 'a_orienter' ${filtre} ORDER BY c.date_courrier ASC LIMIT 2`, args);
+        courriersOrienterApercu = ca.rows;
+      }
+    }
     // Doublons potentiels (26/09/2026) — voir DOUBLONS_CTE ci-dessus.
     let doublonsN = null, doublonsApercu = [];
     if (voitDoublons) {
@@ -582,6 +600,8 @@ router.get("/", async (req, res) => {
       non_rentables_apercu: nonRentablesApercu,
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
+      courriers_a_orienter_n: courriersOrienterN,
+      courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,
       depenses_apres_coup_apercu: apresCoupApercu,
       reenrolement_n: reenrolementN,
@@ -972,6 +992,17 @@ router.get("/detail/:type", async (req, res) => {
           ) der WHERE der.resultat = 'avant_dire_droit'
           ORDER BY der.date_audience ASC LIMIT 200
         `);
+        return res.json(rows);
+      }
+      // 17/10/2026 — courriers reçus sans dossier, à orienter par l'avocat destinataire.
+      case "courriers_a_orienter": {
+        const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
+        const { rows } = await pool.query(`
+          SELECT c.id, c.reference, c.type, c.correspondant, c.objet, c.date_courrier,
+                 dest.prenom || ' ' || dest.nom AS destinataire, (current_date - c.date_courrier) AS jours_attente
+          FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
+          WHERE c.orientation = 'a_orienter' ${estAssocie ? "" : "AND c.destinataire_id = $1::uuid"}
+          ORDER BY c.date_courrier ASC LIMIT 200`, estAssocie ? [] : [req.user.sub]);
         return res.json(rows);
       }
       // 17/10/2026 — dépenses engagées sur la petite caisse, à valider après coup.

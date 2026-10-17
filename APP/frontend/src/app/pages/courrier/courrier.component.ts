@@ -1,7 +1,7 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -91,14 +91,12 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
           </select>
         </div>
         <div>
-          <!-- 28/09/2026 — audit menu par menu : imputation_id déjà géré
-               côté serveur (POST l'accepte, PUT /:id/statut aussi) mais
-               jamais exposé à l'écran — impossible jusqu'ici de dire
-               concrètement à qui un courrier est imputé. -->
-          <label>Imputer à (optionnel)</label>
-          <select class="in" [(ngModel)]="form.imputation_id" name="imputation">
+          <!-- 17/10/2026 — l'assistante enregistre avec l'AVOCAT DESTINATAIRE
+               (jamais d'imputation à ce stade) ; l'avocat oriente puis impute. -->
+          <label>{{ form.sens === 'arrivee' ? (form.dossier_id ? 'Avocat destinataire' : 'Avocat destinataire (obligatoire sans dossier)') : 'Avocat' }}</label>
+          <select class="in" [(ngModel)]="form.destinataire_id" name="destinataire">
             <option value="">—</option>
-            @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+            @for (m of avocats(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
           </select>
         </div>
         <div class="col2">
@@ -108,10 +106,10 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                demande initiale) précède souvent l'ouverture du dossier ;
                le scan n'a plus besoin d'attendre un dossier pour être
                conservé, voir courriers.js. -->
-          @if (!form.dossier_id) { <p class="muted" style="margin:-6px 0 12px">Sans dossier, le scan est conservé directement sur le courrier — il rejoint automatiquement la GED dès qu'un dossier lui sera rattaché.</p> }
+          @if (!form.dossier_id && form.sens === 'arrivee') { <p class="muted" style="margin:-6px 0 12px">Sans dossier : l'acte est transmis à l'avocat destinataire, qui l'orientera (rattacher, créer le dossier ou sans suite). Le scan est conservé sur le courrier et rejoint automatiquement la GED dès qu'un dossier lui est rattaché.</p> }
         </div>
       </div>
-      <button class="btn" (click)="creer()" [disabled]="!form.correspondant || creation()">
+      <button class="btn" (click)="creer()" [disabled]="!form.correspondant || creation() || (form.sens === 'arrivee' && !form.dossier_id && !form.destinataire_id)">
         {{ creation() ? 'Enregistrement…' : 'Enregistrer le courrier' }}
       </button>
       @if (dernierDeclenchement()) {
@@ -150,6 +148,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         <!-- 15/10/2026 — Q3 : file de travail "papier reçu, pas encore
              numérisé" pour l'accueil. -->
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreNumerisation" (ngModelChange)="charger()" /> En attente de numérisation</label>
+        <label class="chk"><input type="checkbox" [(ngModel)]="filtreMes" (ngModelChange)="charger()" /> Mes courriers</label>
+        <label class="chk"><input type="checkbox" [(ngModel)]="filtreAOrienter" (ngModelChange)="charger()" /> À orienter</label>
       </div>
       <!-- 15/10/2026 — Q5 : le visa ne calcule jamais le vrai délai légal
            (dépend du degré/juridiction, seul l'avocat peut le déterminer) —
@@ -159,7 +159,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
       }
       @if (courriers().length) {
         <table>
-          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Imputé à</th><th>Pièce</th><th>Statut</th><th></th></tr>
+          <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Destinataire / imputé</th><th>Pièce</th><th>Statut</th><th></th></tr>
           @for (c of courriers(); track c.id) {
             <tr>
               <td>{{ c.reference }}</td>
@@ -170,7 +170,11 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
               <td>{{ c.objet || '—' }}</td>
               <td>@if (c.dossier_id) { <a class="lien" [routerLink]="['/dossiers', c.dossier_id]">{{ c.dossier_numero }}</a> } @else { — }</td>
               <td>
-                {{ c.impute_a || '—' }}
+                @if (c.destinataire_nom) { <span class="muted-sm">Destinataire :</span> {{ c.destinataire_nom }}<br> }
+                @if (c.orientation === 'a_orienter') { <span class="tag attente">À orienter</span><br> }
+                @if (c.orientation === 'sans_suite') { <span class="tag" [title]="c.orientation_motif || ''">Sans suite</span><br> }
+                @if (c.impute_a) { <span class="muted-sm">Imputé à :</span> {{ c.impute_a }} }
+                @if (!c.destinataire_nom && !c.impute_a && c.orientation !== 'a_orienter') { — }
                 <!-- 15/10/2026 — transmis_par/transmis_le existaient déjà
                      (depuis le tout premier schéma) mais n'étaient jamais
                      affichés ; vise_par/vise_le sont nouveaux (Q1). -->
@@ -210,6 +214,56 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
               </td>
               <td><app-menu-actions [actions]="actionsPour(c)" /></td>
             </tr>
+            @if (orientationId() === c.id) {
+              <tr class="edition">
+                <td colspan="11">
+                  <b>Orienter l'acte {{ c.reference }}</b> — que devient-il ?
+                  <div class="grid2" style="margin-top:8px">
+                    <div class="col2">
+                      <label>Décision</label>
+                      <select class="in" [(ngModel)]="orientForm.decision" name="orDecision">
+                        <option value="rattache">Rattacher à un dossier existant</option>
+                        <option value="cree">J'ai déjà créé le dossier</option>
+                        <option value="nouveau">Créer le dossier maintenant</option>
+                        <option value="sans_suite">Classer sans suite</option>
+                      </select>
+                    </div>
+                    @if (orientForm.decision === 'rattache' || orientForm.decision === 'cree') {
+                      <div class="col2"><label>Dossier</label>
+                        <app-dossier-picker [valeur]="orientForm.dossier_id" (valeurChange)="orientForm.dossier_id = $event"></app-dossier-picker></div>
+                    }
+                    @if (orientForm.decision === 'sans_suite') {
+                      <div class="col2"><label>Motif (obligatoire)</label><input class="in" [(ngModel)]="orientForm.motif" name="orMotif" /></div>
+                    }
+                  </div>
+                  <button class="lien" (click)="orienter(c)" [disabled]="orientationEnCours()">{{ libelleOrienter() }}</button>
+                  <button class="lien" (click)="orientationId.set(null)">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
+            @if (imputationId() === c.id) {
+              <tr class="edition">
+                <td colspan="11">
+                  <b>Imputer le travail — {{ c.reference }}</b> (crée une tâche liée au dossier, visible dans « Mes tâches » du collaborateur)
+                  <div class="grid2" style="margin-top:8px">
+                    <div>
+                      <label>Collaborateur (juriste, avocat stagiaire, stagiaire)</label>
+                      <select class="in" [(ngModel)]="imputForm.imputation_id" name="imCollab">
+                        <option value="">—</option>
+                        @for (m of imputables(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+                      </select>
+                    </div>
+                    <div><label>Échéance du travail (facultative)</label><input class="in" type="date" [(ngModel)]="imputForm.echeance" name="imEch" /></div>
+                    <div class="col2"><label>Instructions (obligatoires)</label>
+                      <textarea class="in" rows="3" [(ngModel)]="imputForm.instructions" name="imInstr" placeholder="Que doit-il faire ? (analyse, conclusions, pièces à réunir…)"></textarea></div>
+                  </div>
+                  <button class="lien" (click)="imputer(c)" [disabled]="imputationEnCours() || !imputForm.imputation_id || !imputForm.instructions">{{ imputationEnCours() ? 'Enregistrement…' : 'Imputer' }}</button>
+                  <button class="lien" (click)="imputationId.set(null)">Annuler</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
             @if (editionId() === c.id) {
               <tr class="edition">
                 <td colspan="11">
@@ -237,13 +291,6 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_courrier" name="edDate" /></div>
                     <div class="col2"><label>Correspondant</label><input class="in" [(ngModel)]="editForm.correspondant" name="edCorrespondant" /></div>
                     <div class="col2"><label>Objet</label><input class="in" [(ngModel)]="editForm.objet" name="edObjet" /></div>
-                    <div>
-                      <label>Imputer à</label>
-                      <select class="in" [(ngModel)]="editForm.imputation_id" name="edImputation">
-                        <option value="">—</option>
-                        @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
-                      </select>
-                    </div>
                     <!-- 14/10/2026 — gap trouvé en construisant la migration
                          automatique de pièce : PUT /api/courriers/:id accepte
                          dossier_id depuis le 28/09/2026, mais aucun écran ne
@@ -294,6 +341,7 @@ export class CourrierComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly preview = inject(DocumentPreviewService);
   readonly courriers = signal<any[]>([]);
   editDossierLabel = '';
@@ -305,6 +353,26 @@ export class CourrierComponent implements OnInit {
   // Annuaire (GET /api/utilisateurs, ouvert à tous) pour le sélecteur
   // « Imputer à » — 28/09/2026.
   readonly membres = signal<any[]>([]);
+  // Registre : avocat destinataire / collaborateurs imputables (17/10/2026).
+  private static readonly ROLES_AVOCAT = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
+  private static readonly ROLES_IMPUTABLES = ['avocat_stagiaire', 'juriste', 'stagiaire'];
+  readonly avocats = computed(() => this.membres().filter((m) => CourrierComponent.ROLES_AVOCAT.includes(m.role)));
+  readonly imputables = computed(() => this.membres().filter((m) => CourrierComponent.ROLES_IMPUTABLES.includes(m.role)));
+  readonly orientationId = signal<string | null>(null);
+  readonly imputationId = signal<string | null>(null);
+  readonly orientationEnCours = signal(false);
+  readonly imputationEnCours = signal(false);
+  orientForm: any = { decision: 'rattache' };
+  imputForm: any = {};
+
+  libelleOrienter(): string {
+    if (this.orientForm.decision === 'nouveau') return 'Ouvrir la création du dossier →';
+    return this.orientationEnCours() ? 'Enregistrement…' : "Valider l'orientation";
+  }
+  private peutOrienterOuImputer(c: any): boolean {
+    const u = this.auth.utilisateur();
+    return !!u && (u.role === 'associe' || u.role === 'associe_fondateur' || c.destinataire_id === u.id);
+  }
   readonly editionId = signal<string | null>(null);
   readonly editionEnCours = signal(false);
   editForm: any = {};
@@ -313,6 +381,8 @@ export class CourrierComponent implements OnInit {
   readonly filtreDossierId = signal<string | null>(null);
   readonly filtreDossierNumero = signal<string | null>(null);
 
+  filtreMes = false;
+  filtreAOrienter = false;
   recherche = '';
   filtreSens = '';
   filtreType = '';
@@ -324,6 +394,7 @@ export class CourrierComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    if (params.get('orientation') === 'a_orienter') this.filtreAOrienter = true;
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });
   }
@@ -334,6 +405,8 @@ export class CourrierComponent implements OnInit {
       sens: this.filtreSens, type: this.filtreType, q: this.recherche,
       ...(dossierId ? { dossier_id: dossierId } : {}),
       ...(this.filtreNumerisation ? { en_attente_numerisation: 'true' } : {}),
+      ...(this.filtreMes ? { mes: 'true' } : {}),
+      ...(this.filtreAOrienter ? { orientation: 'a_orienter' } : {}),
     }).subscribe({ next: (c) => this.courriers.set(c) });
   }
 
@@ -462,10 +535,41 @@ export class CourrierComponent implements OnInit {
     }
     // 15/10/2026 — Q1 : réservé à un avocat du dossier (vérifié côté
     // serveur) — n'a de sens que si un dossier est déjà rattaché.
+    if (c.sens === 'arrivee' && this.peutOrienterOuImputer(c)) {
+      if (c.orientation === 'a_orienter') {
+        actions.push({ label: 'Orienter…', action: () => { this.erreur.set(''); this.orientForm = { decision: 'rattache' }; this.imputationId.set(null); this.orientationId.set(c.id); } });
+      } else if (c.dossier_id && c.orientation !== 'sans_suite') {
+        actions.push({ label: c.imputation_id ? 'Réimputer…' : 'Imputer…', action: () => { this.erreur.set(''); this.imputForm = {}; this.orientationId.set(null); this.imputationId.set(c.id); } });
+      }
+    }
     if (this.auth.peut('courriers.viser') && c.dossier_id) {
       actions.push({ label: c.vise_le ? 'Re-viser' : 'Viser', action: () => this.viser(c) });
     }
     return actions;
+  }
+
+  orienter(c: any): void {
+    const d = this.orientForm;
+    if (d.decision === 'nouveau') {
+      this.router.navigate(['/ouverture'], { queryParams: { courrier: c.id, courrierRef: c.reference } });
+      return;
+    }
+    this.erreur.set('');
+    this.orientationEnCours.set(true);
+    const payload: any = { decision: d.decision === 'sans_suite' ? 'sans_suite' : d.decision, dossier_id: d.dossier_id || undefined, motif: d.motif || undefined };
+    this.api.orienterCourrier(c.id, payload).subscribe({
+      next: () => { this.orientationEnCours.set(false); this.orientationId.set(null); this.charger(); },
+      error: (e) => { this.orientationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Orientation impossible.'); },
+    });
+  }
+
+  imputer(c: any): void {
+    this.erreur.set('');
+    this.imputationEnCours.set(true);
+    this.api.imputerCourrier(c.id, { imputation_id: this.imputForm.imputation_id, instructions: this.imputForm.instructions, echeance: this.imputForm.echeance || undefined }).subscribe({
+      next: () => { this.imputationEnCours.set(false); this.imputationId.set(null); this.charger(); },
+      error: (e) => { this.imputationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Imputation impossible.'); },
+    });
   }
 
   viser(c: any): void {

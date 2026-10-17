@@ -13,6 +13,9 @@ import { libelleRole } from '../../core/roles';
   imports: [FormsModule, RouterLink, ClientPickerComponent, DatePipe],
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
+    @if (courrierSource()) {
+      <p class="bandeau-courrier">Dossier créé <b>depuis le courrier {{ courrierSource() }}</b> : une fois le dossier ouvert, ce courrier lui sera rattaché automatiquement (et ses rappels créés). Saisissez le client et les parties à partir de l'acte.</p>
+    }
 
     @if (mesControles().length) {
       <section class="panel mes-controles">
@@ -387,6 +390,7 @@ import { libelleRole } from '../../core/roles';
     }
   `,
   styles: [`
+    .bandeau-courrier{background:var(--light);border-left:3px solid var(--gold);border-radius:8px;padding:10px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .in{display:block;width:100%;max-width:520px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
@@ -715,7 +719,14 @@ export class OuvertureComponent implements OnInit {
     });
   }
 
+  // Création du dossier depuis un courrier reçu sans dossier (17/10/2026).
+  readonly courrierSource = signal<string | null>(null);
+  private courrierSourceId: string | null = null;
+
   ngOnInit(): void {
+    const pc = this.route.snapshot.queryParamMap;
+    this.courrierSourceId = pc.get('courrier');
+    this.courrierSource.set(pc.get('courrierRef'));
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.chargerMatieres();
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
@@ -912,6 +923,14 @@ export class OuvertureComponent implements OnInit {
         const idControle = this.resultat()?.id;
         if (idControle) this.api.marquerConflitVu(idControle).subscribe();
         this.oublierConflitEnCours();
+        // Dossier ouvert depuis un courrier : on lui rattache l'acte (rappels inclus).
+        if (this.courrierSourceId) {
+          this.api.orienterCourrier(this.courrierSourceId, { decision: 'cree', dossier_id: r.id }).subscribe({
+            next: () => this.router.navigate(['/dossiers', r.id]),
+            error: () => this.router.navigate(['/dossiers', r.id]),
+          });
+          return;
+        }
         this.router.navigate(['/dossiers', r.id]);
       },
       error: (e) => { this.creation.set(false); this.erreurCreation.set(e?.error?.error ?? 'Création impossible.'); },

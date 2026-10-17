@@ -3971,3 +3971,10 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 ## 17/10/2026 — Déploiement : correctif de l'action « Corriger » (dotation)
 - Accord de l'utilisateur. Frontend seul, aucune migration : `juria-web-00214-dwr`. Vérifié : `/` et `/health` en `200` ; le nouveau formulaire (`formDotation`) est présent dans le chunk Dépenses servi (`chunk-BgwGjvpA.js`).
+
+## 17/10/2026 — Registre du courrier : acte reçu sans dossier (destinataire, orientation, imputation)
+- Besoin : un acte de procédure (assignation…) reçu avant toute création de dossier. Décisions de l'utilisateur : délai légal saisi par l'avocat ; tous les associés peuvent imputer ; actes sensibles (assignation, requête) masqués tant que non orientés ; bouton « Créer le dossier depuis ce courrier » ; dossier facultatif à l'enregistrement jusqu'à l'orientation.
+- Enregistrement sans dossier : l'**avocat destinataire** est obligatoire (`destinataire_id`), le courrier passe en orientation `a_orienter` et une tâche « Orienter le courrier REF » lui est créée. Le scan est conservé sur le courrier et rejoint la GED au rattachement.
+- `POST /api/courriers/:id/orienter` (rattacher / créer le dossier / sans suite) puis `POST /:id/imputer` (cibles : avocat stagiaire, juriste, stagiaire ; instructions obligatoires, échéance facultative → tâche liée au dossier, visible dans « Mes tâches »). Déclencheurs rattrapés au rattachement (idempotent). Tâche liée clôturée automatiquement (`cloturerCourrierLie` dans `taches.js`).
+- Écran : sélecteur de destinataire, étiquette « À orienter », panneaux Orienter… / Imputer…, filtre « À orienter », tuile du Tableau de bord « Courriers à orienter », bandeau de courrier source à l'ouverture de dossier (orientation `cree` automatique).
+- Limites : parties non préremplies automatiquement ; un collaborateur avocat n'est pas imputable. **Migration requise** (section « 17/10/2026 — Registre du courrier » de `APP/db/schema.sql`). Tests **634/634**, build OK, vérification visuelle locale (correctif d'une apostrophe échappée dans le libellé du bouton). Non déployé.

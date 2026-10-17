@@ -56,7 +56,7 @@ describe("Courrier -> GED (courriers.document_id)", () => {
 describe("Courrier sans dossier : dépôt temporaire (fichier_brut_*) puis migration automatique", () => {
   test("accepte le téléversement sans dossier, expose fichier_brut_nom (pas document_id)", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur sans dossier" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Un expéditeur sans dossier" });
     expect(courrier.status).toBe(201);
     const upload = await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
       .attach("fichier", Buffer.from("contenu avant dossier"), { filename: "demande-initiale.txt", contentType: "text/plain" });
@@ -72,7 +72,7 @@ describe("Courrier sans dossier : dépôt temporaire (fichier_brut_*) puis migra
 
   test("téléchargeable via GET /:id/fichier-brut avec le contenu exact", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Un expéditeur" });
     await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
       .attach("fichier", Buffer.from("contenu exact à relire"), { filename: "scan.txt", contentType: "text/plain" });
 
@@ -83,14 +83,14 @@ describe("Courrier sans dossier : dépôt temporaire (fichier_brut_*) puis migra
 
   test("404 sur GET /:id/fichier-brut si aucune pièce n'a été déposée", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Un expéditeur" });
     const res = await request(app).get(`/api/courriers/${courrier.body.id}/fichier-brut`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(404);
   });
 
   test("refuse un 2e téléversement si une pièce est déjà présente (brute ou classée)", async () => {
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Un expéditeur" });
     await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
       .attach("fichier", Buffer.from("premier dépôt"), { filename: "premier.txt", contentType: "text/plain" });
     const deuxieme = await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
@@ -101,7 +101,7 @@ describe("Courrier sans dossier : dépôt temporaire (fichier_brut_*) puis migra
   test("migration automatique vers la GED quand un dossier est rattaché via PUT /:id", async () => {
     const dossierId = await creerClientEtDossier();
     const courrier = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Un expéditeur" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "lettre", correspondant: "Un expéditeur" });
     await request(app).post(`/api/courriers/${courrier.body.id}/document`).set("Authorization", `Bearer ${token}`)
       .attach("fichier", Buffer.from("contenu migré"), { filename: "a-migrer.txt", contentType: "text/plain" });
 
@@ -144,7 +144,7 @@ describe("GET /api/courriers?type= — filtre par type de courrier", () => {
 describe("courriers.type_precision — libellé libre pour le type 'Autre'", () => {
   test("se persiste à la création et se relit via GET /api/courriers", async () => {
     const creation = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "autre", type_precision: "Carte de vœux du confrère", correspondant: "Un confrère" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "autre", type_precision: "Carte de vœux du confrère", correspondant: "Un confrère" });
     expect(creation.status).toBe(201);
     expect(creation.body.type_precision).toBe("Carte de vœux du confrère");
 
@@ -155,7 +155,7 @@ describe("courriers.type_precision — libellé libre pour le type 'Autre'", () 
 
   test("corrigeable via PUT /:id, sans effacement si non fourni (COALESCE)", async () => {
     const creation = await request(app).post("/api/courriers").set("Authorization", `Bearer ${token}`)
-      .send({ sens: "arrivee", type: "autre", type_precision: "Premier libellé", correspondant: "Un correspondant" });
+      .send({ sens: "arrivee", destinataire_id: userId, type: "autre", type_precision: "Premier libellé", correspondant: "Un correspondant" });
 
     const maj = await request(app).put(`/api/courriers/${creation.body.id}`)
       .set("Authorization", `Bearer ${token}`).send({ type_precision: "Libellé corrigé" });

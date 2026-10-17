@@ -73,6 +73,9 @@ export interface DashboardData {
   // tuile agrège des données de plusieurs modules).
   doublons_n: number | null;
   // Dépenses petite caisse engagées, à valider après coup (17/10/2026) — null sans depenses.decision.
+  // Courriers reçus sans dossier, à orienter (17/10/2026) — null si rien à orienter pour ce profil.
+  courriers_a_orienter_n: number | null;
+  courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
   depenses_apres_coup_n: number | null;
   depenses_apres_coup_apercu: { id: string; libelle: string; montant: number; engagee_par: string; engagee_le: string }[];
   doublons_apercu: { categorie: string; dossier_id: string | null; dossier_numero: string | null; description: string; nb: number }[];
@@ -704,7 +707,7 @@ export class ApiService {
   }
 
   // Registre du courrier
-  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string } = {}): Observable<any[]> {
+  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';
@@ -715,6 +718,13 @@ export class ApiService {
   }
   creerCourrier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers`, payload);
+  }
+  // Acte reçu sans dossier : orientation puis imputation avec instructions (17/10/2026).
+  orienterCourrier(id: string, payload: { decision: string; dossier_id?: string; motif?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/orienter`, payload);
+  }
+  imputerCourrier(id: string, payload: { imputation_id: string; instructions: string; echeance?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/imputer`, payload);
   }
   majStatutCourrier(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/courriers/${id}/statut`, payload);

@@ -24,11 +24,13 @@ const { SECRET } = require("../src/auth");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
 
 let token; // associe (Test Régression)
+let associeId;
 
 beforeAll(async () => {
   await assurerUtilisateurTest();
   const login = await request(app).post("/auth/login").send({ email: EMAIL_TEST, mot_de_passe: MDP_TEST });
   token = login.body.token;
+  associeId = login.body.utilisateur.id;
 });
 
 afterAll(async () => {
@@ -52,7 +54,7 @@ const auth = (t) => ({ Authorization: `Bearer ${t}` });
 describe("Registre du courrier — GET /:id gardée par courriers.consulter (28/09/2026)", () => {
   test("un rôle sans courriers.consulter (stagiaire) reçoit 403 sur GET /:id", async () => {
     const creation = await request(app).post("/api/courriers").set(auth(token))
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Test MenuAudit" });
+      .send({ sens: "arrivee", destinataire_id: associeId, type: "lettre", correspondant: "Test MenuAudit" });
     expect(creation.status).toBe(201);
     const stagiaire = await creerUtilisateurRole("stagiaire");
     const res = await request(app).get(`/api/courriers/${creation.body.id}`).set(auth(stagiaire.token));
@@ -61,7 +63,7 @@ describe("Registre du courrier — GET /:id gardée par courriers.consulter (28/
 
   test("un rôle avec courriers.consulter (associé) reçoit 200 sur GET /:id", async () => {
     const creation = await request(app).post("/api/courriers").set(auth(token))
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Test MenuAudit" });
+      .send({ sens: "arrivee", destinataire_id: associeId, type: "lettre", correspondant: "Test MenuAudit" });
     const res = await request(app).get(`/api/courriers/${creation.body.id}`).set(auth(token));
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(creation.body.id);
@@ -71,7 +73,7 @@ describe("Registre du courrier — GET /:id gardée par courriers.consulter (28/
 describe("Registre du courrier — PUT /:id, correction des champs de base (28/09/2026)", () => {
   test("corrige correspondant/objet/type/date/imputation sans toucher la référence", async () => {
     const creation = await request(app).post("/api/courriers").set(auth(token))
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Faute de frappe", objet: "Objet initial" });
+      .send({ sens: "arrivee", destinataire_id: associeId, type: "lettre", correspondant: "Faute de frappe", objet: "Objet initial" });
     const membre = await creerUtilisateurRole("collaborateur");
 
     const maj = await request(app).put(`/api/courriers/${creation.body.id}`).set(auth(token))
@@ -86,7 +88,7 @@ describe("Registre du courrier — PUT /:id, correction des champs de base (28/0
 
   test("un rôle sans courriers.statut.modifier ne peut pas corriger un courrier", async () => {
     const creation = await request(app).post("/api/courriers").set(auth(token))
-      .send({ sens: "arrivee", type: "lettre", correspondant: "Test MenuAudit" });
+      .send({ sens: "arrivee", destinataire_id: associeId, type: "lettre", correspondant: "Test MenuAudit" });
     const collab = await creerUtilisateurRole("collaborateur");
     const res = await request(app).put(`/api/courriers/${creation.body.id}`).set(auth(collab.token))
       .send({ correspondant: "Tentative non autorisée" });

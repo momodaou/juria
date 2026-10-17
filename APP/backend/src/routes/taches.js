@@ -131,6 +131,15 @@ router.post("/", requirePermission("taches.creer"), async (req, res) => {
 // soit le rôle de l'appelant (même un associé habilité à valider doit
 // passer par /valider, pour que valide_par/valide_le soient toujours
 // renseignés quand la validation a été demandée).
+// Quand la tâche d'IMPUTATION d'un courrier se termine, le courrier passe à
+// « traité » (17/10/2026, registre du courrier — suite de l'imputation).
+async function cloturerCourrierLie(tacheId) {
+  await pool.query(
+    `UPDATE courriers SET statut = 'traite'::statut_courrier
+     WHERE id = (SELECT courrier_id FROM taches WHERE id = $1 AND courrier_etape = 'imputation')
+       AND statut <> 'traite'`, [tacheId]);
+}
+
 router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res) => {
   const { statut } = req.body || {};
   const permis = ["a_faire", "en_cours", "a_valider", "termine", "annule"];
@@ -151,6 +160,7 @@ router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res)
       [statut, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Tâche introuvable" });
+    if (statut === "termine") await cloturerCourrierLie(req.params.id);
     if (avant.statut !== statut) {
       await logAudit({
         utilisateurId: req.user.sub, action: "modifier_statut_tache", entite: "taches", entiteId: req.params.id,
@@ -241,6 +251,7 @@ router.post("/:id/valider", requirePermission("taches.valider"), async (req, res
         error: existe.rows[0] ? "Tâche déjà validée (par quelqu'un d'autre entre-temps ?)" : "Tâche introuvable",
       });
     }
+    await cloturerCourrierLie(rows[0].id);
     await logAudit({
       utilisateurId: req.user.sub, action: "valider_tache", entite: "taches", entiteId: rows[0].id,
       details: { dossier_id: rows[0].dossier_id }, ip: req.ip,

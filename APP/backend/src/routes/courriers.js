@@ -6,6 +6,7 @@ const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
+const { logAudit } = require("../audit");
 const router = express.Router();
 
 // 15/10/2026 — même liste que ROLES_AVOCAT dans dossiers.js (dupliquée
@@ -13,6 +14,26 @@ const router = express.Router();
 // constante plutôt qu'un module partagé) : seul un avocat peut "viser"
 // un courrier (voir POST /:id/viser).
 const ROLES_AVOCAT = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
+
+// 17/10/2026 — parcours « acte reçu sans dossier » : l'assistante enregistre avec
+// le DESTINATAIRE avocat (jamais d'imputation à ce stade) ; le destinataire ou
+// un associé ORIENTE (dossier existant / créé / sans suite) puis IMPUTE à un
+// collaborateur, avec instructions. Les collaborateurs imputables sont ceux
+// désignés par l'utilisateur (juristes, avocats stagiaires, stagiaires).
+const ROLES_ASSOCIE = ["associe", "associe_fondateur"];
+const ROLES_IMPUTABLES = ["avocat_stagiaire", "juriste", "stagiaire"];
+const TYPES_SENSIBLES = ["assignation", "requete"];
+
+// Fragment SQL de visibilité : tant qu'un acte sensible reçu n'est pas
+// orienté, il n'est visible que de son destinataire, de celui qui l'a
+// enregistré et des associés (jamais des autres profils).
+function filtreVisibilite(user, params) {
+  if (ROLES_ASSOCIE.includes(user.role)) return null;
+  params.push(user.sub);
+  const n = params.length;
+  return `(NOT (c.sens = 'arrivee' AND c.orientation = 'a_orienter' AND c.type::text = ANY(ARRAY['assignation','requete']))
+           OR c.recu_par = $${n}::uuid OR c.destinataire_id = $${n}::uuid)`;
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -63,7 +84,7 @@ async function appliquerDeclencheurs(client, courrier, utilisateurId) {
   );
   if (!rows[0]) return null;
   const decl = rows[0];
-  const responsable = courrier.imputation_id || utilisateurId;
+  const responsable = courrier.imputation_id || courrier.destinataire_id || utilisateurId;
 
   if (decl.type_evenement === "diligence") {
     const dateDiligence = decl.delai_jours
@@ -90,18 +111,54 @@ async function appliquerDeclencheurs(client, courrier, utilisateurId) {
 
   // Pas de délai calculable (ex. audience à date non fixée) -> tâche de suivi.
   const ins = await client.query(
-    `INSERT INTO taches (dossier_id, titre, responsable_id, echeance, cree_par)
-     VALUES ($1,$2,$3,$4,$5) RETURNING id, titre, echeance`,
-    [courrier.dossier_id, decl.libelle_suggere, responsable, courrier.date_courrier, utilisateurId]
+    `INSERT INTO taches (dossier_id, titre, responsable_id, echeance, cree_par, courrier_id, courrier_etape)
+     VALUES ($1,$2,$3,$4,$5,$6,'declencheur') RETURNING id, titre, echeance`,
+    [courrier.dossier_id, decl.libelle_suggere, responsable, courrier.date_courrier, utilisateurId, courrier.id]
   );
   return { type: "tache", ...ins.rows[0] };
 }
 
+// Déclencheurs rattrapés au RATTACHEMENT d'un dossier (17/10/2026) : un acte
+// reçu avant que le dossier n'existe n'avait jamais ses rappels (assignation →
+// audience, acte d'huissier → délai…), ceux-ci ne s'appliquant qu'à
+// l'enregistrement. Idempotent : rien n'est recréé si un déclencheur a déjà
+// produit un événement, une diligence ou une tâche pour ce courrier.
+async function declencherSiAbsent(client, courrier, utilisateurId) {
+  if (!courrier.dossier_id) return null;
+  const deja = await client.query(
+    `SELECT (SELECT count(*) FROM evenements WHERE courrier_id = $1)
+          + (SELECT count(*) FROM diligences WHERE courrier_id = $1)
+          + (SELECT count(*) FROM taches WHERE courrier_id = $1 AND courrier_etape = 'declencheur') AS n`, [courrier.id]);
+  if (Number(deja.rows[0].n) > 0) return null;
+  const c = { ...courrier, imputation_id: courrier.imputation_id || courrier.destinataire_id };
+  return appliquerDeclencheurs(client, c, utilisateurId);
+}
+
+// Après rattachement d'un dossier : l'orientation « à orienter » devient
+// « rattaché », la tâche de rappel « orienter » est clôturée et les
+// déclencheurs sont rattrapés.
+async function apresRattachement(client, courrier, utilisateurId, orientation = "rattache") {
+  if (courrier.orientation === "a_orienter") {
+    await client.query(
+      `UPDATE courriers SET orientation = $1, oriente_par = $2, oriente_le = now() WHERE id = $3`,
+      [orientation, utilisateurId, courrier.id]);
+    await client.query(
+      `UPDATE taches SET statut = 'termine' WHERE courrier_id = $1 AND courrier_etape = 'orienter' AND statut NOT IN ('termine','annule')`,
+      [courrier.id]);
+  }
+  return declencherSiAbsent(client, courrier, utilisateurId);
+}
+
 // GET /api/courriers?sens=&type=&dossier_id=&statut=&q=&en_attente_numerisation=true
 router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
-  const { sens, type, dossier_id, statut, q, en_attente_numerisation } = req.query;
+  const { sens, type, dossier_id, statut, q, en_attente_numerisation, mes, orientation } = req.query;
   const params = [];
   const clauses = [];
+  const vis = filtreVisibilite(req.user, params);
+  if (vis) clauses.push(vis);
+  if (orientation) { params.push(orientation); clauses.push(`c.orientation = $${params.length}`); }
+  // « Mes courriers » : ceux dont je suis le destinataire ou l'imputé.
+  if (mes === "true") { params.push(req.user.sub); clauses.push(`(c.destinataire_id = $${params.length}::uuid OR c.imputation_id = $${params.length}::uuid)`); }
   if (sens) { params.push(sens); clauses.push(`c.sens = $${params.length}`); }
   // 24/09/2026 — gap signalé par l'utilisateur : aucun filtre par type de
   // courrier, seulement par sens + recherche libre.
@@ -119,7 +176,8 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
       `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
               c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
-              c.expedie_par, c.expedie_le,
+              c.expedie_par, c.expedie_le, c.destinataire_id, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
+              dest.prenom || ' ' || dest.nom AS destinataire_nom,
               d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
               t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
        FROM courriers c
@@ -127,6 +185,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
        LEFT JOIN utilisateurs t ON t.id = c.transmis_par
        LEFT JOIN utilisateurs v ON v.id = c.vise_par
+       LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
        ${where}
        ORDER BY c.date_courrier DESC, c.cree_le DESC LIMIT 300`,
       params
@@ -146,6 +205,8 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
 // direct. Alignée sur la même permission que la liste.
 router.get("/:id", requirePermission("courriers.consulter"), async (req, res) => {
   try {
+    const params = [req.params.id];
+    const vis = filtreVisibilite(req.user, params);
     const { rows } = await pool.query(
       `SELECT c.*, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
               t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
@@ -154,8 +215,8 @@ router.get("/:id", requirePermission("courriers.consulter"), async (req, res) =>
        LEFT JOIN utilisateurs u ON u.id = c.imputation_id
        LEFT JOIN utilisateurs t ON t.id = c.transmis_par
        LEFT JOIN utilisateurs v ON v.id = c.vise_par
-       WHERE c.id = $1`,
-      [req.params.id]
+       WHERE c.id = $1${vis ? " AND " + vis : ""}`,
+      params
     );
     if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
     res.json(rows[0]);
@@ -170,6 +231,18 @@ router.get("/:id", requirePermission("courriers.consulter"), async (req, res) =>
 router.post("/", requirePermission("courriers.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.sens || !b.type) return res.status(400).json({ error: "sens et type requis" });
+  // Acte reçu SANS dossier : le destinataire (avocat) est obligatoire — c'est
+  // lui qui orientera. Le dossier reste facultatif à l'enregistrement.
+  const sansDossierArrivee = b.sens === "arrivee" && !b.dossier_id;
+  if (sansDossierArrivee && !b.destinataire_id) {
+    return res.status(400).json({ error: "Un courrier reçu sans dossier doit indiquer l'avocat destinataire (c'est lui qui l'orientera)." });
+  }
+  if (b.destinataire_id) {
+    const d = await pool.query("SELECT role, actif FROM utilisateurs WHERE id = $1", [b.destinataire_id]);
+    if (!d.rows[0] || !d.rows[0].actif || !ROLES_AVOCAT.includes(d.rows[0].role)) {
+      return res.status(400).json({ error: "Le destinataire doit être un avocat actif." });
+    }
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -179,18 +252,35 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
       `INSERT INTO courriers
          (reference, sens, type, type_precision, date_courrier, acteur_type, correspondant, objet,
           dossier_id, support, imputation_id, recu_par, cree_par,
-          statut, a_numeriser)
+          statut, a_numeriser, destinataire_id, orientation, transmis_par, transmis_le)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::support_courrier,'papier'),$11::uuid,$12,$12,
-               (CASE WHEN $13::uuid IS NOT NULL THEN 'impute' ELSE 'recu' END)::statut_courrier, $14)
+               (CASE WHEN $13::uuid IS NOT NULL THEN 'impute' ELSE 'recu' END)::statut_courrier, $14,
+               $15::uuid, $16, (CASE WHEN $15::uuid IS NOT NULL THEN $12::uuid END),
+               (CASE WHEN $15::uuid IS NOT NULL THEN now() END))
        RETURNING *`,
       [reference, b.sens, b.type, b.type_precision || null, dateCourrier, b.acteur_type || null, b.correspondant || null,
        b.objet || null, b.dossier_id || null, b.support, b.imputation_id || null, req.user.sub,
-       b.imputation_id || null, b.support === "papier" || !b.support]
+       b.imputation_id || null, b.support === "papier" || !b.support,
+       b.destinataire_id || null, sansDossierArrivee ? "a_orienter" : null]
     );
     const courrier = ins.rows[0];
     const declenchement = await appliquerDeclencheurs(client, courrier, req.user.sub);
+    // Rappel immédiat pour l'avocat destinataire : « orienter » l'acte reçu sans dossier.
+    let rappel = null;
+    if (courrier.orientation === "a_orienter") {
+      const sensible = TYPES_SENSIBLES.includes(courrier.type);
+      const delai = sensible ? 2 : 3;
+      const t = await client.query(
+        `INSERT INTO taches (dossier_id, titre, description, responsable_id, echeance, priorite, cree_par, courrier_id, courrier_etape)
+         VALUES (NULL,$1,$2,$3,(current_date + $4::int),$5::priorite_tache,$6,$7,'orienter') RETURNING id, titre, echeance`,
+        [`Orienter le courrier ${courrier.reference}${courrier.objet ? " — " + String(courrier.objet).slice(0, 80) : ""}`,
+         "Acte reçu sans dossier : le rattacher à un dossier existant, créer le dossier, ou le classer sans suite.",
+         courrier.destinataire_id, delai, sensible ? "haute" : "normale", req.user.sub, courrier.id]
+      );
+      rappel = t.rows[0];
+    }
     await client.query("COMMIT");
-    res.status(201).json({ ...courrier, declenchement });
+    res.status(201).json({ ...courrier, declenchement, rappel });
   } catch (e) {
     await client.query("ROLLBACK");
     console.error(e);
@@ -254,9 +344,11 @@ router.post("/:id/document", requirePermission("courriers.creer"), upload.single
 // que par une confidentialité documentaire : pas encore un vrai document GED.
 router.get("/:id/fichier-brut", requirePermission("courriers.consulter"), async (req, res) => {
   try {
+    const fbParams = [req.params.id];
+    const fbVis = filtreVisibilite(req.user, fbParams);
     const { rows } = await pool.query(
-      "SELECT fichier_brut_nom, fichier_brut_type_mime, fichier_brut_chemin FROM courriers WHERE id = $1",
-      [req.params.id]
+      `SELECT c.fichier_brut_nom, c.fichier_brut_type_mime, c.fichier_brut_chemin FROM courriers c WHERE c.id = $1${fbVis ? " AND " + fbVis : ""}`,
+      fbParams
     );
     if (!rows[0] || !rows[0].fichier_brut_chemin) return res.status(404).json({ error: "Aucune pièce jointe pour ce courrier" });
     const buf = await readObject(rows[0].fichier_brut_chemin);
@@ -296,6 +388,7 @@ router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, r
   let ancienCheminBrut = null;
   try {
     await client.query("BEGIN");
+    const avant = (await client.query("SELECT dossier_id, orientation FROM courriers WHERE id = $1 FOR UPDATE", [req.params.id])).rows[0] || {};
     const { rows } = await client.query(
       `UPDATE courriers SET
          correspondant = COALESCE($1, correspondant),
@@ -316,6 +409,11 @@ router.put("/:id", requirePermission("courriers.statut.modifier"), async (req, r
     );
     if (!rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Courrier introuvable" }); }
     const c = rows[0];
+    // Rattachement d'un dossier APRÈS COUP : orientation + déclencheurs rattrapés.
+    if (!avant.dossier_id && c.dossier_id) {
+      const full = (await client.query("SELECT * FROM courriers WHERE id = $1", [req.params.id])).rows[0];
+      await apresRattachement(client, { ...full, orientation: avant.orientation }, req.user.sub);
+    }
     if (c.dossier_id && c.fichier_brut_chemin && !c.document_id) {
       const buf = await readObject(c.fichier_brut_chemin);
       const docId = await classerDansGed(
@@ -369,6 +467,111 @@ router.put("/:id/statut", requirePermission("courriers.statut.modifier"), async 
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/courriers/:id/orienter  { decision: 'rattache'|'cree'|'sans_suite', dossier_id?, motif? }
+// L'avocat destinataire (ou n'importe quel associé) décide du sort d'un acte
+// reçu sans dossier : le rattacher à un dossier existant, indiquer le dossier
+// qu'il vient de créer, ou le classer sans suite (motif obligatoire).
+router.post("/:id/orienter", requirePermission("courriers.consulter"), async (req, res) => {
+  const { decision, dossier_id, motif } = req.body || {};
+  if (!["rattache", "cree", "sans_suite"].includes(decision)) return res.status(400).json({ error: "decision : rattache, cree ou sans_suite" });
+  if (decision !== "sans_suite" && !dossier_id) return res.status(400).json({ error: "dossier_id requis" });
+  if (decision === "sans_suite" && !String(motif || "").trim()) return res.status(400).json({ error: "Un motif est requis pour classer sans suite." });
+  const client = await pool.connect();
+  let ancienCheminBrut = null;
+  try {
+    await client.query("BEGIN");
+    const { rows: [c] } = await client.query("SELECT * FROM courriers WHERE id = $1 FOR UPDATE", [req.params.id]);
+    if (!c) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Courrier introuvable" }); }
+    if (!ROLES_ASSOCIE.includes(req.user.role) && c.destinataire_id !== req.user.sub) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ error: "Seul l'avocat destinataire ou un associé peut orienter ce courrier." });
+    }
+    if (c.orientation !== "a_orienter") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Ce courrier n'est pas à orienter (déjà orienté ou rattaché à un dossier)." }); }
+    let declenchement = null;
+    if (decision === "sans_suite") {
+      await client.query(
+        `UPDATE courriers SET orientation = 'sans_suite', orientation_motif = $1, oriente_par = $2, oriente_le = now(), statut = 'traite'::statut_courrier WHERE id = $3`,
+        [String(motif).trim(), req.user.sub, c.id]);
+      await client.query(`UPDATE taches SET statut = 'termine' WHERE courrier_id = $1 AND courrier_etape = 'orienter' AND statut NOT IN ('termine','annule')`, [c.id]);
+    } else {
+      const d = await client.query("SELECT id FROM dossiers WHERE id = $1", [dossier_id]);
+      if (!d.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Dossier introuvable" }); }
+      await client.query("UPDATE courriers SET dossier_id = $1 WHERE id = $2", [dossier_id, c.id]);
+      const maj = (await client.query("SELECT * FROM courriers WHERE id = $1", [c.id])).rows[0];
+      if (maj.fichier_brut_chemin && !maj.document_id) {
+        const buf = await readObject(maj.fichier_brut_chemin);
+        const docId = await classerDansGed(client, dossier_id, maj.fichier_brut_nom, buf, maj.fichier_brut_type_mime, maj.fichier_brut_taille, req.user.sub);
+        await client.query(
+          `UPDATE courriers SET document_id = $1, numerise = TRUE, fichier_brut_chemin = NULL, fichier_brut_nom = NULL,
+             fichier_brut_type_mime = NULL, fichier_brut_taille = NULL WHERE id = $2`, [docId, c.id]);
+        ancienCheminBrut = maj.fichier_brut_chemin;
+      }
+      declenchement = await apresRattachement(client, { ...maj, orientation: "a_orienter" }, req.user.sub, decision);
+    }
+    await client.query("COMMIT");
+    if (ancienCheminBrut) await deleteObject(ancienCheminBrut);
+    await logAudit({ utilisateurId: req.user.sub, action: "orienter_courrier", entite: "courriers", entiteId: c.id,
+      details: { decision, dossier_id: dossier_id || null, motif: motif || null }, ip: req.ip });
+    res.json({ id: c.id, orientation: decision, declenchement });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/courriers/:id/imputer  { imputation_id, instructions, echeance? }
+// Impute le travail technique à un collaborateur (juriste, avocat stagiaire,
+// stagiaire) avec des INSTRUCTIONS : crée une tâche liée au courrier et au
+// dossier — le collaborateur la retrouve dans « Mes tâches ». Réservé à
+// l'avocat destinataire et aux associés. Le courrier passe à « traité » quand
+// la tâche est terminée.
+router.post("/:id/imputer", requirePermission("courriers.consulter"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.imputation_id) return res.status(400).json({ error: "imputation_id requis" });
+  if (!String(b.instructions || "").trim()) return res.status(400).json({ error: "Des instructions sont requises pour imputer le travail." });
+  try {
+    const { rows: [c] } = await pool.query("SELECT * FROM courriers WHERE id = $1", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Courrier introuvable" });
+    if (!ROLES_ASSOCIE.includes(req.user.role) && c.destinataire_id !== req.user.sub) {
+      return res.status(403).json({ error: "Seul l'avocat destinataire ou un associé peut imputer ce courrier." });
+    }
+    if (c.orientation === "a_orienter") return res.status(409).json({ error: "Orientez d'abord ce courrier (dossier à rattacher ou à créer)." });
+    if (c.orientation === "sans_suite") return res.status(409).json({ error: "Ce courrier a été classé sans suite." });
+    if (!c.dossier_id) return res.status(409).json({ error: "Rattachez d'abord un dossier à ce courrier." });
+    const cible = await pool.query("SELECT role, actif FROM utilisateurs WHERE id = $1", [b.imputation_id]);
+    if (!cible.rows[0] || !cible.rows[0].actif || !ROLES_IMPUTABLES.includes(cible.rows[0].role)) {
+      return res.status(400).json({ error: "Le travail technique ne peut être imputé qu'à un juriste, un avocat stagiaire ou un stagiaire." });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Réimputation : l'ancienne tâche encore ouverte est annulée.
+      await client.query(`UPDATE taches SET statut = 'annule' WHERE courrier_id = $1 AND courrier_etape = 'imputation' AND statut NOT IN ('termine','annule')`, [c.id]);
+      const t = await client.query(
+        `INSERT INTO taches (dossier_id, titre, description, responsable_id, echeance, cree_par, courrier_id, courrier_etape)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'imputation') RETURNING id, titre, echeance`,
+        [c.dossier_id, `Courrier ${c.reference} — ${String(c.objet || c.type).slice(0, 120)}`, String(b.instructions).trim(),
+         b.imputation_id, b.echeance || null, req.user.sub, c.id]
+      );
+      await client.query(
+        `UPDATE courriers SET imputation_id = $1, statut = 'impute'::statut_courrier, instructions_imputation = $2, imputee_par = $3, imputee_le = now() WHERE id = $4`,
+        [b.imputation_id, String(b.instructions).trim(), req.user.sub, c.id]
+      );
+      await client.query("COMMIT");
+      await logAudit({ utilisateurId: req.user.sub, action: "imputer_courrier", entite: "courriers", entiteId: c.id,
+        details: { imputation_id: b.imputation_id, tache_id: t.rows[0].id, echeance: b.echeance || null }, ip: req.ip });
+      res.status(201).json({ courrier_id: c.id, tache: t.rows[0] });
+    } catch (e) { await client.query("ROLLBACK"); throw e; }
+    finally { client.release(); }
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
   }
 });
 
