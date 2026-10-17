@@ -200,6 +200,18 @@ router.get("/", async (req, res) => {
       `);
       reenrolementApercu = rea.rows;
     }
+    // Dépenses engagées sur la petite caisse, à valider après coup (17/10/2026) :
+    // visible de ceux qui peuvent valider (depenses.decision — associés).
+    let apresCoupN = null, apresCoupApercu = [];
+    if (await estAutorise(req.user.role, "depenses.decision", req.user.sub)) {
+      const ac = await one(`SELECT count(*) AS n FROM depenses WHERE apres_coup_statut = 'a_valider'`);
+      apresCoupN = Number(ac.n);
+      const aca = await pool.query(`
+        SELECT d.id, d.libelle, d.montant, d.engagee_le, u.prenom || ' ' || u.nom AS engagee_par
+        FROM depenses d LEFT JOIN utilisateurs u ON u.id = d.engagee_par
+        WHERE d.apres_coup_statut = 'a_valider' ORDER BY d.engagee_le ASC LIMIT 2`);
+      apresCoupApercu = aca.rows;
+    }
     // Doublons potentiels (26/09/2026) — voir DOUBLONS_CTE ci-dessus.
     let doublonsN = null, doublonsApercu = [];
     if (voitDoublons) {
@@ -570,6 +582,8 @@ router.get("/", async (req, res) => {
       non_rentables_apercu: nonRentablesApercu,
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
+      depenses_apres_coup_n: apresCoupN,
+      depenses_apres_coup_apercu: apresCoupApercu,
       reenrolement_n: reenrolementN,
       reenrolement_apercu: reenrolementApercu,
       doublons_n: doublonsN,
@@ -957,6 +971,20 @@ router.get("/detail/:type", async (req, res) => {
             ORDER BY a.dossier_id, a.date_audience DESC
           ) der WHERE der.resultat = 'avant_dire_droit'
           ORDER BY der.date_audience ASC LIMIT 200
+        `);
+        return res.json(rows);
+      }
+      // 17/10/2026 — dépenses engagées sur la petite caisse, à valider après coup.
+      case "depenses_apres_coup": {
+        if (!(await estAutorise(req.user.role, "depenses.decision", req.user.sub))) {
+          return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+        }
+        const { rows } = await pool.query(`
+          SELECT d.id, d.libelle, d.montant, d.mode_paiement, d.engagee_le,
+                 u.prenom || ' ' || u.nom AS engagee_par,
+                 (current_date - d.engagee_le::date) AS jours_attente
+          FROM depenses d LEFT JOIN utilisateurs u ON u.id = d.engagee_par
+          WHERE d.apres_coup_statut = 'a_valider' ORDER BY d.engagee_le ASC LIMIT 200
         `);
         return res.json(rows);
       }

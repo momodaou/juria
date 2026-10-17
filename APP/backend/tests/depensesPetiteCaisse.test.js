@@ -101,3 +101,21 @@ describe("Rapprochement mensuel", () => {
     expect((await request(app).post("/api/depenses/petite-caisse/rapprochement").set(auth(collab)).send({ solde_reel: 1 })).status).toBe(403);
   });
 });
+
+describe("Tuile Tableau de bord « Dépenses à valider après coup »", () => {
+  test("visible pour un associé (compte + détail), absente pour l'administrateur général", async () => {
+    const id = (await engager(adminGeneral, { libelle: "Tuile test" })).body.id;
+    const d = (await request(app).get("/api/dashboard").set(auth(associe))).body;
+    expect(d.depenses_apres_coup_n).toBeGreaterThan(0);
+    const detail = await request(app).get("/api/dashboard/detail/depenses_apres_coup").set(auth(associe));
+    expect(detail.status).toBe(200);
+    expect(detail.body.some((l) => l.id === id)).toBe(true);
+    const dAdmin = (await request(app).get("/api/dashboard").set(auth(adminGeneral))).body;
+    expect(dAdmin.depenses_apres_coup_n).toBeNull();
+    expect((await request(app).get("/api/dashboard/detail/depenses_apres_coup").set(auth(adminGeneral))).status).toBe(403);
+    // Une fois validée par un autre associé, elle sort de la tuile.
+    await request(app).post(`/api/depenses/${id}/valider-apres-coup`).set(auth(associe)).send({ decision: "validee" });
+    const apres = (await request(app).get("/api/dashboard/detail/depenses_apres_coup").set(auth(associe))).body;
+    expect(apres.some((l) => l.id === id)).toBe(false);
+  });
+});

@@ -72,6 +72,9 @@ export interface DashboardData {
   // parametres.cabinet.modifier absent (réservé direction/admin IT, la
   // tuile agrège des données de plusieurs modules).
   doublons_n: number | null;
+  // Dépenses petite caisse engagées, à valider après coup (17/10/2026) — null sans depenses.decision.
+  depenses_apres_coup_n: number | null;
+  depenses_apres_coup_apercu: { id: string; libelle: string; montant: number; engagee_par: string; engagee_le: string }[];
   doublons_apercu: { categorie: string; dossier_id: string | null; dossier_numero: string | null; description: string; nb: number }[];
   // Clients contractuels / abonnement — ancrage par CLIENT (09/10/2026,
   // revu depuis le 05/10/2026, voir CLAUDE.md/HISTORY.md). `null` si

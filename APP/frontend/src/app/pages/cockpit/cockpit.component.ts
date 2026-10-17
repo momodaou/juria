@@ -52,6 +52,8 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
   // doublons, réservé direction/admin IT (agrège plusieurs modules).
   doublons: 'parametres.cabinet.modifier',
+  // Dépenses engagées à valider après coup (17/10/2026) — réservé à qui peut valider.
+  depenses_apres_coup: 'depenses.decision',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
   dormants: null, realisation: 'factures.consulter',
   // Discipline de facturation, Bloc B (18/09/2026) — même permission que
@@ -180,6 +182,21 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
       { label: 'Date (la plus récente)', key: 'date_audience', dir: 'desc' },
+    ],
+  },
+  // Dépenses engagées sur la petite caisse, à valider après coup (17/10/2026).
+  depenses_apres_coup: {
+    titre: 'Dépenses à valider après coup',
+    cols: [
+      { key: 'engagee_le', label: 'Engagée le', format: 'date' },
+      { key: 'libelle', label: 'Libellé' },
+      { key: 'montant', label: 'Montant (FCFA)', format: 'num' },
+      { key: 'engagee_par', label: 'Engagée par' },
+      { key: 'jours_attente', label: 'Jours d\'attente', format: 'num' },
+    ],
+    sorts: [
+      { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
+      { label: 'Montant (le plus élevé)', key: 'montant', dir: 'desc' },
     ],
   },
   // "Doublons potentiels" (26/09/2026) — filet de sécurité de l'audit
@@ -684,6 +701,23 @@ const CONFIG: Record<string, TuileConfig> = {
                 </svg></div>
               }
               <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Détail</span>
+            </button>
+          }
+          @if (d.depenses_apres_coup_n !== null) {
+            <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'depenses_apres_coup'" (click)="clic('depenses_apres_coup')">
+              <span class="tico" [innerHTML]="icons['impayes']"></span>
+              <span class="n">{{ d.depenses_apres_coup_n }}</span><span class="l">Dépenses à valider après coup</span>
+              @if (d.depenses_apres_coup_apercu.length) {
+                <div class="mini-liste">
+                  @for (l of d.depenses_apres_coup_apercu; track l.id) {
+                    <div class="mini-ligne">
+                      <span class="principal">{{ l.libelle }}</span>
+                      <span class="valeur">{{ l.montant | number }}</span>
+                    </div>
+                  }
+                </div>
+              }
+              <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.depenses_apres_coup_n }}</span>
             </button>
           }
           @if (d.dossiers_non_rentables !== null) {
