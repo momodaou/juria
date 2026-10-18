@@ -3981,3 +3981,21 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 ## 17/10/2026 — Déploiement : registre du courrier (orientation / imputation)
 - Accord de l'utilisateur. Migration (colonnes courriers/taches) appliquée en un import (`--user=postgres`), fichier temporaire supprimé ; puis API `juria-00162-pmr` et frontend `juria-web-00215-ss8`. Vérifié : `/health` et `/` en `200`.
+
+## 18/10/2026 — Points en suspens (à traiter ultérieurement, à la demande de l'utilisateur)
+**Côté utilisateur**
+1. Petite caisse : dotation d'octobre faite (250 000 FCFA, confirmée par l'utilisateur) ; reste à essayer un engagement de dépense de caisse avec ce solde.
+2. Mobile money (Orange Money / Moov) : vérifier auprès des opérateurs l'export du relevé, les plafonds, le compte entreprise.
+3. Test réel du registre du courrier : assignation sans dossier → orienter → imputer.
+
+**Chantiers à lancer (décision de l'utilisateur)**
+4. Chantier 6 — charges fixes : fournir la liste réelle (périodicité, fixe/variable, cumul).
+5. Chantier 7 — relances clients : choisir l'option A, B ou C.
+6. Signalétique des portes : direction non décidée.
+
+**Limites connues du registre du courrier**
+7. Parties de l'acte non préremplies à la création du dossier depuis le courrier.
+8. Un collaborateur avocat n'est pas imputable (cibles : avocat stagiaire, juriste, stagiaire).
+
+**En réserve (ne pas relancer sans demande)** : assouplissement « engageur ≠ valideur », jobs Cloud Scheduler en pause, connexion bancaire réelle, IA + bibliothèque juridique, doublons (couverture étendue).
+Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ; délai de justification des dépenses en espèces si l'espèce est réellement utilisée.
