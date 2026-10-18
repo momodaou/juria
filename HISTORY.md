@@ -3999,3 +3999,9 @@ Concrètement : un dossier créé par un associé notifie désormais l'administr
 
 **En réserve (ne pas relancer sans demande)** : assouplissement « engageur ≠ valideur », jobs Cloud Scheduler en pause, connexion bancaire réelle, IA + bibliothèque juridique, doublons (couverture étendue).
 Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ; délai de justification des dépenses en espèces si l'espèce est réellement utilisée.
+
+## 18/10/2026 — Audit de l'Atelier d'actes (note Word, aucun code modifié)
+- Demande : faire de l'Atelier un outil de rédaction quotidien complet (assignations, requêtes, lettres, avis, PV, statuts…), comprendre sa logique, la conformité légale et la veille, et s'assurer qu'il est performant sans IA.
+- Constats : 12 modèles squelettes, texte brut sans mise en forme ni export Word, données fusionnées pauvres (1 partie adverse, pas de coordonnées client/juridiction/audience), pas de formulaire guidé ni de clauses, dossier obligatoire, validation par l'auteur seul, aucune gouvernance de conformité, IA simulée sans clé en prod.
+- Orientation proposée (en attente de décisions) : A socle (éditeur, Word, variables, formulaire guidé, clauses, relecture) → B catalogue + fiche de gouvernance/rappels de révision/checklists → C IA encadrée. Note : `DOC/CLAUDE CODE - JURIA/JURIA - Audit Atelier d actes et orientations - MAJ 18.10.2026.docx` (hors Git).
+- Décisions attendues : Word prioritaire ?, qui valide les modèles/veille ?, familles d'actes à lancer en premier, fourniture des modèles Word existants.
