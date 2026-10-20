@@ -4024,3 +4024,6 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Question de l'utilisateur : le stock se réajuste-t-il si la matière est rectifiée après la création ? Constat : seul le cas IND → matière était couvert ; un passage entre deux couleurs physiques (ex. civil doré → commercial bleu) laissait la chemise décomptée sur l'ancienne couleur.
 - Corrigé : `ajusterChemiseDossier` (`APP/backend/src/stockChemises.js`) — si la couleur change, la chemise de l'ancienne couleur est restituée (+1) et la nouvelle décomptée (−1), en deux mouvements d'ajustement rattachés au dossier ; vers le gris, simple restitution. Aucune migration. Tests **641/641**. Non déployé (code backend seul).
 - Cas non couvert : un dossier exclu de la régularisation (pas de chemise) dont la couleur change serait décompté à ce moment-là.
+
+## 20/10/2026 — Déploiement : suivi de la rectification de matière (stock de chemises)
+- Accord de l'utilisateur. API seule, aucune migration : `juria-00165-dtr`. Vérifié : `/health` en `200`.
