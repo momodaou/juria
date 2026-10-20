@@ -4039,3 +4039,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Demande explicite de l'utilisateur : l'administratrice générale ne gère ni les comptes utilisateurs, ni les délégations, ni le journal d'audit, ni les comptes du cabinet. Le code l'autorisait jusque-là (garde `requireRole("associe","admin_general","admin_it")`, menu idem).
 - `APP/backend/src/routes/acces.js` : garde resserrée à `associe` + `admin_it` ; entrée de menu alignée (`app.component.ts`). Tests adaptés (`accesGarde`, `delegationsEffectives`) : **648/648**. Non déployé.
 - Emplacement des comptes du cabinet : reste dans Accès & permissions (décision de l'utilisateur) ; seuls associés et admin IT y accèdent désormais. Le droit `parametres.cabinet.modifier` de la matrice n'est pas touché (réglable dans la Matrice ; la production fait foi).
+
+## 20/10/2026 — Déploiement : comptes du cabinet (étape 1) + Accès & permissions fermé à l'administratrice générale
+- Accord de l'utilisateur. Migration (2 colonnes `comptes_bancaires` + copie des numéros mobile money) appliquée en un import (`--user=postgres`), fichier temporaire supprimé ; puis API `juria-00166-267` et frontend `juria-web-00218-n5z`. Vérifié : `/health` et `/` en `200`.
+- À faire côté utilisateur : contrôler les comptes existants dans Accès & permissions (anciens types éventuels à désactiver, opérateur et numéro des portefeuilles, case « afficher sur les factures »). Étape 2 (moyens de paiement et références) à lancer sur demande.
