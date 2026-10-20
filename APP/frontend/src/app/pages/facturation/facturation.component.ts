@@ -2,7 +2,8 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, Dossier } from '../../core/api.service';
+import { ApiService, Dossier, MoyenPaiement } from '../../core/api.service';
+import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
@@ -11,7 +12,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 @Component({
   selector: 'app-facturation',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink, MenuActionsComponent],
+  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink, MenuActionsComponent, ReglementFormComponent],
   template: `
     <header class="page-head"><h1>Facturation</h1></header>
 
@@ -84,17 +85,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <input type="number" [(ngModel)]="acompteMontant" name="acMnt" placeholder="Montant déjà payé" style="max-width:170px" />
           </label>
           @if (acompteMontant) {
-            <label>Moyen
-              <select [(ngModel)]="acompteMode" name="acMode">
-                @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
-              </select>
-            </label>
-            <label>Référence <input [(ngModel)]="acompteRef" name="acRef" placeholder="n° chèque, virement…" /></label>
+            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" (validite)="acompteValide.set($event)"></app-reglement-form>
           }
         }
       </div>
       @if (auth.peut('factures.creer')) {
-        <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt || creationFactureEnCours()">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre' }}</button>
+        <button class="btn" style="margin-top:14px" (click)="creer()" [disabled]="(dossierId === '__autre__' ? !factureClientId : !dossierId) || !montantHt || creationFactureEnCours() || (acompteMontant && !acompteValide())">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre' }}</button>
       }
       @if (message()) { <p class="ok-msg">{{ message() }}</p> }
       @if (erreur()) { <p class="err">{{ erreur() }}</p> }
@@ -134,12 +130,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <input type="number" [(ngModel)]="acompteMontant" name="acMntT" placeholder="Montant déjà payé" style="max-width:170px" />
           </label>
           @if (acompteMontant) {
-            <label>Moyen
-              <select [(ngModel)]="acompteMode" name="acModeT">
-                @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
-              </select>
-            </label>
-            <label>Référence <input [(ngModel)]="acompteRef" name="acRefT" placeholder="n° chèque, virement…" /></label>
+            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" (validite)="acompteValide.set($event)"></app-reglement-form>
           }
         }
       </div>
@@ -180,7 +171,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           @if (deboursARefacturer().length) { <strong> — Débours sélectionnés : {{ totalDeboursSelectionnes() | number }} FCFA</strong> }
         </p>
         @if (auth.peut('factures.creer')) {
-          <button class="btn" (click)="facturerTemps()" [disabled]="(!tempsSelectionnes().size && !deboursSelectionnes().size) || creationFactureEnCours()">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre la facture' }}</button>
+          <button class="btn" (click)="facturerTemps()" [disabled]="(!tempsSelectionnes().size && !deboursSelectionnes().size) || creationFactureEnCours() || (acompteMontant && !acompteValide())">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre la facture' }}</button>
         }
       } @else if (dossierTempsId) {
         <p class="muted">Rien en attente de facturation pour ce dossier (ni temps facturable, ni débours décaissé refacturable).</p>
@@ -272,11 +263,26 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>Encaissements — moyens de paiement</h3>
+      @if (especesADeposer().length) {
+        <div class="alerte-especes">
+          <b>Espèces à déposer en banque ({{ especesADeposer().length }})</b>
+          @for (p of especesADeposer(); track p.id) {
+            <div class="ligne-depot">
+              <span>{{ p.date_paiement | date:'dd/MM/yyyy' }} — {{ p.client }} — facture {{ p.facture_numero }} — <b>{{ p.montant | number }} {{ dev(p.devise) }}</b>@if (p.numero_recu) { — reçu {{ p.numero_recu }} }</span>
+              @if (auth.peut('factures.paiement.ajouter')) {
+                <select [(ngModel)]="depotChoix[p.id]" [name]="'depE' + p.id"><option value="">— compte de dépôt —</option>@for (c of comptesDepot(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }</select>
+                <button class="btn" (click)="deposer(p)">Enregistrer le dépôt</button>
+              }
+            </div>
+          }
+          @if (erreurDepot()) { <p class="err">{{ erreurDepot() }}</p> }
+        </div>
+      }
       <div class="form" style="margin-bottom:8px">
         <label>Moyen
           <select [ngModel]="encMode" (ngModelChange)="encMode = $event; chargerEncaissements()" name="encMode">
             <option value="">Tous les moyens</option>
-            @for (m of moyens; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+            @for (m of moyensFiltre(); track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
           </select>
         </label>
         <label>Du <input type="date" [ngModel]="encDebut" (ngModelChange)="encDebut = $event; chargerEncaissements()" name="encDebut" /></label>
@@ -289,7 +295,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </p>
           <div class="table-scroll">
           <table>
-            <tr><th class="nowrap">Date</th><th>Client</th><th class="nowrap">Facture</th><th class="nowrap">Dossier</th><th>Moyen</th><th>Montant</th><th>Référence</th></tr>
+            <tr><th class="nowrap">Date</th><th>Client</th><th class="nowrap">Facture</th><th class="nowrap">Dossier</th><th>Moyen</th><th>Compte</th><th>Montant</th><th>Référence</th></tr>
             @for (p of e.lignes; track p.id) {
               <tr>
                 <td class="nowrap">{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
@@ -297,7 +303,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 <td class="nowrap">{{ p.facture_numero }}</td>
                 <td class="nowrap">@if (p.dossier_id) { <a class="lien" [routerLink]="['/dossiers', p.dossier_id]">{{ p.dossier_numero }}</a> } @else { — }</td>
                 <td>{{ libelleMoyen(p.mode) }}</td>
-                <td>{{ p.montant | number }} {{ dev(p.devise) }}</td>
+                <td>{{ p.compte_intitule || (p.depot_statut === 'en_attente' ? 'à déposer' : '—') }}</td>
+                <td>{{ p.montant | number }} {{ dev(p.devise) }}@if (p.frais_retenus > 0) { <br /><span class="muted">frais {{ p.frais_retenus | number }}</span> }</td>
                 <td>{{ p.reference || '—' }}</td>
               </tr>
             }
@@ -389,9 +396,18 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                         <tr>
                           <td>{{ p.date_paiement | date:'dd/MM/yyyy' }}</td>
                           <td>{{ p.montant | number }} {{ dev(p.devise) }}</td>
-                          <td>{{ libelleMoyenPaiement(p.mode) }}</td>
+                          <td>{{ libelleMoyen(p.mode) }}@if (p.compte_intitule) { <br /><span class="muted">{{ p.compte_intitule }}</span> }</td>
                           <td class="muted">reste {{ p.reste_apres | number }} {{ dev(p.devise) }}</td>
-                          <td>{{ p.reference || '—' }}</td>
+                          <td>{{ resumeReferences(p) }}
+                            @if (p.frais_retenus > 0) { <br /><span class="muted">frais retenus {{ p.frais_retenus | number }} · reçu net {{ p.montant_recu_net | number }} {{ dev(p.devise) }}</span> }
+                            @if (p.depot_statut === 'en_attente') {
+                              <br /><span class="tag">à déposer</span>
+                              @if (auth.peut('factures.paiement.ajouter')) {
+                                <select [(ngModel)]="depotChoix[p.id]" [name]="'dep' + p.id"><option value="">— compte de dépôt —</option>@for (c of comptesDepot(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }</select>
+                                <button class="lien" (click)="deposer(p)">Déposer</button>
+                              }
+                            } @else if (p.depot_statut === 'depose') { <br /><span class="muted">déposé le {{ p.date_depot | date:'dd/MM/yyyy' }}</span> }
+                          </td>
                           <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
                         </tr>
                       }
@@ -402,18 +418,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                   @if (auth.peut('factures.paiement.ajouter') && f.statut !== 'annulee' && f.reliquat > 0) {
                     <div class="form">
                       <label>Montant reçu <input type="number" [(ngModel)]="pMontant" [name]="'pMnt' + f.id" style="max-width:150px" /></label>
-                      <label>Moyen
-                        <select [(ngModel)]="pMode" [name]="'pMode' + f.id">
-                          @for (m of moyensPaiement; track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
-                        </select>
-                      </label>
                       <label>Date <input type="date" [(ngModel)]="pDate" [name]="'pDate' + f.id" /></label>
-                      <label>Référence <input [(ngModel)]="pRef" [name]="'pRef' + f.id" placeholder="n° chèque, virement…" /></label>
+                      <app-reglement-form [modele]="pModele" [catalogue]="catalogue()" [compteParDefaut]="f.compte_reglement_id || null" (validite)="pValide.set($event)"></app-reglement-form>
                     </div>
                     <p class="hint">Le montant est prérempli au reste dû : modifiez-le pour enregistrer un paiement partiel.</p>
                     <div class="btns-ligne">
-                      <button class="btn" (click)="enregistrerPaiement(f)" [disabled]="!pMontant || paiementEnCours()">{{ paiementEnCours() ? 'Enregistrement…' : 'Enregistrer le paiement' }}</button>
-                      <button class="btn" (click)="encaisserTotalite(f)" [disabled]="paiementEnCours()">Encaisser la totalité ({{ f.reliquat | number }} {{ dev(f.devise) }})</button>
+                      <button class="btn" (click)="enregistrerPaiement(f)" [disabled]="!pMontant || paiementEnCours() || !pValide()">{{ paiementEnCours() ? 'Enregistrement…' : 'Enregistrer le paiement' }}</button>
+                      <button class="btn" (click)="encaisserTotalite(f)" [disabled]="paiementEnCours() || !pValide()">Encaisser la totalité ({{ f.reliquat | number }} {{ dev(f.devise) }})</button>
                       <button class="lien" (click)="paiementsOuvertsId.set(null)">Fermer</button>
                     </div>
                   } @else {
@@ -430,6 +441,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     </section>
   `,
   styles: [`
+    .alerte-especes{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:12px 16px;margin-bottom:14px}
+    .ligne-depot{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:6px 0;border-top:1px solid #f0dcae;font-size:var(--fs-base)}
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 16px;align-items:start}
     .form .large{grid-column:span 2}
@@ -512,20 +525,19 @@ export class FacturationComponent implements OnInit {
   // Acompte / provision reçu à l'émission (16/10/2026) — premier paiement partiel
   // enregistré avec la facture ; les suivants via le panneau « Paiements ».
   acompteMontant: number | null = null;
-  acompteMode = 'virement';
-  acompteRef = '';
-  readonly moyensPaiement = [
-    { code: 'especes', libelle: 'Espèces' }, { code: 'cheque', libelle: 'Chèque' },
-    { code: 'virement', libelle: 'Virement' }, { code: 'orange_money', libelle: 'Orange Money' },
-    { code: 'moov_money', libelle: 'Moov Money' }, { code: 'wave', libelle: 'Wave' },
-    { code: 'sama_money', libelle: 'Sama Money' }, { code: 'mobile_money', libelle: 'Mobile money (autre)' },
-    { code: 'virement_etranger', libelle: 'Virement étranger' }, { code: 'autre', libelle: 'Autre' },
-  ];
+  acompte: any = this.modeleReglement();
+  readonly acompteValide = signal(true);
+  // Catalogue des moyens d'encaissement (20/10/2026) : une seule liste, servie par le serveur.
+  readonly catalogue = signal<MoyenPaiement[]>([]);
+  modeleReglement(): any { return { mode: 'virement', references: {}, compte_id: '', frais_retenus: null }; }
+  private reglementPourEnvoi(m: any): any {
+    return { mode: m.mode, references: m.references, compte_id: m.compte_id || undefined, frais_retenus: m.frais_retenus || undefined };
+  }
   // Panneau « Paiements » : saisie d'un paiement partiel après l'émission.
   pMontant: number | null = null;
-  pMode = 'virement';
+  pModele: any = this.modeleReglement();
+  readonly pValide = signal(true);
   pDate = '';
-  pRef = '';
   readonly paiementEnCours = signal(false);
   mention = '';
 
@@ -548,6 +560,9 @@ export class FacturationComponent implements OnInit {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
     // Comptes qui reçoivent un règlement : banque et mobile money (ni caisse ni anciens types).
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c.filter((x) => ['fonctionnement', 'carpa', 'mobile_money'].includes(x.type))), error: () => {} });
+    this.api.moyensPaiement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
+    this.api.comptesPourMoyen('especes').subscribe({ next: (c) => this.comptesDepot.set(c), error: () => {} });
+    this.chargerEspeces();
     this.api.clientsAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
     this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l) });
     const params = this.route.snapshot.queryParamMap;
@@ -559,15 +574,35 @@ export class FacturationComponent implements OnInit {
   // Vue Encaissements (16/10/2026) : une ligne par paiement + total par moyen.
   readonly encaissements = signal<any | null>(null);
   encMode = ''; encDebut = ''; encFin = '';
-  readonly moyens = [
-    { code: 'especes', libelle: 'Espèces' }, { code: 'cheque', libelle: 'Chèque' },
-    { code: 'virement', libelle: 'Virement' }, { code: 'virement_etranger', libelle: 'Virement étranger' },
-    { code: 'orange_money', libelle: 'Orange Money' }, { code: 'moov_money', libelle: 'Moov Money' },
-    { code: 'wave', libelle: 'Wave' }, { code: 'sama_money', libelle: 'Sama Money' },
-    { code: 'mobile_money', libelle: 'Mobile money (autre)' }, { code: 'western_union', libelle: 'Western Union' },
-    { code: 'moneygram', libelle: 'MoneyGram' }, { code: 'autre', libelle: 'Autre' },
-  ];
-  libelleMoyen(code: string): string { return this.moyens.find((m) => m.code === code)?.libelle ?? code; }
+  // Filtre des encaissements : le catalogue, plus les anciens moyens encore présents dans l'historique.
+  moyensFiltre(): { code: string; libelle: string }[] {
+    return [...this.catalogue(), { code: 'mobile_money', libelle: 'Mobile money (ancien)' }, { code: 'autre', libelle: 'Autre (ancien)' }];
+  }
+  libelleMoyen(code: string): string { return this.moyensFiltre().find((m) => m.code === code)?.libelle ?? code; }
+  // « Libellé : valeur · … » d'après les champs du catalogue pour ce moyen.
+  resumeReferences(p: any): string {
+    const champs = this.catalogue().find((m) => m.code === p.mode)?.champs ?? [];
+    const refs = p.references_paiement ?? {};
+    const lignes = champs.filter((c) => refs[c.cle]).map((c) => c.libelle + ' : ' + refs[c.cle]);
+    return lignes.length ? lignes.join(' · ') : (p.reference || '—');
+  }
+  // Espèces encaissées, pas encore déposées en banque.
+  readonly especesADeposer = signal<any[]>([]);
+  readonly comptesDepot = signal<{ id: string; intitule: string }[]>([]);
+  depotChoix: Record<string, string> = {};
+  readonly erreurDepot = signal('');
+  chargerEspeces(): void {
+    this.api.especesADeposer().subscribe({ next: (l) => this.especesADeposer.set(l), error: () => {} });
+  }
+  deposer(p: any): void {
+    const compte = this.depotChoix[p.id];
+    if (!compte) { this.erreurDepot.set('Choisissez le compte de dépôt.'); return; }
+    this.erreurDepot.set('');
+    this.api.deposerEspeces(p.id, { compte_id: compte }).subscribe({
+      next: () => { this.chargerEspeces(); this.chargerEncaissements(); const ouvert = this.paiementsOuvertsId(); if (ouvert) this.api.paiementsFacture(ouvert).subscribe({ next: (l) => this.paiements.set(l), error: () => {} }); },
+      error: (e) => this.erreurDepot.set(e?.error?.error ?? 'Dépôt impossible.'),
+    });
+  }
   chargerEncaissements(): void {
     this.api.encaissements({ mode: this.encMode, debut: this.encDebut, fin: this.encFin })
       .subscribe({ next: (e) => this.encaissements.set(e), error: () => this.encaissements.set(null) });
@@ -638,10 +673,10 @@ export class FacturationComponent implements OnInit {
     if (this.compteReglementId) { payload.compte_reglement_id = this.compteReglementId; payload.mode_reglement = 'virement'; }
     if (this.mention) payload.mention = this.mention;
     if (this.acompteMontant && this.acompteMontant > 0) {
-      payload.acompte = { montant: this.acompteMontant, mode: this.acompteMode, reference: this.acompteRef || undefined };
+      payload.acompte = { montant: this.acompteMontant, ...this.reglementPourEnvoi(this.acompte) };
     }
   }
-  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompteRef = ''; }
+  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompte = this.modeleReglement(); }
 
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
@@ -677,17 +712,16 @@ export class FacturationComponent implements OnInit {
     this.enregistrerPaiement(f);
   }
 
-  libelleMoyenPaiement(code: string): string { return this.moyensPaiement.find((m) => m.code === code)?.libelle ?? code; }
 
   // Paiement partiel (ou solde) après l'émission — avec le reste à chaque fois.
   enregistrerPaiement(f: any): void {
     if (!this.pMontant || this.paiementEnCours()) return;
     this.erreur.set('');
     this.paiementEnCours.set(true);
-    this.api.ajouterPaiement(f.id, { montant: this.pMontant, mode: this.pMode, date_paiement: this.pDate || undefined, reference: this.pRef || undefined }).subscribe({
+    this.api.ajouterPaiement(f.id, { montant: this.pMontant, date_paiement: this.pDate || undefined, ...this.reglementPourEnvoi(this.pModele) }).subscribe({
       next: (r) => {
         this.paiementEnCours.set(false);
-        this.pMontant = null; this.pRef = ''; this.pDate = '';
+        this.pMontant = null; this.pDate = ''; this.pModele = this.modeleReglement(); this.chargerEspeces();
         this.message.set(r.reliquat > 0 ? `Paiement enregistré — reste ${Number(r.reliquat).toLocaleString('fr-FR')} ${f.devise}.` : 'Paiement enregistré — facture soldée.');
         this.api.paiementsFacture(f.id).subscribe({ next: (p) => this.paiements.set(p), error: () => {} });
         this.rafraichir();
@@ -697,7 +731,7 @@ export class FacturationComponent implements OnInit {
   }
 
   ouvrirPaiements(f: any): void {
-    this.pMontant = f.reliquat > 0 ? Number(f.reliquat) : null; this.pDate = ''; this.pRef = ''; this.pMode = 'virement';
+    this.pMontant = f.reliquat > 0 ? Number(f.reliquat) : null; this.pDate = ''; this.pModele = this.modeleReglement();
     this.erreur.set('');
     this.paiements.set([]);
     this.paiementsOuvertsId.set(f.id);

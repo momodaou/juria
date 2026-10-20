@@ -241,6 +241,13 @@ router.get("/", async (req, res) => {
         if (bas.length) chemisesBas = bas;
       }
     }
+    // Espèces encaissées pas encore déposées en banque (20/10/2026).
+    let especesADeposer = null;
+    if (await estAutorise(req.user.role, "factures.paiement.ajouter", req.user.sub)) {
+      const e = await pool.query(
+        "SELECT count(*)::int AS n, COALESCE(sum(montant_xof), 0)::bigint AS montant FROM paiements WHERE depot_statut = 'en_attente'");
+      if (e.rows[0].n > 0) especesADeposer = { n: e.rows[0].n, montant: Number(e.rows[0].montant) };
+    }
     // Doublons potentiels (26/09/2026) — voir DOUBLONS_CTE ci-dessus.
     let doublonsN = null, doublonsApercu = [];
     if (voitDoublons) {
@@ -612,6 +619,7 @@ router.get("/", async (req, res) => {
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
       chemises_stock_bas: chemisesBas,
+      especes_a_deposer: especesADeposer,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,

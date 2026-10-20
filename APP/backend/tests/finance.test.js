@@ -941,7 +941,7 @@ describe("Acompte à l'émission + paiements partiels successifs avec reste (16/
   test("acompte enregistré avec la facture : statut partielle, reliquat exact", async () => {
     const clientId = await creerClient();
     const f = (await post("/api/factures", { client_id: clientId, mode: "forfait", montant_ht: 100000, taux_tva: 0,
-      acompte: { montant: 30000, mode: "cheque", reference: "CHQ-123" } })).body;
+      acompte: { montant: 30000, mode: "cheque", references: { numero_cheque: "CHQ-123", banque_emettrice: "BDM SA" } } })).body;
     expect(f.statut).toBe("partielle");
     expect(f.acompte).toBe(30000);
     const liste = (await request(app).get(`/api/factures?client_id=${clientId}`).set("Authorization", `Bearer ${token}`)).body;

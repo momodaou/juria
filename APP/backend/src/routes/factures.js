@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
 const { logAudit } = require("../audit");
+const { MOYENS, comptesEligibles, preparerReglement, referenceCourte, PAR_CODE } = require("../moyensPaiement");
 const router = express.Router();
 
 // Recalcule et met à jour le statut d'une facture selon les paiements reçus.
@@ -61,6 +62,54 @@ async function resoudreTauxChange(devise, tauxFourni, userId) {
   return { taux: Number(t.rows[0].taux_vers_xof) };
 }
 
+// GET /api/factures/moyens-paiement — catalogue des moyens d'encaissement et de
+// leurs références (20/10/2026), d'après lequel l'écran construit le formulaire.
+router.get("/moyens-paiement", requirePermission("factures.consulter"), (req, res) => {
+  res.json(MOYENS.map((m) => ({ code: m.code, libelle: m.libelle, famille: m.famille, frais: !!m.frais, champs: m.champs })));
+});
+
+// GET /api/factures/moyens-paiement/:code/comptes — comptes pouvant recevoir ce moyen.
+router.get("/moyens-paiement/:code/comptes", requirePermission("factures.consulter"), async (req, res) => {
+  const moyen = PAR_CODE[req.params.code];
+  if (!moyen) return res.status(404).json({ error: "Moyen inconnu" });
+  try { res.json(await comptesEligibles(pool, moyen)); }
+  catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// GET /api/factures/especes-a-deposer — encaissements en espèces pas encore déposés en banque.
+router.get("/especes-a-deposer", requirePermission("factures.consulter"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.facture_id, f.numero AS facture_numero, p.date_paiement, p.montant, p.devise,
+              p.references_paiement->>'numero_recu' AS numero_recu,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client
+       FROM paiements p JOIN factures f ON f.id = p.facture_id JOIN clients c ON c.id = f.client_id
+       WHERE p.depot_statut = 'en_attente' ORDER BY p.date_paiement, p.cree_le`
+    );
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// POST /api/factures/paiements/:paiementId/depot { compte_id, date_depot? } — enregistre le
+// dépôt en banque d'un encaissement en espèces.
+router.post("/paiements/:paiementId/depot", requirePermission("factures.paiement.ajouter"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.compte_id) return res.status(400).json({ error: "Compte de dépôt requis." });
+  const date = b.date_depot || new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || new Date(date) > new Date()) return res.status(400).json({ error: "Date de dépôt invalide." });
+  try {
+    const { rows: [p] } = await pool.query("SELECT id, facture_id, depot_statut FROM paiements WHERE id = $1", [req.params.paiementId]);
+    if (!p) return res.status(404).json({ error: "Paiement introuvable" });
+    if (p.depot_statut !== "en_attente") return res.status(409).json({ error: "Cet encaissement n'est pas en attente de dépôt." });
+    const eligibles = await comptesEligibles(pool, PAR_CODE.especes);
+    if (!eligibles.some((c) => c.id === b.compte_id)) return res.status(400).json({ error: "Ce compte ne peut pas recevoir un dépôt d'espèces." });
+    await pool.query("UPDATE paiements SET depot_statut = 'depose', date_depot = $1::date, compte_id = $2::uuid WHERE id = $3", [date, b.compte_id, p.id]);
+    await logAudit({ utilisateurId: req.user.sub, action: "deposer_especes", entite: "factures", entiteId: p.facture_id,
+      details: { paiement_id: p.id, compte_id: b.compte_id, date_depot: date }, ip: req.ip });
+    res.json({ id: p.id, depot_statut: "depose" });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 // GET /api/factures?statut=  |  GET /api/factures/impayees
 router.get("/impayees", requirePermission("factures.consulter"), async (req, res) => {
   try {
@@ -98,11 +147,13 @@ router.get("/encaissements", requirePermission("factures.consulter"), async (req
       `SELECT p.id, p.facture_id, f.numero AS facture_numero, f.client_id, f.dossier_id,
               d.numero AS dossier_numero, p.date_paiement, p.mode, p.montant, p.devise,
               COALESCE(p.montant_xof, p.montant) AS montant_xof, p.reference,
+              p.frais_retenus, p.depot_statut, cb.intitule AS compte_intitule,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client
        FROM paiements p
        JOIN factures f ON f.id = p.facture_id
        JOIN clients c ON c.id = f.client_id
        LEFT JOIN dossiers d ON d.id = f.dossier_id
+       LEFT JOIN comptes_bancaires cb ON cb.id = p.compte_id
        ${where}
        ORDER BY p.date_paiement DESC, p.cree_le DESC LIMIT 500`,
       params
@@ -376,10 +427,15 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: "Vous n'avez pas le droit d'enregistrer un paiement." });
       }
+      const regl = await preparerReglement(client, { ...b.acompte, date_paiement: undefined }, { montant: mnt, compteParDefaut: b.compte_reglement_id || null });
+      if (regl.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: `Acompte : ${regl.erreur}` }); }
+      const v = regl.valeurs;
       await client.query(
-        `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof)
-         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7)`,
-        [rows[0].id, mnt, b.acompte.mode, b.acompte.reference || null, rows[0].devise, rows[0].taux_applique, Math.round(mnt * Number(rows[0].taux_applique))]
+        `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof,
+                                compte_id, references_paiement, frais_retenus, depot_statut, date_depot)
+         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7,$8::uuid,$9::jsonb,$10,$11,$12::date)`,
+        [rows[0].id, mnt, b.acompte.mode, referenceCourte(v.references) || b.acompte.reference || null, rows[0].devise, rows[0].taux_applique,
+         Math.round(mnt * Number(rows[0].taux_applique)), v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot]
       );
       acompteEnregistre = mnt;
     }
@@ -532,7 +588,7 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
   }
   try {
     const f = await pool.query(
-      `SELECT f.devise, f.taux_applique, f.statut, f.montant_ttc,
+      `SELECT f.devise, f.taux_applique, f.statut, f.montant_ttc, f.compte_reglement_id,
               COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS regle
        FROM factures f WHERE f.id = $1`, [req.params.id]);
     if (!f.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
@@ -544,10 +600,15 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
       return res.status(409).json({ error: `Le montant (${montant}) dépasse le reliquat de la facture (${reliquat}).`, reliquat });
     }
     const montantXof = Math.round(montant * Number(f.rows[0].taux_applique));
+    const regl = await preparerReglement(pool, b, { montant, compteParDefaut: f.rows[0].compte_reglement_id });
+    if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+    const v = regl.valeurs;
     await pool.query(
-      `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof)
-       VALUES ($1,$2,$3,COALESCE($4::date, current_date),$5,$6,$7,$8)`,
-      [req.params.id, montant, b.mode, b.date_paiement || null, b.reference || null, f.rows[0].devise, f.rows[0].taux_applique, montantXof]
+      `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof,
+                              compte_id, references_paiement, frais_retenus, depot_statut, date_depot)
+       VALUES ($1,$2,$3::mode_paiement,COALESCE($4::date, current_date),$5,$6,$7,$8,$9::uuid,$10::jsonb,$11,$12,$13::date)`,
+      [req.params.id, montant, b.mode, b.date_paiement || null, referenceCourte(v.references) || b.reference || null,
+       f.rows[0].devise, f.rows[0].taux_applique, montantXof, v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot]
     );
     const statut = await majStatut(req.params.id);
     res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - montant });
@@ -563,8 +624,11 @@ router.get("/:id/paiements", requirePermission("factures.consulter"), async (req
   try {
     const { rows } = await pool.query(
       `SELECT p.id, p.montant, p.mode, p.date_paiement, p.reference, p.devise, p.cree_le,
+              p.references_paiement, p.frais_retenus, p.montant - p.frais_retenus AS montant_recu_net,
+              p.depot_statut, p.date_depot, p.compte_id, cb.intitule AS compte_intitule,
               f.montant_ttc - SUM(p.montant) OVER (ORDER BY p.date_paiement, p.cree_le) AS reste_apres
        FROM paiements p JOIN factures f ON f.id = p.facture_id
+       LEFT JOIN comptes_bancaires cb ON cb.id = p.compte_id
        WHERE p.facture_id = $1 ORDER BY p.date_paiement, p.cree_le`,
       [req.params.id]
     );

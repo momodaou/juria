@@ -525,6 +525,13 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.reenrolement_n }}</span>
           </button>
         }
+        @if (d.especes_a_deposer) {
+          <a class="kpi tier-vigilance" routerLink="/facturation" style="text-decoration:none;color:inherit">
+            <span class="tico" [innerHTML]="icons['impayes']"></span>
+            <span class="n">{{ d.especes_a_deposer.n }}</span><span class="l">Espèces à déposer en banque</span>
+            <div class="mini-liste"><div class="mini-ligne"><span class="principal">Total</span><span class="secondaire">{{ d.especes_a_deposer.montant | number }} FCFA</span></div></div>
+          </a>
+        }
         @if (d.chemises_stock_bas) {
           <a class="kpi tier-vigilance" routerLink="/cabinet" style="text-decoration:none;color:inherit">
             <span class="tico" [innerHTML]="icons['actifs']"></span>

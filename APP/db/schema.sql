@@ -4998,3 +4998,20 @@ ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
 ALTER TABLE comptes_bancaires ADD COLUMN IF NOT EXISTS telephone VARCHAR(30);
 ALTER TABLE comptes_bancaires ADD COLUMN IF NOT EXISTS afficher_sur_factures BOOLEAN NOT NULL DEFAULT TRUE;
 UPDATE comptes_bancaires SET telephone = numero WHERE type = 'mobile_money' AND telephone IS NULL AND numero IS NOT NULL;
+
+-- =====================================================================
+--  20/10/2026 — Moyens d'encaissement : références propres à chaque moyen,
+--  frais retenus, compte crédité, espèces « en attente de dépôt ». Idempotent.
+--  `references_paiement` (JSONB) est validé côté serveur selon le moyen
+--  (backend/src/moyensPaiement.js) ; `reference` garde un résumé court.
+-- =====================================================================
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS references_paiement JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS frais_retenus NUMERIC(14,0) NOT NULL DEFAULT 0;
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS depot_statut VARCHAR(10);
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS date_depot DATE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_paiements_depot_statut') THEN
+    ALTER TABLE paiements ADD CONSTRAINT chk_paiements_depot_statut CHECK (depot_statut IS NULL OR depot_statut IN ('en_attente','depose'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_paiements_depot ON paiements(date_paiement) WHERE depot_statut = 'en_attente';

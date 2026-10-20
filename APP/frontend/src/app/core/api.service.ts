@@ -75,6 +75,8 @@ export interface DashboardData {
   // Dépenses petite caisse engagées, à valider après coup (17/10/2026) — null sans depenses.decision.
   // Courriers reçus sans dossier, à orienter (17/10/2026) — null si rien à orienter pour ce profil.
   // Couleurs de chemise au seuil ou en dessous (20/10/2026) — null si rien à signaler ou sans droit.
+  // Espèces encaissées pas encore déposées en banque (20/10/2026) — null si aucune ou sans droit.
+  especes_a_deposer: { n: number; montant: number } | null;
   chemises_stock_bas: { couleur: string; quantite: number; seuil: number }[] | null;
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
@@ -143,6 +145,14 @@ export interface ParametresCabinet {
   rccm: string | null;
   compte_carpa: string | null;
   mentions_legales: string | null;
+}
+
+export interface MoyenPaiement {
+  code: string;
+  libelle: string;
+  famille: string;
+  frais: boolean;
+  champs: { cle: string; libelle: string; type: 'texte' | 'date' | 'tel'; requis: boolean }[];
 }
 
 export interface CompteBancaire {
@@ -525,6 +535,15 @@ export class ApiService {
   }
   paiementsFacture(id: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/factures/${id}/paiements`);
+  }
+  // Moyens d'encaissement et leurs références (20/10/2026) — catalogue unique servi par le serveur.
+  moyensPaiement(): Observable<MoyenPaiement[]> { return this.http.get<MoyenPaiement[]>(`${this.base}/api/factures/moyens-paiement`); }
+  comptesPourMoyen(code: string): Observable<{ id: string; intitule: string }[]> {
+    return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/factures/moyens-paiement/${code}/comptes`);
+  }
+  especesADeposer(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/factures/especes-a-deposer`); }
+  deposerEspeces(paiementId: string, body: { compte_id: string; date_depot?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/factures/paiements/${paiementId}/depot`, body);
   }
   supprimerPaiement(factureId: string, paiementId: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/factures/${factureId}/paiements/${paiementId}`);
