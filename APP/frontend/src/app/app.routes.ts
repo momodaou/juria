@@ -84,6 +84,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/depenses/depenses.component').then((m) => m.DepensesComponent),
       },
       {
+        path: 'fonds-tiers',
+        loadComponent: () => import('./pages/fonds-tiers/fonds-tiers.component').then((m) => m.FondsTiersComponent),
+      },
+      {
         path: 'retrocessions',
         loadComponent: () =>
           import('./pages/retrocessions/retrocessions.component').then((m) => m.RetrocessionsComponent),

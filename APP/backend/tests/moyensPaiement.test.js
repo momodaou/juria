@@ -83,6 +83,34 @@ describe("Moyens d'encaissement", () => {
     expect(liste.lignes.every((l) => l.compte_intitule === "BDM test moyens")).toBe(true);
   });
 
+  test("frais à la charge du client : seule la somme nette est imputée, la facture reste due des frais", async () => {
+    const f = await facture();
+    const ref = { pays_emetteur: "France", banque_emettrice: "BNP" };
+    const r = await payer(f.id, { montant: 50000, mode: "virement_etranger", compte_id: banque, references: ref, frais_retenus: 4500, frais_a_charge: "client" });
+    expect(r.status).toBe(201);
+    expect(r.body.reliquat).toBe(100000 - 45500);
+    const p = (await historique(f.id))[0];
+    expect(Number(p.montant)).toBe(45500);
+    expect(Number(p.montant_verse)).toBe(50000);
+    expect(Number(p.montant_recu_net)).toBe(45500);
+    expect(p.frais_a_charge).toBe("client");
+    // à la charge du cabinet : le montant payé est imputé en entier
+    const g = await facture();
+    await payer(g.id, { montant: 50000, mode: "virement_etranger", compte_id: banque, references: ref, frais_retenus: 4500, frais_a_charge: "cabinet" });
+    const q = (await historique(g.id))[0];
+    expect(Number(q.montant)).toBe(50000);
+    expect(Number(q.montant_recu_net)).toBe(45500);
+    // des frais qui absorbent tout le paiement sont refusés
+    expect((await payer(g.id, { montant: 4000, mode: "virement_etranger", compte_id: banque, references: ref, frais_retenus: 4000, frais_a_charge: "client" })).status).toBe(400);
+  });
+
+  test("frais : par défaut à la charge du client si la facture le mentionne", async () => {
+    const c = await request(app).post("/api/clients").set(auth()).send({ type: "morale", denomination: `Client mention ${Date.now()}` });
+    const f = (await request(app).post("/api/factures").set(auth()).send({ client_id: c.body.id, mode: "forfait", montant_ht: 100000, taux_tva: 0, mention: "Frais de virement à la charge du client" })).body;
+    await payer(f.id, { montant: 30000, mode: "orange_money", compte_id: orange, references: { id_transaction: "MP9" }, frais_retenus: 500 });
+    expect((await historique(f.id))[0].frais_a_charge).toBe("client");
+  });
+
   test("espèces : en attente de dépôt, puis déposées en banque", async () => {
     const f = await facture();
     expect((await payer(f.id, { montant: 20000, mode: "especes", references: { numero_recu: "R-77" } })).status).toBe(201);

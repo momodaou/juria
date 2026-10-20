@@ -237,6 +237,7 @@ export class AppComponent implements OnInit {
 
     { path: '/facturation', label: 'Facturation', icon: this.icons.facturation, requiert: 'factures.consulter', groupe: 'Finance' },
     { path: '/depenses', label: 'Dépenses & caisse', icon: this.icons.depenses, requiert: 'depenses.consulter', groupe: 'Finance' },
+    { path: '/fonds-tiers', label: 'Fonds de tiers', icon: this.icons.depenses, requiert: 'fonds_tiers.consulter', groupe: 'Finance' },
     { path: '/retrocessions', label: 'Rétrocessions', icon: this.icons.retrocessions, requiert: 'retrocessions.consulter', groupe: 'Finance' },
 
     // rolesAutorises reflète exactement la garde requireRole() côté serveur

@@ -57,7 +57,7 @@ const DECAISSEMENT_PAR_CODE = Object.fromEntries(DECAISSEMENT.map((m) => [m.code
 
 // Valide le moyen, le compte et les références d'une dépense. Les références
 // ne sont exigées que lorsque l'argent sort (engagement, décaissement).
-async function preparerDecaissement(db, b, { exigerReferences = false } = {}) {
+async function preparerDecaissement(db, b, { exigerReferences = false, types = null } = {}) {
   const moyen = DECAISSEMENT_PAR_CODE[b.mode_paiement];
   if (!moyen) return { erreur: "Moyen de paiement invalide : choisissez dans la liste." };
   const src = b.references && typeof b.references === "object" ? b.references : {};
@@ -70,8 +70,8 @@ async function preparerDecaissement(db, b, { exigerReferences = false } = {}) {
     references[c.cle] = v;
   }
   let compteId = null;
-  if (moyen.comptes !== "aucun" && b.compte_id) {
-    const eligibles = await comptesEligibles(db, moyen);
+  if ((moyen.comptes !== "aucun" || types) && b.compte_id) {
+    const eligibles = await comptesEligibles(db, moyen, { types });
     if (!eligibles.some((c) => c.id === b.compte_id)) return { erreur: "Ce compte ne peut pas servir à ce moyen de paiement." };
     compteId = b.compte_id;
   }
@@ -83,9 +83,14 @@ const LIBELLES_ANCIENS = { mobile_money: "Mobile money (ancien)", autre: "Autre 
 const libelleMoyen = (code) => (PAR_CODE[code] ? PAR_CODE[code].libelle : LIBELLES_ANCIENS[code] || code);
 
 // Comptes de réception acceptés pour un moyen.
-async function comptesEligibles(db, moyen) {
+async function comptesEligibles(db, moyen, { types = null } = {}) {
   const params = [];
   let filtre;
+  // Types de compte imposés (ex. la CARPA pour les fonds de tiers) : remplace la règle du moyen.
+  if (types) {
+    const { rows } = await db.query("SELECT id, intitule FROM comptes_bancaires WHERE actif = TRUE AND type = ANY($1::type_compte[]) ORDER BY intitule", [types]);
+    return rows;
+  }
   if (moyen.comptes === "aucun") return [];
   if (moyen.comptes === "banque_fonctionnement") { params.push(["fonctionnement"]); filtre = "type = ANY($1::type_compte[])"; }
   else if (moyen.comptes === "banque") { params.push(BANQUES); filtre = "type = ANY($1::type_compte[])"; }
@@ -100,7 +105,7 @@ const aujourdhui = () => new Date().toISOString().slice(0, 10);
 // Valide un règlement (moyen, références, frais, compte) et renvoie les valeurs
 // prêtes à enregistrer, ou { erreur }. `compteParDefaut` : compte indiqué sur la
 // facture, retenu s'il convient au moyen choisi.
-async function preparerReglement(db, b, { montant, compteParDefaut = null } = {}) {
+async function preparerReglement(db, b, { montant, compteParDefaut = null, types = null } = {}) {
   const moyen = PAR_CODE[b.mode];
   if (!moyen) return { erreur: "Moyen de paiement invalide : choisissez dans la liste." };
 
@@ -121,7 +126,7 @@ async function preparerReglement(db, b, { montant, compteParDefaut = null } = {}
     if (montant != null && frais > montant) return { erreur: "Les frais retenus ne peuvent pas dépasser le montant payé." };
   }
 
-  const eligibles = await comptesEligibles(db, moyen);
+  const eligibles = await comptesEligibles(db, moyen, { types });
   let compteId = b.compte_id || null;
   if (compteId) {
     if (!eligibles.some((c) => c.id === compteId)) return { erreur: "Ce compte ne peut pas recevoir ce moyen de paiement." };

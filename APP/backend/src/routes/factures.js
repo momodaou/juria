@@ -7,6 +7,19 @@ const { logAudit } = require("../audit");
 const { MOYENS, comptesEligibles, preparerReglement, referenceCourte, PAR_CODE } = require("../moyensPaiement");
 const router = express.Router();
 
+// Qui supporte les frais retenus en route (virement de l'étranger, mobile money,
+// transferts) : indiqué à la saisie, sinon d'après la mention de la facture.
+// Frais à la charge du client : seule la somme réellement reçue (nette) est
+// imputée sur la facture, qui reste due des frais ; à la charge du cabinet : le
+// montant payé est imputé en entier.
+function fraisACharge(demande, mention) {
+  if (demande === "client" || demande === "cabinet") return demande;
+  return /charge du client/i.test(mention || "") ? "client" : "cabinet";
+}
+function montantImpute(montant, frais, charge) {
+  return frais > 0 && charge === "client" ? montant - frais : montant;
+}
+
 // Recalcule et met à jour le statut d'une facture selon les paiements reçus.
 async function majStatut(factureId) {
   const f = await pool.query("SELECT montant_ttc FROM factures WHERE id = $1", [factureId]);
@@ -147,7 +160,7 @@ router.get("/encaissements", requirePermission("factures.consulter"), async (req
       `SELECT p.id, p.facture_id, f.numero AS facture_numero, f.client_id, f.dossier_id,
               d.numero AS dossier_numero, p.date_paiement, p.mode, p.montant, p.devise,
               COALESCE(p.montant_xof, p.montant) AS montant_xof, p.reference,
-              p.frais_retenus, p.depot_statut, cb.intitule AS compte_intitule,
+              p.frais_retenus, p.frais_a_charge, p.depot_statut, cb.intitule AS compte_intitule,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client
        FROM paiements p
        JOIN factures f ON f.id = p.facture_id
@@ -430,14 +443,17 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       const regl = await preparerReglement(client, { ...b.acompte, date_paiement: undefined }, { montant: mnt, compteParDefaut: b.compte_reglement_id || null });
       if (regl.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: `Acompte : ${regl.erreur}` }); }
       const v = regl.valeurs;
+      const charge = fraisACharge(b.acompte.frais_a_charge, b.mention);
+      const imputeA = montantImpute(mnt, v.frais_retenus, charge);
+      if (imputeA <= 0) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Acompte : les frais retenus absorbent tout le paiement." }); }
       await client.query(
         `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof,
-                                compte_id, references_paiement, frais_retenus, depot_statut, date_depot)
-         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7,$8::uuid,$9::jsonb,$10,$11,$12::date)`,
-        [rows[0].id, mnt, b.acompte.mode, referenceCourte(v.references) || b.acompte.reference || null, rows[0].devise, rows[0].taux_applique,
-         Math.round(mnt * Number(rows[0].taux_applique)), v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot]
+                                compte_id, references_paiement, frais_retenus, depot_statut, date_depot, montant_verse, frais_a_charge)
+         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7,$8::uuid,$9::jsonb,$10,$11,$12::date,$13,$14)`,
+        [rows[0].id, imputeA, b.acompte.mode, referenceCourte(v.references) || b.acompte.reference || null, rows[0].devise, rows[0].taux_applique,
+         Math.round(imputeA * Number(rows[0].taux_applique)), v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot, mnt, charge]
       );
-      acompteEnregistre = mnt;
+      acompteEnregistre = imputeA;
     }
 
     if (tempsFactures.length) {
@@ -588,30 +604,33 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
   }
   try {
     const f = await pool.query(
-      `SELECT f.devise, f.taux_applique, f.statut, f.montant_ttc, f.compte_reglement_id,
+      `SELECT f.devise, f.taux_applique, f.statut, f.montant_ttc, f.compte_reglement_id, f.mention,
               COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS regle
        FROM factures f WHERE f.id = $1`, [req.params.id]);
     if (!f.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
     if (f.rows[0].statut === "annulee") return res.status(409).json({ error: "Facture annulée : aucun paiement possible." });
-    // Un paiement ne peut pas dépasser le reliquat (contrôle de saisie : un
-    // trop-perçu serait un autre sujet — avoir/remboursement — à traiter à part).
-    const reliquat = Number(f.rows[0].montant_ttc) - Number(f.rows[0].regle);
-    if (montant > reliquat) {
-      return res.status(409).json({ error: `Le montant (${montant}) dépasse le reliquat de la facture (${reliquat}).`, reliquat });
-    }
-    const montantXof = Math.round(montant * Number(f.rows[0].taux_applique));
     const regl = await preparerReglement(pool, b, { montant, compteParDefaut: f.rows[0].compte_reglement_id });
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
     const v = regl.valeurs;
+    const charge = fraisACharge(b.frais_a_charge, f.rows[0].mention);
+    const impute = montantImpute(montant, v.frais_retenus, charge);
+    if (impute <= 0) return res.status(400).json({ error: "Les frais retenus absorbent tout le paiement." });
+    // Un paiement ne peut pas dépasser le reliquat (contrôle de saisie : un
+    // trop-perçu serait un autre sujet — avoir/remboursement — à traiter à part).
+    const reliquat = Number(f.rows[0].montant_ttc) - Number(f.rows[0].regle);
+    if (impute > reliquat) {
+      return res.status(409).json({ error: `Le montant imputé (${impute}) dépasse le reliquat de la facture (${reliquat}).`, reliquat });
+    }
+    const montantXof = Math.round(impute * Number(f.rows[0].taux_applique));
     await pool.query(
       `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof,
-                              compte_id, references_paiement, frais_retenus, depot_statut, date_depot)
-       VALUES ($1,$2,$3::mode_paiement,COALESCE($4::date, current_date),$5,$6,$7,$8,$9::uuid,$10::jsonb,$11,$12,$13::date)`,
-      [req.params.id, montant, b.mode, b.date_paiement || null, referenceCourte(v.references) || b.reference || null,
-       f.rows[0].devise, f.rows[0].taux_applique, montantXof, v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot]
+                              compte_id, references_paiement, frais_retenus, depot_statut, date_depot, montant_verse, frais_a_charge)
+       VALUES ($1,$2,$3::mode_paiement,COALESCE($4::date, current_date),$5,$6,$7,$8,$9::uuid,$10::jsonb,$11,$12,$13::date,$14,$15)`,
+      [req.params.id, impute, b.mode, b.date_paiement || null, referenceCourte(v.references) || b.reference || null,
+       f.rows[0].devise, f.rows[0].taux_applique, montantXof, v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot, montant, charge]
     );
     const statut = await majStatut(req.params.id);
-    res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - montant });
+    res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - impute });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
@@ -624,7 +643,8 @@ router.get("/:id/paiements", requirePermission("factures.consulter"), async (req
   try {
     const { rows } = await pool.query(
       `SELECT p.id, p.montant, p.mode, p.date_paiement, p.reference, p.devise, p.cree_le,
-              p.references_paiement, p.frais_retenus, p.montant - p.frais_retenus AS montant_recu_net,
+              p.references_paiement, p.frais_retenus, p.frais_a_charge, p.montant_verse,
+              COALESCE(p.montant_verse, p.montant) - p.frais_retenus AS montant_recu_net,
               p.depot_statut, p.date_depot, p.compte_id, cb.intitule AS compte_intitule,
               f.montant_ttc - SUM(p.montant) OVER (ORDER BY p.date_paiement, p.cree_le) AS reste_apres
        FROM paiements p JOIN factures f ON f.id = p.facture_id
@@ -652,6 +672,12 @@ router.delete("/:id/paiements/:paiementId", requirePermission("factures.annuler"
       [req.params.paiementId, req.params.id]
     );
     if (!p) return res.status(404).json({ error: "Paiement introuvable" });
+    const { rows: [issuDeFonds] } = await pool.query(
+      "SELECT 1 FROM fonds_tiers_mouvements WHERE paiement_id = $1 AND statut = 'valide' LIMIT 1", [p.id]
+    );
+    if (issuDeFonds) {
+      return res.status(409).json({ error: "Ce paiement provient d'une imputation sur les fonds de tiers (CARPA) : annulez l'imputation dans « Fonds de tiers »." });
+    }
     const { rows: [retro] } = await pool.query(
       "SELECT 1 FROM retrocessions WHERE facture_id = $1 AND statut = 'decaissee' LIMIT 1", [req.params.id]
     );
@@ -686,3 +712,4 @@ router.get("/:id/pdf", requirePermission("factures.consulter"), async (req, res)
 });
 
 module.exports = router;
+module.exports.majStatut = majStatut;

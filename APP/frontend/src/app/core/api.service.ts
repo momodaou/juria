@@ -541,6 +541,17 @@ export class ApiService {
   comptesPourMoyen(code: string): Observable<{ id: string; intitule: string }[]> {
     return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/factures/moyens-paiement/${code}/comptes`);
   }
+  // Fonds de tiers — compte CARPA (20/10/2026).
+  fondsTiersSoldes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/fonds-tiers/soldes`); }
+  fondsTiersMouvements(clientId?: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/fonds-tiers/mouvements${clientId ? '?client_id=' + clientId : ''}`);
+  }
+  fondsTiersComptes(): Observable<{ id: string; intitule: string }[]> { return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/fonds-tiers/comptes`); }
+  fondsTiersMoyens(sens: 'reception' | 'reversement'): Observable<MoyenPaiement[]> { return this.http.get<MoyenPaiement[]>(`${this.base}/api/fonds-tiers/moyens/${sens}`); }
+  enregistrerFondsTiers(type: 'receptions' | 'reversements' | 'imputations', body: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/fonds-tiers/${type}`, body);
+  }
+  annulerFondsTiers(id: string, motif: string): Observable<any> { return this.http.post<any>(`${this.base}/api/fonds-tiers/${id}/annuler`, { motif }); }
   // Moyens de décaissement des dépenses (20/10/2026).
   moyensDecaissement(): Observable<MoyenPaiement[]> { return this.http.get<MoyenPaiement[]>(`${this.base}/api/depenses/moyens-paiement`); }
   comptesPourDecaissement(code: string): Observable<{ id: string; intitule: string }[]> {

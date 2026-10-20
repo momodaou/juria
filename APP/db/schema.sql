@@ -5022,3 +5022,68 @@ CREATE INDEX IF NOT EXISTS idx_paiements_depot ON paiements(date_paiement) WHERE
 --  serveur selon le moyen (backend/src/moyensPaiement.js). Idempotent.
 -- =====================================================================
 ALTER TABLE depenses ADD COLUMN IF NOT EXISTS references_paiement JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- =====================================================================
+--  20/10/2026 — Frais retenus : qui les supporte. `montant` reste la somme
+--  imputée sur la facture (nette si les frais sont à la charge du client) ;
+--  `montant_verse` est la somme réellement payée par le client (brute).
+--  Idempotent.
+-- =====================================================================
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS montant_verse NUMERIC(14,0);
+ALTER TABLE paiements ADD COLUMN IF NOT EXISTS frais_a_charge VARCHAR(8) NOT NULL DEFAULT 'cabinet';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_paiements_frais_a_charge') THEN
+    ALTER TABLE paiements ADD CONSTRAINT chk_paiements_frais_a_charge CHECK (frais_a_charge IN ('client','cabinet'));
+  END IF;
+END $$;
+
+-- =====================================================================
+--  20/10/2026 — Fonds de tiers (compte CARPA du cabinet) : sommes reçues pour
+--  le compte de clients, destinées à les désintéresser. Ce ne sont PAS des
+--  honoraires : une réception n'est jamais un paiement de facture. Trois
+--  mouvements : réception (+), reversement au client (−), imputation
+--  d'honoraires (−, crée un paiement sur la facture, avec l'accord du client).
+--  Solde = réceptions − reversements − imputations (mouvements valides).
+--  Idempotent.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS fonds_tiers_mouvements (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type           VARCHAR(12) NOT NULL CHECK (type IN ('reception','reversement','imputation')),
+    client_id      UUID NOT NULL REFERENCES clients(id),
+    dossier_id     UUID REFERENCES dossiers(id) ON DELETE SET NULL,
+    montant        NUMERIC(14,0) NOT NULL CHECK (montant > 0),
+    date_mouvement DATE NOT NULL DEFAULT current_date,
+    mode           mode_paiement,
+    compte_id      UUID REFERENCES comptes_bancaires(id),
+    references_paiement JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tiers          VARCHAR(200),
+    motif          TEXT,
+    facture_id     UUID REFERENCES factures(id),
+    paiement_id    UUID REFERENCES paiements(id) ON DELETE SET NULL,
+    statut         VARCHAR(8) NOT NULL DEFAULT 'valide' CHECK (statut IN ('valide','annule')),
+    annule_motif   TEXT,
+    annule_par     UUID REFERENCES utilisateurs(id),
+    annule_le      TIMESTAMPTZ,
+    cree_par       UUID REFERENCES utilisateurs(id),
+    cree_le        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fonds_tiers_client ON fonds_tiers_mouvements(client_id, statut);
+CREATE INDEX IF NOT EXISTS idx_fonds_tiers_dossier ON fonds_tiers_mouvements(dossier_id) WHERE dossier_id IS NOT NULL;
+
+-- Consulter : direction, administratrice générale, comptables ; enregistrer une réception : idem sauf assistant comptable ;
+-- reverser / imputer / annuler : associés et comptable. Réglable dans la Matrice.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'fonds_tiers.consulter', r IN ('associe','associe_fondateur','admin_general','comptable','assistant_comptable')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'fonds_tiers.enregistrer', r IN ('associe','associe_fondateur','admin_general','comptable')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'fonds_tiers.reverser', r IN ('associe','associe_fondateur','comptable')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;

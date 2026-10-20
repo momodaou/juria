@@ -85,7 +85,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <input type="number" [(ngModel)]="acompteMontant" name="acMnt" placeholder="Montant déjà payé" style="max-width:170px" />
           </label>
           @if (acompteMontant) {
-            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" (validite)="acompteValide.set($event)"></app-reglement-form>
+            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" [fraisParDefaut]="fraisParDefaut(mention)" (validite)="acompteValide.set($event)"></app-reglement-form>
           }
         }
       </div>
@@ -130,7 +130,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <input type="number" [(ngModel)]="acompteMontant" name="acMntT" placeholder="Montant déjà payé" style="max-width:170px" />
           </label>
           @if (acompteMontant) {
-            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" (validite)="acompteValide.set($event)"></app-reglement-form>
+            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" [fraisParDefaut]="fraisParDefaut(mention)" (validite)="acompteValide.set($event)"></app-reglement-form>
           }
         }
       </div>
@@ -399,7 +399,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                           <td>{{ libelleMoyen(p.mode) }}@if (p.compte_intitule) { <br /><span class="muted">{{ p.compte_intitule }}</span> }</td>
                           <td class="muted">reste {{ p.reste_apres | number }} {{ dev(p.devise) }}</td>
                           <td>{{ resumeReferences(p) }}
-                            @if (p.frais_retenus > 0) { <br /><span class="muted">frais retenus {{ p.frais_retenus | number }} · reçu net {{ p.montant_recu_net | number }} {{ dev(p.devise) }}</span> }
+                            @if (p.frais_retenus > 0) { <br /><span class="muted">payé {{ (p.montant_verse ?? p.montant) | number }} · frais retenus {{ p.frais_retenus | number }} (à la charge {{ p.frais_a_charge === 'client' ? 'du client' : 'du cabinet' }}) · reçu net {{ p.montant_recu_net | number }} {{ dev(p.devise) }}</span> }
                             @if (p.depot_statut === 'en_attente') {
                               <br /><span class="tag">à déposer</span>
                               @if (auth.peut('factures.paiement.ajouter')) {
@@ -419,7 +419,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     <div class="form">
                       <label>Montant reçu <input type="number" [(ngModel)]="pMontant" [name]="'pMnt' + f.id" style="max-width:150px" /></label>
                       <label>Date <input type="date" [(ngModel)]="pDate" [name]="'pDate' + f.id" /></label>
-                      <app-reglement-form [modele]="pModele" [catalogue]="catalogue()" [compteParDefaut]="f.compte_reglement_id || null" (validite)="pValide.set($event)"></app-reglement-form>
+                      <app-reglement-form [modele]="pModele" [catalogue]="catalogue()" [compteParDefaut]="f.compte_reglement_id || null" [fraisParDefaut]="fraisParDefaut(f.mention)" (validite)="pValide.set($event)"></app-reglement-form>
                     </div>
                     <p class="hint">Le montant est prérempli au reste dû : modifiez-le pour enregistrer un paiement partiel.</p>
                     <div class="btns-ligne">
@@ -529,9 +529,12 @@ export class FacturationComponent implements OnInit {
   readonly acompteValide = signal(true);
   // Catalogue des moyens d'encaissement (20/10/2026) : une seule liste, servie par le serveur.
   readonly catalogue = signal<MoyenPaiement[]>([]);
+  // Frais retenus : à la charge du client par défaut si la facture le mentionne.
+  fraisParDefaut(mention: string | null | undefined): 'client' | 'cabinet' { return /charge du client/i.test(mention ?? '') ? 'client' : 'cabinet'; }
   modeleReglement(): any { return { mode: 'virement', references: {}, compte_id: '', frais_retenus: null }; }
   private reglementPourEnvoi(m: any): any {
-    return { mode: m.mode, references: m.references, compte_id: m.compte_id || undefined, frais_retenus: m.frais_retenus || undefined };
+    return { mode: m.mode, references: m.references, compte_id: m.compte_id || undefined, frais_retenus: m.frais_retenus || undefined,
+      frais_a_charge: m.frais_retenus > 0 ? m.frais_a_charge : undefined };
   }
   // Panneau « Paiements » : saisie d'un paiement partiel après l'émission.
   pMontant: number | null = null;

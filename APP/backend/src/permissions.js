@@ -109,6 +109,10 @@ const CATALOGUE = [
   { code: "stock.chemises.consulter", module: "Administratif & RH", label: "Consulter le stock de chemises à rabat", restreinte: true },
   { code: "stock.chemises.gerer", module: "Administratif & RH", label: "Gérer le stock de chemises (entrées, ajustements, régularisation, seuils)", restreinte: true },
 
+  { code: "fonds_tiers.consulter", module: "Fonds de tiers (CARPA)", label: "Consulter les fonds de tiers (soldes, mouvements)", restreinte: true },
+  { code: "fonds_tiers.enregistrer", module: "Fonds de tiers (CARPA)", label: "Enregistrer une réception de fonds de tiers", restreinte: true },
+  { code: "fonds_tiers.reverser", module: "Fonds de tiers (CARPA)", label: "Reverser aux clients, imputer des honoraires, annuler un mouvement", restreinte: true },
+
   { code: "retrocessions.consulter", module: "Rétrocessions", label: "Consulter les rétrocessions de tous (montants, rémunération)", restreinte: true },
   { code: "retrocessions.creer", module: "Rétrocessions", label: "Enregistrer une rétrocession" },
   { code: "retrocessions.decaisser", module: "Rétrocessions", label: "Décaisser une rétrocession", restreinte: true },

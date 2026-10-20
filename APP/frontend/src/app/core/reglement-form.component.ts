@@ -30,25 +30,35 @@ import { ApiService, MoyenPaiement } from './api.service';
           <label>Frais retenus (facultatif)
             <input type="number" min="0" [(ngModel)]="modele.frais_retenus" name="rgFrais" />
           </label>
+          @if (modele.frais_retenus > 0) {
+            <label>Frais à la charge de
+              <select [(ngModel)]="modele.frais_a_charge" name="rgFraisCharge">
+                <option value="client">Le client : la facture reste due des frais</option>
+                <option value="cabinet">Le cabinet : la facture est soldée</option>
+              </select>
+            </label>
+          }
         }
         @if (comptes().length) {
           <label>{{ libelleCompte() }}@if (compteObligatoire()) { <span class="req"> *</span> }
             <select [(ngModel)]="modele.compte_id" name="rgCompte" (ngModelChange)="emettre()">
-              <option value="">{{ m.code === 'especes' && sens === 'encaissement' ? '— pas encore déposées —' : '— choisir —' }}</option>
+              <option value="">{{ m.code === 'especes' && sens === 'encaissement' && !carpa ? '— pas encore déposées —' : '— choisir —' }}</option>
               @for (c of comptes(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }
             </select>
           </label>
         } @else if (m.code !== 'especes') {
           <p class="hint">Aucun compte enregistré pour ce moyen : il sera enregistré sans compte.</p>
         }
-        @if (m.code === 'especes' && sens === 'encaissement') {
+        @if (m.code === 'especes' && sens === 'encaissement' && !carpa) {
           <p class="hint">Les espèces reçues sont déposées en banque : tant qu'aucun compte n'est indiqué, elles restent signalées « à déposer ».</p>
         }
         @if (m.code === 'especes' && sens === 'decaissement') {
           <p class="hint">Les espèces sortent de la caisse : aucun compte à indiquer.</p>
         }
-        @if (m.frais && modele.frais_retenus) {
-          <p class="hint">Le montant payé reste imputé sur la facture ; les frais retenus donnent le montant réellement reçu.</p>
+        @if (m.frais && modele.frais_retenus > 0) {
+          <p class="hint">{{ modele.frais_a_charge === 'client'
+            ? 'Seule la somme réellement reçue (nette des frais) est imputée sur la facture : elle reste due des frais.'
+            : 'Le montant payé est imputé en entier sur la facture ; les frais restent à la charge du cabinet.' }}</p>
         }
       }
     </div>
@@ -74,6 +84,10 @@ export class ReglementFormComponent implements OnChanges {
   @Input() exigerReferences = true;
   // Faux : le moyen peut rester « à préciser » (dépense soumise avant son paiement).
   @Input() exigerMoyen = true;
+  // Qui supporte les frais retenus quand rien n'est choisi (d'après la mention de la facture).
+  @Input() fraisParDefaut: 'client' | 'cabinet' = 'cabinet';
+  // Comptes CARPA uniquement (fonds de tiers) : la liste ne dépend pas du moyen.
+  @Input() carpa = false;
   @Output() validite = new EventEmitter<boolean>();
 
   readonly comptes = signal<{ id: string; intitule: string }[]>([]);
@@ -82,19 +96,21 @@ export class ReglementFormComponent implements OnChanges {
     if (!this.modele) return;
     if (this.exigerMoyen && !this.modele[this.cleMode]) this.modele[this.cleMode] = this.sens === 'encaissement' ? 'virement' : 'orange_money';
     this.modele.references ??= {};
+    this.modele.frais_a_charge ??= this.fraisParDefaut;
     this.chargerComptes();
   }
 
   moyen(): MoyenPaiement | undefined { return this.catalogue.find((m) => m.code === this.modele?.[this.cleMode]); }
 
   libelleCompte(): string {
+    if (this.carpa) return this.sens === 'decaissement' ? 'Compte CARPA débité' : 'Compte CARPA crédité';
     if (this.sens === 'decaissement') return 'Compte débité';
     return this.moyen()?.code === 'especes' ? 'Compte de dépôt (vide : espèces pas encore déposées)' : 'Compte crédité';
   }
 
   compteObligatoire(): boolean {
     const m = this.moyen();
-    return !!m && m.code !== 'especes' && this.comptes().length > 1;
+    return !!m && (m.code !== 'especes' || this.carpa) && this.comptes().length > 1;
   }
 
   choisirMoyen(code: string): void {
@@ -108,13 +124,14 @@ export class ReglementFormComponent implements OnChanges {
   private chargerComptes(): void {
     const code = this.modele[this.cleMode];
     if (!code) { this.comptes.set([]); this.emettre(); return; }
-    const appel = this.sens === 'decaissement' ? this.api.comptesPourDecaissement(code) : this.api.comptesPourMoyen(code);
+    const appel = this.carpa ? this.api.fondsTiersComptes()
+      : this.sens === 'decaissement' ? this.api.comptesPourDecaissement(code) : this.api.comptesPourMoyen(code);
     appel.subscribe({
       next: (liste) => {
         this.comptes.set(liste);
         const courant = this.modele.compte_id;
         if (courant && !liste.some((c) => c.id === courant)) this.modele.compte_id = '';
-        if (!this.modele.compte_id && !(code === 'especes' && this.sens === 'encaissement')) {
+        if (!this.modele.compte_id && !(code === 'especes' && this.sens === 'encaissement' && !this.carpa)) {
           if (liste.length === 1) this.modele.compte_id = liste[0].id;
           else if (this.compteParDefaut && liste.some((c) => c.id === this.compteParDefaut)) this.modele.compte_id = this.compteParDefaut;
         }
