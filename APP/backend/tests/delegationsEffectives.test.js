@@ -155,13 +155,17 @@ describe("Délégations d'accès réellement effectives (09/10/2026)", () => {
   });
 
   test("catalogue des actions : accessible au cercle delegations, pas au-delà", async () => {
+    const adminIt = await creerUtilisateurRole("admin_it");
     const adminGeneral = await creerUtilisateurRole("admin_general");
     const assistante = await creerUtilisateurRole("assistante");
-    const ok = await request(app).get("/api/acces/delegations/catalogue-actions").set("Authorization", `Bearer ${adminGeneral.token}`);
+    const ok = await request(app).get("/api/acces/delegations/catalogue-actions").set("Authorization", `Bearer ${adminIt.token}`);
     expect(ok.status).toBe(200);
     expect(Array.isArray(ok.body)).toBe(true);
     expect(ok.body.some((a) => a.code === "taches.creer")).toBe(true);
     const refuse = await request(app).get("/api/acces/delegations/catalogue-actions").set("Authorization", `Bearer ${assistante.token}`);
     expect(refuse.status).toBe(403);
+    // admin_general n'a plus accès au module (20/10/2026).
+    const refuseAdmin = await request(app).get("/api/acces/delegations/catalogue-actions").set("Authorization", `Bearer ${adminGeneral.token}`);
+    expect(refuseAdmin.status).toBe(403);
   });
 });

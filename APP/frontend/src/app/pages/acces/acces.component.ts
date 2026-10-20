@@ -364,8 +364,8 @@ export class AccesComponent implements OnInit {
   parametresEdit: Partial<ParametresHonoraires> = {};
   readonly delegations = signal<any[]>([]);
   // 09/10/2026 — catalogue des 80 actions pour le sélecteur "Action
-  // déléguée" (route dédiée, accessible même à admin_general qui n'a pas
-  // accès à GET /api/acces/permissions, réservée associe+admin_it).
+  // déléguée" (route dédiée, distincte de GET /api/acces/permissions qui expose
+  // en plus l'état par rôle).
   readonly catalogueActions = signal<{ code: string; module: string; label: string }[]>([]);
   readonly modulesActions = computed(() => {
     const parModule = new Map<string, { code: string; module: string; label: string }[]>();

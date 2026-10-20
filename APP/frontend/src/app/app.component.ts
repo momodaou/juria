@@ -243,7 +243,7 @@ export class AppComponent implements OnInit {
     // (backend/src/routes/acces.js) — associe_fondateur exclu depuis le
     // 29/08/2026 (correction explicite de l'utilisateur : le module entier,
     // pas seulement la matrice interne).
-    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_general', 'admin_it'], groupe: 'Cabinet' },
+    { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_it'], groupe: 'Cabinet' },
     { path: '/cabinet', label: 'Administratif & RH', icon: this.icons.cabinet, requiert: 'cabinet.consulter', groupe: 'Cabinet' },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient, groupe: 'Cabinet' },
 

@@ -27,11 +27,19 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe("Garde du module Accès & permissions — associe_fondateur exclu (29/08/2026)", () => {
-  test.each(["associe", "admin_general", "admin_it"])("%s : accès autorisé (200)", async (role) => {
+describe("Garde du module Accès & permissions — associe_fondateur exclu (29/08/2026), admin_general exclu (20/10/2026)", () => {
+  test.each(["associe", "admin_it"])("%s : accès autorisé (200)", async (role) => {
     const token = await creerUtilisateurRole(role);
     const res = await request(app).get("/api/acces/audit").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
+  });
+
+  test("admin_general : accès refusé (403) — comptes, délégations, audit", async () => {
+    const token = await creerUtilisateurRole("admin_general");
+    for (const route of ["/api/acces/audit", "/api/acces/delegations", "/api/acces/utilisateurs"]) {
+      const res = await request(app).get(route).set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    }
   });
 
   test("associe_fondateur : accès refusé (403) — module entier, pas seulement la matrice", async () => {

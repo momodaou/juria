@@ -11,8 +11,7 @@ const { logAudit } = require("../audit");
 const { CATALOGUE, CODES_VALIDES } = require("../permissions");
 
 const router = express.Router();
-// Gestion des comptes/rôles/délégations : associé, administrateur général
-// ou administrateur IT. La matrice de permissions ci-dessous (routes
+// Gestion des comptes/rôles/délégations : associé ou administrateur IT. La matrice de permissions ci-dessous (routes
 // /permissions) applique une restriction plus étroite encore, volontairement
 // écartée de cette garde commune — voir plus bas.
 //
@@ -21,7 +20,13 @@ const router = express.Router();
 // (mêmes droits qu'associe SAUF la matrice), le module Accès & permissions
 // dans son ensemble — comptes, délégations, journal d'audit — lui est
 // désormais fermé, pas seulement la matrice.
-router.use(requireRole("associe", "admin_general", "admin_it"));
+//
+// admin_general EXCLU à son tour (20/10/2026, correction explicite de
+// l'utilisateur) : l'administratrice générale ne gère ni les comptes
+// utilisateurs, ni les délégations, ni le journal d'audit, ni les comptes du
+// cabinet. Ce retrait ne touche pas `parametres.cabinet.modifier` (case de la
+// matrice, réglable à part).
+router.use(requireRole("associe", "admin_it"));
 
 // 13 statuts réels du cabinet (17/08/2026, complété après coup avec
 // associe_fondateur et la distinction avocat_stagiaire/stagiaire) — voir
@@ -192,8 +197,7 @@ router.put("/utilisateurs/:id/actif", async (req, res) => {
 // déléguée" du formulaire. Volontairement distinct de GET /permissions
 // (réservé associe+admin_it, qui expose en plus l'état TRUE/FAUX par rôle,
 // plus sensible) : la simple liste des noms d'action n'a rien de sensible,
-// et admin_general (qui peut accorder des délégations via la garde commune
-// ci-dessus) n'a pas accès à la matrice complète.
+// et la garde commune ci-dessus ne laisse passer que associe/admin_it.
 router.get("/delegations/catalogue-actions", (req, res) => {
   res.json(CATALOGUE);
 });
