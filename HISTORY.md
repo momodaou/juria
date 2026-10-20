@@ -4052,3 +4052,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Espèces** : « en attente de dépôt » tant qu'aucun compte n'est indiqué ; `POST /api/factures/paiements/:id/depot`, liste « espèces à déposer » dans Facturation, tuile « Espèces à déposer en banque » sur le Tableau de bord.
 - Historique des paiements enrichi (compte, références, frais, net, dépôt) ; vue Encaissements avec colonne Compte. Acompte à l'émission : mêmes règles.
 - **Migration requise** (fin de `APP/db/schema.sql`, « 20/10/2026 — Moyens d'encaissement »). Tests **655/655** (7 nouveaux), build OK, vérification visuelle locale. Non déployé. Reste : étape 4 (dépenses : mêmes listes et références symétriques, après validation).
+
+## 20/10/2026 — Déploiement : moyens d'encaissement et références (étape 2)
+- Accord de l'utilisateur. Migration (4 colonnes sur `paiements`) appliquée en un import (`--user=postgres`), fichier temporaire supprimé ; puis API `juria-00167-5fq` et frontend `juria-web-00219-7nn`. Vérifié : `/health` et `/` en `200`.
+- À contrôler côté utilisateur : encaisser un paiement de chaque famille (virement, chèque, espèces, mobile money) ; vérifier le bloc « Espèces à déposer » et la tuile du Tableau de bord. Décisions en suspens : traitement des frais retenus (aujourd'hui informatifs) et de la CARPA ; étape 4 (dépenses) à lancer sur demande.
