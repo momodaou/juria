@@ -1354,7 +1354,11 @@ export class DossierDetailComponent implements OnInit {
          côté (108→88mm). Contenu interne redimensionné en proportion.
          30/09/2026 (suite) — essai à 100x60mm ("Essayons 10 cm sur 6 cm"),
          après un test papier réel encore jugé non concluant sur le format
-         88x49mm. Contenu redimensionné en proportion. */
+         88x49mm. Contenu redimensionné en proportion.
+         20/10/2026 — cadre de 100x60mm sous-occupé (le texte ne remplissait
+         qu'environ les 2/3 de la hauteur disponible) : tailles de police
+         augmentées de 2-3px sur chaque ligne, QR inchangé (86px) pour ne
+         pas réduire la largeur réservée au texte. */
       @page { size: A4; margin: 15mm; }
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
       .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
@@ -1362,12 +1366,12 @@ export class DossierDetailComponent implements OnInit {
       .corps{display:flex;gap:14px;align-items:center;padding:12px 16px;min-width:0;flex:1}
       .qr{width:86px;height:86px;flex:none}
       .texte{min-width:0;overflow:hidden}
-      .num{font-size:19px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .intitule{font-size:15px;font-weight:600;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
-      .client{font-size:13px;margin-top:5px;line-height:1.25;color:#1F2A44;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .num{font-size:22px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .intitule{font-size:17px;font-weight:600;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+      .client{font-size:15px;margin-top:6px;line-height:1.25;color:#1F2A44;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .lbl{color:#6B7280;font-weight:400}
-      .sub{font-size:12px;color:#1F2A44;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .chemise{font-size:12px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .sub{font-size:14px;color:#1F2A44;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .chemise{font-size:13px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
     </style></head><body>
