@@ -201,6 +201,89 @@ import { libelleRole } from '../../core/roles';
       </section>
     }
 
+    @if (auth.peut('stock.chemises.consulter')) {
+      <section class="panel">
+        <h3>Stock de chemises à rabat</h3>
+        <p class="muted" style="margin-bottom:12px">Une chemise sort du stock à chaque création de dossier (couleur déduite de la matière). Le gris (Conseil et divers) n'a pas de chemise physique.</p>
+        @if (!chemisesInitialise()) {
+          @if (auth.peut('stock.chemises.gerer')) {
+            <p>Le stock n'est pas encore initialisé. Saisissez le comptage physique actuel de chaque couleur :</p>
+            <div class="upload">
+              @for (c of couleursChemises; track c) {
+                <label class="chem-champ"><span class="pastille" [style.background]="hexChemise(c)"></span>{{ libelleChemise(c) }}
+                  <input class="sel" type="number" min="0" [(ngModel)]="initChemises[c]" [name]="'init' + c" style="width:90px" /></label>
+              }
+              <button class="btn sm" (click)="initialiserChemises()">Initialiser le stock</button>
+            </div>
+          } @else { <p class="muted">Le stock n'est pas encore initialisé.</p> }
+        } @else {
+          <table>
+            <tr><th>Couleur</th><th>En stock</th><th>Seuil d'alerte</th><th></th></tr>
+            @for (l of chemisesStock(); track l.couleur) {
+              <tr>
+                <td><span class="pastille" [style.background]="hexChemise(l.couleur)"></span>{{ libelleChemise(l.couleur) }}</td>
+                <td><b>{{ l.quantite }}</b> @if (l.bas) { <span class="tag haute">stock bas</span> }</td>
+                <td>{{ l.seuil }}</td>
+                <td>@if (auth.peut('stock.chemises.gerer')) { <app-menu-actions [actions]="actionsPourChemise(l)" /> }</td>
+              </tr>
+            }
+          </table>
+          @if (chemisesMouvementForm(); as f) {
+            <div class="upload" style="margin-top:12px">
+              <b>{{ f.type === 'entree' ? 'Entrée' : f.type === 'ajustement' ? 'Ajustement' : 'Seuil' }} — {{ libelleChemise(f.couleur) }}</b>
+              <input class="sel" type="number" [(ngModel)]="chemisesValeur" name="chv" style="width:110px"
+                     [placeholder]="f.type === 'ajustement' ? '+/− quantité' : f.type === 'seuil' ? 'Seuil' : 'Quantité'" />
+              @if (f.type !== 'seuil') {
+                <input class="sel" [(ngModel)]="chemisesMotif" name="chm" [placeholder]="f.type === 'ajustement' ? 'Motif (obligatoire)' : 'Motif (ex. achat)'" style="flex:1;min-width:180px" />
+              }
+              <button class="btn sm" (click)="validerMouvementChemise()" [disabled]="chemisesValeur === null || chemisesValeur === ''">Valider</button>
+              <button class="lien" (click)="chemisesMouvementForm.set(null)">Annuler</button>
+            </div>
+          }
+          @if (auth.peut('stock.chemises.gerer')) {
+            <div style="margin-top:14px">
+              <button class="lien" (click)="ouvrirRegularisation()">Régulariser les dossiers déjà créés</button>
+              <button class="lien" (click)="afficherMouvementsChemises.set(!afficherMouvementsChemises()); chargerMouvementsChemises()">{{ afficherMouvementsChemises() ? 'Masquer le journal' : 'Voir le journal des mouvements' }}</button>
+            </div>
+          }
+          @if (regularisation(); as r) {
+            <div class="doublon" style="margin-top:12px">
+              <b>Dossiers existants dont la chemise n'est pas encore décomptée</b>
+              <table>
+                <tr><th>Couleur</th><th>Stock actuel</th><th>Dossiers</th><th>Stock après</th></tr>
+                @for (l of r.resume; track l.couleur) {
+                  <tr><td><span class="pastille" [style.background]="hexChemise(l.couleur)"></span>{{ libelleChemise(l.couleur) }}</td>
+                    <td>{{ l.stock_actuel }}</td><td>{{ compteRegularisation(l.couleur) }}</td>
+                    <td [class.neg]="l.stock_actuel - compteRegularisation(l.couleur) < 0">{{ l.stock_actuel - compteRegularisation(l.couleur) }}</td></tr>
+                }
+              </table>
+              <p class="muted">Décochez les dossiers qui n'auront pas de chemise (dossiers de test, clos, annulés…).</p>
+              <div class="liste-reg">
+                @for (d of r.dossiers; track d.id) {
+                  <label class="ligne-reg"><input type="checkbox" [checked]="!chemisesExclus().has(d.id)" (change)="basculerExclusion(d.id)" />
+                    <span class="pastille" [style.background]="hexChemise(d.couleur)"></span>{{ d.numero }} — {{ d.intitule }} <span class="muted">({{ d.statut }})</span></label>
+                } @empty { <p class="muted">Aucun dossier à régulariser.</p> }
+              </div>
+              <div class="btns">
+                <button class="lien" (click)="regularisation.set(null)">Fermer</button>
+                <button class="btn sm" (click)="appliquerRegularisation()" [disabled]="regularisationEnCours()">Appliquer la régularisation</button>
+              </div>
+            </div>
+          }
+          @if (afficherMouvementsChemises()) {
+            <table style="margin-top:12px">
+              <tr><th>Date</th><th>Couleur</th><th>Mouvement</th><th>Motif</th><th>Dossier</th><th>Par</th></tr>
+              @for (m of mouvementsChemises(); track m.id) {
+                <tr><td>{{ m.cree_le | date:'dd/MM/yyyy HH:mm' }}</td><td>{{ libelleChemise(m.couleur) }}</td>
+                  <td>{{ m.quantite > 0 ? '+' : '' }}{{ m.quantite }}</td><td>{{ m.motif || '—' }}</td><td>{{ m.dossier_numero || '—' }}</td><td>{{ m.auteur || '—' }}</td></tr>
+              } @empty { <tr><td colspan="6" class="muted">Aucun mouvement.</td></tr> }
+            </table>
+          }
+        }
+        @if (erreurChemises()) { <p class="err">{{ erreurChemises() }}</p> }
+      </section>
+    }
+
     <section class="panel">
       <h3>Bulletins de paie (option légère — archivage indicatif)
         — {{ bulletinMembreId() ? nomMembre(bulletinMembreId()) : 'les miens' }}</h3>
@@ -255,6 +338,11 @@ import { libelleRole } from '../../core/roles';
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .panel.alerte{border-left:4px solid var(--amber)}
+    .pastille{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px;vertical-align:middle}
+    .chem-champ{display:flex;align-items:center;gap:6px;font-size:var(--fs-base)}
+    .liste-reg{max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:8px 0}
+    .ligne-reg{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:var(--fs-sm)}
+    td.neg{color:#b13a36;font-weight:700}
   `],
 })
 export class CabinetComponent implements OnInit {
@@ -332,7 +420,102 @@ export class CabinetComponent implements OnInit {
     return m ? `${m.prenom} ${m.nom}` : '';
   }
 
+
+  // Stock de chemises à rabat (20/10/2026)
+  readonly couleursChemises = ['bleu', 'dore', 'rouge', 'vert', 'violet'];
+  private readonly hexChemises: Record<string, string> = { bleu: '#2E7DC2', dore: '#C89938', rouge: '#5B1B1D', vert: '#1D6434', violet: '#7d3c98' };
+  private readonly libellesChemises: Record<string, string> = { bleu: 'Bleu', dore: 'Doré', rouge: 'Rouge', vert: 'Vert', violet: 'Violet' };
+  hexChemise(c: string): string { return this.hexChemises[c] ?? '#95a5a6'; }
+  libelleChemise(c: string): string { return this.libellesChemises[c] ?? c; }
+  readonly chemisesInitialise = signal(false);
+  readonly chemisesStock = signal<any[]>([]);
+  readonly mouvementsChemises = signal<any[]>([]);
+  readonly afficherMouvementsChemises = signal(false);
+  readonly erreurChemises = signal('');
+  readonly chemisesMouvementForm = signal<{ couleur: string; type: string } | null>(null);
+  readonly regularisation = signal<any | null>(null);
+  readonly chemisesExclus = signal<Set<string>>(new Set());
+  readonly regularisationEnCours = signal(false);
+  initChemises: Record<string, number | null> = { bleu: null, dore: null, rouge: null, vert: null, violet: null };
+  chemisesValeur: any = null;
+  chemisesMotif = '';
+
+  private chargerChemises(): void {
+    if (!this.auth.peut('stock.chemises.consulter')) return;
+    this.api.stockChemises().subscribe({
+      next: (r) => { this.chemisesInitialise.set(r.initialise); this.chemisesStock.set(r.stock); },
+      error: () => {},
+    });
+  }
+
+  chargerMouvementsChemises(): void {
+    this.api.mouvementsChemises().subscribe({ next: (m) => this.mouvementsChemises.set(m), error: () => {} });
+  }
+
+  initialiserChemises(): void {
+    this.erreurChemises.set('');
+    const q: Record<string, number> = {};
+    for (const c of this.couleursChemises) q[c] = Number(this.initChemises[c] ?? 0);
+    this.api.initialiserStockChemises(q).subscribe({
+      next: () => this.chargerChemises(),
+      error: (e) => this.erreurChemises.set(e?.error?.error ?? 'Initialisation impossible.'),
+    });
+  }
+
+  actionsPourChemise(l: any): ActionMenuItem[] {
+    const ouvrir = (type: string) => () => { this.erreurChemises.set(''); this.chemisesValeur = null; this.chemisesMotif = ''; this.chemisesMouvementForm.set({ couleur: l.couleur, type }); };
+    return [
+      { label: 'Entrée (réapprovisionnement)', action: ouvrir('entree') },
+      { label: 'Ajustement (inventaire, casse)', action: ouvrir('ajustement') },
+      { label: "Modifier le seuil d'alerte", action: ouvrir('seuil') },
+    ];
+  }
+
+  validerMouvementChemise(): void {
+    const f = this.chemisesMouvementForm();
+    if (!f) return;
+    this.erreurChemises.set('');
+    const n = Number(this.chemisesValeur);
+    const suite = f.type === 'seuil'
+      ? this.api.seuilsChemises({ [f.couleur]: n })
+      : this.api.mouvementChemises({ couleur: f.couleur, type: f.type, quantite: n, motif: this.chemisesMotif || undefined });
+    suite.subscribe({
+      next: () => { this.chemisesMouvementForm.set(null); this.chargerChemises(); if (this.afficherMouvementsChemises()) this.chargerMouvementsChemises(); },
+      error: (e) => this.erreurChemises.set(e?.error?.error ?? 'Enregistrement impossible.'),
+    });
+  }
+
+  ouvrirRegularisation(): void {
+    this.erreurChemises.set('');
+    this.chemisesExclus.set(new Set());
+    this.api.apercuRegularisationChemises().subscribe({
+      next: (r) => this.regularisation.set(r),
+      error: (e) => this.erreurChemises.set(e?.error?.error ?? 'Aperçu impossible.'),
+    });
+  }
+
+  basculerExclusion(id: string): void {
+    this.chemisesExclus.update((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+
+  // Dossiers cochés par couleur : le tableau de l'aperçu se recalcule avec les exclusions.
+  compteRegularisation(couleur: string): number {
+    const r = this.regularisation();
+    if (!r) return 0;
+    const exclus = this.chemisesExclus();
+    return r.dossiers.filter((d: any) => d.couleur === couleur && !exclus.has(d.id)).length;
+  }
+
+  appliquerRegularisation(): void {
+    this.regularisationEnCours.set(true);
+    this.api.appliquerRegularisationChemises([...this.chemisesExclus()]).subscribe({
+      next: () => { this.regularisationEnCours.set(false); this.regularisation.set(null); this.chargerChemises(); if (this.afficherMouvementsChemises()) this.chargerMouvementsChemises(); },
+      error: (e) => { this.regularisationEnCours.set(false); this.erreurChemises.set(e?.error?.error ?? 'Régularisation impossible.'); },
+    });
+  }
+
   ngOnInit(): void {
+    this.chargerChemises();
     // Ouvert à tout le monde (GET /api/utilisateurs, aucune permission
     // requise) — voir le commentaire sur `membres` ci-dessus.
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });

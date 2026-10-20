@@ -106,6 +106,9 @@ const CATALOGUE = [
   { code: "depenses.petite_caisse.doter", module: "Dépenses & caisse", label: "Doter la petite caisse du mois", restreinte: true },
   { code: "depenses.vignettes.mouvement", module: "Dépenses & caisse", label: "Mouvement de vignettes" },
 
+  { code: "stock.chemises.consulter", module: "Administratif & RH", label: "Consulter le stock de chemises à rabat", restreinte: true },
+  { code: "stock.chemises.gerer", module: "Administratif & RH", label: "Gérer le stock de chemises (entrées, ajustements, régularisation, seuils)", restreinte: true },
+
   { code: "retrocessions.consulter", module: "Rétrocessions", label: "Consulter les rétrocessions de tous (montants, rémunération)", restreinte: true },
   { code: "retrocessions.creer", module: "Rétrocessions", label: "Enregistrer une rétrocession" },
   { code: "retrocessions.decaisser", module: "Rétrocessions", label: "Décaisser une rétrocession", restreinte: true },

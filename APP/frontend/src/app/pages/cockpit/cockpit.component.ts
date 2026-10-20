@@ -525,6 +525,17 @@ const CONFIG: Record<string, TuileConfig> = {
             <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.reenrolement_n }}</span>
           </button>
         }
+        @if (d.chemises_stock_bas) {
+          <a class="kpi tier-vigilance" routerLink="/cabinet" style="text-decoration:none;color:inherit">
+            <span class="tico" [innerHTML]="icons['actifs']"></span>
+            <span class="n">{{ d.chemises_stock_bas.length }}</span><span class="l">Chemises : stock bas</span>
+            <div class="mini-liste">
+              @for (c of d.chemises_stock_bas; track c.couleur) {
+                <div class="mini-ligne"><span class="principal">{{ c.couleur === 'dore' ? 'doré' : c.couleur }}</span><span class="secondaire">{{ c.quantite }} / seuil {{ c.seuil }}</span></div>
+              }
+            </div>
+          </a>
+        }
         @if (d.courriers_a_orienter_n !== null) {
           <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'courriers_a_orienter'" (click)="clic('courriers_a_orienter')">
             <span class="tico" [innerHTML]="icons['audiences']"></span>

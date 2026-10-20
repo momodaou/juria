@@ -4946,3 +4946,44 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_taches_courrier ON taches(courrier_id) WHERE courrier_id IS NOT NULL;
+
+-- =====================================================================
+--  20/10/2026 — Stock de chemises à rabat (Administratif & RH). Idempotent.
+--  Stock = somme des mouvements (jamais un compteur modifiable à la main).
+--  5 couleurs physiques : bleu, doré, rouge, vert, violet (le gris « Conseil
+--  et divers » n'a pas de chemise). Sortie automatique à la création d'un
+--  dossier ; régularisation unique des dossiers déjà existants, après aperçu.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS stock_chemises_mouvements (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    couleur    VARCHAR(10) NOT NULL CHECK (couleur IN ('bleu','dore','rouge','vert','violet')),
+    quantite   INTEGER NOT NULL CHECK (quantite <> 0),
+    type       VARCHAR(14) NOT NULL CHECK (type IN ('initial','entree','ajustement','dossier','regularisation')),
+    dossier_id UUID REFERENCES dossiers(id) ON DELETE SET NULL,
+    motif      TEXT,
+    cree_par   UUID REFERENCES utilisateurs(id),
+    cree_le    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chemise_par_dossier ON stock_chemises_mouvements(dossier_id)
+  WHERE type IN ('dossier','regularisation') AND dossier_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chemises_couleur ON stock_chemises_mouvements(couleur, cree_le);
+
+CREATE TABLE IF NOT EXISTS stock_chemises_seuils (
+    couleur VARCHAR(10) PRIMARY KEY CHECK (couleur IN ('bleu','dore','rouge','vert','violet')),
+    seuil   INTEGER NOT NULL DEFAULT 50 CHECK (seuil >= 0)
+);
+INSERT INTO stock_chemises_seuils (couleur) VALUES ('bleu'),('dore'),('rouge'),('vert'),('violet')
+ON CONFLICT (couleur) DO NOTHING;
+
+-- Consulter : direction, administratrice générale, assistante, comptables, archiviste.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'stock.chemises.consulter', r IN ('associe','associe_fondateur','admin_general','assistante','comptable','assistant_comptable','archiviste')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+-- Gérer (initialiser, entrées, ajustements, régularisation, seuils) : associés, administratrice générale, assistante.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'stock.chemises.gerer', r IN ('associe','associe_fondateur','admin_general','assistante')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;

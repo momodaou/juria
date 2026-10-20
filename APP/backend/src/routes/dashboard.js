@@ -19,6 +19,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { estAutorise } = require("../permissions");
+const { etatStock } = require("../stockChemises");
 const { STATUT_FACTURATION_EXPR, SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
 const { DOUBLONS_CTE } = require("../doublons");
@@ -228,6 +229,16 @@ router.get("/", async (req, res) => {
            FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
            WHERE c.orientation = 'a_orienter' ${filtre} ORDER BY c.date_courrier ASC LIMIT 2`, args);
         courriersOrienterApercu = ca.rows;
+      }
+    }
+    // Stock de chemises bas (20/10/2026) : couleurs au niveau du seuil ou en dessous,
+    // seulement si le stock est initialisé et que le profil peut le consulter.
+    let chemisesBas = null;
+    if (await estAutorise(req.user.role, "stock.chemises.consulter", req.user.sub)) {
+      const init = await pool.query("SELECT 1 FROM stock_chemises_mouvements WHERE type = 'initial' LIMIT 1");
+      if (init.rowCount) {
+        const bas = (await etatStock(pool)).filter((s) => s.bas);
+        if (bas.length) chemisesBas = bas;
       }
     }
     // Doublons potentiels (26/09/2026) — voir DOUBLONS_CTE ci-dessus.
@@ -600,6 +611,7 @@ router.get("/", async (req, res) => {
       non_rentables_apercu: nonRentablesApercu,
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
+      chemises_stock_bas: chemisesBas,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,

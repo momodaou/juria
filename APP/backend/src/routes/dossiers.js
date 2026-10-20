@@ -13,6 +13,7 @@ const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanc
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
+const { deduireChemise } = require("../stockChemises");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -782,6 +783,9 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
        req.user.sub]
     );
 
+    // Stock de chemises (20/10/2026) : une chemise sort du stock à la création.
+    await deduireChemise(pool, rows[0], req.user.sub);
+
     // Parties adverses saisies au contrôle des conflits (étape 1 du
     // formulaire d'ouverture) : jusqu'ici aucune route ne les enregistrait
     // nulle part, elles disparaissaient après le contrôle — gap signalé
@@ -925,7 +929,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // client_id/mode_honoraires, nécessaires à ce calcul si le corps de la
     // requête ne les fournit pas.
     const { rows: [avant] } = await pool.query(
-      `SELECT ${CHAMPS_PROCEDURAUX_DOSSIER.join(", ")} FROM dossiers WHERE id = $1`,
+      `SELECT ${CHAMPS_PROCEDURAUX_DOSSIER.join(", ")}, couleur_chemise FROM dossiers WHERE id = $1`,
       [req.params.id]
     );
     if (!avant) return res.status(404).json({ error: "Dossier introuvable" });
@@ -1003,6 +1007,11 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       const existe = await pool.query("SELECT 1 FROM dossiers WHERE id = $1", [req.params.id]);
       if (!existe.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
       return res.status(409).json({ error: "Ce dossier a été modifié entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
+    }
+    // Qualification de la matière (IND gris → couleur physique) : la chemise sort
+    // du stock une seule fois (idempotent), jamais pour un simple changement de couleur.
+    if (avant && avant.couleur_chemise !== rows[0].couleur_chemise) {
+      await deduireChemise(pool, rows[0], req.user.sub, "Qualification de la matière");
     }
     const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_DOSSIER);
     if (Object.keys(changements).length) {

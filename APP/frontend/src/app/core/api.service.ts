@@ -74,6 +74,8 @@ export interface DashboardData {
   doublons_n: number | null;
   // Dépenses petite caisse engagées, à valider après coup (17/10/2026) — null sans depenses.decision.
   // Courriers reçus sans dossier, à orienter (17/10/2026) — null si rien à orienter pour ce profil.
+  // Couleurs de chemise au seuil ou en dessous (20/10/2026) — null si rien à signaler ou sans droit.
+  chemises_stock_bas: { couleur: string; quantite: number; seuil: number }[] | null;
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
   depenses_apres_coup_n: number | null;
@@ -851,6 +853,14 @@ export class ApiService {
   }
   // Annulation avec motif, historique des dotations, achats de vignettes (17/10/2026)
   annulerDepense(id: string, motif: string): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/${id}/annuler`, { motif }); }
+  // Stock de chemises à rabat (20/10/2026)
+  stockChemises(): Observable<any> { return this.http.get<any>(`${this.base}/api/stock-chemises`); }
+  mouvementsChemises(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/stock-chemises/mouvements`); }
+  initialiserStockChemises(quantites: Record<string, number>): Observable<any> { return this.http.post<any>(`${this.base}/api/stock-chemises/initialiser`, { quantites }); }
+  mouvementChemises(body: { couleur: string; type: string; quantite: number; motif?: string }): Observable<any> { return this.http.post<any>(`${this.base}/api/stock-chemises/mouvement`, body); }
+  seuilsChemises(seuils: Record<string, number>): Observable<any> { return this.http.put<any>(`${this.base}/api/stock-chemises/seuils`, seuils); }
+  apercuRegularisationChemises(): Observable<any> { return this.http.get<any>(`${this.base}/api/stock-chemises/regularisation`); }
+  appliquerRegularisationChemises(exclure: string[]): Observable<any> { return this.http.post<any>(`${this.base}/api/stock-chemises/regularisation`, { exclure }); }
   dotationsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/dotations`); }
   achatsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/achats`); }
   supprimerAchatVignettes(id: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/vignettes/achats/${id}`); }
