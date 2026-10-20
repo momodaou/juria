@@ -74,6 +74,20 @@ describe("Stock de chemises", () => {
     expect((await stock()).dore).toBe(avant.dore - 1);
   });
 
+  test("matière rectifiée : l'ancienne chemise est restituée, la nouvelle décomptée ; vers le gris, simple restitution", async () => {
+    const d = await dossier("CIV");
+    const avant = await stock();
+    const r = await request(app).put(`/api/dossiers/${d.id}`).set(auth(associe)).send({ code_matiere: "COM" });
+    expect(r.status).toBe(200);
+    const milieu = await stock();
+    expect(milieu.dore).toBe(avant.dore + 1);
+    expect(milieu.bleu).toBe(avant.bleu - 1);
+    await request(app).put(`/api/dossiers/${d.id}`).set(auth(associe)).send({ code_matiere: "IND" });
+    const fin = await stock();
+    expect(fin.bleu).toBe(avant.bleu);
+    expect(fin.dore).toBe(avant.dore + 1);
+  });
+
   test("régularisation : aperçu, exclusion, application unique", async () => {
     // Dossier « ancien » : on retire sa sortie pour simuler un dossier créé avant le stock.
     const ancien = await dossier("COM");

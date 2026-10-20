@@ -4019,3 +4019,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 20/10/2026 — Déploiement : stock de chemises à rabat
 - Accord de l'utilisateur. Migration (tables du stock + 2 permissions) appliquée en un import (`--user=postgres`), fichier temporaire supprimé. `deploy.sh both` lancé deux fois par erreur : révisions API `juria-00163-clg` puis `juria-00164-4qc`, frontend `juria-web-00216-fkr` puis `juria-web-00217-mfl` (même code ; la dernière sert). Vérifié : `/health` et `/` en `200`.
 - À faire côté utilisateur : initialiser le stock (Administratif & RH) après confirmation « jaune » = doré, puis lancer la régularisation des dossiers existants.
+
+## 20/10/2026 — Stock de chemises : suivi d'une rectification de matière
+- Question de l'utilisateur : le stock se réajuste-t-il si la matière est rectifiée après la création ? Constat : seul le cas IND → matière était couvert ; un passage entre deux couleurs physiques (ex. civil doré → commercial bleu) laissait la chemise décomptée sur l'ancienne couleur.
+- Corrigé : `ajusterChemiseDossier` (`APP/backend/src/stockChemises.js`) — si la couleur change, la chemise de l'ancienne couleur est restituée (+1) et la nouvelle décomptée (−1), en deux mouvements d'ajustement rattachés au dossier ; vers le gris, simple restitution. Aucune migration. Tests **641/641**. Non déployé (code backend seul).
+- Cas non couvert : un dossier exclu de la régularisation (pas de chemise) dont la couleur change serait décompté à ce moment-là.

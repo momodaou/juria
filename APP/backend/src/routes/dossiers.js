@@ -13,7 +13,7 @@ const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanc
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
-const { deduireChemise } = require("../stockChemises");
+const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -1008,10 +1008,10 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       if (!existe.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
       return res.status(409).json({ error: "Ce dossier a été modifié entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
     }
-    // Qualification de la matière (IND gris → couleur physique) : la chemise sort
-    // du stock une seule fois (idempotent), jamais pour un simple changement de couleur.
+    // Matière rectifiée ou qualifiée (IND → matière) : le stock de chemises suit
+    // le changement de couleur (restitution de l'ancienne, sortie de la nouvelle).
     if (avant && avant.couleur_chemise !== rows[0].couleur_chemise) {
-      await deduireChemise(pool, rows[0], req.user.sub, "Qualification de la matière");
+      await ajusterChemiseDossier(pool, rows[0], req.user.sub);
     }
     const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_DOSSIER);
     if (Object.keys(changements).length) {

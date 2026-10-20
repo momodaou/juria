@@ -33,6 +33,37 @@ async function deduireChemise(db, dossier, userId, motif = "Création du dossier
   }
 }
 
+// Rectification de la matière d'un dossier : si la couleur de chemise change,
+// la chemise déjà décomptée est restituée et la nouvelle est décomptée (deux
+// mouvements d'ajustement rattachés au dossier, l'historique reste lisible).
+// Sans mouvement antérieur pour ce dossier, c'est la première sortie.
+async function ajusterChemiseDossier(db, dossier, userId) {
+  try {
+    const init = await db.query("SELECT 1 FROM stock_chemises_mouvements WHERE type = 'initial' LIMIT 1");
+    if (!init.rowCount) return;
+    const cible = couleurStock(dossier.couleur_chemise);
+    const { rows: [actuel] } = await db.query(
+      `SELECT couleur FROM stock_chemises_mouvements WHERE dossier_id = $1
+       GROUP BY couleur HAVING sum(quantite) < 0`, [dossier.id]);
+    const dejaSuivi = (await db.query("SELECT 1 FROM stock_chemises_mouvements WHERE dossier_id = $1 LIMIT 1", [dossier.id])).rowCount > 0;
+    if (!dejaSuivi) { await deduireChemise(db, dossier, userId, "Qualification de la matière"); return; }
+    if ((actuel ? actuel.couleur : null) === cible) return;
+    const motif = "Matière du dossier rectifiée";
+    if (actuel) {
+      await db.query(
+        `INSERT INTO stock_chemises_mouvements (couleur, quantite, type, dossier_id, motif, cree_par)
+         VALUES ($1, 1, 'ajustement', $2, $3, $4)`, [actuel.couleur, dossier.id, motif + " (chemise restituée)", userId || null]);
+    }
+    if (cible) {
+      await db.query(
+        `INSERT INTO stock_chemises_mouvements (couleur, quantite, type, dossier_id, motif, cree_par)
+         VALUES ($1, -1, 'ajustement', $2, $3, $4)`, [cible, dossier.id, motif + " (nouvelle chemise)", userId || null]);
+    }
+  } catch (e) {
+    console.error("Ajustement de chemise impossible :", e.message);
+  }
+}
+
 async function etatStock(db) {
   const { rows } = await db.query(
     `SELECT s.couleur, s.seuil, COALESCE(sum(m.quantite), 0)::int AS quantite
@@ -46,4 +77,4 @@ async function etatStock(db) {
     .sort((a, b) => ordre[a.couleur] - ordre[b.couleur]);
 }
 
-module.exports = { COULEURS, couleurStock, deduireChemise, etatStock };
+module.exports = { COULEURS, couleurStock, deduireChemise, ajusterChemiseDossier, etatStock };
