@@ -170,8 +170,9 @@ import { libelleRole } from '../../core/roles';
               <div>
                 <div class="etiquette-num">{{ d.numero }}</div>
                 <div class="etiquette-intitule">{{ d.intitule }}</div>
-                <div class="etiquette-sub">{{ d.client_nom }}{{ d.juridiction ? ' · ' + abregeJuridiction(d.juridiction) : '' }}</div>
-                <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ d.couleur_chemise || '—' }}</b></div>
+                <div class="etiquette-client"><span class="etiquette-lbl">Client :</span> <b>{{ d.client_nom }}</b></div>
+                @if (d.juridiction) { <div class="etiquette-sub"><span class="etiquette-lbl">Juridiction :</span> {{ abregeJuridiction(d.juridiction) }}</div> }
+                <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ libelleCouleur(d.couleur_chemise) }}</b></div>
               </div>
             </div>
           </div>
@@ -1084,6 +1085,8 @@ import { libelleRole } from '../../core/roles';
     .etiquette-corps{display:inline-flex;gap:14px;align-items:center;padding:12px 16px}
     .etiquette-num{font-size:var(--fs-xl);font-weight:700;color:#1F2A44;letter-spacing:1px;font-family:ui-monospace,monospace}
     .etiquette-intitule{font-size:var(--fs-base);font-weight:600;margin-top:2px}
+    .etiquette-client{font-size:var(--fs-base);margin-top:3px;line-height:1.25}
+    .etiquette-lbl{color:var(--slate);font-weight:400}
     .etiquette-sub{font-size:var(--fs-sm);color:var(--slate);margin-top:1px}
     .etiquette-chemise{font-size:var(--fs-xs);margin-top:4px}
     tr.urgent td{background:#fff5f4}
@@ -1285,6 +1288,11 @@ export class DossierDetailComponent implements OnInit {
     orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6', dore: '#C89938',
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
+  // Nom de la couleur à afficher (le code `dore` s'écrit « Doré »).
+  libelleCouleur(couleur: string | null | undefined): string {
+    const noms: Record<string, string> = { bleu: 'Bleu', dore: 'Doré', rouge: 'Rouge', vert: 'Vert', violet: 'Violet', gris: 'Gris', jaune: 'Jaune', orange: 'Orange' };
+    return couleur ? (noms[couleur] ?? couleur) : '—';
+  }
 
   // 05/10/2026 — étiquette : la juridiction remplace l'avocat responsable
   // sur la ligne « Client · ... » (demande explicite de l'utilisateur,
@@ -1327,10 +1335,10 @@ export class DossierDetailComponent implements OnInit {
   imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }): void {
     const w = window.open('', '_print_etiquette', 'width=420,height=260');
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
-    // 05/10/2026 — juridiction (abrégée) à la place de l'avocat responsable
-    // sur la ligne de sous-titre (demande explicite de l'utilisateur).
-    const sousTitre = [d.client_nom, this.abregeJuridiction(d.juridiction) !== '—' ? this.abregeJuridiction(d.juridiction) : null]
-      .filter(Boolean).map((t) => this.echapperHtml(t as string)).join(' · ');
+    // 20/10/2026 — le client a sa propre ligne « Client : nom » (le nom peut passer
+    // sur deux lignes au lieu d'être tronqué), la juridiction (abrégée) la sienne.
+    const client = this.echapperHtml(d.client_nom ?? '—');
+    const juridiction = this.abregeJuridiction(d.juridiction) !== '—' ? this.echapperHtml(this.abregeJuridiction(d.juridiction)) : '';
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
       /* 29/09/2026 — @page en taille personnalisée (108x59mm) abandonné :
          constaté en réel que la plupart des imprimantes de bureau chargées
@@ -1356,7 +1364,9 @@ export class DossierDetailComponent implements OnInit {
       .texte{min-width:0;overflow:hidden}
       .num{font-size:19px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .intitule{font-size:15px;font-weight:600;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
-      .sub{font-size:13px;color:#6B7280;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .client{font-size:13px;margin-top:5px;line-height:1.25;color:#1F2A44;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+      .lbl{color:#6B7280;font-weight:400}
+      .sub{font-size:12px;color:#1F2A44;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .chemise{font-size:12px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
@@ -1366,8 +1376,9 @@ export class DossierDetailComponent implements OnInit {
         <div class="texte">
           <div class="num">${this.echapperHtml(d.numero)}</div>
           <div class="intitule">${this.echapperHtml(d.intitule)}</div>
-          <div class="sub">${sousTitre}</div>
-          <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(d.couleur_chemise || '—')}</b></div>
+          <div class="client"><span class="lbl">Client :</span> <b>${client}</b></div>
+          ${juridiction ? `<div class="sub"><span class="lbl">Juridiction :</span> ${juridiction}</div>` : ''}
+          <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(this.libelleCouleur(d.couleur_chemise))}</b></div>
         </div>
       </div></div>
       <div class="note">Découper le long du pointillé (100 x 60mm) et coller dans la zone réservée de la chemise.</div>
