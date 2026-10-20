@@ -2,7 +2,8 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService } from '../../core/api.service';
+import { ApiService, MoyenPaiement } from '../../core/api.service';
+import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
@@ -11,7 +12,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 @Component({
   selector: 'app-depenses',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent, ReglementFormComponent],
   template: `
     <header class="page-head">
       <div>
@@ -76,22 +77,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="form.libelle" name="libelle" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="form.montant" name="montant" /></div>
           <div><label>Date</label><input class="in" type="date" [(ngModel)]="form.date_depense" name="date" /></div>
-          <div>
-            <label>Compte</label>
-            <select class="in" [(ngModel)]="form.compte_id" name="compte">
-              <option value="">—</option>
-              @for (c of comptes(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }
-            </select>
-          </div>
-          <div>
-            <label>Mode de paiement</label>
-            <select class="in" [(ngModel)]="form.mode_paiement" name="mode">
-              <option value="">—</option>
-              <option value="virement">Virement</option><option value="especes">Espèces</option>
-              <option value="cheque">Chèque</option><option value="orange_money">Orange Money</option>
-              <option value="wave">Wave</option><option value="moov_money">Moov Money</option>
-            </select>
-          </div>
+          <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                              [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
           <div class="col2">
             <label>Nature de la charge</label>
             <select class="in" [(ngModel)]="form.nature" name="nature">
@@ -151,7 +138,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @for (d of depenses(); track d.id) {
             <tr [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
-              <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }</td>
+              <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }</td>
               <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
@@ -163,6 +150,21 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               </td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
+            @if (decaissementId() === d.id) {
+              <tr class="edition">
+                <td colspan="8">
+                  <b>Décaisser — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
+                  <p class="muted">Précisez le moyen de paiement et ses références : l'argent sort maintenant.</p>
+                  <div class="grid2">
+                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="decModele" [catalogue]="catalogue()" (validite)="decValide.set($event)"></app-reglement-form>
+                  </div>
+                  <div class="btns-ligne">
+                    <button class="btn" (click)="confirmerDecaissement(d)" [disabled]="!decValide() || decEnCours()">{{ decEnCours() ? 'Décaissement…' : 'Confirmer le décaissement' }}</button>
+                    <button class="lien" (click)="decaissementId.set(null)">Annuler</button>
+                  </div>
+                </td>
+              </tr>
+            }
             @if (editionId() === d.id) {
               <tr class="edition">
                 <td colspan="8">
@@ -191,22 +193,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
                     <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
-                    <div>
-                      <label>Compte</label>
-                      <select class="in" [(ngModel)]="editForm.compte_id" name="edCompte">
-                        <option value="">—</option>
-                        @for (c of comptes(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }
-                      </select>
-                    </div>
-                    <div>
-                      <label>Mode de paiement</label>
-                      <select class="in" [(ngModel)]="editForm.mode_paiement" name="edMode">
-                        <option value="">—</option>
-                        <option value="virement">Virement</option><option value="especes">Espèces</option>
-                        <option value="cheque">Chèque</option><option value="orange_money">Orange Money</option>
-                        <option value="wave">Wave</option><option value="moov_money">Moov Money</option>
-                      </select>
-                    </div>
+                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                                        [modele]="editForm" [catalogue]="catalogue()"></app-reglement-form>
                     <div class="col2">
                       <label>Nature de la charge</label>
                       <select class="in" [(ngModel)]="editForm.nature" name="edNature">
@@ -303,14 +291,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <div class="grid2">
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="engagement.montant" name="engMontant" /></div>
-          <div>
-            <label>Moyen de paiement</label>
-            <select class="in" [(ngModel)]="engagement.mode_paiement" name="engMode">
-              <option value="orange_money">Orange Money</option><option value="moov_money">Moov Money</option>
-              <option value="mobile_money">Mobile money (autre)</option><option value="virement">Virement</option>
-              <option value="cheque">Chèque</option><option value="especes">Espèces (exception)</option>
-            </select>
-          </div>
+          <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="engagement" [catalogue]="catalogue()" (validite)="engagementValide.set($event)"></app-reglement-form>
           <div>
             <label>Nature</label>
             <select class="in" [(ngModel)]="engagement.nature" name="engNature">
@@ -323,7 +304,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
           }
         </div>
-        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
+        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
         @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
         @if (erreur() && !afficherForm() && !editionId()) { <p class="err">{{ erreur() }}</p> }
       </section>
@@ -381,6 +362,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     </section>
   `,
   styles: [`
+    .btns-ligne{display:flex;gap:12px;align-items:center;margin-top:12px}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin:8px 0 0}
     tr.annulee td{color:var(--grey)} tr.annulee td:not(:last-child):not(:nth-last-child(2)){text-decoration:line-through}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
@@ -413,6 +395,10 @@ export class DepensesComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   readonly depenses = signal<any[]>([]);
   readonly comptes = signal<any[]>([]);
+  // Moyens de décaissement (20/10/2026) : liste unique servie par le serveur.
+  readonly catalogue = signal<MoyenPaiement[]>([]);
+  readonly engagementValide = signal(true);
+  libelleMoyen(code: string | null): string { return this.catalogue().find((m) => m.code === code)?.libelle ?? (code ?? '—'); }
   readonly caisse = signal<any | null>(null);
   readonly stockVignettes = signal(0);
   readonly seuilVignettes = signal(10);
@@ -444,6 +430,7 @@ export class DepensesComponent implements OnInit {
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
+    this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
     this.chargerCaisse();
     if (this.auth.peut('depenses.petite_caisse.doter')) { this.chargerRapprochements(); this.chargerDotations(); }
     this.chargerAchatsVignettes();
@@ -520,7 +507,7 @@ export class DepensesComponent implements OnInit {
       items.push({ label: 'Rejeter', action: () => this.decision(d, 'rejetee'), danger: true });
     }
     if (d.statut === 'validee' && this.auth.peut('depenses.decaisser')) {
-      items.push({ label: 'Décaisser', action: () => this.decaisser(d) });
+      items.push({ label: 'Décaisser', action: () => this.ouvrirDecaissement(d) });
     }
     if (this.auth.peut('depenses.decision') && (d.statut === 'validee' || d.statut === 'decaissee') && !d.annulee_le && !d.facture_id) {
       items.push({ label: 'Annuler (avec motif)', action: () => this.annulerDepense(d), danger: true });
@@ -688,10 +675,25 @@ export class DepensesComponent implements OnInit {
     });
   }
 
-  decaisser(d: any): void {
-    this.api.decaisserDepense(d.id).subscribe({
-      next: () => { this.charger(); this.chargerCaisse(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'),
+  // Décaissement (20/10/2026) : le moyen, le compte et les références sont précisés
+  // au moment où l'argent sort (préremplis depuis la dépense).
+  readonly decaissementId = signal<string | null>(null);
+  readonly decEnCours = signal(false);
+  readonly decValide = signal(false);
+  decModele: any = {};
+  ouvrirDecaissement(d: any): void {
+    this.erreur.set('');
+    this.decModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: { ...(d.references_paiement ?? {}) } };
+    this.decaissementId.set(d.id);
+  }
+  confirmerDecaissement(d: any): void {
+    if (this.decEnCours()) return;
+    this.erreur.set('');
+    this.decEnCours.set(true);
+    const m = this.decModele;
+    this.api.decaisserDepense(d.id, { mode_paiement: m.mode_paiement, compte_id: m.compte_id || null, references: m.references }).subscribe({
+      next: () => { this.decEnCours.set(false); this.decaissementId.set(null); this.charger(); this.chargerCaisse(); },
+      error: (e) => { this.decEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'); },
     });
   }
 
@@ -707,7 +709,7 @@ export class DepensesComponent implements OnInit {
     this.erreur.set('');
     this.editForm = {
       type: d.type, categorie: d.categorie, libelle: d.libelle, montant: d.montant,
-      date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '',
+      date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '', references: { ...(d.references_paiement ?? {}) },
       petite_caisse: d.petite_caisse, justificatif: d.justificatif, refacturable_client: d.refacturable_client,
       nature: d.nature ?? (d.dossier_id ? 'dossier' : 'cabinet'), dossier_id: d.dossier_id ?? null,
     };

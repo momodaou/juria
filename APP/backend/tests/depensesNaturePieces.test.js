@@ -75,7 +75,7 @@ describe("Pièces d'une dépense — plusieurs devis, un seul retenu, par le val
     const dep = await creerDepense(token);
     const id = dep.body.id;
     expect((await request(app).post(`/api/depenses/${id}/decision`).set(auth(token)).send({ statut: "validee" })).status).toBe(200);
-    expect((await request(app).post(`/api/depenses/${id}/decaisser`).set(auth(token))).status).toBe(200);
+    expect((await request(app).post(`/api/depenses/${id}/decaisser`).set(auth(token)).send({ mode_paiement: "virement" })).status).toBe(200);
     expect((await joindre(token, id, "devis")).status).toBe(409);
     const fac = await joindre(token, id, "facture", "facture.pdf");
     expect(fac.status).toBe(201);

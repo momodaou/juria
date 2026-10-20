@@ -5015,3 +5015,10 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_paiements_depot ON paiements(date_paiement) WHERE depot_statut = 'en_attente';
+
+-- =====================================================================
+--  20/10/2026 — Dépenses : références du moyen de paiement (bénéficiaire,
+--  n° d'opération, n° de chèque, identifiant de transaction…), validées côté
+--  serveur selon le moyen (backend/src/moyensPaiement.js). Idempotent.
+-- =====================================================================
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS references_paiement JSONB NOT NULL DEFAULT '{}'::jsonb;

@@ -153,7 +153,8 @@ async function chargerDonnees(pool, factureId) {
   }
 
   // Compte à créditer : celui choisi explicitement à l'émission, sinon le
-  // premier compte actif de fonctionnement/CARPA du cabinet (repli — pas de
+  // premier compte actif de fonctionnement du cabinet, jamais la CARPA (fonds de
+  // tiers, pas des honoraires) — repli : pas de
   // RIB inventé si aucun compte n'existe en base).
   let compte = null;
   if (fac.compte_reglement_id) {
@@ -161,7 +162,7 @@ async function chargerDonnees(pool, factureId) {
     compte = r.rows[0] || null;
   } else {
     const r = await pool.query(
-      "SELECT * FROM comptes_bancaires WHERE actif = TRUE AND type IN ('fonctionnement','carpa') ORDER BY type, intitule LIMIT 1"
+      "SELECT * FROM comptes_bancaires WHERE actif = TRUE AND type = 'fonctionnement' ORDER BY intitule LIMIT 1"
     );
     compte = r.rows[0] || null;
   }

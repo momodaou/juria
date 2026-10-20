@@ -8,6 +8,7 @@ const { parserNumeros } = require("../vignettesNumeros");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit } = require("../audit");
+const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
@@ -51,7 +52,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement,
+      `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement, d.references_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
               d.facture_id, d.dossier_id, d.nature, c.intitule AS compte,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
@@ -105,18 +106,24 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
+  // Moyen, compte compatible et références (non exigées avant le paiement effectif).
+  let regl = { valeurs: { mode_paiement: null, compte_id: b.compte_id || null, references: {} } };
+  if (b.mode_paiement) {
+    regl = await preparerDecaissement(pool, b, { exigerReferences: false });
+    if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id, recurrente,
-          soumis_par, cree_par)
+          soumis_par, cree_par, references_paiement)
        VALUES ($14,$1::type_depense,COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5,current_date),
-               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13)
+               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13,$15::jsonb)
        RETURNING id, nature, type, categorie, libelle, montant, statut`,
-      [b.type, b.categorie, b.libelle, b.montant, b.date_depense || null, b.mode_paiement || null,
-       b.compte_id || null, b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : false,
-       n.dossierId, b.recurrente, req.user.sub, n.nature]
+      [b.type, b.categorie, b.libelle, b.montant, b.date_depense || null, regl.valeurs.mode_paiement,
+       regl.valeurs.compte_id, b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : false,
+       n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references)]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -139,6 +146,9 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
   if (!b.mode_paiement) return res.status(400).json({ error: "Moyen de paiement requis (mobile money recommandé)." });
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
+  // L'argent sort tout de suite : les références du moyen sont exigées.
+  const regl = await preparerDecaissement(pool, b, { exigerReferences: true });
+  if (regl.erreur) return res.status(400).json({ error: regl.erreur });
   try {
     const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
     const plafond = par.rows[0]?.plafond;
@@ -160,13 +170,13 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id,
-          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut)
+          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement)
        VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
                TRUE,COALESCE($8,false),$9,$10,
-               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider')
+               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb)
        RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
-      [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, b.mode_paiement, b.compte_id || null,
-       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub]
+      [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
+       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub, JSON.stringify(regl.valeurs.references)]
     );
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
       details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde }, ip: req.ip });
@@ -338,6 +348,13 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
     if (actuelle.statut !== "soumise") {
       return res.status(409).json({ error: "Dépense déjà traitée — non modifiable." });
     }
+    // Moyen fourni : compte et références revalidés (compte vidé si le moyen n'en a pas).
+    const modeFourni = !!b.mode_paiement;
+    let regl = { valeurs: { mode_paiement: null, compte_id: null, references: {} } };
+    if (modeFourni) {
+      regl = await preparerDecaissement(pool, b, { exigerReferences: false });
+      if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+    }
     const { rows } = await pool.query(
       `UPDATE depenses SET
          type = COALESCE($1::type_depense, type),
@@ -346,7 +363,8 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
          montant = COALESCE($4, montant),
          date_depense = COALESCE($5, date_depense),
          mode_paiement = COALESCE($6::mode_paiement, mode_paiement),
-         compte_id = COALESCE($7, compte_id),
+         compte_id = CASE WHEN $14::boolean THEN $7::uuid ELSE compte_id END,
+         references_paiement = CASE WHEN $14::boolean THEN $15::jsonb ELSE references_paiement END,
          petite_caisse = COALESCE($8, petite_caisse),
          justificatif = COALESCE($9, justificatif),
          refacturable_client = COALESCE($10, refacturable_client),
@@ -355,8 +373,9 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
        WHERE id = $12 AND statut = 'soumise'
        RETURNING id, type, categorie, libelle, montant, statut`,
       [b.type || null, b.categorie || null, b.libelle || null, b.montant ?? null,
-       b.date_depense || null, b.mode_paiement || null, b.compte_id || null,
-       b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : (b.refacturable_client === undefined ? undefined : false), n.dossierId, req.params.id, n.nature]
+       b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
+       b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : (b.refacturable_client === undefined ? undefined : false), n.dossierId, req.params.id, n.nature,
+       modeFourni, JSON.stringify(regl.valeurs.references)]
     );
     if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps — non modifiable." });
     res.json(rows[0]);
@@ -505,11 +524,25 @@ router.post("/:id/decision", requirePermission("depenses.decision"), async (req,
 
 // POST /api/depenses/:id/decaisser  (comptabilité : comptable/associe/admin)
 router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (req, res) => {
+  const b = req.body || {};
   try {
+    const { rows: [d] } = await pool.query(
+      "SELECT statut, mode_paiement, compte_id, references_paiement FROM depenses WHERE id = $1", [req.params.id]);
+    if (!d || d.statut !== "validee") return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
+    // Le moyen, le compte et les références peuvent être précisés ou corrigés au
+    // décaissement ; les références du moyen sont alors exigées (l'argent sort).
+    const regl = await preparerDecaissement(pool, {
+      mode_paiement: b.mode_paiement || d.mode_paiement,
+      compte_id: b.compte_id !== undefined ? b.compte_id : d.compte_id,
+      references: b.references !== undefined ? b.references : d.references_paiement,
+    }, { exigerReferences: true });
+    if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+    const v = regl.valeurs;
     const { rows } = await pool.query(
-      `UPDATE depenses SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now()
+      `UPDATE depenses SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now(),
+              mode_paiement = $3::mode_paiement, compte_id = $4::uuid, references_paiement = $5::jsonb
        WHERE id = $2 AND statut = 'validee' RETURNING id, statut`,
-      [req.user.sub, req.params.id]
+      [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references)]
     );
     if (!rows[0]) return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
     res.json(rows[0]);
@@ -517,6 +550,19 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// GET /api/depenses/moyens-paiement — moyens de décaissement et leurs références (20/10/2026).
+router.get("/moyens-paiement", (req, res) => {
+  res.json(DECAISSEMENT.map((m) => ({ code: m.code, libelle: m.libelle, famille: m.famille, frais: false, champs: m.champs })));
+});
+
+// GET /api/depenses/moyens-paiement/:code/comptes — comptes pouvant servir à ce moyen.
+router.get("/moyens-paiement/:code/comptes", async (req, res) => {
+  const moyen = DECAISSEMENT_PAR_CODE[req.params.code];
+  if (!moyen) return res.status(404).json({ error: "Moyen inconnu" });
+  try { res.json(await comptesEligibles(pool, moyen)); }
+  catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // GET /api/depenses/comptes

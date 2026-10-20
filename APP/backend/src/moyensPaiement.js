@@ -34,6 +34,50 @@ const MOYENS = [
 ];
 const PAR_CODE = Object.fromEntries(MOYENS.map((m) => [m.code, m]));
 
+// ---------------------------------------------------------------------
+// Moyens de DÉCAISSEMENT (dépenses du cabinet, 20/10/2026) : ce que le
+// cabinet paie. Mêmes familles que l'encaissement, références symétriques
+// (bénéficiaire, n° d'opération…). Le compte débité est un compte de
+// fonctionnement ou un portefeuille du cabinet — jamais la CARPA (fonds de
+// tiers) ; les espèces sortent de la caisse, sans compte.
+// ---------------------------------------------------------------------
+const DECAISSEMENT = [
+  { code: "virement", libelle: "Virement", famille: "virement", comptes: "banque_fonctionnement",
+    champs: [champ("beneficiaire", "Bénéficiaire"), champ("numero_operation", "N° de l'opération")] },
+  { code: "cheque", libelle: "Chèque", famille: "cheque", comptes: "banque_fonctionnement",
+    champs: [champ("numero_cheque", "N° du chèque", T.texte, true), champ("beneficiaire", "Bénéficiaire", T.texte, true), champ("date_cheque", "Date du chèque", T.date)] },
+  { code: "especes", libelle: "Espèces (caisse)", famille: "especes", comptes: "aucun",
+    champs: [champ("beneficiaire", "Bénéficiaire"), champ("numero_piece", "N° du reçu ou de la pièce")] },
+  ...[["orange_money", "Orange Money"], ["moov_money", "Moov Money"], ["wave", "Wave"], ["sama_money", "Sama Money"]].map(([code, libelle]) => ({
+    code, libelle, famille: "mobile", comptes: "mobile",
+    champs: [champ("id_transaction", "Identifiant de la transaction", T.texte, true), champ("beneficiaire", "Bénéficiaire"), champ("numero_beneficiaire", "Numéro du bénéficiaire", T.tel)],
+  })),
+];
+const DECAISSEMENT_PAR_CODE = Object.fromEntries(DECAISSEMENT.map((m) => [m.code, m]));
+
+// Valide le moyen, le compte et les références d'une dépense. Les références
+// ne sont exigées que lorsque l'argent sort (engagement, décaissement).
+async function preparerDecaissement(db, b, { exigerReferences = false } = {}) {
+  const moyen = DECAISSEMENT_PAR_CODE[b.mode_paiement];
+  if (!moyen) return { erreur: "Moyen de paiement invalide : choisissez dans la liste." };
+  const src = b.references && typeof b.references === "object" ? b.references : {};
+  const references = {};
+  for (const c of moyen.champs) {
+    const v = src[c.cle] == null ? "" : String(src[c.cle]).trim();
+    if (!v) { if (c.requis && exigerReferences) return { erreur: `${c.libelle} : champ requis pour ${moyen.libelle}.` }; continue; }
+    if (c.type === T.date && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { erreur: `${c.libelle} : date invalide.` };
+    if (c.type === T.tel && !/^[+\d][\d\s.\-]{5,19}$/.test(v)) return { erreur: `${c.libelle} : numéro invalide.` };
+    references[c.cle] = v;
+  }
+  let compteId = null;
+  if (moyen.comptes !== "aucun" && b.compte_id) {
+    const eligibles = await comptesEligibles(db, moyen);
+    if (!eligibles.some((c) => c.id === b.compte_id)) return { erreur: "Ce compte ne peut pas servir à ce moyen de paiement." };
+    compteId = b.compte_id;
+  }
+  return { valeurs: { mode_paiement: moyen.code, compte_id: compteId, references } };
+}
+
 // Anciennes valeurs de l'ENUM, encore lisibles dans l'historique.
 const LIBELLES_ANCIENS = { mobile_money: "Mobile money (ancien)", autre: "Autre (ancien)" };
 const libelleMoyen = (code) => (PAR_CODE[code] ? PAR_CODE[code].libelle : LIBELLES_ANCIENS[code] || code);
@@ -42,7 +86,9 @@ const libelleMoyen = (code) => (PAR_CODE[code] ? PAR_CODE[code].libelle : LIBELL
 async function comptesEligibles(db, moyen) {
   const params = [];
   let filtre;
-  if (moyen.comptes === "banque") { params.push(BANQUES); filtre = "type = ANY($1::type_compte[])"; }
+  if (moyen.comptes === "aucun") return [];
+  if (moyen.comptes === "banque_fonctionnement") { params.push(["fonctionnement"]); filtre = "type = ANY($1::type_compte[])"; }
+  else if (moyen.comptes === "banque") { params.push(BANQUES); filtre = "type = ANY($1::type_compte[])"; }
   else if (moyen.comptes === "mobile") { params.push(moyen.code); filtre = "type = 'mobile_money' AND operateur::text = $1"; }
   else { params.push([...BANQUES, "mobile_money"]); filtre = "type = ANY($1::type_compte[])"; }
   const { rows } = await db.query(`SELECT id, intitule FROM comptes_bancaires WHERE actif = TRUE AND ${filtre} ORDER BY intitule`, params);
@@ -106,4 +152,4 @@ function referenceCourte(references) {
   return null;
 }
 
-module.exports = { MOYENS, PAR_CODE, OPERATEURS_MM, libelleMoyen, comptesEligibles, preparerReglement, referenceCourte };
+module.exports = { MOYENS, PAR_CODE, OPERATEURS_MM, DECAISSEMENT, DECAISSEMENT_PAR_CODE, libelleMoyen, comptesEligibles, preparerReglement, preparerDecaissement, referenceCourte };

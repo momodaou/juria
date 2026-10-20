@@ -92,7 +92,7 @@ async function creerDeboursDecaisse(dossierId, overrides = {}) {
     });
   const id = creation.body.id;
   await request(app).post(`/api/depenses/${id}/decision`).set("Authorization", `Bearer ${token}`).send({ statut: "validee" });
-  await request(app).post(`/api/depenses/${id}/decaisser`).set("Authorization", `Bearer ${token}`);
+  await request(app).post(`/api/depenses/${id}/decaisser`).set("Authorization", `Bearer ${token}`).send({ mode_paiement: "virement" });
   return id;
 }
 

@@ -25,7 +25,8 @@ function validerCompte(b) {
   }
   const intitule = texte(b.intitule);
   if (!intitule) return { erreur: "L'intitulé est requis." };
-  const afficher = b.afficher_sur_factures === undefined || b.afficher_sur_factures === null ? true : !!b.afficher_sur_factures;
+  // Par défaut affiché sur les factures, sauf la CARPA (fonds de tiers : jamais un compte d'honoraires).
+  const afficher = b.afficher_sur_factures === undefined || b.afficher_sur_factures === null ? type !== "carpa" : !!b.afficher_sur_factures;
 
   if (type === "mobile_money") {
     if (!OPERATEURS.includes(b.operateur)) return { erreur: "L'opérateur est requis pour un compte mobile money." };

@@ -51,7 +51,7 @@ describe("Annulation d'une dépense", () => {
 
   test("décaissée aussi ; sans motif, par un non-associé ou une dépense soumise : refusé", async () => {
     const id = await depenseDecaissee();
-    await request(app).post(`/api/depenses/${id}/decaisser`).set(auth(associe));
+    await request(app).post(`/api/depenses/${id}/decaisser`).set(auth(associe)).send({ mode_paiement: "virement" });
     expect((await annuler(associe, id, "")).status).toBe(400);
     expect((await annuler(collab, id, "x")).status).toBe(403);
     expect((await annuler(associe, id, "Montant erroné")).body.statut_avant_annulation).toBe("decaissee");

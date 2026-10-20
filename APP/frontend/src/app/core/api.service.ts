@@ -541,6 +541,11 @@ export class ApiService {
   comptesPourMoyen(code: string): Observable<{ id: string; intitule: string }[]> {
     return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/factures/moyens-paiement/${code}/comptes`);
   }
+  // Moyens de décaissement des dépenses (20/10/2026).
+  moyensDecaissement(): Observable<MoyenPaiement[]> { return this.http.get<MoyenPaiement[]>(`${this.base}/api/depenses/moyens-paiement`); }
+  comptesPourDecaissement(code: string): Observable<{ id: string; intitule: string }[]> {
+    return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/depenses/moyens-paiement/${code}/comptes`);
+  }
   especesADeposer(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/factures/especes-a-deposer`); }
   deposerEspeces(paiementId: string, body: { compte_id: string; date_depot?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/paiements/${paiementId}/depot`, body);
@@ -848,8 +853,8 @@ export class ApiService {
   decisionDepense(id: string, payload: { statut: 'validee' | 'rejetee'; motif_rejet?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decision`, payload);
   }
-  decaisserDepense(id: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, {});
+  decaisserDepense(id: string, body: any = {}): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, body);
   }
   majDepense(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/depenses/${id}`, payload);
