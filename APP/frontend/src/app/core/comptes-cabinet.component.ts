@@ -16,6 +16,12 @@ import { MenuActionsComponent, ActionMenuItem } from './menu-actions.component';
       <h3>Comptes du cabinet</h3>
       <p class="muted">Comptes qui reçoivent les règlements des clients : banque et mobile money. La caisse n'en fait pas partie, elle ne sert qu'aux dépenses. Un compte désactivé n'apparaît plus dans les sélecteurs de règlement mais reste visible ici (historique).</p>
 
+      <!-- 20/10/2026 — déplacé ici (au-dessus du tableau) : affiché seulement au
+           bas du formulaire Ajouter/Modifier, un refus de suppression (compte déjà
+           référencé par un paiement/une dépense/une facture) passait inaperçu,
+           l'utilisateur devant faire défiler toute la page pour le voir. -->
+      @if (message()) { <p class="msg" [class.msg-err]="messageErreur()">{{ message() }}</p> }
+
       @if (comptes().length) {
         <div class="table-scroll">
           <table>
@@ -97,10 +103,11 @@ import { MenuActionsComponent, ActionMenuItem } from './menu-actions.component';
           </div>
         </div>
       }
-      @if (message()) { <p class="muted" style="margin-top:8px">{{ message() }}</p> }
     </section>
   `,
   styles: [`
+    .msg{font-size:var(--fs-base);color:var(--slate);margin:0 0 14px}
+    .msg-err{color:var(--red);font-weight:600}
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:600px}
@@ -124,6 +131,7 @@ export class ComptesCabinetComponent implements OnInit {
 
   readonly comptes = signal<CompteBancaire[]>([]);
   readonly message = signal('');
+  readonly messageErreur = signal(false);
   readonly doublons = signal<any[]>([]);
   readonly enCours = signal(false);
   readonly enEditionId = signal<string | null>(null);
@@ -146,6 +154,7 @@ export class ComptesCabinetComponent implements OnInit {
     this.famille_.set(f);
     this.form = this.formVide(f);
     this.message.set('');
+    this.messageErreur.set(false);
     this.doublons.set([]);
   }
 
@@ -173,6 +182,7 @@ export class ComptesCabinetComponent implements OnInit {
 
   modifier(c: CompteBancaire): void {
     this.message.set('');
+    this.messageErreur.set(false);
     this.doublons.set([]);
     this.famille_.set(c.type === 'mobile_money' ? 'mobile' : 'banque');
     this.form = { ...c, operateur: c.operateur ?? '' };
@@ -183,17 +193,19 @@ export class ComptesCabinetComponent implements OnInit {
     this.enEditionId.set(null);
     this.form = this.formVide(this.famille_());
     this.message.set('');
+    this.messageErreur.set(false);
   }
 
   enregistrer(): void {
     this.message.set('');
+    this.messageErreur.set(false);
     this.doublons.set([]);
     const id = this.enEditionId();
     if (id) {
       this.enCours.set(true);
       this.api.majCompteBancaire(id, this.form).subscribe({
         next: () => { this.enCours.set(false); this.annuler(); this.message.set('Compte modifié.'); this.charger(); },
-        error: (e) => { this.enCours.set(false); this.message.set(e?.error?.error ?? 'Modification impossible.'); },
+        error: (e) => { this.enCours.set(false); this.message.set(e?.error?.error ?? 'Modification impossible.'); this.messageErreur.set(true); },
       });
       return;
     }
@@ -209,23 +221,26 @@ export class ComptesCabinetComponent implements OnInit {
     this.enCours.set(true);
     this.api.creerCompteBancaire(this.form).subscribe({
       next: () => { this.enCours.set(false); this.form = this.formVide(this.famille_()); this.message.set('Compte ajouté.'); this.charger(); },
-      error: (e) => { this.enCours.set(false); this.message.set(e?.error?.error ?? 'Ajout impossible.'); },
+      error: (e) => { this.enCours.set(false); this.message.set(e?.error?.error ?? 'Ajout impossible.'); this.messageErreur.set(true); },
     });
   }
 
   basculer(c: CompteBancaire): void {
+    this.message.set('');
+    this.messageErreur.set(false);
     this.api.majCompteBancaire(c.id, { actif: !c.actif }).subscribe({
       next: () => this.charger(),
-      error: (e) => this.message.set(e?.error?.error ?? 'Mise à jour impossible.'),
+      error: (e) => { this.message.set(e?.error?.error ?? 'Mise à jour impossible.'); this.messageErreur.set(true); },
     });
   }
 
   supprimer(c: CompteBancaire): void {
     if (!confirm('Supprimer définitivement le compte « ' + c.intitule + ' » ? Cette action est irréversible.')) return;
     this.message.set('');
+    this.messageErreur.set(false);
     this.api.supprimerCompteBancaire(c.id).subscribe({
       next: () => this.charger(),
-      error: (e) => this.message.set(e?.error?.error ?? 'Suppression impossible : désactivez le compte à la place.'),
+      error: (e) => { this.message.set(e?.error?.error ?? 'Suppression impossible : désactivez le compte à la place.'); this.messageErreur.set(true); },
     });
   }
 }
