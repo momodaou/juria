@@ -546,7 +546,8 @@ export class FacturationComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
-    this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
+    // Comptes qui reçoivent un règlement : banque et mobile money (ni caisse ni anciens types).
+    this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c.filter((x) => ['fonctionnement', 'carpa', 'mobile_money'].includes(x.type))), error: () => {} });
     this.api.clientsAbonnements().subscribe({ next: (a) => this.abonnements.set(a), error: () => {} });
     this.api.listesValeurs('periodicite').subscribe({ next: (l) => this.periodicitesAbonnement.set(l) });
     const params = this.route.snapshot.queryParamMap;

@@ -57,9 +57,9 @@ describe("GET /api/dashboard/detail/doublons — détection par catégorie", () 
   test("2 comptes bancaires de même intitulé sont détectés (aucune contrainte en base)", async () => {
     const intitule = `Compte doublon test ${Date.now()}`;
     await request(app).post("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`)
-      .send({ intitule, type: "fonctionnement" });
+      .send({ intitule, type: "fonctionnement", banque: "BDM SA", numero: "000111222333" });
     await request(app).post("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`)
-      .send({ intitule, type: "fonctionnement" });
+      .send({ intitule, type: "fonctionnement", banque: "BDM SA", numero: "000111222333" });
     const detail = await request(app).get("/api/dashboard/detail/doublons").set("Authorization", `Bearer ${token}`);
     const trouve = detail.body.find((d) => d.categorie === "Compte bancaire" && d.description === intitule);
     expect(trouve).toBeDefined();

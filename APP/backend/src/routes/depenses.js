@@ -522,7 +522,7 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
 // GET /api/depenses/comptes
 router.get("/comptes", async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT id, intitule, type, banque, operateur FROM comptes_bancaires WHERE actif = TRUE ORDER BY intitule");
+    const { rows } = await pool.query("SELECT id, intitule, type, banque, operateur, telephone FROM comptes_bancaires WHERE actif = TRUE ORDER BY intitule");
     res.json(rows);
   } catch (e) {
     console.error(e);

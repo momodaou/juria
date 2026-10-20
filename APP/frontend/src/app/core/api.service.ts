@@ -152,6 +152,8 @@ export interface CompteBancaire {
   banque: string | null;
   numero: string | null;
   operateur: string | null;
+  telephone?: string | null;
+  afficher_sur_factures?: boolean;
   actif: boolean;
   code_banque?: string | null;
   code_guichet?: string | null;

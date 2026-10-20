@@ -18,6 +18,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { validerCompte, TYPES_ACTIFS } = require("../comptesCabinet");
 const router = express.Router();
 
 // GET /api/parametres/honoraires — lecture ouverte à tout utilisateur
@@ -108,9 +109,9 @@ router.put("/cabinet", requirePermission("parametres.cabinet.modifier"), async (
 router.get("/comptes-bancaires", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, intitule, type, banque, numero, operateur, actif,
+      `SELECT id, intitule, type, banque, numero, operateur, telephone, afficher_sur_factures, actif,
               code_banque, code_guichet, cle_rib, iban, bic
-       FROM comptes_bancaires ORDER BY actif DESC, intitule`
+       FROM comptes_bancaires ORDER BY actif DESC, type, intitule`
     );
     res.json(rows);
   } catch (e) {
@@ -129,7 +130,7 @@ router.get("/comptes-bancaires/verifier-doublon", requirePermission("parametres.
     const clauses = [];
     const params = [];
     if (intitule) { params.push(intitule); clauses.push(`intitule ILIKE $${params.length}`); }
-    if (numero) { params.push(numero); clauses.push(`numero = $${params.length}`); }
+    if (numero) { params.push(numero); clauses.push(`(numero = $${params.length} OR telephone = $${params.length})`); }
     const { rows } = await pool.query(
       `SELECT id, intitule, banque, numero FROM comptes_bancaires WHERE ${clauses.join(" OR ")}`,
       params
@@ -141,18 +142,20 @@ router.get("/comptes-bancaires/verifier-doublon", requirePermission("parametres.
   }
 });
 
-// POST /api/parametres/comptes-bancaires
+// POST /api/parametres/comptes-bancaires — deux familles (banque : fonctionnement
+// ou CARPA ; mobile money), validées et normalisées par comptesCabinet.js.
 router.post("/comptes-bancaires", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
-  const b = req.body || {};
-  if (!b.intitule || !b.type) return res.status(400).json({ error: "intitule et type requis" });
+  const v = validerCompte(req.body || {});
+  if (v.erreur) return res.status(400).json({ error: v.erreur });
+  const c = v.valeurs;
   try {
     const { rows } = await pool.query(
       `INSERT INTO comptes_bancaires
-         (intitule, type, banque, numero, operateur, code_banque, code_guichet, cle_rib, iban, bic)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (intitule, type, banque, numero, operateur, telephone, afficher_sur_factures, code_banque, code_guichet, cle_rib, iban, bic)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING id`,
-      [b.intitule, b.type, b.banque || null, b.numero || null, b.operateur || null,
-       b.code_banque || null, b.code_guichet || null, b.cle_rib || null, b.iban || null, b.bic || null]
+      [c.intitule, c.type, c.banque, c.numero, c.operateur, c.telephone, c.afficher_sur_factures,
+       c.code_banque, c.code_guichet, c.cle_rib, c.iban, c.bic]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -161,21 +164,35 @@ router.post("/comptes-bancaires", requirePermission("parametres.cabinet.modifier
   }
 });
 
-// PUT /api/parametres/comptes-bancaires/:id — tous champs optionnels,
-// y compris actif (désactivation plutôt que suppression : un compte déjà
-// référencé par des paiements/dépenses/factures ne doit pas disparaître).
+// PUT /api/parametres/comptes-bancaires/:id — modification complète d'un compte
+// (validée comme à la création) ou simple bascule { actif } (désactivation
+// plutôt que suppression : un compte déjà référencé ne doit pas disparaître).
+// Les anciens types (espèces, virement étranger) ne sont plus modifiables.
 router.put("/comptes-bancaires/:id", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
   const b = req.body || {};
-  const champs = ["intitule", "type", "banque", "numero", "operateur", "code_banque", "code_guichet", "cle_rib", "iban", "bic", "actif"];
-  const sets = champs.map((c, i) => `${c} = COALESCE($${i + 1}, ${c})`);
-  const params = champs.map((c) => (b[c] !== undefined ? b[c] : null));
   try {
-    const { rows } = await pool.query(
-      `UPDATE comptes_bancaires SET ${sets.join(", ")} WHERE id = $${champs.length + 1} RETURNING id`,
-      [...params, req.params.id]
+    const { rows: [existant] } = await pool.query("SELECT * FROM comptes_bancaires WHERE id = $1", [req.params.id]);
+    if (!existant) return res.status(404).json({ error: "Compte introuvable" });
+    const cles = Object.keys(b);
+    if (cles.length && cles.every((k) => k === "actif")) {
+      await pool.query("UPDATE comptes_bancaires SET actif = $1 WHERE id = $2", [!!b.actif, req.params.id]);
+      return res.json({ id: req.params.id });
+    }
+    if (!TYPES_ACTIFS.includes(existant.type) && !TYPES_ACTIFS.includes(b.type)) {
+      return res.status(400).json({ error: "Ancien type de compte : désactivez-le et créez un compte Banque ou Mobile money." });
+    }
+    const v = validerCompte({ ...existant, ...b });
+    if (v.erreur) return res.status(400).json({ error: v.erreur });
+    const c = v.valeurs;
+    await pool.query(
+      `UPDATE comptes_bancaires SET intitule=$1, type=$2, banque=$3, numero=$4, operateur=$5, telephone=$6,
+         afficher_sur_factures=$7, code_banque=$8, code_guichet=$9, cle_rib=$10, iban=$11, bic=$12,
+         actif = COALESCE($13::boolean, actif)
+       WHERE id = $14`,
+      [c.intitule, c.type, c.banque, c.numero, c.operateur, c.telephone, c.afficher_sur_factures,
+       c.code_banque, c.code_guichet, c.cle_rib, c.iban, c.bic, b.actif ?? null, req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Compte introuvable" });
-    res.json(rows[0]);
+    res.json({ id: req.params.id });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

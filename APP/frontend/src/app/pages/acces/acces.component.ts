@@ -1,7 +1,8 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, ParametresHonoraires, ParametresCabinet, CompteBancaire } from '../../core/api.service';
+import { ApiService, ParametresHonoraires, ParametresCabinet } from '../../core/api.service';
+import { ComptesCabinetComponent } from '../../core/comptes-cabinet.component';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { ROLES } from '../../core/roles';
@@ -9,7 +10,7 @@ import { ROLES } from '../../core/roles';
 @Component({
   selector: 'app-acces',
   standalone: true,
-  imports: [DatePipe, FormsModule, MenuActionsComponent],
+  imports: [DatePipe, FormsModule, MenuActionsComponent, ComptesCabinetComponent],
   template: `
     <header class="page-head">
       <div>
@@ -195,87 +196,7 @@ import { ROLES } from '../../core/roles';
           @if (cabinetMessage()) { <p class="muted" style="margin-top:8px">{{ cabinetMessage() }}</p> }
         </section>
 
-        <section class="panel">
-          <h3>Comptes bancaires du cabinet</h3>
-          <p class="muted">RIB imprimé sur la facture (bloc « informations de paiement »). Un compte désactivé n'apparaît plus dans les sélecteurs de règlement mais reste visible ici (historique).</p>
-          @if (comptes().length) {
-            <div class="table-scroll">
-            <table>
-              <tr><th>Intitulé</th><th>Type</th><th>Banque</th><th>Opérateur</th><th>N° compte / Tél.</th><th class="nowrap">Code banque</th><th class="nowrap">Code guichet</th><th class="nowrap">Clé RIB</th><th>IBAN</th><th class="nowrap">BIC</th><th>Statut</th><th></th></tr>
-              @for (c of comptes(); track c.id) {
-                <tr>
-                  <td>{{ c.intitule }}</td>
-                  <td class="nowrap">{{ libelleTypeCompte(c.type) }}</td>
-                  <td>{{ c.banque || '—' }}</td>
-                  <td class="nowrap">{{ c.operateur ? libelleOperateur(c.operateur) : '—' }}</td>
-                  <td>{{ c.numero || '—' }}</td>
-                  <td class="nowrap">{{ c.code_banque || '—' }}</td>
-                  <td class="nowrap">{{ c.code_guichet || '—' }}</td>
-                  <td class="nowrap">{{ c.cle_rib || '—' }}</td>
-                  <td>{{ c.iban || '—' }}</td>
-                  <td class="nowrap">{{ c.bic || '—' }}</td>
-                  <td><span class="tag" [class.ok]="c.actif" [class.haute]="!c.actif">{{ c.actif ? 'Actif' : 'Inactif' }}</span></td>
-                  <td><app-menu-actions [actions]="actionsPourCompte(c)" /></td>
-                </tr>
-              }
-            </table>
-            </div>
-          } @else { <p class="muted">Aucun compte bancaire enregistré.</p> }
-
-          <h4 style="margin-top:14px">Ajouter un compte</h4>
-          <div class="grid2">
-            <div><label>Intitulé</label><input class="in" [(ngModel)]="compteEdit.intitule" name="ctIntitule" /></div>
-            <div>
-              <label>Type</label>
-              <select class="in" [(ngModel)]="compteEdit.type" name="ctType">
-                <option value="fonctionnement">Fonctionnement</option>
-                <option value="carpa">CARPA</option>
-                <option value="especes">Espèces</option>
-                <option value="mobile_money">Mobile money</option>
-                <option value="virement_etranger">Virement étranger</option>
-              </select>
-            </div>
-            @if (compteEdit.type === 'mobile_money') {
-              <div>
-                <label>Opérateur</label>
-                <select class="in" [(ngModel)]="compteEdit.operateur" name="ctOperateur">
-                  <option value="orange_money">Orange Money</option>
-                  <option value="moov_money">Moov Money</option>
-                  <option value="wave">Wave</option>
-                  <option value="sama_money">Sama Money</option>
-                  <option value="autre">Autre</option>
-                </select>
-              </div>
-              <div><label>Numéro de téléphone</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" placeholder="Ex. 70 00 00 00" /></div>
-            } @else if (compteEdit.type === 'especes') {
-            } @else if (compteEdit.type === 'virement_etranger') {
-              <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
-              <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
-              <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
-              <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
-            } @else {
-              <div><label>Banque</label><input class="in" [(ngModel)]="compteEdit.banque" name="ctBanque" /></div>
-              <div><label>N° de compte</label><input class="in" [(ngModel)]="compteEdit.numero" name="ctNumero" /></div>
-              <div><label>Code banque</label><input class="in" [(ngModel)]="compteEdit.code_banque" name="ctCodeBanque" /></div>
-              <div><label>Code guichet</label><input class="in" [(ngModel)]="compteEdit.code_guichet" name="ctCodeGuichet" /></div>
-              <div><label>Clé RIB</label><input class="in" [(ngModel)]="compteEdit.cle_rib" name="ctCleRib" /></div>
-              <div><label>IBAN</label><input class="in" [(ngModel)]="compteEdit.iban" name="ctIban" /></div>
-              <div><label>BIC (SWIFT)</label><input class="in" [(ngModel)]="compteEdit.bic" name="ctBic" /></div>
-            }
-          </div>
-          <button class="btn" (click)="ajouterCompte()" [disabled]="ajoutCompteEnCours()">{{ ajoutCompteEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
-          @if (doublonsCompte().length) {
-            <div class="doublon">
-              <b>⚠ Un compte très proche existe déjà :</b>
-              @for (d of doublonsCompte(); track d.id) { <p>{{ d.intitule }}@if (d.banque) { — {{ d.banque }} }@if (d.numero) { — {{ d.numero }} }</p> }
-              <div class="btns">
-                <button class="btn ghost" (click)="doublonsCompte.set([])">Annuler, je vérifie</button>
-                <button class="btn" (click)="ajouterCompteQuandMeme()" [disabled]="ajoutCompteEnCours()">Ajouter quand même</button>
-              </div>
-            </div>
-          }
-          @if (compteMessage()) { <p class="muted" style="margin-top:8px">{{ compteMessage() }}</p> }
-        </section>
+        <app-comptes-cabinet />
       }
 
       @if (matrice()) {
@@ -461,19 +382,12 @@ export class AccesComponent implements OnInit {
   readonly erreurGlobale = signal('');
   readonly afficherFormCompte = signal(false);
   readonly erreurCompte = signal('');
-  // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
-  // ressaisie (aucune contrainte en base, même pas sur `numero`).
-  readonly ajoutCompteEnCours = signal(false);
-  readonly doublonsCompte = signal<any[]>([]);
   readonly dernierMotDePasse = signal<{ nom: string; mdp: string; creation: boolean } | null>(null);
 
-  // Identité du cabinet + comptes bancaires (28/08/2026, facture PDF enrichie)
+  // Identité du cabinet (28/08/2026, facture PDF enrichie) ; les comptes ont leur composant.
   readonly cabinet = signal<ParametresCabinet | null>(null);
   readonly cabinetMessage = signal('');
   cabinetEdit: Partial<ParametresCabinet> = {};
-  readonly comptes = signal<CompteBancaire[]>([]);
-  readonly compteMessage = signal('');
-  compteEdit: Partial<CompteBancaire> = { type: 'fonctionnement' };
 
   nouvelleDeleg: any = { portee: 'temporaire' };
   nouveauCompte: any = { role: 'collaborateur' };
@@ -562,7 +476,6 @@ export class AccesComponent implements OnInit {
         next: (c) => { this.cabinet.set(c); this.cabinetEdit = { ...c }; },
         error: () => {},
       });
-      this.chargerComptes();
     }
   }
 
@@ -581,77 +494,6 @@ export class AccesComponent implements OnInit {
       error: (e) => this.cabinetMessage.set(e?.error?.error ?? 'Enregistrement impossible.'),
     });
   }
-
-  chargerComptes(): void {
-    this.api.comptesBancairesGestion().subscribe({ next: (c) => this.comptes.set(c), error: () => {} });
-  }
-
-  ajouterCompte(): void {
-    this.compteMessage.set('');
-    this.doublonsCompte.set([]);
-    if (!this.compteEdit.intitule || !this.compteEdit.type) { this.compteMessage.set('Intitulé et type requis.'); return; }
-    this.api.verifierDoublonCompteBancaire(this.compteEdit.intitule, this.compteEdit.numero).subscribe({
-      next: (d) => { if (d.length) this.doublonsCompte.set(d); else this.ajouterCompteReellement(); },
-      error: () => this.ajouterCompteReellement(),
-    });
-  }
-
-  ajouterCompteQuandMeme(): void {
-    this.doublonsCompte.set([]);
-    this.ajouterCompteReellement();
-  }
-
-  private ajouterCompteReellement(): void {
-    this.ajoutCompteEnCours.set(true);
-    this.api.creerCompteBancaire(this.compteEdit).subscribe({
-      next: () => {
-        this.ajoutCompteEnCours.set(false);
-        this.compteEdit = { type: 'fonctionnement' };
-        this.compteMessage.set('Compte ajouté.');
-        this.doublonsCompte.set([]);
-        this.chargerComptes();
-      },
-      error: (e) => { this.ajoutCompteEnCours.set(false); this.compteMessage.set(e?.error?.error ?? 'Ajout impossible.'); },
-    });
-  }
-
-  basculerCompte(c: CompteBancaire): void {
-    this.api.majCompteBancaire(c.id, { actif: !c.actif }).subscribe({
-      next: () => this.chargerComptes(),
-      error: (e) => this.compteMessage.set(e?.error?.error ?? 'Mise à jour impossible.'),
-    });
-  }
-
-  // 01/10/2026 — gap comblé : aucune suppression n'était possible (seule
-  // la désactivation), et le formulaire d'ajout montrait toujours les
-  // mêmes champs RIB/IBAN/BIC quel que soit le type de compte, y compris
-  // pour mobile money (aucun champ Opérateur/téléphone dédié).
-  actionsPourCompte(c: CompteBancaire): ActionMenuItem[] {
-    return [
-      { label: c.actif ? 'Désactiver' : 'Réactiver', action: () => this.basculerCompte(c) },
-      { label: 'Supprimer', danger: true, action: () => this.supprimerCompte(c) },
-    ];
-  }
-
-  supprimerCompte(c: CompteBancaire): void {
-    if (!confirm(`Supprimer définitivement le compte « ${c.intitule} » ? Cette action est irréversible.`)) return;
-    this.compteMessage.set('');
-    this.api.supprimerCompteBancaire(c.id).subscribe({
-      next: () => this.chargerComptes(),
-      error: (e) => this.compteMessage.set(e?.error?.error ?? "Suppression impossible — désactivez le compte à la place."),
-    });
-  }
-
-  private readonly LIBELLES_TYPE_COMPTE: Record<string, string> = {
-    fonctionnement: 'Fonctionnement', carpa: 'CARPA', especes: 'Espèces',
-    mobile_money: 'Mobile money', virement_etranger: 'Virement étranger',
-  };
-  libelleTypeCompte(t: string): string { return this.LIBELLES_TYPE_COMPTE[t] || t; }
-
-  private readonly LIBELLES_OPERATEUR: Record<string, string> = {
-    orange_money: 'Orange Money', moov_money: 'Moov Money', wave: 'Wave', sama_money: 'Sama Money', autre: 'Autre',
-  };
-  libelleOperateur(o: string): string { return this.LIBELLES_OPERATEUR[o] || o; }
 
   modulesMatrice(): string[] {
     const m = this.matrice();

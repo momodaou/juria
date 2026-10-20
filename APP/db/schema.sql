@@ -4987,3 +4987,14 @@ SELECT r, 'stock.chemises.gerer', r IN ('associe','associe_fondateur','admin_gen
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+
+-- =====================================================================
+--  20/10/2026 — Comptes du cabinet : deux familles (Banque / Mobile money).
+--  Numéro de portefeuille mobile money dans une colonne dédiée (il était dans
+--  `numero`, nommé « N° compte ») ; option d'affichage sur les factures.
+--  Les valeurs 'especes' et 'virement_etranger' de type_compte restent pour
+--  l'historique mais ne se créent plus. Idempotent.
+-- =====================================================================
+ALTER TABLE comptes_bancaires ADD COLUMN IF NOT EXISTS telephone VARCHAR(30);
+ALTER TABLE comptes_bancaires ADD COLUMN IF NOT EXISTS afficher_sur_factures BOOLEAN NOT NULL DEFAULT TRUE;
+UPDATE comptes_bancaires SET telephone = numero WHERE type = 'mobile_money' AND telephone IS NULL AND numero IS NOT NULL;

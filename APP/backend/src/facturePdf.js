@@ -166,7 +166,12 @@ async function chargerDonnees(pool, factureId) {
     compte = r.rows[0] || null;
   }
 
-  return { fac, cab, temps: temps.rows, debours: debours.rows, paiements: paiements.rows, equipe, compte };
+  // Portefeuilles mobile money à afficher sur les factures (hors compte déjà choisi).
+  const mm = await pool.query(
+    `SELECT * FROM comptes_bancaires WHERE actif = TRUE AND type = 'mobile_money' AND afficher_sur_factures = TRUE
+       AND id IS DISTINCT FROM $1::uuid ORDER BY intitule`, [compte ? compte.id : null]);
+
+  return { fac, cab, temps: temps.rows, debours: debours.rows, paiements: paiements.rows, equipe, compte, comptesMobile: mm.rows };
 }
 
 // ---------------------------------------------------------------------
@@ -174,7 +179,7 @@ async function chargerDonnees(pool, factureId) {
 // accès base ni réseau : réutilisable telle quelle pour une prévisualisation
 // hors ligne.
 // ---------------------------------------------------------------------
-function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, compte }) {
+function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, compte, comptesMobile = [] }) {
   // xMontant à 470 (colonne de 75pt) faisait déborder les gros montants
   // (« 27 397 306 XOF » en gras 12pt) hors du cadre TOTAL TTC — élargi à
   // 400 (colonne de 145pt) pour que le montant tienne sur une seule ligne.
@@ -364,24 +369,36 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
   }
 
   // --- Informations de paiement (NIF + RIB) ---
-  if (fac.statut !== "annulee" && (cab.nif || compte)) {
+  if (fac.statut !== "annulee" && (cab.nif || compte || comptesMobile.length)) {
     doc.moveDown(1);
     doc.font("Helvetica-Bold").fontSize(9).fillColor(STYLE.bleu).text("Informations de paiement", xLabel);
     doc.fillColor(STYLE.texte).font("Helvetica").fontSize(8);
     doc.text("Prière d'indiquer les références de la facture sur l'ordre de virement.");
     if (cab.nif) doc.text(`NIF ${cab.raison_sociale || "cabinet"} : ${cab.nif}`);
-    if (compte) {
+    const libellesOperateur = { orange_money: "Orange Money", moov_money: "Moov Money", wave: "Wave", sama_money: "Sama Money", autre: "Mobile money" };
+    const ecrireCompte = (c) => {
       doc.moveDown(0.3);
-      doc.font("Helvetica-Bold").text(`${compte.intitule}${compte.banque ? " — " + compte.banque : ""}`);
+      if (c.type === "mobile_money") {
+        doc.font("Helvetica-Bold").text(`${libellesOperateur[c.operateur] || "Mobile money"} — ${c.telephone || ""}`);
+        doc.font("Helvetica").text(c.intitule);
+        return;
+      }
+      doc.font("Helvetica-Bold").text(`${c.intitule}${c.banque ? " — " + c.banque : ""}`);
       doc.font("Helvetica");
-      if (compte.code_banque || compte.code_guichet || compte.numero || compte.cle_rib) {
+      if (c.code_banque || c.code_guichet || c.numero || c.cle_rib) {
         doc.text(
-          `Code banque : ${compte.code_banque || "—"}    Code guichet : ${compte.code_guichet || "—"}    ` +
-          `N° de compte : ${compte.numero || "—"}    Clé RIB : ${compte.cle_rib || "—"}`
+          `Code banque : ${c.code_banque || "—"}    Code guichet : ${c.code_guichet || "—"}    ` +
+          `N° de compte : ${c.numero || "—"}    Clé RIB : ${c.cle_rib || "—"}`
         );
       }
-      if (compte.iban) doc.text(`IBAN : ${compte.iban}`);
-      if (compte.bic) doc.text(`BIC (SWIFT) : ${compte.bic}`);
+      if (c.iban) doc.text(`IBAN : ${c.iban}`);
+      if (c.bic) doc.text(`BIC (SWIFT) : ${c.bic}`);
+    };
+    if (compte) ecrireCompte(compte);
+    if (comptesMobile.length) {
+      doc.moveDown(0.3);
+      doc.font("Helvetica-Bold").text("Paiement par mobile money :");
+      for (const m of comptesMobile) doc.font("Helvetica").text(`${libellesOperateur[m.operateur] || "Mobile money"} : ${m.telephone || ""}`);
     }
   }
 

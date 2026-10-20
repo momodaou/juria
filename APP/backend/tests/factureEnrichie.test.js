@@ -163,6 +163,18 @@ describe("Facture PDF enrichie — contenu (28/08/2026)", () => {
     expect(texte).toContain("Frais de virement a la charge du client");
   });
 
+  test("un portefeuille mobile money marqué « sur les factures » est imprimé dans les informations de paiement", async () => {
+    await request(app).post("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`)
+      .send({ intitule: "Orange Money facture", type: "mobile_money", operateur: "orange_money", telephone: "70 00 00 09" });
+    const clientId = await creerClient();
+    const facture = await request(app).post("/api/factures").set("Authorization", `Bearer ${token}`)
+      .send({ client_id: clientId, mode: "forfait", montant_ht: 60000 });
+    const texte = extraireTexteVisible((await pdf(facture.body.id)).body);
+    expect(texte).toContain("Paiement par mobile money");
+    expect(texte).toContain("Orange Money");
+    expect(texte).toContain("70 00 00 09");
+  });
+
   test("sans dossier ni compte de reglement : le PDF reste genere sans section vide fautive", async () => {
     const clientId = await creerClient();
     const facture = await request(app)
@@ -196,7 +208,7 @@ describe("Comptes bancaires — suppression guardée + mobile money (01/10/2026)
       intitule: "Mobile Money Test",
       type: "mobile_money",
       operateur: "orange_money",
-      numero: "70000000",
+      telephone: "70000000",
     });
     expect(creation.status).toBe(201);
     const liste = await request(app).get("/api/parametres/comptes-bancaires").set("Authorization", `Bearer ${token}`);
@@ -206,7 +218,7 @@ describe("Comptes bancaires — suppression guardée + mobile money (01/10/2026)
   });
 
   test("suppression refusée (409) si le compte est référencé par une facture", async () => {
-    const compte = await creerCompte({ intitule: "Compte référencé test", type: "fonctionnement" });
+    const compte = await creerCompte({ intitule: "Compte référencé test", type: "fonctionnement", banque: "BDM SA", numero: "555" });
     const clientId = await creerClient();
     const dossierId = await creerDossier(clientId);
     const facture = await request(app)
@@ -230,7 +242,7 @@ describe("Comptes bancaires — suppression guardée + mobile money (01/10/2026)
   });
 
   test("suppression réussie (204) pour un compte jamais référencé", async () => {
-    const compte = await creerCompte({ intitule: "Compte libre test", type: "especes" });
+    const compte = await creerCompte({ intitule: "Compte libre test", type: "fonctionnement", banque: "BDM SA", numero: "556" });
     const suppression = await supprimerCompte(compte.body.id);
     expect(suppression.status).toBe(204);
 
