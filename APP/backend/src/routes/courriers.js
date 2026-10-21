@@ -67,10 +67,14 @@ async function classerDansGed(poolOuClient, dossierId, nom, buffer, mimetype, ta
 async function genererReference(client, sens, dateCourrier) {
   const prefixe = sens === "arrivee" ? "ARR" : "DEP";
   const annee = new Date(dateCourrier || Date.now()).getFullYear();
+  // 21/10/2026 — « plus grand numéro + 1 » (et non « nombre de courriers + 1 ») + verrou de
+  // transaction : même défaut que les numéros de dossier et de facture (doublon après suppression
+  // ou lors de deux enregistrements simultanés).
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`reference_courrier_${sens}`]);
   const { rows } = await client.query(
-    `SELECT COUNT(*) + 1 AS n FROM courriers
-     WHERE sens = $1 AND EXTRACT(YEAR FROM date_courrier) = $2`,
-    [sens, annee]
+    `SELECT COALESCE(MAX(CAST(substring(reference from '-([0-9]+)$') AS integer)), 0) + 1 AS n
+     FROM courriers WHERE reference LIKE $1`,
+    [`${prefixe}-${annee}-%`]
   );
   return `${prefixe}-${annee}-${String(rows[0].n).padStart(6, "0")}`;
 }

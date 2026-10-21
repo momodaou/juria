@@ -408,7 +408,13 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
 
     // Numérotation automatique : F-AA-XXX
     const yy = new Date().getFullYear().toString().slice(2);
-    const c = await client.query("SELECT count(*) + 1 AS n FROM factures WHERE numero LIKE $1", [`F-${yy}-%`]);
+    // 21/10/2026 — « plus grand numéro + 1 » (et non « nombre de factures + 1 », qui retombait
+    // sur un numéro déjà pris après une suppression ou un numéro saisi à la main) ; verrou de
+    // transaction pour que deux émissions simultanées n'obtiennent pas le même numéro.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('numero_facture'))");
+    const c = await client.query(
+      "SELECT COALESCE(MAX(CAST(substring(numero from '^F-[0-9]{2}-([0-9]+)$') AS integer)), 0) + 1 AS n FROM factures WHERE numero LIKE $1",
+      [`F-${yy}-%`]);
     const numero = b.numero || `F-${yy}-${String(c.rows[0].n).padStart(3, "0")}`;
 
     const { rows } = await client.query(

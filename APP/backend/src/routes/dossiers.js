@@ -282,15 +282,28 @@ const LIBELLES_TABLES_ACTIVITE = {
 // automatiquement d'une année sur l'autre.
 const TYPE_CODE = { conseil: "CS", contentieux: "CX" };
 
+// 21/10/2026 — le numéro d'ordre est « le plus grand déjà utilisé + 1 » et non
+// plus « le nombre de dossiers + 1 » : après une suppression, ou avec des numéros
+// repris d'un import, le comptage retombait sur un numéro DÉJÀ pris (erreur
+// « dossiers_numero_key » à chaque création suivante). Deux créations simultanées
+// (intégration en rafale) pouvaient aussi obtenir le même numéro : l'appelant
+// réessaie sur doublon (voir estDoublonNumero).
 async function genererNumero(pool, pole, codeMatiere) {
   const typeCode = TYPE_CODE[pole] || "CX";
   const annee = String(new Date().getFullYear());
   const { rows } = await pool.query(
-    "SELECT count(*) + 1 AS n FROM dossiers WHERE numero LIKE $1",
+    `SELECT COALESCE(MAX(CAST(substring(numero from '-([0-9]+)$') AS integer)), 0) + 1 AS n
+     FROM dossiers WHERE numero LIKE $1`,
     [`${typeCode}-${codeMatiere}-${annee}-%`]
   );
   return `${typeCode}-${codeMatiere}-${annee}-${String(rows[0].n).padStart(4, "0")}`;
 }
+
+// Violation de l'unicité du numéro de dossier (PostgreSQL 23505, dossiers_numero_key).
+function estDoublonNumero(e) {
+  return !!e && e.code === "23505" && /dossiers_numero_key/.test(e.constraint || e.message || "");
+}
+const pauseAleatoire = (essai) => new Promise((r) => setTimeout(r, 20 * essai + Math.random() * 60));
 
 // Couleur de chemise physique déduite de (matière, type) — Guide §6,
 // déjà seedée dans codes_matiere.couleur.
@@ -764,10 +777,10 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     // un prefix générique inventé comme c'était le cas jusqu'ici
     // ("AFF-AA-XXX", sans rapport avec le guide adopté).
     const codeMatiere = (b.code_matiere || "IND").toUpperCase();
-    const numero = b.numero || await genererNumero(pool, b.pole, codeMatiere);
+    let numero = b.numero || await genererNumero(pool, b.pole, codeMatiere);
     const couleurChemise = await couleurPour(pool, b.pole, codeMatiere);
 
-    const { rows } = await pool.query(
+    const inserer = (num) => pool.query(
       `INSERT INTO dossiers
          (numero, intitule, client_id, pole, matiere, juridiction,
           montant_litige, montant_litige_sens, montant_litige_sens_precision, mode_honoraires, urgence, responsable_id, pro_bono,
@@ -776,7 +789,7 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
           mode_honoraires_precision, montant_convenu_xof, cree_par)
        VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8::sens_montant_litige,'indetermine'),$9,$10,COALESCE($11::urgence_niveau,'moyenne'),$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        RETURNING id, numero, intitule, pro_bono, code_matiere, couleur_chemise`,
-      [numero, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
+      [num, b.intitule, b.client_id, b.pole, b.matiere, b.juridiction,
        b.montant_litige, b.montant_litige_sens || null, b.montant_litige_sens_precision || null, modeEffectif, b.urgence, b.responsable_id, proBono,
        b.objet || null, b.statut_procedure || null, b.statut_procedure_precision || null, b.intermediaire || null,
        codeMatiere, couleurChemise, b.date_ouverture_origine || null,
@@ -784,6 +797,21 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
        MODES_MONTANT_CONVENU.includes(modeEffectif) ? (b.montant_convenu ?? null) : null,
        req.user.sub]
     );
+    // Deux créations simultanées peuvent obtenir le même numéro généré : on
+    // recalcule et on réessaie ; un numéro fourni à la main qui existe déjà est refusé clairement.
+    let rows;
+    for (let essai = 1; ; essai++) {
+      try {
+        ({ rows } = await inserer(numero));
+        break;
+      } catch (e) {
+        if (!estDoublonNumero(e)) throw e;
+        if (b.numero) return res.status(409).json({ error: `Le numéro « ${b.numero} » existe déjà pour un autre dossier.` });
+        if (essai >= 8) return res.status(409).json({ error: "Plusieurs dossiers ont été créés en même temps : réessayez dans un instant." });
+        await pauseAleatoire(essai);
+        numero = await genererNumero(pool, b.pole, codeMatiere);
+      }
+    }
 
     // Stock de chemises (20/10/2026) : une chemise sort du stock à la création.
     await deduireChemise(pool, rows[0], req.user.sub);
@@ -859,6 +887,7 @@ router.post("/", requirePermission("dossiers.creer"), async (req, res) => {
     res.status(201).json({ ...rows[0], lettre_mission_document_id: lettreMissionId });
   } catch (e) {
     console.error(e);
+    if (estDoublonNumero(e)) return res.status(409).json({ error: "Ce numéro de dossier existe déjà. Réessayez." });
     res.status(400).json({ error: e.message });
   }
 });
@@ -913,6 +942,8 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     // matière laisse le numero inchangé.
     let numeroRegenere = null;
     let couleurRegeneree = null;
+    let requalPole = null;
+    let requalCode = null;
     if (b.code_matiere) {
       const actuel = await pool.query("SELECT code_matiere, pole FROM dossiers WHERE id = $1", [req.params.id]);
       if (!actuel.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
@@ -920,6 +951,8 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       const pole = b.pole || actuel.rows[0].pole;
       if (actuel.rows[0].code_matiere === "IND" && codeMatiere !== "IND") {
         numeroRegenere = await genererNumero(pool, pole, codeMatiere);
+        requalPole = pole;
+        requalCode = codeMatiere;
       }
       couleurRegeneree = await couleurPour(pool, pole, codeMatiere);
     }
@@ -972,8 +1005,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
       req.params.id];
     if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
 
-    const { rows } = await pool.query(
-      `UPDATE dossiers SET
+    const sqlMaj = `UPDATE dossiers SET
          intitule = COALESCE($1, intitule),
          pole = COALESCE($2::pole_cabinet, pole),
          matiere = COALESCE($3, matiere),
@@ -1002,9 +1034,20 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
        WHERE id = $25 ${clauseConcurrence}
        RETURNING id, numero, intitule, statut, phase, code_matiere, couleur_chemise, client_id, maj_le,
                  responsable_id, statut_procedure, statut_procedure_precision, juridiction,
-                 numero_role, objet, montant_litige, montant_litige_sens, mode_honoraires`,
-      params
-    );
+                 numero_role, objet, montant_litige, montant_litige_sens, mode_honoraires`;
+    // Requalification depuis IND : le numéro régénéré peut être pris entre-temps par une
+    // création simultanée — on le recalcule et on réessaie.
+    let rows;
+    for (let essai = 1; ; essai++) {
+      try {
+        ({ rows } = await pool.query(sqlMaj, params));
+        break;
+      } catch (e) {
+        if (!estDoublonNumero(e) || !requalCode || essai >= 8) throw e;
+        await pauseAleatoire(essai);
+        params[17] = await genererNumero(pool, requalPole, requalCode);
+      }
+    }
     if (!rows[0]) {
       const existe = await pool.query("SELECT 1 FROM dossiers WHERE id = $1", [req.params.id]);
       if (!existe.rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
@@ -1025,6 +1068,7 @@ router.put("/:id", requirePermission("dossiers.modifier"), async (req, res) => {
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
+    if (estDoublonNumero(e)) return res.status(409).json({ error: "Ce numéro de dossier existe déjà. Réessayez." });
     res.status(400).json({ error: e.message });
   }
 });
