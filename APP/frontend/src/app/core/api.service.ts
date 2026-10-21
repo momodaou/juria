@@ -77,6 +77,8 @@ export interface DashboardData {
   // Couleurs de chemise au seuil ou en dessous (20/10/2026) — null si rien à signaler ou sans droit.
   // Espèces encaissées pas encore déposées en banque (20/10/2026) — null si aucune ou sans droit.
   especes_a_deposer: { n: number; montant: number } | null;
+  // Fin de la suspension des e-mails de conflit / création de dossier — null si aucune ou sans droit (21/10/2026).
+  emails_suspendus_jusqu_a: string | null;
   chemises_stock_bas: { couleur: string; quantite: number; seuil: number }[] | null;
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
@@ -540,6 +542,13 @@ export class ApiService {
   moyensPaiement(): Observable<MoyenPaiement[]> { return this.http.get<MoyenPaiement[]>(`${this.base}/api/factures/moyens-paiement`); }
   comptesPourMoyen(code: string): Observable<{ id: string; intitule: string }[]> {
     return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/factures/moyens-paiement/${code}/comptes`);
+  }
+  // Suspension temporaire des e-mails de conflit et de création de dossier (21/10/2026).
+  emailsDossiers(): Observable<{ suspendu: boolean; jusqu_a: string | null }> {
+    return this.http.get<{ suspendu: boolean; jusqu_a: string | null }>(`${this.base}/api/parametres/emails-dossiers`);
+  }
+  majEmailsDossiers(body: { heures?: number; reactiver?: boolean }): Observable<{ suspendu: boolean; jusqu_a: string | null }> {
+    return this.http.put<{ suspendu: boolean; jusqu_a: string | null }>(`${this.base}/api/parametres/emails-dossiers`, body);
   }
   // Fonds de tiers — compte CARPA (20/10/2026).
   fondsTiersSoldes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/fonds-tiers/soldes`); }

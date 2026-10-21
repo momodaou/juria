@@ -149,6 +149,24 @@ import { ROLES } from '../../core/roles';
         } @else { <p class="muted">Aucune délégation.</p> }
       </section>
 
+      @if (auth.peut('parametres.cabinet.modifier')) {
+        <section class="panel">
+          <h3>E-mails de conflit et de création de dossier</h3>
+          <p class="muted">À suspendre pendant une intégration de dossiers en rafale : sinon chaque création et chaque contrôle de conflit envoie un e-mail. Seuls ces deux types d'e-mails sont concernés (jamais la réinitialisation de mot de passe, la messagerie, les factures…). La suspension s'arrête toute seule à la date indiquée.</p>
+          @if (emailsEtat(); as e) {
+            @if (e.suspendu) {
+              <p><span class="tag haute">Suspendus</span> jusqu'au <b>{{ e.jusqu_a | date:'dd/MM/yyyy à HH:mm' }}</b>. Les envois ignorés sont tracés dans le journal d'audit.</p>
+              <button class="btn" (click)="changerEmails({ reactiver: true })">Réactiver maintenant</button>
+              <button class="lien" (click)="changerEmails({ heures: 24 })">Prolonger de 24 h</button>
+            } @else {
+              <p><span class="tag ok">Actifs</span> Les e-mails partent normalement.</p>
+              <button class="btn" (click)="changerEmails({ heures: 24 })">Suspendre pendant 24 h</button>
+            }
+          }
+          @if (emailsMessage()) { <p class="muted" style="margin-top:8px">{{ emailsMessage() }}</p> }
+        </section>
+      }
+
       @if (auth.peut('parametres.honoraires.modifier') && parametres()) {
         <section class="panel">
           <h3>Seuils pro bono</h3>
@@ -361,6 +379,9 @@ export class AccesComponent implements OnInit {
   readonly utilisateurs = signal<any[]>([]);
   readonly parametres = signal<ParametresHonoraires | null>(null);
   readonly parametresMessage = signal('');
+  // Suspension des e-mails de conflit / création de dossier (21/10/2026).
+  readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null } | null>(null);
+  readonly emailsMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
   readonly delegations = signal<any[]>([]);
   // 09/10/2026 — catalogue des 80 actions pour le sélecteur "Action
@@ -471,12 +492,25 @@ export class AccesComponent implements OnInit {
       });
     }
     // 403 attendu hors direction/comptabilité — section simplement masquée.
+    this.chargerEmails();
     if (this.auth.peut('parametres.cabinet.modifier')) {
       this.api.parametresCabinet().subscribe({
         next: (c) => { this.cabinet.set(c); this.cabinetEdit = { ...c }; },
         error: () => {},
       });
     }
+  }
+
+  chargerEmails(): void {
+    if (!this.auth.peut('parametres.cabinet.modifier')) return;
+    this.api.emailsDossiers().subscribe({ next: (e) => this.emailsEtat.set(e), error: () => {} });
+  }
+  changerEmails(corps: { heures?: number; reactiver?: boolean }): void {
+    this.emailsMessage.set('');
+    this.api.majEmailsDossiers(corps).subscribe({
+      next: (e) => { this.emailsEtat.set(e); this.emailsMessage.set(e.suspendu ? 'Suspension enregistrée.' : 'E-mails réactivés.'); },
+      error: (er) => this.emailsMessage.set(er?.error?.error ?? 'Changement impossible.'),
+    });
   }
 
   enregistrerParametres(): void {

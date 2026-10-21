@@ -20,6 +20,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { estAutorise } = require("../permissions");
 const { etatStock } = require("../stockChemises");
+const { etatSuspension } = require("../suspensionEmails");
 const { STATUT_FACTURATION_EXPR, SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 const { JOIN_ABONNEMENT_FACTURE, SELECT_ABONNEMENT_BRUT, calculerStatutAbonnement } = require("../abonnements");
 const { DOUBLONS_CTE } = require("../doublons");
@@ -240,6 +241,11 @@ router.get("/", async (req, res) => {
         const bas = (await etatStock(pool)).filter((s) => s.bas);
         if (bas.length) chemisesBas = bas;
       }
+    }
+    // Suspension temporaire des e-mails de conflit et de création de dossier (21/10/2026) : rappel visible des associés et de l'admin IT.
+    let emailsSuspendusJusqua = null;
+    if (["associe", "associe_fondateur", "admin_it"].includes(req.user.role)) {
+      emailsSuspendusJusqua = (await etatSuspension()).jusqu_a;
     }
     // Espèces encaissées pas encore déposées en banque (20/10/2026).
     let especesADeposer = null;
@@ -619,6 +625,7 @@ router.get("/", async (req, res) => {
       retours_manquants_n: retoursManquantsN,
       retours_manquants_apercu: retoursManquantsApercu,
       chemises_stock_bas: chemisesBas,
+      emails_suspendus_jusqu_a: emailsSuspendusJusqua,
       especes_a_deposer: especesADeposer,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,

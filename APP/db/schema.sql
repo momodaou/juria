@@ -5087,3 +5087,10 @@ SELECT r, 'fonds_tiers.reverser', r IN ('associe','associe_fondateur','comptable
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
+
+-- =====================================================================
+--  21/10/2026 — Suspension temporaire des e-mails de conflit et de création de
+--  dossier (intégration de dossiers en rafale). Date de fin : NULL ou passée =
+--  envois actifs ; la suspension s'éteint donc toute seule. Idempotent.
+-- =====================================================================
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS emails_dossiers_suspendus_jusqu_a TIMESTAMPTZ;

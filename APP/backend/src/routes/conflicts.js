@@ -3,6 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerEmail } = require("../mailer");
+const { envoiSuspendu } = require("../suspensionEmails");
 const { logAudit } = require("../audit");
 const router = express.Router();
 
@@ -67,6 +68,7 @@ const LIBELLES_DECISION = {
 // retourne par hasard sur « Nouveau dossier » pour le découvrir.
 async function notifierDecisionConflit(checkId, decision) {
   try {
+    if (await envoiSuspendu("decision_conflit", { controle_id: checkId, decision })) return;
     const { rows } = await pool.query(
       `SELECT cc.intitule_projet, u.email, u.prenom
        FROM conflict_checks cc JOIN utilisateurs u ON u.id = cc.cree_par
@@ -97,6 +99,7 @@ async function notifierDecisionConflit(checkId, decision) {
 
 async function notifierConflitPotentiel(check, termes) {
   try {
+    if (await envoiSuspendu("conflit_potentiel", { controle_id: check.id })) return;
     const dests = await destinatairesConflit();
     if (!dests.length) return;
     const liste = termes.map((t) => `<li>${t.terme} — ${t.correspondances.length} rapprochement(s)</li>`).join("");

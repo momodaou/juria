@@ -19,6 +19,8 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { validerCompte, TYPES_ACTIFS } = require("../comptesCabinet");
+const { etatSuspension } = require("../suspensionEmails");
+const { logAudit } = require("../audit");
 const router = express.Router();
 
 // GET /api/parametres/honoraires — lecture ouverte à tout utilisateur
@@ -100,6 +102,31 @@ router.put("/cabinet", requirePermission("parametres.cabinet.modifier"), async (
     console.error(e);
     res.status(400).json({ error: e.message });
   }
+});
+
+// GET /api/parametres/emails-dossiers — état de la suspension des e-mails de conflit
+// et de création de dossier (21/10/2026).
+router.get("/emails-dossiers", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
+  try { res.json(await etatSuspension()); }
+  catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// PUT /api/parametres/emails-dossiers { heures } suspend pour N heures (1 à 168) ; { reactiver: true } lève la suspension.
+router.put("/emails-dossiers", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    if (b.reactiver) {
+      await pool.query("UPDATE parametres_cabinet SET emails_dossiers_suspendus_jusqu_a = NULL WHERE id = 1");
+    } else {
+      const heures = Number(b.heures);
+      if (!(heures >= 1 && heures <= 168)) return res.status(400).json({ error: "Durée invalide : de 1 à 168 heures." });
+      await pool.query("UPDATE parametres_cabinet SET emails_dossiers_suspendus_jusqu_a = now() + ($1::numeric * interval '1 hour') WHERE id = 1", [heures]);
+    }
+    const etat = await etatSuspension();
+    await logAudit({ utilisateurId: req.user.sub, action: b.reactiver ? "emails_dossiers_reactives" : "emails_dossiers_suspendus",
+      entite: "parametres", details: { jusqu_a: etat.jusqu_a }, ip: req.ip });
+    res.json(etat);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // GET /api/parametres/comptes-bancaires — liste complète (actifs et

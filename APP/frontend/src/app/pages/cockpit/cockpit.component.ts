@@ -413,6 +413,9 @@ const CONFIG: Record<string, TuileConfig> = {
     <header class="page-head">
       <h1>Tableau de bord</h1>
       <p>Vue d'ensemble du cabinet</p>
+      @if (data()?.emails_suspendus_jusqu_a; as fin) {
+        <p class="bandeau-suspension">⚠ E-mails de conflit et de création de dossier <b>suspendus</b> jusqu'au {{ fin | date:'dd/MM/yyyy à HH:mm' }}. À réactiver ensuite si besoin : Accès &amp; permissions.</p>
+      }
     </header>
 
     @if (data(); as d) {
@@ -941,6 +944,7 @@ const CONFIG: Record<string, TuileConfig> = {
     }
   `,
   styles: [`
+    .bandeau-suspension{background:var(--amber-soft,#fbf1dc);border:1px solid var(--amber,#e0a23b);border-radius:8px;padding:8px 14px;margin:8px 0 0;font-size:var(--fs-base);display:inline-block}
     .kpi{cursor:pointer;font-family:inherit;text-align:left;transition:box-shadow .15s}
     .kpi:hover{box-shadow:0 3px 10px rgba(31,42,68,.10)}
     .kpi.active{background:var(--light);box-shadow:inset 0 0 0 2px var(--gold)}

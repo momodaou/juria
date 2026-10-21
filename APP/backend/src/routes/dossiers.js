@@ -14,6 +14,7 @@ const { estDocumentVisible, chargerContexteDossier } = require("../confidentiali
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
 const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
+const { envoiSuspendu } = require("../suspensionEmails");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -142,6 +143,7 @@ async function notifierAssociesNouveauDossier(dossierId, numero, intitule, creat
   }
   if (!rolesDestinataires.length) return;
   try {
+    if (await envoiSuspendu("creation_dossier", { dossier_id: dossierId, numero })) return;
     const { rows: dests } = await pool.query(
       `SELECT email, prenom FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])`,
       [rolesDestinataires]
