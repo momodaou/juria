@@ -1358,7 +1358,10 @@ export class DossierDetailComponent implements OnInit {
          20/10/2026 — cadre de 100x60mm sous-occupé (le texte ne remplissait
          qu'environ les 2/3 de la hauteur disponible) : tailles de police
          augmentées de 2-3px sur chaque ligne, QR inchangé (86px) pour ne
-         pas réduire la largeur réservée au texte. */
+         pas réduire la largeur réservée au texte.
+         21/10/2026 — intitulé autorisé sur 3 lignes (au lieu de 2) : mesuré au
+         pire cas (intitulé, client et juridiction très longs), le texte occupe
+         162 px sur ~199 utiles ; 3 lignes d'intitulé tiennent encore (~183 px). */
       @page { size: A4; margin: 15mm; }
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
       .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
@@ -1367,7 +1370,7 @@ export class DossierDetailComponent implements OnInit {
       .qr{width:86px;height:86px;flex:none}
       .texte{min-width:0;overflow:hidden}
       .num{font-size:22px;font-weight:700;letter-spacing:.3px;color:#1F2A44;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .intitule{font-size:17px;font-weight:600;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+      .intitule{font-size:17px;font-weight:600;margin-top:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
       .client{font-size:15px;margin-top:6px;line-height:1.25;color:#1F2A44;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
       .lbl{color:#6B7280;font-weight:400}
       .sub{font-size:14px;color:#1F2A44;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
