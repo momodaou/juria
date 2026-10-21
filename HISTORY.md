@@ -4116,3 +4116,6 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Correction** (`backend/src/rolePdf.js`) : texte 12 pt (petit texte 10 pt, en-têtes de colonnes 10,5 pt, titre 18 pt), marges 24 pt, interlignes et hauteur minimale de ligne augmentés ; tailles centralisées en constantes (`TAILLE_TEXTE`, `TAILLE_PETIT`…). Largeurs de colonnes réajustées (Date 10 %, Notes 15 %, Audiencier 10 %) pour éviter les mots coupés (« Audiencier », date). Même générateur pour l'aperçu, le téléchargement et la pièce jointe e-mail.
 - Vérifié par rendu d'un rôle fictif avant/après ; `rolePdf.test.js` 3/3. Backend seul, aucune migration, **non déployé** (attente de l'accord).
 - **Déployé** (accord de l'utilisateur, API seule, aucune migration) : `juria-00173-h2d`. `/health` en `200`. Taille retenue : 12 pt ; à ajuster (13 pt ou A3) après impression d'un vrai rôle.
+
+## 21/10/2026 — Rôle d'audience (PDF) : colonnes « Resp dossier » et « Audiencier » élargies
+- Demande de l'utilisateur : élargir ces deux colonnes pour que les intitulés ne soient plus coupés. Largeurs : Resp dossier 8 → 11 %, Audiencier 10 → 11 % ; pris sur Parties (23 → 21 %), Juridiction (11 → 10 %) et Notes (15 → 14 %). Les deux intitulés tiennent maintenant sur une ligne (vérifié par rendu). `rolePdf.test.js` 3/3. Non déployé.

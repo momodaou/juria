@@ -179,13 +179,13 @@ async function chargerDonnees(pool, roleId) {
 const COLONNES = [
   { cle: "date", label: "Date", pct: 10 },
   { cle: "heure", label: "Heure", pct: 6 },
-  { cle: "parties", label: "Parties", pct: 23 },
-  { cle: "juridiction", label: "Juridiction", pct: 11 },
+  { cle: "parties", label: "Parties", pct: 21 },
+  { cle: "juridiction", label: "Juridiction", pct: 10 },
   { cle: "procedure", label: "Procédure", pct: 9 },
   { cle: "type", label: "Type audience", pct: 8 },
-  { cle: "notes", label: "Notes (audience du jour)", pct: 15 },
-  { cle: "resp", label: "Resp dossier", pct: 8 },
-  { cle: "audiencier", label: "Audiencier", pct: 10 },
+  { cle: "notes", label: "Notes (audience du jour)", pct: 14 },
+  { cle: "resp", label: "Resp dossier", pct: 11 },
+  { cle: "audiencier", label: "Audiencier", pct: 11 },
 ];
 // 23/09/2026 (2e passe, retour utilisateur « écritures en petits
 // caractères, tableau qui ne remplit pas assez la feuille ») — comparé à
