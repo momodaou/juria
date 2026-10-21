@@ -4110,3 +4110,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 21/10/2026 — Déploiement : correctif de la numérotation (dossiers, factures, courriers)
 - Accord de l'utilisateur. API seule, aucune migration : `juria-00172-qw6`. Vérifié : `/health` en `200`. Les utilisateurs touchés par l'erreur « dossiers_numero_key » peuvent recréer leur dossier.
+
+## 21/10/2026 — Rôle d'audience (PDF) : texte agrandi, marges réduites (3e passe)
+- Retour utilisateur : à l'aperçu et à l'impression, les caractères sont « en miniature » et le tableau n'occupe pas assez la feuille. **Constat** : le PDF (A4 paysage) utilisait un texte de 9,5 pt avec des marges de 36 pt ; l'aperçu étant réduit à la largeur de la fenêtre, le rendu paraissait encore plus petit.
+- **Correction** (`backend/src/rolePdf.js`) : texte 12 pt (petit texte 10 pt, en-têtes de colonnes 10,5 pt, titre 18 pt), marges 24 pt, interlignes et hauteur minimale de ligne augmentés ; tailles centralisées en constantes (`TAILLE_TEXTE`, `TAILLE_PETIT`…). Largeurs de colonnes réajustées (Date 10 %, Notes 15 %, Audiencier 10 %) pour éviter les mots coupés (« Audiencier », date). Même générateur pour l'aperçu, le téléchargement et la pièce jointe e-mail.
+- Vérifié par rendu d'un rôle fictif avant/après ; `rolePdf.test.js` 3/3. Backend seul, aucune migration, **non déployé** (attente de l'accord).

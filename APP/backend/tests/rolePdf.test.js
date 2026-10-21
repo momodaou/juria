@@ -18,9 +18,10 @@
 // avant de mesurer (cohérent avec hauteurCellule(), qui le faisait déjà).
 const PDFDocument = require("pdfkit");
 const { styleLigne, dessinerLigneParties, texteParties, calculerColonnes } = require("../src/rolePdf");
+const { TAILLE_TEXTE, TAILLE_PETIT } = require("../src/rolePdf");
 
 function nouveauDoc() {
-  return new PDFDocument({ size: "A4", layout: "landscape", margin: 36 });
+  return new PDFDocument({ size: "A4", layout: "landscape", margin: 24 });
 }
 
 describe("rolePdf — chevauchement de texte, colonne Parties sans partie adverse", () => {
@@ -37,7 +38,7 @@ describe("rolePdf — chevauchement de texte, colonne Parties sans partie advers
     // à la suite, la dernière police posée est celle du segment "(client)",
     // pas celle (plus large) qui a dessiné l'essentiel du texte.
     expect(doc._font.name).toBe("Helvetica-BoldOblique");
-    expect(doc._fontSize).toBe(8);
+    expect(doc._fontSize).toBe(TAILLE_PETIT);
   });
 
   test("le correctif (réappliquer styleLigne avant de mesurer) restaure la bonne police de mesure", () => {
@@ -52,7 +53,7 @@ describe("rolePdf — chevauchement de texte, colonne Parties sans partie advers
     styleLigne(doc, colonneParties, 0);
 
     expect(doc._font.name).toBe("Helvetica-Bold");
-    expect(doc._fontSize).toBe(9.5);
+    expect(doc._fontSize).toBe(TAILLE_TEXTE);
   });
 
   test("avec ' c/ Partie adverse' : dessinerLigneParties() retombe déjà sur la bonne police (cas jamais bugué)", () => {
@@ -65,6 +66,6 @@ describe("rolePdf — chevauchement de texte, colonne Parties sans partie advers
     dessinerLigneParties(doc, texte, colonneParties.x, 0, colonneParties.w);
 
     expect(doc._font.name).toBe("Helvetica-Bold");
-    expect(doc._fontSize).toBe(9.5);
+    expect(doc._fontSize).toBe(TAILLE_TEXTE);
   });
 });
