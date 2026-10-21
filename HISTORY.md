@@ -4119,3 +4119,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 21/10/2026 — Rôle d'audience (PDF) : colonnes « Resp dossier » et « Audiencier » resserrées
 - Demande de l'utilisateur (après un malentendu : j'avais d'abord ÉLARGI ces deux colonnes, version brièvement déployée en `juria-00174` ; il voulait les RESSERRER pour laisser de la place aux autres colonnes dont les mots étaient coupés). Largeurs : Resp dossier 7 %, Audiencier 9 % (au lieu de 8 % / 10 % avant), le gain allant à Parties 23 %, Juridiction 12 % et Notes 16 %. Les intitulés « Resp / dossier » (2 lignes) et « Audiencier » restent entiers (vérifié par rendu). `rolePdf.test.js` 3/3.
+- **Déployé** (accord de l'utilisateur, API seule, aucune migration) : `juria-00174-v85` (version élargie, remplacée aussitôt) puis **`juria-00175-p9c`** (colonnes resserrées, en service). `/health` en `200`.
