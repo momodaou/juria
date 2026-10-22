@@ -533,15 +533,26 @@ export class OuvertureComponent implements OnInit {
     this.nomClientPrincipal = c ? (c.denomination || `${c.prenom ?? ''} ${c.nom ?? ''}`.trim()) : null;
     this.suggererIntitule();
     this.clientPrincipalSousConvention.set(false);
-    if (c?.id) {
-      this.api.client(c.id).subscribe({
-        next: (full) => {
-          const sousConvention = !!full.abonnement_periodicite;
-          this.clientPrincipalSousConvention.set(sousConvention);
-          if (sousConvention) this.dossier.mode_honoraires = 'abonnement';
-        },
-      });
-    }
+    if (c?.id) this.verifierConventionClient(c.id);
+  }
+
+  // 22/10/2026 — le blocage « Abonnement » n'était posé que lorsque le client
+  // était choisi à la main dans la liste (onClientPrincipalChoisi) ; la
+  // présélection automatique par le nom saisi à l'étape 1
+  // (preselectionnerClient) posait client_id sans jamais vérifier la
+  // convention-cadre : d'où des écrans bloqués chez certains utilisateurs et
+  // pas chez d'autres, selon la façon dont le client avait été retenu. Les
+  // deux chemins passent maintenant par cette méthode. Le serveur imposait
+  // déjà « abonnement » à la création : seul l'affichage divergeait.
+  private verifierConventionClient(id: string): void {
+    this.api.client(id).subscribe({
+      next: (full) => {
+        if (this.dossier.client_id !== id) return; // le client a changé entre-temps
+        const sousConvention = !!full.abonnement_periodicite;
+        this.clientPrincipalSousConvention.set(sousConvention);
+        if (sousConvention) this.dossier.mode_honoraires = 'abonnement';
+      },
+    });
   }
 
   // Champs conditionnels par pôle (19/08/2026) — matière suit désormais le
@@ -862,6 +873,7 @@ export class OuvertureComponent implements OnInit {
           this.nomClientPreselectionne = trouve.denomination || `${trouve.prenom} ${trouve.nom}`;
           this.nomClientPrincipal = this.nomClientPreselectionne;
           this.suggererIntitule();
+          this.verifierConventionClient(trouve.id);
         }
       },
     });
