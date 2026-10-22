@@ -4134,3 +4134,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Aucun dégât de données** : le serveur impose déjà « abonnement » à la création (`resoudreModeHonorairesEffectif`) ; seul l'affichage divergeait (l'utilisateur pouvait croire avoir choisi un autre mode).
 - **Correction** : méthode commune `verifierConventionClient`, appelée par les deux chemins ; ignore la réponse si le client a changé entre-temps. `ng build` OK. Frontend seul, **non déployé**.
 - **Déployé** (accord de l'utilisateur, frontend seul, aucune migration) : `juria-web-00227-r7z`. `/` en `200`.
+
+## 22/10/2026 — Étiquette JURIA : clôture du point « taille à l'impression »
+- Cause finalement trouvée par l'utilisateur : un **réglage d'impression** de son côté (échelle du navigateur), pas un défaut de JURIA. Le cadre était bien resté à 100 x 60 mm.
+- La version PDF de l'étiquette (commit 3de1ad6, jamais déployée) est donc **retirée** par un `git revert` : pas de nouveau bouton, pas de dépendance `qrcode` côté serveur. L'impression HTML existante reste la seule.
