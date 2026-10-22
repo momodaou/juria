@@ -4143,3 +4143,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Demande : pouvoir imprimer une seconde étiquette plus bas sur la même feuille.
 - L'étiquette n'est plus centrée verticalement mais alignée en haut ; un sélecteur « Emplacement sur la feuille A4 » (1 à 4) à côté du bouton d'impression décale l'étiquette de 68 mm par emplacement (4 x 60 mm + 3 x 8 mm dans les 267 mm utiles). L'utilisateur repasse la même feuille dans l'imprimante pour l'emplacement suivant.
 - Fichier : `dossier-detail.component.ts` (signal `emplacementEtiquette`). Build OK. Non déployé (accord en attente).
+- Déployé : frontend `juria-web-00228-ghf` (22/10/2026), `/` → 200. Retour arrière possible : `git revert f20afe5` puis redéploiement web.
