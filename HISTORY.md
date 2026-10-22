@@ -4147,3 +4147,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 22/10/2026 — Étiquette : retour à l'ancien affichage (centrée)
 - Sur demande de l'utilisateur, le choix d'emplacement (1 à 4) est annulé par `git revert` de f20afe5 : l'étiquette redevient centrée verticalement sur la feuille A4, sans sélecteur. Redéploiement web à faire (accord en attente).
+- Déployé : frontend `juria-web-00229-tt2` (22/10/2026), `/` → 200. L'étiquette centrée est de nouveau en ligne.
