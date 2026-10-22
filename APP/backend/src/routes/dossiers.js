@@ -14,6 +14,7 @@ const { estDocumentVisible, chargerContexteDossier } = require("../confidentiali
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
 const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
+const { genererEtiquettePdfBuffer } = require("../etiquettePdf");
 const { envoiSuspendu } = require("../suspensionEmails");
 const router = express.Router();
 
@@ -448,6 +449,31 @@ router.get("/verifier-doublon", async (req, res) => {
 });
 
 // GET /api/dossiers/:id  -> dossier enrichi (client, responsable, parties, équipe)
+// GET /api/dossiers/:id/etiquette.pdf — étiquette de chemise en PDF à la
+// taille exacte (100 x 60 mm sur page A4), voir etiquettePdf.js. Même accès
+// que la fiche dossier (GET /:id).
+router.get("/:id/etiquette.pdf", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id, d.numero, d.intitule, d.juridiction, d.couleur_chemise,
+              COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
+       FROM dossiers d JOIN clients c ON c.id = d.client_id
+       WHERE d.id = $1`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Dossier introuvable" });
+    const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
+    const pdf = await genererEtiquettePdfBuffer(rows[0], `${base}/dossiers/${rows[0].id}`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="Etiquette-${String(rows[0].numero).replace(/[^A-Za-z0-9-]/g, "_")}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    if (e.code === "22P02") return res.status(404).json({ error: "Dossier introuvable" });
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   const id = req.params.id;
   try {

@@ -178,7 +178,8 @@ import { libelleRole } from '../../core/roles';
           </div>
           <div class="etq-row">
             <button class="btn ghost" (click)="imprimerEtiquette(d, etq)">🖶 Imprimer l'étiquette</button>
-            <p class="hint" style="margin:0">Bandeau de la couleur de la matière + QR scannable vers la fiche du dossier.</p>
+            <button class="btn ghost" (click)="apercuEtiquettePdf(d)">Étiquette PDF (taille exacte)</button>
+            <p class="hint" style="margin:0">Bandeau de la couleur de la matière + QR scannable vers la fiche du dossier. Le PDF garde le cadre à 100 x 60 mm : à l'impression, choisir l'échelle « 100 % / taille réelle » (pas « ajuster à la page »).</p>
           </div>
         }
       </section>
@@ -1330,6 +1331,10 @@ export class DossierDetailComponent implements OnInit {
 
   private echapperHtml(texte: string): string {
     return (texte ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  }
+
+  apercuEtiquettePdf(d: any): void {
+    this.preview.ouvrir(`Etiquette-${d.numero}.pdf`, this.api.telechargerEtiquettePdf(d.id));
   }
 
   imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }): void {

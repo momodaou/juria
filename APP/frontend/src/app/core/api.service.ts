@@ -698,6 +698,10 @@ export class ApiService {
   }
   // 23/09/2026 — remplace l'impression HTML/navigateur par un vrai PDF
   // généré côté serveur (rolePdf.js), même patron que telechargerFacturePdf.
+  // 22/10/2026 — étiquette de chemise en PDF à la taille exacte (100 x 60 mm).
+  telechargerEtiquettePdf(dossierId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/dossiers/${dossierId}/etiquette.pdf`, { responseType: 'blob' });
+  }
   telechargerRolePdf(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/roles-audience/${id}/pdf`, { responseType: 'blob' });
   }

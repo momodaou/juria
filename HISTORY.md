@@ -4134,3 +4134,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Aucun dégât de données** : le serveur impose déjà « abonnement » à la création (`resoudreModeHonorairesEffectif`) ; seul l'affichage divergeait (l'utilisateur pouvait croire avoir choisi un autre mode).
 - **Correction** : méthode commune `verifierConventionClient`, appelée par les deux chemins ; ignore la réponse si le client a changé entre-temps. `ng build` OK. Frontend seul, **non déployé**.
 - **Déployé** (accord de l'utilisateur, frontend seul, aucune migration) : `juria-web-00227-r7z`. `/` en `200`.
+
+## 22/10/2026 — Étiquette JURIA : version PDF à la taille exacte (100 x 60 mm)
+- Retour utilisateur : sur la feuille imprimée, l'étiquette paraît plus petite qu'avant. Mesure faite : le cadre HTML est identique (378 x 227 px = 100 x 60 mm) avant et après les modifications de contenu ; la réduction vient très probablement de l'échelle d'impression du navigateur (« ajuster à la page », Safari…), que le code ne maîtrise pas.
+- **Solution** : nouveau PDF généré côté serveur (`backend/src/etiquettePdf.js`, pdfkit + `qrcode`, nouvelle dépendance backend) — page A4 portant le cadre à sa taille physique exacte, mêmes lignes (numéro, intitulé jusqu'à 3 lignes, Client, Juridiction, Chemise), QR vers la fiche. Troncature par « … » faite par le code. Route `GET /api/dossiers/:id/etiquette.pdf` (même accès que la fiche dossier), bouton « Étiquette PDF (taille exacte) » à côté de l'impression HTML existante (conservée pour comparaison).
+- Tests : `etiquettePdf.test.js` (5) ; suite **688/688**. `ng build` OK. **Non déployé** (API + web, aucune migration).
