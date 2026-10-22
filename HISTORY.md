@@ -4138,3 +4138,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 22/10/2026 — Étiquette JURIA : clôture du point « taille à l'impression »
 - Cause finalement trouvée par l'utilisateur : un **réglage d'impression** de son côté (échelle du navigateur), pas un défaut de JURIA. Le cadre était bien resté à 100 x 60 mm.
 - La version PDF de l'étiquette (commit 3de1ad6, jamais déployée) est donc **retirée** par un `git revert` : pas de nouveau bouton, pas de dépendance `qrcode` côté serveur. L'impression HTML existante reste la seule.
+
+## 22/10/2026 — Étiquette : 4 emplacements sur la feuille A4 (économie de papier)
+- Demande : pouvoir imprimer une seconde étiquette plus bas sur la même feuille.
+- L'étiquette n'est plus centrée verticalement mais alignée en haut ; un sélecteur « Emplacement sur la feuille A4 » (1 à 4) à côté du bouton d'impression décale l'étiquette de 68 mm par emplacement (4 x 60 mm + 3 x 8 mm dans les 267 mm utiles). L'utilisateur repasse la même feuille dans l'imprimante pour l'emplacement suivant.
+- Fichier : `dossier-detail.component.ts` (signal `emplacementEtiquette`). Build OK. Non déployé (accord en attente).
