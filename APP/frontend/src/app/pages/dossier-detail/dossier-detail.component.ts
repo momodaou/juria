@@ -178,14 +178,6 @@ import { libelleRole } from '../../core/roles';
           </div>
           <div class="etq-row">
             <button class="btn ghost" (click)="imprimerEtiquette(d, etq)">🖶 Imprimer l'étiquette</button>
-            <label class="hint" style="margin:0">Emplacement sur la feuille A4 :
-              <select (change)="emplacementEtiquette.set(+$any($event.target).value)">
-                <option value="1" [selected]="emplacementEtiquette() === 1">1 (haut)</option>
-                <option value="2" [selected]="emplacementEtiquette() === 2">2</option>
-                <option value="3" [selected]="emplacementEtiquette() === 3">3</option>
-                <option value="4" [selected]="emplacementEtiquette() === 4">4 (bas)</option>
-              </select>
-            </label>
             <p class="hint" style="margin:0">Bandeau de la couleur de la matière + QR scannable vers la fiche du dossier.</p>
           </div>
         }
@@ -1142,8 +1134,6 @@ export class DossierDetailComponent implements OnInit {
   retourCorrection: any = {};
   readonly documents = signal<any[]>([]);
   readonly erreur = signal('');
-  // 22/10/2026 — emplacement (1 à 4) de l'étiquette sur la feuille A4, pour réutiliser la même feuille.
-  readonly emplacementEtiquette = signal(1);
   // 26/09/2026 — audit doublons : garde anti-double-clic sur les 3
   // formulaires de la fiche dossier (priorité basse, pas d'avertissement
   // de doublon métier ici — titres/durées/objets souvent légitimement
@@ -1371,13 +1361,10 @@ export class DossierDetailComponent implements OnInit {
          pas réduire la largeur réservée au texte.
          21/10/2026 — intitulé autorisé sur 3 lignes (au lieu de 2) : mesuré au
          pire cas (intitulé, client et juridiction très longs), le texte occupe
-         162 px sur ~199 utiles ; 3 lignes d'intitulé tiennent encore (~183 px).
-         22/10/2026 — étiquette alignée en haut de page, avec 4 emplacements
-         au choix (pas de 68 mm : 4 x 60 mm + 3 x 8 mm tiennent dans les 267 mm
-         utiles) pour réutiliser la même feuille en la repassant dans l'imprimante. */
+         162 px sur ~199 utiles ; 3 lignes d'intitulé tiennent encore (~183 px). */
       @page { size: A4; margin: 15mm; }
-      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flow-root}
-      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none;margin:${(this.emplacementEtiquette() - 1) * 68}mm auto 0}
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
       .bande{width:9px;flex:none;background:${etq.couleurHex}}
       .corps{display:flex;gap:14px;align-items:center;padding:12px 16px;min-width:0;flex:1}
       .qr{width:86px;height:86px;flex:none}
@@ -1388,7 +1375,7 @@ export class DossierDetailComponent implements OnInit {
       .lbl{color:#6B7280;font-weight:400}
       .sub{font-size:14px;color:#1F2A44;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .chemise{font-size:13px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .note{margin-top:10px;font-size:11px;color:#6B7280;text-align:center}
+      .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
     </style></head><body>
       <div class="etq"><div class="bande"></div><div class="corps">
