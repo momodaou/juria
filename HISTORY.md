@@ -4186,3 +4186,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 24/10/2026 — Colonne « Honoraires » : pastilles coupées sur écran étroit
 - Retour de l'utilisateur : écritures décalées / mal alignées (ex. « En attente de facturation », « Pro bono · sans frais »). **Cause reproduite** à 1100 px de large : la pastille se coupait sur deux lignes (« En attente de / facturation »), d'où un fond en deux morceaux décalés. Invisible à 1280 px et plus.
 - **Correctif** (`dossiers.component.ts`) : `.tag{display:inline-block;white-space:nowrap;vertical-align:middle}` — une pastille ne se coupe plus ; la colonne s'élargit (l'intitulé et le client passent à la ligne à sa place) ; sous ~1000 px de largeur le tableau défile horizontalement. Vérifié par captures avant/après à 1100 et 940 px. Frontend seul, non déployé (accord en attente).
+- **Déployé (24/10/2026, accord de l'utilisateur)** : frontend `juria-web-00234-jlx`, `/` en `200`.
