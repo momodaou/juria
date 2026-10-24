@@ -146,7 +146,7 @@ const CATEGORIES: [string, string][] = [
                     </div>
                   }
                   <div class="champs">
-                    <div><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="form.montant" name="em" /></div>
+                    <div class="etroit"><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="form.montant" name="em" /></div>
                     @if (d.statut === 'soumis') {
                       <div class="large"><label>Motif (obligatoire pour rejeter)</label><input class="in" [(ngModel)]="form.motif" name="emo" /></div>
                     }
@@ -278,6 +278,7 @@ const CATEGORIES: [string, string][] = [
     .alerte{background:rgba(179,38,30,.08);border:1px solid rgba(179,38,30,.35);color:var(--red);padding:10px 14px;border-radius:8px;font-weight:600;font-size:var(--fs-base);margin:0 0 16px}
     .champs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 18px;margin-bottom:14px}
     .champs .large{grid-column:1 / -1}
+    .champs .etroit{max-width:260px}
     .champs .cases label{display:flex;align-items:center;gap:8px;font-weight:400;font-size:var(--fs-base)}
     .reglement-bloc{margin:2px 0 4px}
     .sous-titre{margin:26px 0 14px;padding-top:18px;border-top:1px solid var(--line);color:var(--navy);font-size:var(--fs-md);font-weight:700}
