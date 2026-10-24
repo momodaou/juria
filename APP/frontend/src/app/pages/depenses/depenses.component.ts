@@ -382,6 +382,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .checks label{font-weight:400}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
+    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
+    a.btn{display:inline-block;text-decoration:none}
     .btn:disabled{opacity:.6}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
