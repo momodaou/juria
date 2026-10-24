@@ -83,6 +83,8 @@ import { AuthService } from '../../core/auth.service';
     </section>
   `,
   styles: [`
+    /* 24/10/2026 — une pastille ne se coupe jamais sur deux lignes (« En attente de / facturation » était déformée sur écran étroit) : la colonne s'élargit, le tableau défile au besoin. */
+    .tag{display:inline-block;white-space:nowrap;vertical-align:middle}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .lien:hover{text-decoration:underline}

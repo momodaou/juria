@@ -4182,3 +4182,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Technique : l'API de liste renvoie en plus `mode_honoraires` ; calcul d'affichage `etatHonoraires()` dans `dossiers.component.ts` (anciennes méthodes `libelleHonoraires`/`libelleFacturation` conservées, plus utilisées par la liste). Aucune migration.
 - Vérifié : suite **690/690**, `ng build` OK, captures Playwright locales sur 10 dossiers d'essai couvrant chaque cas (base locale supprimée ensuite). Non déployé (accord en attente).
 - **Déployé (24/10/2026, accord de l'utilisateur)** : API `juria-00178-2dw`, frontend `juria-web-00233-dsr`. `/health` et `/` en `200`.
+
+## 24/10/2026 — Colonne « Honoraires » : pastilles coupées sur écran étroit
+- Retour de l'utilisateur : écritures décalées / mal alignées (ex. « En attente de facturation », « Pro bono · sans frais »). **Cause reproduite** à 1100 px de large : la pastille se coupait sur deux lignes (« En attente de / facturation »), d'où un fond en deux morceaux décalés. Invisible à 1280 px et plus.
+- **Correctif** (`dossiers.component.ts`) : `.tag{display:inline-block;white-space:nowrap;vertical-align:middle}` — une pastille ne se coupe plus ; la colonne s'élargit (l'intitulé et le client passent à la ligne à sa place) ; sous ~1000 px de largeur le tableau défile horizontalement. Vérifié par captures avant/après à 1100 et 940 px. Frontend seul, non déployé (accord en attente).
