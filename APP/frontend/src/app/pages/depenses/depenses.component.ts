@@ -19,11 +19,14 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <h1>Dépenses &amp; caisse</h1>
         <p>Charges du cabinet, petite caisse, vignettes de plaidoirie — circuit soumise → validée → décaissée.</p>
       </div>
-      @if (auth.peut('depenses.creer')) {
-        <button class="btn" (click)="afficherForm.set(!afficherForm())">
-          {{ afficherForm() ? 'Annuler' : '+ Nouvelle dépense' }}
-        </button>
-      }
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <a class="btn ghost" routerLink="/depenses/etat-charges">État mensuel des charges</a>
+        @if (auth.peut('depenses.creer')) {
+          <button class="btn" (click)="afficherForm.set(!afficherForm())">
+            {{ afficherForm() ? 'Annuler' : '+ Nouvelle dépense' }}
+          </button>
+        }
+      </div>
     </header>
 
     @if (filtreDossierNumero()) {

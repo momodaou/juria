@@ -701,6 +701,21 @@ export class ApiService {
   telechargerRolePdf(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/roles-audience/${id}/pdf`, { responseType: 'blob' });
   }
+  // 24/10/2026 — État mensuel des charges (préparé par l'admin/comptable, décidé par les associés).
+  modelesCharges(inactifs = false): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/charges/modeles${inactifs ? '?inactifs=true' : ''}`); }
+  enregistrerModeleCharge(payload: any, id?: string): Observable<any> {
+    return id ? this.http.put<any>(`${this.base}/api/charges/modeles/${id}`, payload) : this.http.post<any>(`${this.base}/api/charges/modeles`, payload);
+  }
+  retirerModeleCharge(id: string): Observable<any> { return this.http.delete(`${this.base}/api/charges/modeles/${id}`); }
+  etatsCharges(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/charges/etats`); }
+  etatCharges(id: string): Observable<any> { return this.http.get<any>(`${this.base}/api/charges/etats/${id}`); }
+  creerEtatCharges(mois: string): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats`, { mois }); }
+  ajouterLigneCharge(etatId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes`, payload); }
+  modifierLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`, payload); }
+  supprimerLigneCharge(etatId: string, ligneId: string): Observable<any> { return this.http.delete(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`); }
+  actionEtatCharges(etatId: string, action: 'soumettre' | 'rouvrir' | 'cloturer'): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/${action}`, {}); }
+  decisionLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/decision`, payload); }
+  telechargerEtatChargesPdf(etatId: string): Observable<Blob> { return this.http.get(`${this.base}/api/charges/etats/${etatId}/pdf`, { responseType: 'blob' }); }
   motifsRenvoi(): Observable<{ id: string; libelle: string }[]> {
     return this.http.get<{ id: string; libelle: string }[]>(`${this.base}/api/roles-audience/motifs-renvoi`);
   }

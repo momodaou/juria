@@ -59,6 +59,7 @@ app.use("/api/actes", authenticate, require("./src/routes/actes"));
 app.use("/api/biblio", authenticate, require("./src/routes/biblio"));
 app.use("/api/utilisateurs", authenticate, require("./src/routes/utilisateurs"));
 app.use("/api/depenses", authenticate, require("./src/routes/depenses"));
+app.use("/api/charges", authenticate, require("./src/routes/charges"));
 app.use("/api/retrocessions", authenticate, require("./src/routes/retrocessions"));
 app.use("/api/acces", authenticate, require("./src/routes/acces"));
 app.use("/api/profil", authenticate, require("./src/routes/profil"));

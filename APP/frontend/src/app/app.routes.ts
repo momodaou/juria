@@ -84,6 +84,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/depenses/depenses.component').then((m) => m.DepensesComponent),
       },
       {
+        path: 'depenses/etat-charges',
+        loadComponent: () => import('./pages/depenses/etat-charges.component').then((m) => m.EtatChargesComponent),
+      },
+      {
         path: 'fonds-tiers',
         loadComponent: () => import('./pages/fonds-tiers/fonds-tiers.component').then((m) => m.FondsTiersComponent),
       },

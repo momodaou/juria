@@ -5094,3 +5094,74 @@ ON CONFLICT (role, action_code) DO UPDATE SET autorise = EXCLUDED.autorise;
 --  envois actifs ; la suspension s'éteint donc toute seule. Idempotent.
 -- =====================================================================
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS emails_dossiers_suspendus_jusqu_a TIMESTAMPTZ;
+
+-- =====================================================================
+--  24/10/2026 — État mensuel des charges (dépenses du cabinet)
+--  Fonctionnement du cabinet : l'administratrice générale (ou le comptable)
+--  présente aux associés, chaque fin de mois, un tableau des charges à payer
+--  (fixes et ponctuelles) ; les associés approuvent, rejettent ou REPORTENT
+--  chaque ligne et orientent le moyen de paiement ; l'administratrice paie.
+--  - charges_modeles : catalogue des charges habituelles (ne déclenche jamais
+--    de paiement : il sert uniquement à pré-remplir l'état).
+--  - etats_charges : un état par mois (en_preparation → soumis → clos).
+--  - etats_charges_lignes : une ligne par charge ; l'approbation crée une
+--    dépense « validée » dans le circuit existant (le décaissement reste inchangé).
+--  Une ligne reportée revient dans l'état du mois suivant (report_de, retard_mois).
+--  Les salaires restent dans le module RH (jamais dans cet état). Idempotent.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS charges_modeles (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    libelle          VARCHAR(240) NOT NULL,
+    categorie        categorie_depense NOT NULL DEFAULT 'autre',
+    type             type_depense NOT NULL DEFAULT 'fixe',
+    montant_habituel NUMERIC(14,0) NOT NULL DEFAULT 0,        -- FCFA, point de départ modifiable
+    montant_variable BOOLEAN NOT NULL DEFAULT FALSE,          -- le montant change d'un mois à l'autre
+    periodicite      VARCHAR(12) NOT NULL DEFAULT 'mensuelle'
+                     CHECK (periodicite IN ('mensuelle','trimestrielle','annuelle')),
+    mois_echeance    SMALLINT CHECK (mois_echeance BETWEEN 1 AND 12),   -- mois de l'année (annuelle) ou 1er mois du cycle (trimestrielle)
+    mode_paiement    mode_paiement,                           -- moyen habituel (proposition aux associés)
+    compte_id        UUID REFERENCES comptes_bancaires(id),
+    actif            BOOLEAN NOT NULL DEFAULT TRUE,
+    cree_par         UUID REFERENCES utilisateurs(id),
+    cree_le          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS etats_charges (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    mois        DATE NOT NULL UNIQUE,                         -- 1er du mois concerné
+    statut      VARCHAR(14) NOT NULL DEFAULT 'en_preparation'
+                CHECK (statut IN ('en_preparation','soumis','clos')),
+    note        TEXT,
+    prepare_par UUID REFERENCES utilisateurs(id),
+    soumis_le   TIMESTAMPTZ,
+    clos_par    UUID REFERENCES utilisateurs(id),
+    clos_le     TIMESTAMPTZ,
+    cree_le     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS etats_charges_lignes (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    etat_id       UUID NOT NULL REFERENCES etats_charges(id) ON DELETE CASCADE,
+    modele_id     UUID REFERENCES charges_modeles(id) ON DELETE SET NULL,
+    libelle       VARCHAR(240) NOT NULL,
+    categorie     categorie_depense NOT NULL DEFAULT 'autre',
+    type          type_depense NOT NULL DEFAULT 'ponctuelle',
+    montant       NUMERIC(14,0) NOT NULL DEFAULT 0,           -- FCFA
+    periode_debut DATE,                                       -- période couverte (distincte de la date de paiement)
+    periode_fin   DATE,
+    observation   TEXT,
+    mode_paiement mode_paiement,
+    compte_id     UUID REFERENCES comptes_bancaires(id),
+    decision      VARCHAR(10) NOT NULL DEFAULT 'en_attente'
+                  CHECK (decision IN ('en_attente','approuvee','rejetee','reportee')),
+    motif         TEXT,
+    decide_par    UUID REFERENCES utilisateurs(id),
+    decide_le     TIMESTAMPTZ,
+    report_de     UUID REFERENCES etats_charges_lignes(id) ON DELETE SET NULL,
+    retard_mois   SMALLINT NOT NULL DEFAULT 0,                -- nombre de mois de report accumulés
+    depense_id    UUID REFERENCES depenses(id) ON DELETE SET NULL,
+    ordre         INTEGER NOT NULL DEFAULT 0,
+    cree_le       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_etats_charges_lignes_etat ON etats_charges_lignes(etat_id);
+CREATE INDEX IF NOT EXISTS idx_etats_charges_lignes_report ON etats_charges_lignes(report_de);
