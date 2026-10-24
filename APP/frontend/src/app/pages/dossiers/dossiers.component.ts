@@ -51,7 +51,7 @@ import { AuthService } from '../../core/auth.service';
       @if (affiches().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th class="col-honoraires">Honoraires</th></tr>
+          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Position du client</th><th>Responsable</th><th>Ouvert le</th><th>État du dossier</th><th>Phase</th><th>Urgence</th><th class="col-honoraires">Honoraires</th></tr>
           @for (d of affiches(); track d.id) {
             <tr>
               <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">

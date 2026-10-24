@@ -68,7 +68,7 @@ import { libelleRole } from '../../core/roles';
               <div class="montant-sens">({{ sens }})</div>
             }
           </div>
-          <div><span>Statut</span><b>{{ d.statut }}</b></div>
+          <div><span>État du dossier</span><b>{{ d.statut }}</b></div>
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
           <div>
             <span>Mode d'honoraires</span>
@@ -346,7 +346,7 @@ import { libelleRole } from '../../core/roles';
               </select>
             </div>
             <div>
-              <label>Statut</label>
+              <label>État du dossier</label>
               <select class="in" [(ngModel)]="edit.statut" name="editStatut">
                 <option value="ouvert">Ouvert</option>
                 <option value="en_cours">En cours</option>
