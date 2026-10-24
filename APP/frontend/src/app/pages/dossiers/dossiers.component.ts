@@ -86,7 +86,8 @@ import { AuthService } from '../../core/auth.service';
     /* 24/10/2026 — une pastille ne se coupe jamais sur deux lignes (« En attente de / facturation » était déformée sur écran étroit) : la colonne s'élargit, le tableau défile au besoin. */
     .tag{display:inline-block;white-space:nowrap;vertical-align:middle}
     /* 24/10/2026 (suite) — la pastille Honoraires reste compacte : largeur plafonnée, texte sur 1 ou 2 lignes DANS un seul bloc arrondi, aligné à gauche. */
-    .tag.honoraires{white-space:normal;max-width:150px;line-height:1.3;padding:3px 10px;border-radius:12px;text-align:left}
+    /* Même largeur pour toutes les pastilles, texte centré : bords nets à gauche et à droite, 1 ou 2 lignes (retour de l'utilisateur, 24/10/2026). */
+    .tag.honoraires{display:block;box-sizing:border-box;width:140px;white-space:normal;line-height:1.3;padding:4px 10px;border-radius:12px;text-align:center}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .lien:hover{text-decoration:underline}
