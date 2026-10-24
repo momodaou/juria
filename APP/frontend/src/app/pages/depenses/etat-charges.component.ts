@@ -61,7 +61,7 @@ const CATEGORIES: [string, string][] = [
               <td>{{ e.nb_a_decider }}</td>
               <td>{{ e.nb_reportees }}</td>
               <td>@if (e.nb_en_retard) { <span class="retard">{{ e.nb_en_retard }}</span> }</td>
-              <td><button class="lien" (click)="ouvrir(e.id)">Ouvrir</button></td>
+              <td class="actions"><button class="lien" (click)="ouvrir(e.id)">{{ detail()?.id === e.id ? 'Affiché' : 'Ouvrir' }}</button></td>
             </tr>
           }
         </table>
@@ -75,11 +75,11 @@ const CATEGORIES: [string, string][] = [
           <p class="alerte">⚠ {{ d.en_retard }} charge(s) reportée(s) depuis {{ seuil }} mois ou plus : à traiter en priorité.</p>
         }
         <div class="kpis">
-          <div class="kpi"><div class="n">{{ d.totaux.total | number }}</div><div class="l">Total des charges (hors rejetées)</div></div>
-          <div class="kpi green"><div class="n">{{ d.totaux.approuve | number }}</div><div class="l">Approuvé</div></div>
-          <div class="kpi amber"><div class="n">{{ d.totaux.reporte | number }}</div><div class="l">Reporté</div></div>
-          <div class="kpi red"><div class="n">{{ d.totaux.rejete | number }}</div><div class="l">Rejeté</div></div>
-          <div class="kpi"><div class="n">{{ d.totaux.a_decider | number }}</div><div class="l">À décider</div></div>
+          <div class="kpi"><div class="n">{{ d.totaux.total | number }}</div><div class="l">Total hors rejetées (FCFA)</div></div>
+          <div class="kpi green"><div class="n">{{ d.totaux.approuve | number }}</div><div class="l">Approuvé (FCFA)</div></div>
+          <div class="kpi amber"><div class="n">{{ d.totaux.reporte | number }}</div><div class="l">Reporté (FCFA)</div></div>
+          <div class="kpi red"><div class="n">{{ d.totaux.rejete | number }}</div><div class="l">Rejeté (FCFA)</div></div>
+          <div class="kpi"><div class="n">{{ d.totaux.a_decider | number }}</div><div class="l">À décider (FCFA)</div></div>
         </div>
 
         <div class="barre">
@@ -110,10 +110,14 @@ const CATEGORIES: [string, string][] = [
               <td>{{ moyen(l) }}</td>
               <td>
                 @switch (l.decision) {
-                  @case ('approuvee') { <span class="ok">Approuvée</span>@if (l.depense_statut) { <div class="obs">dépense {{ libelleDepense(l.depense_statut) }}</div> } }
+                  @case ('approuvee') {
+                    <span class="ok">Approuvée</span>
+                    @if (l.depense_statut === 'validee') { <div class="obs"><a class="lien" routerLink="/depenses" [queryParams]="{ statut: 'validee' }">À décaisser →</a></div> }
+                    @else if (l.depense_statut) { <div class="obs">dépense {{ libelleDepense(l.depense_statut) }}</div> }
+                  }
                   @case ('rejetee') { <span class="ko">Rejetée</span><div class="obs">{{ l.motif }}</div> }
                   @case ('reportee') { <span class="rep">Reportée</span>@if (l.motif) { <div class="obs">{{ l.motif }}</div> } }
-                  @default { <span class="att">À décider</span> }
+                  @default { }
                 }
               </td>
               <td class="actions">
@@ -261,8 +265,9 @@ const CATEGORIES: [string, string][] = [
     table{width:100%}
     td.num{text-align:right;white-space:nowrap;padding-right:18px}
     th.num{text-align:right;padding-right:18px}
-    td.actions{white-space:nowrap;text-align:right}
-    tr.sel td{background:rgba(176,141,87,.08)}
+    td.actions{white-space:nowrap;text-align:right;padding-right:48px}
+    tr.sel td{background:rgba(176,141,87,.16)}
+    tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--gold);font-weight:700}
     tr.retard-ligne td{background:rgba(179,38,30,.06)}
     tr.edit > td{background:#FAFAF7;padding:18px 20px 20px;border-bottom:1px solid var(--line)}
     .tag{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:12px;background:#eceff3;color:#5a6675;font-size:var(--fs-xs);font-weight:600}

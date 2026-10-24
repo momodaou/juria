@@ -36,7 +36,7 @@ describe("Cycle d'un état mensuel", () => {
     expect(r.status).toBe(201);
     octobre = r.body;
     expect(octobre.mois).toBe("2026-10-01");
-    expect(octobre.lignes.map((l) => l.libelle).sort()).toEqual(["Café", "Loyer"]);
+    expect(octobre.lignes.map((l) => l.libelle)).toEqual(["Café", "Loyer"]); // ordre alphabétique stable
     expect(octobre.lignes.find((l) => l.libelle === "Loyer").periode_fin).toBe("2026-10-31");
     expect((await post("/api/charges/etats", { mois: "2026-10" })).status).toBe(409);
     expect((await post("/api/charges/etats", { mois: "n'importe quoi" })).status).toBe(400);
@@ -56,8 +56,8 @@ describe("Cycle d'un état mensuel", () => {
     const ok = await post(`/api/charges/etats/${octobre.id}/lignes/${loyer.id}/decision`, { decision: "approuvee", mode_paiement: "cheque", compte_id: banque });
     expect(ok.status).toBe(200);
     expect(ok.body.depense_id).toBeTruthy();
-    const dep = (await pool.query("SELECT statut, montant, nature, mode_paiement FROM depenses WHERE id = $1", [ok.body.depense_id])).rows[0];
-    expect(dep).toMatchObject({ statut: "validee", montant: "450000", nature: "cabinet", mode_paiement: "cheque" });
+    const dep = (await pool.query("SELECT statut, montant, nature, mode_paiement, libelle FROM depenses WHERE id = $1", [ok.body.depense_id])).rows[0];
+    expect(dep).toMatchObject({ statut: "validee", montant: "450000", nature: "cabinet", mode_paiement: "cheque", libelle: "Loyer — octobre 2026" });
     expect((await post(`/api/charges/etats/${octobre.id}/lignes/${loyer.id}/decision`, { decision: "rejetee", motif: "x" })).status).toBe(409);
     const peinture = (await get(`/api/charges/etats/${octobre.id}`)).body.lignes.find((l) => l.libelle === "Peinture bureaux");
     expect((await post(`/api/charges/etats/${octobre.id}/lignes/${peinture.id}/decision`, { decision: "rejetee" })).status).toBe(400);

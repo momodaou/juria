@@ -24,6 +24,16 @@ function premierDuMois(v) {
   return `${m[1]}-${m[2]}-01`;
 }
 
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const ABREGE = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+// « septembre 2026 » ou « oct. 2026 – déc. 2026 » d'après les dates AAAA-MM-JJ de la période couverte.
+function libellePeriode(debut, fin) {
+  if (!debut) return "";
+  const [a, m] = String(debut).split("-"); const [b, n] = String(fin || debut).split("-");
+  if (a === b && m === n) return `${MOIS[+m - 1]} ${a}`;
+  return `${ABREGE[+m - 1]} ${a} – ${ABREGE[+n - 1]} ${b}`;
+}
+
 const entier = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 const montantValide = (v) => Number.isInteger(v) && v >= 0;
 
@@ -41,7 +51,7 @@ const SQL_LIGNES = `
   LEFT JOIN depenses d ON d.id = l.depense_id
   LEFT JOIN utilisateurs u ON u.id = l.decide_par
   WHERE l.etat_id = $1
-  ORDER BY l.ordre, l.cree_le`;
+  ORDER BY l.ordre, l.periode_debut, l.libelle, l.cree_le`;
 
 async function chargerEtat(id) {
   const { rows: [etat] } = await pool.query(
@@ -306,7 +316,7 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
   try {
     await client.query("BEGIN");
     const { rows: [l] } = await client.query(
-      `SELECT l.*, e.statut AS etat_statut, e.mois::text AS mois FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id
+      `SELECT l.*, l.periode_debut::text AS periode_debut, l.periode_fin::text AS periode_fin, e.statut AS etat_statut, e.mois::text AS mois FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id
        WHERE l.id = $1::uuid AND l.etat_id = $2::uuid FOR UPDATE OF l`, [req.params.ligneId, req.params.id]);
     if (!l) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Ligne introuvable." }); }
     if (l.etat_statut !== "soumis") { await client.query("ROLLBACK"); return res.status(409).json({ error: "L'état doit être soumis aux associés pour décider." }); }
@@ -328,7 +338,7 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
          VALUES ('cabinet', $1::type_depense, $2::categorie_depense, $3, $4, current_date, $5::mode_paiement, $6::uuid, 'validee',
                  $7::uuid, $8::uuid, now(), $7::uuid)
          RETURNING id`,
-        [l.type, l.categorie, `${l.libelle} — état des charges ${String(l.mois).slice(0, 7)}`, montant, v.mode_paiement, v.compte_id,
+        [l.type, l.categorie, `${l.libelle} — ${libellePeriode(l.periode_debut, l.periode_fin) || libellePeriode(l.mois)}`, montant, v.mode_paiement, v.compte_id,
          (await client.query("SELECT prepare_par FROM etats_charges WHERE id = $1::uuid", [req.params.id])).rows[0].prepare_par || req.user.sub,
          req.user.sub]);
       depenseId = d.id;

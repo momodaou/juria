@@ -22,7 +22,7 @@ import { ApiService, MoyenPaiement } from './api.service';
       </label>
       @if (moyen(); as m) {
         @for (c of m.champs; track c.cle) {
-          <label>{{ c.libelle }}@if (c.requis && exigerReferences) { <span class="req"> *</span> }
+          <label><span>{{ c.libelle }}@if (c.requis && exigerReferences) { <span class="req"> *</span> }</span>
             <input [type]="c.type === 'date' ? 'date' : 'text'" [(ngModel)]="modele.references[c.cle]" [name]="'rg_' + c.cle" (ngModelChange)="emettre()" />
           </label>
         }
@@ -40,7 +40,7 @@ import { ApiService, MoyenPaiement } from './api.service';
           }
         }
         @if (comptes().length) {
-          <label>{{ libelleCompte() }}@if (compteObligatoire()) { <span class="req"> *</span> }
+          <label><span>{{ libelleCompte() }}@if (compteObligatoire()) { <span class="req"> *</span> }</span>
             <select [(ngModel)]="modele.compte_id" name="rgCompte" (ngModelChange)="emettre()">
               <option value="">{{ m.code === 'especes' && sens === 'encaissement' && !carpa ? '— pas encore déposées —' : '— choisir —' }}</option>
               @for (c of comptes(); track c.id) { <option [value]="c.id">{{ c.intitule }}</option> }

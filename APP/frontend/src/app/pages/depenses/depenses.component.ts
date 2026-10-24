@@ -433,6 +433,8 @@ export class DepensesComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    // 24/10/2026 — lien « À décaisser » de l'état mensuel des charges.
+    this.filtreStatut = params.get('statut') ?? '';
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
