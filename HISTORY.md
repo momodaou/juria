@@ -4195,3 +4195,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 24/10/2026 — Intitulés « Statut » ambigus : renommés
 - Constat de l'utilisateur : deux colonnes de la liste des dossiers s'appelaient presque pareil (« Statut partie » / « Statut »). Décision (recommandation validée) : **« Statut partie » → « Position du client »** (Demandeur, Défendeur, Appelant, Intimé…) et **« Statut » → « État du dossier »** (ouvert, en cours, suspendu, clos, archivé) — dans la liste, l'en-tête de la fiche dossier et le formulaire de modification. « Statut procédure » et « Statut de <client> » (tableau des instances) inchangés. Texte seul, `ng build` OK. Non déployé (accord en attente).
+- **Déployé (24/10/2026, accord de l'utilisateur)** : frontend `juria-web-00237-xgm`, `/` en `200`.
