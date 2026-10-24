@@ -230,11 +230,26 @@ router.put("/:id/abonnement", requirePermission("clients.modifier"), async (req,
       [periodicite, jourEcheance, moisEcheance, b.montant_convenu ?? null, req.params.id, periodicite]
     );
     if (!rows[0]) return res.status(404).json({ error: "Client introuvable" });
+    // 25/10/2026 — le mode « Abonnement » d'un dossier est DÉRIVÉ de son client
+    // (resoudreModeHonorairesEffectif, dossiers.js) mais n'était appliqué qu'à la
+    // création / modification du dossier : un dossier ouvert AVANT la convention
+    // gardait son ancien mode (liste déroulante sans « Abonnement », fausses
+    // alertes de facturation). Dès qu'une convention est configurée, les dossiers
+    // déjà rattachés au client passent donc en « abonnement ». (Retirer la
+    // convention ne rétablit pas l'ancien mode, qui n'est pas conservé.)
+    let dossiersRattaches = 0;
+    if (periodicite != null) {
+      const maj = await pool.query(
+        "UPDATE dossiers SET mode_honoraires = 'abonnement' WHERE client_id = $1 AND mode_honoraires IS DISTINCT FROM 'abonnement'",
+        [req.params.id]
+      );
+      dossiersRattaches = maj.rowCount;
+    }
     await logAudit({
       utilisateurId: req.user.sub, action: "modifier_abonnement_client", entite: "clients",
-      entiteId: req.params.id, details: { abonnement_periodicite: periodicite }, ip: req.ip,
+      entiteId: req.params.id, details: { abonnement_periodicite: periodicite, dossiers_rattaches: dossiersRattaches }, ip: req.ip,
     });
-    res.json(rows[0]);
+    res.json({ ...rows[0], dossiers_rattaches: dossiersRattaches });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

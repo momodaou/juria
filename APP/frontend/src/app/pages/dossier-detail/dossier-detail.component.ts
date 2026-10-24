@@ -72,7 +72,7 @@ import { libelleRole } from '../../core/roles';
           <div><span>Phase</span><b>{{ d.phase }}</b></div>
           <div>
             <span>Mode d'honoraires</span>
-            <b>{{ d.mode_honoraires || '—' }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b>
+            <b>{{ sousConvention(d) ? 'abonnement' : (d.mode_honoraires || '—') }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b>
             @if (auth.peut('dossiers.pro_bono.declarer')) {
               <div class="montant-sens"><button class="lien" (click)="basculerProBono()">{{ d.pro_bono ? 'Retirer le statut pro bono' : 'Marquer pro bono' }}</button></div>
             }
@@ -301,15 +301,15 @@ import { libelleRole } from '../../core/roles';
 
             <div>
               <label>Mode d'honoraires</label>
-              <select class="in" [(ngModel)]="edit.mode_honoraires" name="editModeHonoraires" [disabled]="d.mode_honoraires === 'abonnement'">
+              <select class="in" [(ngModel)]="edit.mode_honoraires" name="editModeHonoraires" [disabled]="sousConvention(d)">
                 <option value="forfait">Forfait</option>
                 <option value="temps_passe">Temps passé</option>
                 <option value="success_fee">Success fee</option>
-                @if (d.mode_honoraires === 'abonnement') { <option value="abonnement">Abonnement (convention-cadre du client)</option> }
+                @if (sousConvention(d)) { <option value="abonnement">Abonnement (convention-cadre du client)</option> }
                 <option value="consultation">Consultation</option>
                 <option value="autre">Autre — à préciser</option>
               </select>
-              @if (d.mode_honoraires === 'abonnement') {
+              @if (sousConvention(d)) {
                 <span class="hint">Déterminé par la convention-cadre du client — <a class="lien" [routerLink]="['/clients', d.client_id]">voir/modifier sur la fiche client</a>.</span>
               }
               @if (auth.peut('dossiers.pro_bono.declarer')) {
@@ -2083,11 +2083,16 @@ export class DossierDetailComponent implements OnInit {
     this.api.numerosVignettesDisponibles().subscribe({ next: (n) => this.numerosVignettesDisponibles.set(n), error: () => {} });
   }
 
+  // 25/10/2026 — le mode « Abonnement » est dérivé du CLIENT (convention-cadre) : on se fie à
+  // l'état actuel du client, pas au mode stocké sur le dossier (un dossier ouvert avant la
+  // convention gardait son ancien mode et n'offrait pas « Abonnement » à la modification).
+  sousConvention(d: any): boolean { return !!d?.client_sous_convention || d?.mode_honoraires === 'abonnement'; }
+
   activerEdition(d: any): void {
     this.edit = {
       intitule: d.intitule, client_id: d.client_id, pole: d.pole, matiere: d.matiere, juridiction: d.juridiction,
       montant_litige: d.montant_litige, montant_litige_sens: d.montant_litige_sens || 'indetermine',
-      montant_litige_sens_precision: d.montant_litige_sens_precision, mode_honoraires: d.mode_honoraires,
+      montant_litige_sens_precision: d.montant_litige_sens_precision, mode_honoraires: this.sousConvention(d) ? 'abonnement' : d.mode_honoraires,
       mode_honoraires_precision: d.mode_honoraires_precision, montant_convenu: d.montant_convenu_xof,
       urgence: d.urgence, phase: d.phase, statut: d.statut, responsable_id: d.responsable_id,
       objet: d.objet, statut_procedure: d.statut_procedure, statut_procedure_precision: d.statut_procedure_precision,

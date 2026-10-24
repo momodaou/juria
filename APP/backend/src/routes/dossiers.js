@@ -453,6 +453,7 @@ router.get("/:id", async (req, res) => {
   try {
     const d = await pool.query(
       `SELECT d.*,
+              (c.abonnement_periodicite IS NOT NULL) AS client_sous_convention,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
               u.prenom || ' ' || u.nom AS responsable_nom,
               cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom,
