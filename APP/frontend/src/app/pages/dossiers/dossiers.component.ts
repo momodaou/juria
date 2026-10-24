@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -31,6 +31,16 @@ import { AuthService } from '../../core/auth.service';
           <option value="clos">Clos</option>
           <option value="archive">Archivé</option>
         </select>
+        <select class="filtre" [ngModel]="filtreHonoraires()" (ngModelChange)="filtreHonoraires.set($event)" name="filtreHonoraires">
+          <option value="">Tous honoraires</option>
+          <option value="pro_bono">Pro bono</option>
+          <option value="facture">Facturé</option>
+          <option value="a_facturer">À facturer</option>
+          <option value="en_attente">En attente de facturation</option>
+          <option value="toujours_pas">Toujours pas facturé</option>
+          <option value="abonnement">Abonnement</option>
+          <option value="success_fee">Success fee</option>
+        </select>
         <select class="filtre" [(ngModel)]="filtreResponsable" (ngModelChange)="charger()">
           <option value="">Tous responsables</option>
           @if (auth.utilisateur(); as moi) { <option value="__moi__">Mes dossiers</option> }
@@ -38,11 +48,11 @@ import { AuthService } from '../../core/auth.service';
         </select>
       </div>
 
-      @if (dossiers().length) {
+      @if (affiches().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Pro bono</th><th>Facturation</th></tr>
-          @for (d of dossiers(); track d.id) {
+          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Honoraires</th></tr>
+          @for (d of affiches(); track d.id) {
             <tr>
               <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">
                 @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
@@ -57,24 +67,9 @@ import { AuthService } from '../../core/auth.service';
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">
-                @if (d.pro_bono) {
-                  <span class="tag"
-                        [class.ok]="d.statut_honoraires === 'atteint'"
-                        [class.attente]="d.statut_honoraires === 'sous_seuil'"
-                        [class.haute]="d.statut_honoraires === 'sans_honoraires'"
-                        [title]="(d.cumul_xof | number) + ' / ' + (d.honoraires_seuil_xof | number) + ' FCFA'">
-                    {{ libelleHonoraires(d.statut_honoraires) }}
-                  </span>
-                } @else { Non }
-              </td>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">
-                @if (d.statut_facturation) {
-                  <span class="tag"
-                        [class.attente]="d.statut_facturation === 'en_attente'"
-                        [class.haute]="d.statut_facturation === 'toujours_pas'">
-                    {{ libelleFacturation(d.statut_facturation) }}
-                  </span>
-                }
+                @if (etatHonoraires(d); as h) {
+                  <span class="tag" [class.ok]="h.classe === 'ok'" [class.attente]="h.classe === 'attente'" [class.haute]="h.classe === 'haute'" [title]="h.titre">{{ h.libelle }}</span>
+                } @else { — }
               </td>
             </tr>
           }
@@ -83,7 +78,7 @@ import { AuthService } from '../../core/auth.service';
       } @else if (erreur()) {
         <p class="err">{{ erreur() }}</p>
       } @else {
-        <p class="muted">Aucun dossier.</p>
+        <p class="muted">{{ dossiers().length ? 'Aucun dossier ne correspond à ce filtre « Honoraires ».' : 'Aucun dossier.' }}</p>
       }
     </section>
   `,
@@ -102,6 +97,12 @@ export class DossiersComponent implements OnInit {
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   readonly dossiers = signal<Dossier[]>([]);
+  // 24/10/2026 — filtre « Honoraires » (signal : un computed ne se réévalue pas sur une propriété ngModel).
+  readonly filtreHonoraires = signal('');
+  readonly affiches = computed(() => {
+    const f = this.filtreHonoraires();
+    return f ? this.dossiers().filter((d) => this.etatHonoraires(d)?.code === f) : this.dossiers();
+  });
   readonly utilisateurs = signal<any[]>([]);
   readonly erreur = signal('');
   recherche = '';
@@ -150,6 +151,31 @@ export class DossiersComponent implements OnInit {
     orange: '#d35400', violet: '#7d3c98', gris: '#95a5a6', dore: '#C89938',
   };
   couleurCss(couleur: string): string { return this.couleursCss[couleur] ?? '#ccc'; }
+
+  // 24/10/2026 — colonne unique « Honoraires » (remplace « Pro bono » + « Facturation »,
+  // deux colonnes qui s'excluaient mutuellement et restaient presque toujours vides).
+  // Une seule valeur par dossier, par priorité : pro bono (3 états) → dossier non actif (« — »)
+  // → abonnement → success fee → facturé → à facturer / en attente (30 j) / toujours pas (60 j).
+  // Règles et seuils inchangés (voir facturationDiscipline.js) : seul l'affichage change.
+  etatHonoraires(d: Dossier): { code: string; libelle: string; classe: '' | 'ok' | 'attente' | 'haute'; titre: string } | null {
+    if (d.pro_bono) {
+      const seuil = `${Math.round(d.cumul_xof ?? 0).toLocaleString('fr-FR')} / ${Math.round(d.honoraires_seuil_xof ?? 0).toLocaleString('fr-FR')} FCFA`;
+      switch (d.statut_honoraires) {
+        case 'atteint': return { code: 'pro_bono', libelle: 'Pro bono · seuil atteint', classe: 'ok', titre: seuil };
+        case 'sous_seuil': return { code: 'pro_bono', libelle: 'Pro bono · sous le seuil', classe: 'attente', titre: seuil };
+        default: return { code: 'pro_bono', libelle: 'Pro bono · sans frais', classe: 'haute', titre: seuil };
+      }
+    }
+    if (d.statut !== 'ouvert' && d.statut !== 'en_cours') return null;
+    if (d.mode_honoraires === 'abonnement') return { code: 'abonnement', libelle: 'Abonnement', classe: '', titre: 'Convention-cadre : facturation au niveau du client' };
+    if (d.mode_honoraires === 'success_fee') return { code: 'success_fee', libelle: 'Success fee', classe: '', titre: 'Honoraires de résultat : rien à facturer avant l’issue du dossier' };
+    if ((d.cumul_xof ?? 0) > 0) return { code: 'facture', libelle: 'Facturé', classe: 'ok', titre: `${Math.round(d.cumul_xof).toLocaleString('fr-FR')} FCFA facturés` };
+    const jours = Math.floor((Date.now() - new Date(d.date_ouverture).getTime()) / 86400000);
+    const titre = `Ouvert depuis ${jours} jour(s), aucune facture émise`;
+    if (d.statut_facturation === 'toujours_pas') return { code: 'toujours_pas', libelle: 'Toujours pas facturé', classe: 'haute', titre };
+    if (d.statut_facturation === 'en_attente') return { code: 'en_attente', libelle: 'En attente de facturation', classe: 'attente', titre };
+    return { code: 'a_facturer', libelle: 'À facturer', classe: '', titre };
+  }
 
   libelleHonoraires(statut: string | null): string {
     switch (statut) {

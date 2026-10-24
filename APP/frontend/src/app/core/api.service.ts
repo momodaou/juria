@@ -108,6 +108,8 @@ export interface Dossier {
   client_id: string;
   responsable: string;
   pro_bono: boolean;
+  // Mode d'honoraires du dossier (liste, 24/10/2026) — sert à la colonne unique « Honoraires ».
+  mode_honoraires?: string | null;
   code_matiere: string | null;
   couleur_chemise: string | null;
   date_ouverture: string;
