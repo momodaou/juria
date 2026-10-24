@@ -380,10 +380,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .col2{grid-column:1 / -1}
     .checks{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
     .checks label{font-weight:400}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
+    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-size:var(--fs-base);font-family:inherit;line-height:1.2;font-weight:600;cursor:pointer}
     .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    a.btn{display:inline-block;text-decoration:none}
+    a.btn{display:inline-block;text-decoration:none;box-sizing:border-box}
+    a.btn.ghost{padding:9px 15px}
     .btn:disabled{opacity:.6}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}

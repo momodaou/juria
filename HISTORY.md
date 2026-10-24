@@ -4168,3 +4168,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Vérifié : suite **690/690**, `ng build` OK, captures Playwright locales des écrans en préparation, soumis, décision et Dépenses filtrées. Aucune migration. Non déployé (accord en attente).
 - Champ Montant du formulaire de modification limité à 260 px (demande validée par l'utilisateur) ; déploiement du lot demandé.
 - **Déployé (24/10/2026, accord de l'utilisateur)** : API `juria-00177-2kn`, frontend `juria-web-00231-975`. `/health` et `/` en `200`.
+
+## 24/10/2026 — Bouton « État mensuel des charges » : taille de texte alignée
+- Retour de l'utilisateur : écriture « plus grasse » que celle du bouton voisin. **Cause** : le bouton est un lien `<a class="btn">` ; sans taille de police définie il héritait des 16 px du corps de page (contre 13 px pour le bouton « + Nouvelle dépense », un vrai `<button>`), d'où un texte plus gros, une hauteur différente et une police différente.
+- **Correctif** (`depenses.component.ts`) : `.btn` fixe désormais `font-size:var(--fs-base)` (13 px), `font-family:inherit`, `line-height:1.2` ; padding du lien blanc réduit de 1 px pour compenser sa bordure. Mesuré en navigateur : les deux boutons font 13 px / graisse 600 / 36 px de haut, même police. Frontend seul, `ng build` OK. Non déployé (accord en attente).
