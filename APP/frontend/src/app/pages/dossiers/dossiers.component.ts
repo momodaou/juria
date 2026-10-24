@@ -51,7 +51,7 @@ import { AuthService } from '../../core/auth.service';
       @if (affiches().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th>Honoraires</th></tr>
+          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Statut partie</th><th>Responsable</th><th>Ouvert le</th><th>Statut</th><th>Phase</th><th>Urgence</th><th class="col-honoraires">Honoraires</th></tr>
           @for (d of affiches(); track d.id) {
             <tr>
               <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">
@@ -66,7 +66,7 @@ import { AuthService } from '../../core/auth.service';
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.statut === 'archive'">{{ d.statut }}</span></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">
+              <td class="clik col-honoraires" [routerLink]="['/dossiers', d.id]">
                 @if (etatHonoraires(d); as h) {
                   <span class="tag honoraires" [class.ok]="h.classe === 'ok'" [class.attente]="h.classe === 'attente'" [class.haute]="h.classe === 'haute'" [title]="h.titre">{{ h.libelle }}</span>
                 } @else { — }
@@ -87,6 +87,8 @@ import { AuthService } from '../../core/auth.service';
     .tag{display:inline-block;white-space:nowrap;vertical-align:middle}
     /* 24/10/2026 (suite) — la pastille Honoraires reste compacte : largeur plafonnée, texte sur 1 ou 2 lignes DANS un seul bloc arrondi, aligné à gauche. */
     /* Même largeur pour toutes les pastilles, texte centré : bords nets à gauche et à droite, 1 ou 2 lignes (retour de l'utilisateur, 24/10/2026). */
+    /* L'intitulé et le contenu de la colonne sont centrés ensemble (les pastilles ont le texte centré). */
+    .col-honoraires{text-align:center}
     .tag.honoraires{display:block;box-sizing:border-box;width:140px;white-space:normal;line-height:1.3;padding:4px 10px;border-radius:12px;text-align:center}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
