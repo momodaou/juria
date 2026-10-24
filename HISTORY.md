@@ -4181,3 +4181,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Filtre « Honoraires »** ajouté (signal `filtreHonoraires`, filtrage sur les dossiers chargés, 200 max comme la liste) ; survol de la pastille = détail (cumul / seuil, ou jours sans facture).
 - Technique : l'API de liste renvoie en plus `mode_honoraires` ; calcul d'affichage `etatHonoraires()` dans `dossiers.component.ts` (anciennes méthodes `libelleHonoraires`/`libelleFacturation` conservées, plus utilisées par la liste). Aucune migration.
 - Vérifié : suite **690/690**, `ng build` OK, captures Playwright locales sur 10 dossiers d'essai couvrant chaque cas (base locale supprimée ensuite). Non déployé (accord en attente).
+- **Déployé (24/10/2026, accord de l'utilisateur)** : API `juria-00178-2dw`, frontend `juria-web-00233-dsr`. `/health` et `/` en `200`.
