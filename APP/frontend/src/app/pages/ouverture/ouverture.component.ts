@@ -291,6 +291,8 @@ import { libelleRole } from '../../core/roles';
             <label>Mode d'honoraires *</label>
             <select class="in" [(ngModel)]="dossier.mode_honoraires" name="modeHonoraires" [disabled]="clientPrincipalSousConvention()" required>
               <option value="">— Sélectionner —</option>
+              <!-- 25/10/2026 — sans cette option, le champ verrouillé s'affichait VIDE (aucune valeur « abonnement » à montrer) : le blocage fonctionnait mais l'utilisateur voyait un champ grisé sans mention. -->
+              @if (clientPrincipalSousConvention()) { <option value="abonnement">Abonnement (convention-cadre du client)</option> }
               <option value="forfait">Forfait</option>
               <option value="temps_passe">Temps passé</option>
               <option value="success_fee">Success fee</option>
