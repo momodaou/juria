@@ -68,7 +68,7 @@ import { AuthService } from '../../core/auth.service';
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">
                 @if (etatHonoraires(d); as h) {
-                  <span class="tag" [class.ok]="h.classe === 'ok'" [class.attente]="h.classe === 'attente'" [class.haute]="h.classe === 'haute'" [title]="h.titre">{{ h.libelle }}</span>
+                  <span class="tag honoraires" [class.ok]="h.classe === 'ok'" [class.attente]="h.classe === 'attente'" [class.haute]="h.classe === 'haute'" [title]="h.titre">{{ h.libelle }}</span>
                 } @else { — }
               </td>
             </tr>
@@ -85,6 +85,8 @@ import { AuthService } from '../../core/auth.service';
   styles: [`
     /* 24/10/2026 — une pastille ne se coupe jamais sur deux lignes (« En attente de / facturation » était déformée sur écran étroit) : la colonne s'élargit, le tableau défile au besoin. */
     .tag{display:inline-block;white-space:nowrap;vertical-align:middle}
+    /* 24/10/2026 (suite) — la pastille Honoraires reste compacte : largeur plafonnée, texte sur 1 ou 2 lignes DANS un seul bloc arrondi, aligné à gauche. */
+    .tag.honoraires{white-space:normal;max-width:150px;line-height:1.3;padding:3px 10px;border-radius:12px;text-align:left}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .lien:hover{text-decoration:underline}
