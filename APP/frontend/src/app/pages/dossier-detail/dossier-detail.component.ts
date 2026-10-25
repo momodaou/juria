@@ -1000,7 +1000,7 @@ import { LibellePipe } from '../../core/libelles';
             @if (auth.peut('taches.creer') && !afficherFormTache()) {
               <button class="btn" (click)="afficherFormTache.set(true)">+ Nouvelle tâche</button>
             }
-            <a class="btn ghost" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</a>
+            <button type="button" class="btn ghost" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</button>
           </div>
         </section>
       }
@@ -1155,9 +1155,10 @@ import { LibellePipe } from '../../core/libelles';
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
-    .btn{background:var(--gold);color:#1b2436;border:1px solid transparent;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;line-height:1.3;box-sizing:border-box;cursor:pointer}
-    a.btn{text-decoration:none;display:inline-block}
+    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .actions-tuile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+    .actions-tuile .btn{border:1px solid transparent}
+    .actions-tuile .btn.ghost{border-color:var(--line)}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
     .btn:disabled{opacity:.6}
