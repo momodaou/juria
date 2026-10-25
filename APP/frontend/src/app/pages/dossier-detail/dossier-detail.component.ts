@@ -1155,7 +1155,7 @@ import { LibellePipe } from '../../core/libelles';
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+    .btn{background:var(--gold);color:#1b2436;border:1px solid transparent;border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;line-height:1.3;box-sizing:border-box;cursor:pointer}
     a.btn{text-decoration:none;display:inline-block}
     .actions-tuile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
