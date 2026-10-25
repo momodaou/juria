@@ -994,11 +994,14 @@ import { LibellePipe } from '../../core/libelles';
               <button class="btn" (click)="creerTacheDossier()" [disabled]="!formTache.titre || creationTacheEnCours()">{{ creationTacheEnCours() ? 'Ajout…' : 'Ajouter la tâche' }}</button>
               <button class="lien" (click)="afficherFormTache.set(false)">Annuler</button>
               @if (erreurTache()) { <p class="err">{{ erreurTache() }}</p> }
-            } @else {
-              <button class="btn" style="margin:8px 0" (click)="afficherFormTache.set(true)">+ Nouvelle tâche</button>
             }
           }
-          <a class="lien" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</a>
+          <div class="actions-tuile">
+            @if (auth.peut('taches.creer') && !afficherFormTache()) {
+              <button class="btn" (click)="afficherFormTache.set(true)">+ Nouvelle tâche</button>
+            }
+            <a class="btn ghost" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</a>
+          </div>
         </section>
       }
 
@@ -1153,6 +1156,8 @@ import { LibellePipe } from '../../core/libelles';
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+    a.btn{text-decoration:none;display:inline-block}
+    .actions-tuile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
     .btn:disabled{opacity:.6}
