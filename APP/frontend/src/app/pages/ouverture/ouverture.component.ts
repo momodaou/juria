@@ -6,11 +6,12 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
 import { libelleRole } from '../../core/roles';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-ouverture',
   standalone: true,
-  imports: [FormsModule, RouterLink, ClientPickerComponent, DatePipe],
+  imports: [LibellePipe, FormsModule, RouterLink, ClientPickerComponent, DatePipe],
   template: `
     <header class="page-head"><h1>Ouverture de dossier</h1></header>
     @if (courrierSource()) {
@@ -371,7 +372,7 @@ import { libelleRole } from '../../core/roles';
             @for (d of doublonsDossier(); track d.id) {
               <p>
                 <a class="lien" [routerLink]="['/dossiers', d.id]" target="_blank">{{ d.numero }} — {{ d.intitule }}</a>
-                ({{ d.statut }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
+                ({{ d.statut | libelle:'statutDossier' }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
                 @if (!d.meme_client) {
                   <span class="hint"> — pour « {{ d.client_nom }} », une fiche client au nom quasi identique : vérifiez qu'il ne s'agit pas de deux fiches pour le même client (Clients & KYC).</span>
                 }

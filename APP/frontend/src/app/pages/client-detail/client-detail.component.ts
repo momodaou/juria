@@ -6,11 +6,12 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
   template: `
     <a routerLink="/clients" class="back">← Retour aux clients</a>
 
@@ -269,7 +270,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             <tr><th>N°</th><th>Intitulé</th><th>Statut</th><th>Phase</th></tr>
             @for (d of c.dossiers; track d.id) {
               <tr class="clik" [routerLink]="['/dossiers', d.id]">
-                <td>{{ d.numero }}</td><td>{{ d.intitule }}</td><td>{{ d.statut }}</td><td>{{ d.phase }}</td>
+                <td>{{ d.numero }}</td><td>{{ d.intitule }}</td><td>{{ d.statut | libelle:'statutDossier' }}</td><td>{{ d.phase | libelle:'phase' }}</td>
               </tr>
             }
           </table>

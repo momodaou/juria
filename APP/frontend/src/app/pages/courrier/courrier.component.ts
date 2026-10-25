@@ -7,11 +7,12 @@ import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-courrier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
+  imports: [LibellePipe, DatePipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -206,7 +207,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                     <option value="expedie">Expédié</option>
                   </select>
                 } @else {
-                  {{ c.statut }}
+                  {{ c.statut | libelle:'statutCourrier' }}
                 }
                 <!-- 15/10/2026 — Q4 : envoi effectif tracé symétriquement
                      à l'imputation côté arrivée. -->

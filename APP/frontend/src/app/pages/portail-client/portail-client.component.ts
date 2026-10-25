@@ -3,11 +3,12 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Dossier } from '../../core/api.service';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-portail-client',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, DossierPickerComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, FormsModule, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -27,7 +28,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
         <div class="dcard">
           <h2>{{ d.intitule }}</h2>
-          <div class="sub">Dossier {{ d.numero }} — {{ d.statut }} ({{ d.phase }})</div>
+          <div class="sub">Dossier {{ d.numero }} — {{ d.statut | libelle:'statutDossier' }} ({{ d.phase | libelle:'phase' }})</div>
         </div>
 
         <section class="panel">
@@ -36,7 +37,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
             <table>
               <tr><th>Nom</th><th>Catégorie</th><th>Statut</th><th>Date</th></tr>
               @for (doc of documents(); track doc.id) {
-                <tr><td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td><td>{{ doc.statut }}</td><td>{{ doc.cree_le | date:'dd/MM/yyyy' }}</td></tr>
+                <tr><td>{{ doc.nom }}</td><td>{{ doc.categorie | libelle:'categorieDocument' }}</td><td>{{ doc.statut | libelle:'statutDocument' }}</td><td>{{ doc.cree_le | date:'dd/MM/yyyy' }}</td></tr>
               }
             </table>
           } @else { <p class="muted">Aucun document.</p> }
@@ -48,7 +49,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
             <table>
               <tr><th>N°</th><th>Montant TTC</th><th>Statut</th><th>Échéance</th></tr>
               @for (f of factures(); track f.id) {
-                <tr><td>{{ f.numero }}</td><td>{{ f.montant_ttc | number }} FCFA</td><td>{{ f.statut }}</td><td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td></tr>
+                <tr><td>{{ f.numero }}</td><td>{{ f.montant_ttc | number }} FCFA</td><td>{{ f.statut | libelle:'statutFacture' }}</td><td>{{ f.date_echeance ? (f.date_echeance | date:'dd/MM/yyyy') : '—' }}</td></tr>
               }
             </table>
           } @else { <p class="muted">Aucune facture.</p> }

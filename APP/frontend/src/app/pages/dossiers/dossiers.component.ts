@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-dossiers',
   standalone: true,
-  imports: [FormsModule, RouterLink, DecimalPipe, DatePipe],
+  imports: [LibellePipe, FormsModule, RouterLink, DecimalPipe, DatePipe],
   template: `
     <header class="page-head">
       <h1>Dossiers</h1>
@@ -63,8 +64,8 @@ import { AuthService } from '../../core/auth.service';
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ libelleStatutPartie(d.instance_statut_partie, d.instance_degre, d.instance_statut_partie_precision) || '—' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.date_ouverture | date:'dd/MM/yyyy' }}</td>
-              <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.statut === 'archive'">{{ d.statut }}</span></td>
-              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase }}</td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.statut === 'archive'">{{ d.statut | libelle:'statutDossier' }}</span></td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.phase | libelle:'phase' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]"><span class="tag" [class.haute]="d.urgence === 'haute'">{{ d.urgence }}</span></td>
               <td class="clik col-honoraires" [routerLink]="['/dossiers', d.id]">
                 @if (etatHonoraires(d); as h) {

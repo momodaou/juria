@@ -4,6 +4,7 @@ import { Subject } from 'rxjs';
 import { debounceTime, switchMap, tap } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ApiService, Dossier } from './api.service';
+import { LibellePipe } from './libelles';
 
 // Sélecteur dossier avec recherche (16/10/2026, diagnostic utilisateur sur la
 // présentation "bancale" de l'autocomplétion) — remplace le bloc dupliqué à
@@ -26,7 +27,7 @@ import { ApiService, Dossier } from './api.service';
 @Component({
   selector: 'app-dossier-picker',
   standalone: true,
-  imports: [FormsModule],
+  imports: [LibellePipe, FormsModule],
   template: `
     <div class="dp">
       @if (selection(); as s) {
@@ -43,7 +44,7 @@ import { ApiService, Dossier } from './api.service';
             @for (d of resultats(); track d.id; let i = $index) {
               <li [class.active]="i === highlighted()" (mouseenter)="highlighted.set(i)" (click)="choisir(d)">
                 <div class="dp-titre">{{ d.numero }} — {{ d.intitule }}</div>
-                <div class="dp-detail">{{ d.client }} • {{ d.statut }}</div>
+                <div class="dp-detail">{{ d.client }} • {{ d.statut | libelle:'statutDossier' }}</div>
               </li>
             }
           </ul>
