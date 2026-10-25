@@ -949,6 +949,55 @@ import { LibellePipe } from '../../core/libelles';
               }
             </table>
           } @else { <p class="muted">Aucune tâche liée à ce dossier.</p> }
+          @if (auth.peut('taches.creer')) {
+            @if (afficherFormTache()) {
+              <div class="grid2" style="margin:12px 0">
+                <div class="col2"><label>Titre</label><input class="in" [(ngModel)]="formTache.titre" name="ftTitre" /></div>
+                <div>
+                  <label>Type</label>
+                  <select class="in" [(ngModel)]="formTache.type" name="ftType">
+                    <optgroup label="Travail juridique (technique)">
+                      <option value="recherche">Recherche</option>
+                      <option value="redaction">Rédaction</option>
+                      <option value="revue">Revue</option>
+                      <option value="appel_client">Appel client</option>
+                      <option value="depot">Dépôt</option>
+                    </optgroup>
+                    <optgroup label="Administratif / gestion">
+                      <option value="facturation">Facturation</option>
+                      <option value="relance">Relance</option>
+                      <option value="collecte_pieces">Collecte de pièces</option>
+                      <option value="autre">Autre</option>
+                    </optgroup>
+                  </select>
+                </div>
+                <div>
+                  <label>Priorité</label>
+                  <select class="in" [(ngModel)]="formTache.priorite" name="ftPriorite">
+                    <option value="basse">Basse</option>
+                    <option value="normale">Normale</option>
+                    <option value="haute">Haute</option>
+                    <option value="urgente">Urgente</option>
+                  </select>
+                </div>
+                <div><label>Échéance</label><input class="in" type="date" [(ngModel)]="formTache.echeance" name="ftEcheance" /></div>
+                <div>
+                  <label>Responsable</label>
+                  <select class="in" [(ngModel)]="formTache.responsable_id" name="ftResp">
+                    <option value="">Moi-même</option>
+                    @for (u of responsablesTache(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                  </select>
+                  @if (!estAvocatTache()) { <span class="hint">Seuls les avocats peuvent confier une tâche à quelqu'un d'autre (règles précises dans Tâches).</span> }
+                </div>
+                <div class="col2"><label>Instructions <span class="muted">(facultatif)</span></label><input class="in" [(ngModel)]="formTache.description" name="ftDesc" /></div>
+              </div>
+              <button class="btn" (click)="creerTacheDossier()" [disabled]="!formTache.titre || creationTacheEnCours()">{{ creationTacheEnCours() ? 'Ajout…' : 'Ajouter la tâche' }}</button>
+              <button class="lien" (click)="afficherFormTache.set(false)">Annuler</button>
+              @if (erreurTache()) { <p class="err">{{ erreurTache() }}</p> }
+            } @else {
+              <button class="btn" style="margin:8px 0" (click)="afficherFormTache.set(true)">+ Nouvelle tâche</button>
+            }
+          }
           <a class="lien" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</a>
         </section>
       }
@@ -1162,6 +1211,12 @@ export class DossierDetailComponent implements OnInit {
   readonly audiences = signal<any[]>([]);
   readonly diligences = signal<any[]>([]);
   readonly tachesDossier = signal<any[]>([]);
+  // Création de tâche depuis la fiche (25/10/2026) : même table, mêmes règles
+  // serveur (permission + délégation) que l'écran Tâches.
+  readonly afficherFormTache = signal(false);
+  readonly creationTacheEnCours = signal(false);
+  readonly erreurTache = signal('');
+  formTache: any = { type: 'autre', priorite: 'normale', responsable_id: '' };
   // 21/09/2026 — gap comblé : correction d'une audience directement depuis
   // la fiche dossier (même route/donnée que Rôle d'audience, voir
   // CLAUDE.md/HISTORY.md).
@@ -1608,6 +1663,38 @@ export class DossierDetailComponent implements OnInit {
 
   libelleStatutDiligence(statut: string): string {
     return ({ a_faire: 'À faire', fait: 'Fait', reporte: 'Reportée', annule: 'Annulée' } as Record<string, string>)[statut] ?? statut;
+  }
+
+  private readonly rolesAvocatTache = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
+
+  estAvocatTache(): boolean {
+    return this.rolesAvocatTache.includes(this.auth.utilisateur()?.role ?? '');
+  }
+
+  // Indicatif (la vraie garde est serveur, taches.js) — même filtre que Tâches.
+  responsablesTache(): any[] {
+    const moi = this.auth.utilisateur();
+    if (!moi || this.estAvocatTache()) return this.utilisateurs();
+    if (moi.role === 'juriste') {
+      return this.utilisateurs().filter((u: any) => u.id === moi.id || ['stagiaire', 'assistante'].includes(u.role));
+    }
+    return this.utilisateurs().filter((u: any) => u.id === moi.id);
+  }
+
+  creerTacheDossier(): void {
+    this.erreurTache.set('');
+    this.creationTacheEnCours.set(true);
+    this.api.creerTache({ ...this.formTache, dossier_id: this.id, responsable_id: this.formTache.responsable_id || undefined, echeance: this.formTache.echeance || undefined }).subscribe({
+      next: () => {
+        this.creationTacheEnCours.set(false);
+        this.afficherFormTache.set(false);
+        this.formTache = { type: 'autre', priorite: 'normale', responsable_id: '' };
+        this.api.taches(`?dossier_id=${this.id}`).subscribe({
+          next: (t) => { this.tachesDossier.set(t); this.compteursLiens.update((c) => ({ ...c, taches: t.length })); },
+        });
+      },
+      error: (e) => { this.creationTacheEnCours.set(false); this.erreurTache.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
   }
 
   libellePrioriteTache(p: string): string {
