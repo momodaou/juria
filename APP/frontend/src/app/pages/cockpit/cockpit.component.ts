@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ApiService, DashboardData } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { LibellePipe } from '../../core/libelles';
 
 // Colonne d'un tableau de détail — 'format' pilote à la fois l'affichage
 // (alignement, pipe) et le comparateur de tri (voir lignesTriees()).
@@ -71,7 +72,7 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   // "Tâches que j'ai confiées" (10/10/2026, Bloc B du diagnostic
   // "instruction avocat -> collaborateur") — personnelle comme "Mes
   // tâches" (déjà filtrée sur cree_par = moi côté serveur).
-  mes_taches: null, taches_confiees: null, taches_urgentes: 'cabinet.consulter', non_rentables: 'factures.consulter',
+  mes_diligences: null, mes_taches: null, taches_confiees: null, taches_urgentes: 'cabinet.consulter', non_rentables: 'factures.consulter',
   // 6 indicateurs de performance (04/09/2026, demande explicite de
   // l'utilisateur suite au benchmark du 03/09/2026) — tous financiers,
   // tous gardés par factures.consulter comme le reste.
@@ -106,6 +107,19 @@ const CONFIG: Record<string, TuileConfig> = {
       { label: 'Jours restants (le plus urgent)', key: 'jours_restants', dir: 'asc' },
       { label: 'Échéance', key: 'date_echeance', dir: 'asc' },
       { label: 'Responsable (A → Z)', key: 'responsable', dir: 'asc' },
+    ],
+  },
+  mes_diligences: {
+    titre: 'Mes diligences',
+    cols: [
+      { key: 'date_diligence', label: 'Date', format: 'date' }, { key: 'type_libelle', label: 'Type' },
+      { key: 'objet', label: 'Objet' },
+      { key: 'dossier_numero', label: 'Dossier', lien: { route: '/dossiers', idKey: 'dossier_id' } },
+      { key: 'confiee_par', label: 'Confiée par' }, { key: 'statut_libelle', label: 'Statut' },
+    ],
+    sorts: [
+      { label: 'Date (la plus proche)', key: 'date_diligence', dir: 'asc' },
+      { label: 'Confiée par (A → Z)', key: 'confiee_par', dir: 'asc' },
     ],
   },
   mes_taches: {
@@ -407,7 +421,7 @@ const CONFIG: Record<string, TuileConfig> = {
 @Component({
   selector: 'app-cockpit',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, RouterLink],
+  imports: [LibellePipe, DecimalPipe, DatePipe, FormsModule, RouterLink],
   providers: [DatePipe, DecimalPipe],
   template: `
     <header class="page-head">
@@ -602,6 +616,25 @@ const CONFIG: Record<string, TuileConfig> = {
       </div>
       <h3 class="groupe-titre">Tâches &amp; équipe</h3>
       <div class="kpis">
+        <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'mes_diligences'" (click)="clic('mes_diligences')">
+          <span class="tico" [innerHTML]="icons['mesTaches']"></span>
+          <span class="n">{{ d.mes_diligences_n }}</span><span class="l">Mes diligences</span>
+          @if (d.mes_diligences_apercu.length) {
+            <div class="mini-liste">
+              @for (l of d.mes_diligences_apercu; track l.id) {
+                <div class="mini-ligne">
+                  @if (l.dossier_id) {
+                    <a class="principal" [routerLink]="['/dossiers', l.dossier_id]" (click)="$event.stopPropagation()">@if (l.nouvelle) { <b>Nouvelle · </b> }@if (l.statut !== 'a_faire') { <b>{{ l.statut === 'annule' ? 'Annulée' : 'Reportée' }} · </b> }{{ l.objet || 'Diligence' }}</a>
+                  } @else {
+                    <span class="principal">@if (l.nouvelle) { <b>Nouvelle · </b> }@if (l.statut !== 'a_faire') { <b>{{ l.statut === 'annule' ? 'Annulée' : 'Reportée' }} · </b> }{{ l.objet || 'Diligence' }}</span>
+                  }
+                  <span class="secondaire">{{ l.date_diligence | date:'dd/MM' }}</span>
+                </div>
+              }
+            </div>
+          }
+          <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.mes_diligences_n }}</span>
+        </button>
         <button type="button" class="kpi tier-vigilance apercu hero" [class.active]="ouvert() === 'mes_taches'" (click)="clic('mes_taches')">
           <span class="tico" [innerHTML]="icons['mesTaches']"></span>
           <span class="n">{{ d.mes_taches_n }}</span><span class="l">Mes tâches</span>
@@ -876,7 +909,7 @@ const CONFIG: Record<string, TuileConfig> = {
                     {{ e.dossier_numero }} — {{ e.intitule }}
                   }
                 </td>
-                <td>{{ e.type }}</td>
+                <td>{{ e.type | libelle:'typeEvenement' }}</td>
                 <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
                 <td>J-{{ e.jours_restants }}</td>
               </tr>
@@ -1253,9 +1286,24 @@ export class CockpitComponent implements OnInit {
     this.triIndex.set(0);
     this.chargementDetail.set(true);
     this.api.dashboardDetail(type).subscribe({
-      next: (rows) => { this.lignesDetail.set(rows); this.chargementDetail.set(false); },
+      next: (rows) => { this.lignesDetail.set(type === 'mes_diligences' ? rows.map((r) => this.libelleLigneDiligence(r)) : rows); this.chargementDetail.set(false); },
       error: () => { this.lignesDetail.set([]); this.chargementDetail.set(false); },
     });
+  }
+
+  // « Mes diligences » : libellés français des codes (type, statut).
+  private libelleLigneDiligence(r: any): any {
+    const types: Record<string, string> = {
+      audition_juridiction: 'Audition / assistance en juridiction', enquete: "Assistance en unité d'enquête",
+      formalite: 'Formalité', diligence: 'Diligence / démarche', rendez_vous: 'Rendez-vous',
+      expertise: 'Assistance à expertise', autre: 'Autre',
+    };
+    const statuts: Record<string, string> = { a_faire: 'À faire', reporte: 'Reportée', annule: 'Annulée' };
+    return {
+      ...r,
+      type_libelle: types[r.type_diligence] ?? r.type_diligence,
+      statut_libelle: (r.nouvelle ? 'Nouvelle · ' : '') + (statuts[r.statut] ?? r.statut),
+    };
   }
 
   fermer(): void {

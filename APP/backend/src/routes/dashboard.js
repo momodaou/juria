@@ -76,6 +76,43 @@ const MARGE_DOSSIER_SELECT = `
 // catégories couvertes, dont 'Client'/'Dossier' ajoutées ce jour-là.
 
 // GET /api/dashboard  -> indicateurs agrégés (les nombres affichés sur les tuiles)
+// 25/10/2026 — « Mes diligences » : les diligences qui me sont attribuées et
+// restent à faire, plus celles reportées/annulées par quelqu'un d'autre depuis
+// 7 jours (c'est le « on vous a prévenu » côté tableau de bord, en attendant un
+// éventuel e-mail). « nouvelle » = confiée par quelqu'un d'autre depuis 3 jours.
+const MES_DILIGENCES = `
+  SELECT dl.id, dl.objet, dl.type_diligence, dl.dossier_id, d.numero AS dossier_numero,
+         dl.date_diligence, dl.heure, dl.statut,
+         CASE WHEN dl.cree_par IS DISTINCT FROM dl.membre_id THEN cp.prenom || ' ' || cp.nom END AS confiee_par,
+         (dl.cree_par IS DISTINCT FROM dl.membre_id AND dl.cree_le >= now() - interval '3 days') AS nouvelle
+  FROM diligences dl
+  LEFT JOIN dossiers d ON d.id = dl.dossier_id
+  LEFT JOIN utilisateurs cp ON cp.id = dl.cree_par
+  WHERE dl.membre_id = $1
+    AND (dl.statut = 'a_faire'
+         OR (dl.statut IN ('reporte','annule') AND EXISTS (
+              SELECT 1 FROM journal_audit ja
+              WHERE ja.entite = 'diligences' AND ja.entite_id = dl.id
+                AND ja.action = 'modifier_statut_diligence'
+                AND ja.utilisateur_id IS DISTINCT FROM $1
+                AND ja.horodatage >= now() - interval '7 days')))`;
+
+// 25/10/2026 — « Audiences (7 j) » lisait uniquement `evenements` (type
+// audience, saisies à la main) et ignorait les audiences du Rôle d'audience
+// (table `audiences`), source de vérité. Les deux sont réunies ici le temps
+// que les anciens délais de type « audience » soient résorbés.
+const AUDIENCES_7J = `
+  SELECT d.id AS dossier_id, d.numero, d.intitule AS titre,
+         (a.date_audience + COALESCE(a.heure, TIME '00:00')) AS date_echeance
+  FROM audiences a JOIN dossiers d ON d.id = a.dossier_id
+  WHERE a.resultat IS NULL
+    AND a.date_audience >= current_date AND a.date_audience < current_date + 7
+  UNION ALL
+  SELECT d.id, d.numero, e.titre, e.date_echeance
+  FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
+  WHERE e.type = 'audience' AND e.statut = 'a_venir'
+    AND e.date_echeance >= now() AND e.date_echeance < now() + interval '7 days'`;
+
 router.get("/", async (req, res) => {
   try {
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0];
@@ -86,11 +123,7 @@ router.get("/", async (req, res) => {
          count(*) FILTER (WHERE urgence = 'haute' AND statut <> 'clos') AS urgents
        FROM dossiers`
     );
-    const audiences = await one(
-      `SELECT count(*) AS n FROM evenements
-       WHERE type IN ('audience') AND statut = 'a_venir'
-         AND date_echeance >= now() AND date_echeance < now() + interval '7 days'`
-    );
+    const audiences = await one(`SELECT count(*) AS n FROM (${AUDIENCES_7J}) x`);
     // Impayés : donnée financière (factures), gardée par la même permission
     // que la liste des factures elle-même (factures.consulter) — trouvé et
     // corrigé le 04/09/2026 (contournait silencieusement le verrou posé le
@@ -469,11 +502,7 @@ router.get("/", async (req, res) => {
        ORDER BY ev.jours_restants ASC NULLS LAST LIMIT 5`
     );
     const audiencesApercu = await pool.query(
-      `SELECT d.id AS dossier_id, d.numero, e.titre, e.date_echeance
-       FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
-       WHERE e.type = 'audience' AND e.statut = 'a_venir'
-         AND e.date_echeance >= now() AND e.date_echeance < now() + interval '7 days'
-       ORDER BY e.date_echeance LIMIT 2`
+      `SELECT * FROM (${AUDIENCES_7J}) x ORDER BY date_echeance LIMIT 2`
     );
     let impayesApercu = [];
     let caHistorique = null;
@@ -521,6 +550,11 @@ router.get("/", async (req, res) => {
        FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id
        WHERE t.responsable_id = $1 AND t.statut NOT IN ('termine','annule')
        ORDER BY ${ORDRE_URGENCE_TACHES} LIMIT 5`,
+      [req.user.sub]
+    );
+    const mesDiligences = await one(`SELECT count(*) AS n FROM (${MES_DILIGENCES}) x`, [req.user.sub]);
+    const mesDiligencesApercu = await pool.query(
+      `SELECT * FROM (${MES_DILIGENCES}) x ORDER BY (statut = 'a_faire') DESC, date_diligence, heure NULLS LAST LIMIT 5`,
       [req.user.sub]
     );
     let tachesUrgentesN = null, tachesUrgentesApercu = [];
@@ -614,6 +648,8 @@ router.get("/", async (req, res) => {
       impayes_apercu: impayesApercu,
       ca_historique: caHistorique,
       impayes_tranches: impayesTranches,
+      mes_diligences_n: Number(mesDiligences.n),
+      mes_diligences_apercu: mesDiligencesApercu.rows,
       mes_taches_n: Number(mesTaches.n),
       mes_taches_apercu: mesTachesApercu.rows,
       taches_confiees_n: Number(tachesConfiees.n),
@@ -681,11 +717,8 @@ router.get("/detail/:type", async (req, res) => {
       }
       case "audiences": {
         const { rows } = await pool.query(
-          `SELECT d.id AS dossier_id, d.numero AS dossier, e.titre, e.date_echeance
-           FROM evenements e JOIN dossiers d ON d.id = e.dossier_id
-           WHERE e.type = 'audience' AND e.statut = 'a_venir'
-             AND e.date_echeance >= now() AND e.date_echeance < now() + interval '7 days'
-           ORDER BY e.date_echeance LIMIT 200`
+          `SELECT dossier_id, numero AS dossier, titre, date_echeance FROM (${AUDIENCES_7J}) x
+           ORDER BY date_echeance LIMIT 200`
         );
         return res.json(rows);
       }
@@ -940,6 +973,13 @@ router.get("/detail/:type", async (req, res) => {
            GROUP BY u.id, u.prenom, u.nom
            HAVING SUM(t.duree_minutes) FILTER (WHERE t.facture_id IS NOT NULL) > 0
            ORDER BY valeur DESC LIMIT 100`
+        );
+        return res.json(rows);
+      }
+      case "mes_diligences": {
+        const { rows } = await pool.query(
+          `SELECT * FROM (${MES_DILIGENCES}) x ORDER BY (statut = 'a_faire') DESC, date_diligence, heure NULLS LAST LIMIT 200`,
+          [req.user.sub]
         );
         return res.json(rows);
       }

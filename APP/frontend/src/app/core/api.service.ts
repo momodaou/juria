@@ -41,6 +41,9 @@ export interface DashboardData {
   // tâches" de la démo HTML de spécification d'origine, jamais construit.
   // mes_taches_* toujours présents (personnel, aucune permission requise) ;
   // taches_urgentes_n reste `null` si le rôle n'a pas cabinet.consulter.
+  // « Mes diligences » (25/10/2026) — personnel, toujours présent.
+  mes_diligences_n: number;
+  mes_diligences_apercu: { id: string; objet: string | null; type_diligence: string; dossier_id: string | null; dossier_numero: string | null; date_diligence: string; statut: string; confiee_par: string | null; nouvelle: boolean }[];
   mes_taches_n: number;
   mes_taches_apercu: { id: string; titre: string; dossier_id: string | null; dossier_numero: string | null; echeance: string | null; priorite: string }[];
   // "Tâches que j'ai confiées" (10/10/2026, Bloc B du diagnostic "instruction

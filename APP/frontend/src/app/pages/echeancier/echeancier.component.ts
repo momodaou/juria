@@ -26,7 +26,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             @for (d of dossiers(); track d.id) { <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option> }
           </select>
           <select [(ngModel)]="nvType" name="t">
-            @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+            @for (t of typesEvenementSaisie; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
           </select>
           @if (nvType === 'autre') {
             <input [(ngModel)]="nvPrecision" name="tp" placeholder="Préciser…" />
@@ -66,7 +66,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 <td colspan="7">
                   <div class="add">
                     <select [(ngModel)]="evForm.type" name="evType">
-                      @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+                      @if (evForm.type === 'audience') { <option value="audience">Audience (ancien)</option> }
+                      @for (t of typesEvenementSaisie; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
                     </select>
                     @if (evForm.type === 'autre') { <input [(ngModel)]="evForm.precision" name="evPrec" placeholder="Préciser…" /> }
                     <input [(ngModel)]="evForm.titre" name="evTitre" placeholder="Intitulé" style="flex:1;min-width:160px" />
@@ -169,6 +170,10 @@ export class EcheancierComponent implements OnInit {
   // (dont Rendez-vous/Relance client, jusque-là absents de ce menu) plus
   // « Diligence / démarche » (générique, tout ce qui ne rentre pas déjà
   // dans un type précis) et « Autre » (avec précision libre).
+  // 25/10/2026 — « Audience » retiré de la saisie (Rôle d'audience = source
+  // unique), conservé pour libeller les anciennes échéances.
+  get typesEvenementSaisie() { return this.typesEvenement.filter((t) => t.code !== 'audience'); }
+
   readonly typesEvenement = [
     { code: 'audience', libelle: 'Audience' },
     { code: 'rendez_vous', libelle: 'Rendez-vous' },
@@ -182,7 +187,7 @@ export class EcheancierComponent implements OnInit {
     { code: 'autre', libelle: 'Autre' },
   ];
 
-  nvDossier = ''; nvType = 'audience'; nvTitre = ''; nvDate = ''; nvPrecision = '';
+  nvDossier = ''; nvType = 'delai_procedure'; nvTitre = ''; nvDate = ''; nvPrecision = '';
 
   ngOnInit(): void {
     this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });

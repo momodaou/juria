@@ -8,11 +8,12 @@ import { ClientPickerComponent } from '../../core/client-picker.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { libelleRole } from '../../core/roles';
+import { LibellePipe } from '../../core/libelles';
 
 @Component({
   selector: 'app-dossier-detail',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent],
   template: `
     <a routerLink="/dossiers" class="back">← Retour aux dossiers</a>
 
@@ -68,8 +69,8 @@ import { libelleRole } from '../../core/roles';
               <div class="montant-sens">({{ sens }})</div>
             }
           </div>
-          <div><span>État du dossier</span><b>{{ d.statut }}</b></div>
-          <div><span>Phase</span><b>{{ d.phase }}</b></div>
+          <div><span>État du dossier</span><b>{{ d.statut | libelle:'statutDossier' }}</b></div>
+          <div><span>Phase</span><b>{{ d.phase | libelle:'phase' }}</b></div>
           <div>
             <span>Mode d'honoraires</span>
             <b>{{ sousConvention(d) ? 'abonnement' : (d.mode_honoraires || '—') }}{{ d.pro_bono ? ' (Pro bono)' : '' }}</b>
@@ -684,7 +685,7 @@ import { libelleRole } from '../../core/roles';
             @for (i of d.intervenants; track i.utilisateur_id) {
               <tr>
                 <td>{{ i.nom }}</td>
-                <td>{{ i.statut }}</td>
+                <td>{{ libelleRole(i.statut) }}</td>
                 <td>{{ i.role_dossier }}</td>
                 <td>
                   @if (auth.peut('dossiers.intervenants.gerer')) {
@@ -712,11 +713,12 @@ import { libelleRole } from '../../core/roles';
       </section>
 
       <section class="panel">
-        <h3>Délais & audiences</h3>
+        <h3>Délais & échéances</h3>
+        <p class="muted" style="margin-bottom:12px">Dates légales ou contractuelles à surveiller (recours, prescription, dépôt…). Les audiences se saisissent dans Rôle d'audience et figurent dans la tuile Audiences.</p>
         @if (auth.peut('evenements.creer')) {
           <div class="upload">
             <select [(ngModel)]="dType" name="dtype" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-              @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+              @for (t of typesEvenementSaisie; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
             </select>
             @if (dType === 'autre') {
               <input [(ngModel)]="dPrecision" name="dprecision" placeholder="Préciser…" style="min-width:120px">
@@ -747,7 +749,8 @@ import { libelleRole } from '../../core/roles';
                   <td colspan="5">
                     <div class="upload">
                       <select [(ngModel)]="delaiForm.type" name="edDType" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px">
-                        @for (t of typesEvenement; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
+                        @if (delaiForm.type === 'audience') { <option value="audience">Audience (ancien)</option> }
+                        @for (t of typesEvenementSaisie; track t.code) { <option [value]="t.code">{{ t.libelle }}</option> }
                       </select>
                       @if (delaiForm.type === 'autre') { <input [(ngModel)]="delaiForm.precision" name="edDPrec" placeholder="Préciser…" style="min-width:120px"> }
                       <input [(ngModel)]="delaiForm.titre" name="edDTitre" placeholder="Intitulé" style="flex:1;min-width:150px">
@@ -773,7 +776,7 @@ import { libelleRole } from '../../core/roles';
             @for (a of audiences(); track a.id) {
               <tr [class.urgent]="a.urgente">
                 <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
-                <td>{{ a.type }}</td>
+                <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
                 <td>{{ a.juridiction || '—' }}</td>
                 <td>{{ a.avocat_nom || '—' }}</td>
                 <td>
@@ -905,6 +908,51 @@ import { libelleRole } from '../../core/roles';
         } @else { <p class="muted">Aucune audience enregistrée pour ce dossier.</p> }
       </section>
 
+      @if (auth.peut('audiences.consulter')) {
+        <section class="panel">
+          <h3>Diligences</h3>
+          <p class="muted" style="margin-bottom:12px">Rendez-vous, formalités et démarches liés à ce dossier, saisis dans Rôle d'audience (lecture seule ici).</p>
+          @if (diligences().length) {
+            <table>
+              <tr><th>Date</th><th>Type</th><th>Objet</th><th>Lieu</th><th>Responsable</th><th>Statut</th></tr>
+              @for (dl of diligences(); track dl.id) {
+                <tr>
+                  <td>{{ dl.date_diligence | date:'dd/MM/yyyy' }}@if (dl.heure) { {{ ' ' + dl.heure.slice(0, 5) }} }</td>
+                  <td>{{ libelleTypeDiligence(dl.type_diligence, dl.type_precision) }}</td>
+                  <td>{{ dl.objet || '—' }}</td>
+                  <td>{{ dl.lieu || '—' }}</td>
+                  <td>{{ dl.membre_nom || '—' }}</td>
+                  <td><span class="tag" [class.haute]="dl.statut === 'a_faire' && estPasseeDiligence(dl)">{{ libelleStatutDiligence(dl.statut) }}</span></td>
+                </tr>
+              }
+            </table>
+          } @else { <p class="muted">Aucune diligence enregistrée pour ce dossier.</p> }
+          <a class="lien" [routerLink]="['/role-audience']">Ouvrir le Rôle d'audience →</a>
+        </section>
+      }
+
+      @if (auth.peut('taches.consulter')) {
+        <section class="panel">
+          <h3>Tâches du dossier</h3>
+          <p class="muted" style="margin-bottom:12px">Travail interne à accomplir sur ce dossier (terminées/annulées depuis plus de 30 jours masquées). Création et suivi détaillé dans Tâches.</p>
+          @if (tachesDossier().length) {
+            <table>
+              <tr><th>Tâche</th><th>Responsable</th><th>Échéance</th><th>Priorité</th><th>Statut</th></tr>
+              @for (t of tachesDossier(); track t.id) {
+                <tr>
+                  <td>{{ t.titre }}</td>
+                  <td>{{ t.responsable || '—' }}</td>
+                  <td>{{ t.echeance ? (t.echeance | date:'dd/MM/yyyy') : '—' }}</td>
+                  <td><span class="tag" [class.haute]="t.priorite === 'haute' || t.priorite === 'urgente'">{{ libellePrioriteTache(t.priorite) }}</span></td>
+                  <td>{{ libelleStatutTache(t.statut) }}</td>
+                </tr>
+              }
+            </table>
+          } @else { <p class="muted">Aucune tâche liée à ce dossier.</p> }
+          <a class="lien" [routerLink]="['/plan-action']" [queryParams]="{ dossier: d.id, dossierLabel: d.numero }">Ouvrir les tâches du dossier →</a>
+        </section>
+      }
+
       <section class="panel">
         <h3>Pièces (GED)</h3>
 
@@ -937,8 +985,8 @@ import { libelleRole } from '../../core/roles';
             <tr><th>Nom</th><th>Catégorie</th><th>Version</th><th>Statut</th><th>Confidentialité</th><th></th></tr>
             @for (doc of documents(); track doc.id) {
               <tr>
-                <td>{{ doc.nom }}</td><td>{{ doc.categorie }}</td>
-                <td>v{{ doc.version }}</td><td>{{ doc.statut }}</td>
+                <td>{{ doc.nom }}</td><td>{{ doc.categorie | libelle:'categorieDocument' }}</td>
+                <td>v{{ doc.version }}</td><td>{{ doc.statut | libelle:'statutDocument' }}</td>
                 <td>
                   @if (confidentialiteEditId() === doc.id) {
                     <select [(ngModel)]="confidentialiteEdit" [name]="'confEdit'+doc.id">
@@ -1007,7 +1055,7 @@ import { libelleRole } from '../../core/roles';
             @for (c of communications(); track c.id) {
               <tr>
                 <td>{{ c.date_comm | date:'dd/MM/yyyy' }}</td>
-                <td>{{ c.type }}</td><td>{{ c.sujet }}</td><td>{{ c.resume || '—' }}</td>
+                <td>{{ c.type | libelle:'typeCommunication' }}</td><td>{{ c.sujet }}</td><td>{{ c.resume || '—' }}</td>
               </tr>
             }
           </table>
@@ -1112,6 +1160,8 @@ export class DossierDetailComponent implements OnInit {
   readonly evenements = signal<any[]>([]);
   // Historique des audiences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
   readonly audiences = signal<any[]>([]);
+  readonly diligences = signal<any[]>([]);
+  readonly tachesDossier = signal<any[]>([]);
   // 21/09/2026 — gap comblé : correction d'une audience directement depuis
   // la fiche dossier (même route/donnée que Rôle d'audience, voir
   // CLAUDE.md/HISTORY.md).
@@ -1179,7 +1229,7 @@ export class DossierDetailComponent implements OnInit {
     }
     if (this.auth.peut('taches.consulter')) {
       this.api.taches(`?dossier_id=${dossierId}`).subscribe({
-        next: (t) => this.compteursLiens.update((c) => ({ ...c, taches: t.length })),
+        next: (t) => { this.tachesDossier.set(t); this.compteursLiens.update((c) => ({ ...c, taches: t.length })); },
         error: () => {},
       });
     }
@@ -1205,10 +1255,14 @@ export class DossierDetailComponent implements OnInit {
   descTemps = '';
 
   readonly communications = signal<any[]>([]);
-  dType = 'audience'; dTitre = ''; dDate = ''; dPrecision = '';
+  dType = 'delai_procedure'; dTitre = ''; dDate = ''; dPrecision = '';
   // 10 types (11/09/2026, même liste harmonisée que echeancier.component.ts
   // — les 2 formulaires divergaient avant ce jour) : les 8 déjà prévus par
   // l'ENUM type_evenement plus « Diligence / démarche » et « Autre ».
+  // 25/10/2026 — « Audience » n'est plus proposé à la saisie (Rôle d'audience
+  // = source unique) ; conservé dans typesEvenement pour libeller l'existant.
+  get typesEvenementSaisie() { return this.typesEvenement.filter((t) => t.code !== 'audience'); }
+
   readonly typesEvenement = [
     { code: 'audience', libelle: 'Audience' },
     { code: 'rendez_vous', libelle: 'Rendez-vous' },
@@ -1539,6 +1593,43 @@ export class DossierDetailComponent implements OnInit {
   // résultat, gap trouvé en câblant la distinction délibéré/délibéré vidé.
   // 14/10/2026 — libellé libre pour "Autre" (gap signalé par l'utilisateur),
   // même patron que côté Rôle d'audience.
+  // 25/10/2026 — la tuile Audiences affichait le code d'ENUM brut
+  // (« mise_en_etat ») ; même table que l'écran Rôle d'audience.
+  // 25/10/2026 — diligences du dossier (lecture seule) ; saisie et statut
+  // restent dans Rôle d'audience.
+  libelleTypeDiligence(code: string, precision?: string | null): string {
+    if (code === 'autre') return precision || 'Autre';
+    return ({
+      audition_juridiction: 'Audition / assistance en juridiction', enquete: 'Assistance en unité d\'enquête',
+      formalite: 'Formalité', diligence: 'Diligence / démarche', rendez_vous: 'Rendez-vous',
+      expertise: 'Assistance à expertise',
+    } as Record<string, string>)[code] ?? code;
+  }
+
+  libelleStatutDiligence(statut: string): string {
+    return ({ a_faire: 'À faire', fait: 'Fait', reporte: 'Reportée', annule: 'Annulée' } as Record<string, string>)[statut] ?? statut;
+  }
+
+  libellePrioriteTache(p: string): string {
+    return ({ basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' } as Record<string, string>)[p] ?? p;
+  }
+
+  libelleStatutTache(s: string): string {
+    return ({ a_faire: 'À faire', en_cours: 'En cours', a_valider: 'À valider', termine: 'Terminée', annule: 'Annulée' } as Record<string, string>)[s] ?? s;
+  }
+
+  estPasseeDiligence(dl: any): boolean {
+    return String(dl.date_diligence).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  }
+
+  libelleTypeAudience(code: string, precision?: string | null): string {
+    if (code === 'autre') return precision || 'Autre';
+    return ({
+      mise_en_etat: 'Mise en état', plaidoirie: 'Plaidoirie', conciliation: 'Conciliation',
+      refere: 'Référé', prononce: 'Prononcé', autre: 'Autre',
+    } as Record<string, string>)[code] ?? code;
+  }
+
   libelleResultat(code: string | null | undefined, precision?: string | null): string {
     if (!code) return '—';
     if (code === 'autre') return precision || 'Autre';
@@ -2072,6 +2163,9 @@ export class DossierDetailComponent implements OnInit {
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
     this.rafraichirDelais();
     this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
+    if (this.auth.peut('audiences.consulter')) {
+      this.api.diligences({ dossier_id: id }).subscribe({ next: (dl) => this.diligences.set(dl), error: () => {} });
+    }
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifsRenvoi.set(m) });
     this.api.listesValeurs('resultat_audience').subscribe({ next: (v) => this.resultats.set(v) });
     this.rafraichirDocuments();

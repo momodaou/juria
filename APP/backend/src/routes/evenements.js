@@ -62,6 +62,11 @@ router.post("/", requirePermission("evenements.creer"), async (req, res) => {
   if (!b.dossier_id || !b.type || !b.date_echeance) {
     return res.status(400).json({ error: "dossier_id, type et date_echeance requis" });
   }
+  // 25/10/2026 — les audiences ne se saisissent que dans le Rôle d'audience
+  // (source unique) ; ce registre ne garde que les délais/échéances.
+  if (b.type === "audience") {
+    return res.status(400).json({ error: "Les audiences se saisissent dans le Rôle d'audience, pas dans les délais." });
+  }
   try {
     const { rows } = await pool.query(
       `INSERT INTO evenements (dossier_id, type, titre, date_echeance, responsable_id, precision)
@@ -98,6 +103,11 @@ router.put("/:id", requirePermission("evenements.creer"), async (req, res) => {
       `SELECT dossier_id, ${CHAMPS_PROCEDURAUX_ECHEANCE.join(", ")} FROM evenements WHERE id = $1`,
       [req.params.id]
     );
+    // Les anciens délais de type « audience » restent modifiables, mais on
+    // ne peut plus en changer un autre en « audience ».
+    if (b.type === "audience" && avant && avant.type !== "audience") {
+      return res.status(400).json({ error: "Les audiences se saisissent dans le Rôle d'audience, pas dans les délais." });
+    }
     const { rows } = await pool.query(
       `UPDATE evenements SET
          type = COALESCE($1::type_evenement, type),
