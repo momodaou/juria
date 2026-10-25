@@ -17,7 +17,7 @@
 // occupées. Corrigé en réappliquant systématiquement styleLigne() juste
 // avant de mesurer (cohérent avec hauteurCellule(), qui le faisait déjà).
 const PDFDocument = require("pdfkit");
-const { styleLigne, dessinerLigneParties, texteParties, calculerColonnes } = require("../src/rolePdf");
+const { styleLigne, dessinerLigneParties, texteParties, calculerColonnes, minimaColonnes } = require("../src/rolePdf");
 const { TAILLE_TEXTE, TAILLE_PETIT } = require("../src/rolePdf");
 
 function nouveauDoc() {
@@ -67,5 +67,18 @@ describe("rolePdf — chevauchement de texte, colonne Parties sans partie advers
 
     expect(doc._font.name).toBe("Helvetica-Bold");
     expect(doc._fontSize).toBe(TAILLE_TEXTE);
+  });
+});
+
+describe("rolePdf — aucun mot coupé dans les colonnes courtes", () => {
+  test("« Conciliation » tient dans la colonne Type audience, la largeur totale est conservée", () => {
+    const doc = nouveauDoc();
+    const largeurTable = 794;
+    const minima = minimaColonnes(doc, [{ type: "conciliation", juridiction: "TGI CI", heure: "09:00" }], []);
+    const colonnes = calculerColonnes(largeurTable, 24, minima);
+    const type = colonnes.find((c) => c.cle === "type");
+    doc.font("Helvetica-Bold").fontSize(TAILLE_TEXTE);
+    expect(type.w).toBeGreaterThanOrEqual(doc.widthOfString("Conciliation") + 14);
+    expect(colonnes.reduce((s, c) => s + c.w, 0)).toBeCloseTo(largeurTable, 5);
   });
 });

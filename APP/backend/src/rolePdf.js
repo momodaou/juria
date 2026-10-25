@@ -212,14 +212,52 @@ const PADDING = 7;
 const HAUTEUR_MIN_LIGNE = 30;
 const HAUTEUR_ENTETE = 36;
 
-function calculerColonnes(largeurTable, xDepart) {
+// `minima` (optionnel, par clé de colonne) : largeur plancher en points, pour
+// qu'aucun mot ne soit coupé en plein milieu (« Conciliation » dans « Type
+// audience », retour utilisateur du 25/10/2026). Les colonnes sous leur
+// plancher sont portées à celui-ci ; l'excédent est retiré aux autres
+// colonnes, proportionnellement à leur marge au-dessus de leur propre plancher.
+function calculerColonnes(largeurTable, xDepart, minima = {}) {
+  let largeurs = COLONNES.map((c) => (largeurTable * c.pct) / 100);
+  const planchers = COLONNES.map((c, i) => Math.min(minima[c.cle] || 0, largeurTable / 2));
+  let manque = 0;
+  largeurs = largeurs.map((w, i) => {
+    if (w >= planchers[i]) return w;
+    manque += planchers[i] - w;
+    return planchers[i];
+  });
+  if (manque > 0) {
+    const marges = largeurs.map((w, i) => Math.max(0, w - Math.max(planchers[i], 0) - 0));
+    const totalMarges = marges.reduce((a, b) => a + b, 0);
+    if (totalMarges > 0) {
+      const retrait = Math.min(manque, totalMarges);
+      largeurs = largeurs.map((w, i) => w - (retrait * marges[i]) / totalMarges);
+    }
+  }
   let x = xDepart;
-  return COLONNES.map((c) => {
-    const w = (largeurTable * c.pct) / 100;
-    const colonne = { ...c, x, w };
-    x += w;
+  return COLONNES.map((c, i) => {
+    const colonne = { ...c, x, w: largeurs[i] };
+    x += largeurs[i];
     return colonne;
   });
+}
+
+// Largeur du mot le plus long de chaque colonne (en-tête + contenus), aux
+// polices réellement utilisées au dessin, plus le padding des deux côtés.
+function minimaColonnes(doc, lignes, natures) {
+  const minima = {};
+  const mesurer = (cle, police, taille, texte) => {
+    doc.font(police).fontSize(taille);
+    const m = String(texte || "").split(/\s+/).reduce((mx, mot) => Math.max(mx, mot ? doc.widthOfString(mot) : 0), 0);
+    minima[cle] = Math.max(minima[cle] || 0, m + PADDING * 2 + 1);
+  };
+  COLONNES.forEach((c) => mesurer(c.cle, "Helvetica-Bold", TAILLE_ENTETE_COL, c.label));
+  (lignes || []).forEach((l) => {
+    const contenu = contenuColonnes(l, natures);
+    ["juridiction", "procedure", "type", "resp", "audiencier", "heure"].forEach((cle) =>
+      mesurer(cle, "Helvetica-Bold", TAILLE_TEXTE, contenu[cle]));
+  });
+  return minima;
 }
 
 function dessinerEnTeteColonnes(doc, colonnes, y) {
@@ -367,7 +405,7 @@ function dessinerRole(doc, { raisonSociale, role, lignes, natures }) {
   const marge = MARGE_PAGE;
   const largeurTable = doc.page.width - marge * 2;
   const basPage = doc.page.height - marge;
-  const colonnes = calculerColonnes(largeurTable, marge);
+  const colonnes = calculerColonnes(largeurTable, marge, minimaColonnes(doc, lignes, natures));
 
   // --- En-tête cabinet ---
   doc.font("Helvetica-Bold").fontSize(TAILLE_TITRE).fillColor(STYLE.texte)
@@ -517,4 +555,4 @@ async function genererRolePdfBuffer(pool, roleId) {
 // styleLigne/dessinerLigneParties/texteParties/calculerColonnes exportés en
 // plus (09/10/2026) uniquement pour le test de non-régression dédié au bug
 // de chevauchement ci-dessus (tests/rolePdf.test.js) — aucun autre appelant.
-module.exports = { TAILLE_TEXTE, TAILLE_PETIT, envoyerRolePdf, genererRolePdfBuffer, chargerDonnees, dessinerRole, formaterDate, STYLE, styleLigne, dessinerLigneParties, texteParties, calculerColonnes };
+module.exports = { TAILLE_TEXTE, TAILLE_PETIT, envoyerRolePdf, genererRolePdfBuffer, chargerDonnees, dessinerRole, formaterDate, STYLE, styleLigne, dessinerLigneParties, texteParties, calculerColonnes, minimaColonnes };
