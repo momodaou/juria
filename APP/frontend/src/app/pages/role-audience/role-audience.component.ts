@@ -16,7 +16,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     <header class="page-head">
       <div>
         <h1>Rôle d'audience</h1>
-        <p>Agenda hebdomadaire des audiences — semaine du {{ role()?.semaine_debut | date:'dd/MM/yyyy' }}
+        <p>Audiences et diligences de la semaine — du {{ role()?.semaine_debut | date:'dd/MM/yyyy' }}
           au {{ role()?.semaine_fin | date:'dd/MM/yyyy' }}</p>
       </div>
       <div class="actions">

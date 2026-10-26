@@ -4239,3 +4239,5 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Déployé (25/10/2026, lancé par l'utilisateur via `!`)** : boutons de la tuile Tâches harmonisés — frontend `juria-web-00243-2t5`, `/` en 200.
 - **Déployé (25/10/2026, lancé par l'utilisateur via `!`)** : boutons uniformes de la fiche dossier — frontend `juria-web-00244-w4p`, `/` en 200.
 - **Régression corrigée et déployée (25/10/2026, lancé par l'utilisateur via `!`)** : le `font:inherit` ajouté à `.btn` (révision `juria-web-00244-w4p`) agrandissait tous les boutons de la fiche dossier ; `.btn` rétabli à l'identique, les 2 boutons de la tuile Tâches sont deux `<button>` au même style — frontend `juria-web-00245-8h8`, `/` en 200. Leçon : ne pas modifier un style de bouton partagé pour harmoniser deux éléments ; vérifier visuellement avant de déployer.
+
+- **Rôle d'audience : sous-titre (25/10/2026)** — option 2 retenue : le menu et le titre restent « Rôle d'audience » (vocabulaire du cabinet, menu de 220 px) ; le sous-titre devient « Audiences et diligences de la semaine — du … au … » pour dire que la page porte aussi les diligences. Build OK. Non déployé.
