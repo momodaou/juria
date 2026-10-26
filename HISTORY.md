@@ -4242,3 +4242,6 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 - **Rôle d'audience : sous-titre (25/10/2026)** — option 2 retenue : le menu et le titre restent « Rôle d'audience » (vocabulaire du cabinet, menu de 220 px) ; le sous-titre devient « Audiences et diligences de la semaine — du … au … » pour dire que la page porte aussi les diligences. Build OK. Non déployé.
 - **Déployé (26/10/2026, lancé par l'utilisateur via `!`)** : sous-titre du Rôle d'audience — frontend `juria-web-00246-v86`, `/` en 200.
+
+## 26/10/2026 — Fiche dossier de conseil : « Montant du litige »
+- Retour utilisateur : l'étiquette « Montant du litige » s'affichait aussi sur les dossiers de conseil. Saisie (ouverture, modification) déjà réservée au contentieux ; seul l'affichage de l'en-tête de la fiche ne l'était pas. Désormais masqué pour le conseil, sauf montant déjà saisi (alors libellé « Montant concerné »). Build OK. **Non déployé.**

@@ -62,13 +62,18 @@ import { LibellePipe } from '../../core/libelles';
               <div class="montant-sens">(dossier antérieur — ouvert au cabinet le {{ d.date_ouverture_origine | date:'dd/MM/yyyy' }})</div>
             }
           </div>
-          <div>
-            <span>Montant du litige</span>
-            <b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b>
-            @if (libelleSensMontant(d.montant_litige_sens, d.montant_litige_sens_precision); as sens) {
-              <div class="montant-sens">({{ sens }})</div>
-            }
-          </div>
+          <!-- 26/10/2026 — réservé au contentieux : un dossier de conseil n'a pas de
+               litige. Un éventuel montant déjà saisi reste visible, sous un
+               libellé neutre. -->
+          @if (d.pole === 'contentieux' || d.montant_litige) {
+            <div>
+              <span>{{ d.pole === 'contentieux' ? 'Montant du litige' : 'Montant concerné' }}</span>
+              <b>{{ d.montant_litige ? (d.montant_litige | number) + ' FCFA' : '—' }}</b>
+              @if (libelleSensMontant(d.montant_litige_sens, d.montant_litige_sens_precision); as sens) {
+                <div class="montant-sens">({{ sens }})</div>
+              }
+            </div>
+          }
           <div><span>État du dossier</span><b>{{ d.statut | libelle:'statutDossier' }}</b></div>
           <div><span>Phase</span><b>{{ d.phase | libelle:'phase' }}</b></div>
           <div>
