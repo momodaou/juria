@@ -772,146 +772,149 @@ import { LibellePipe } from '../../core/libelles';
         } @else { <p class="muted">Aucun délai enregistré.</p> }
       </section>
 
-      <section class="panel">
-        <h3>Audiences</h3>
-        <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier) — mais une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
-        @if (audiences().length) {
-          <table>
-            <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
-            @for (a of audiences(); track a.id) {
-              <tr [class.urgent]="a.urgente">
-                <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
-                <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
-                <td>{{ a.juridiction || '—' }}</td>
-                <td>{{ a.avocat_nom || '—' }}</td>
-                <td>
-                  @if (a.resultat) {
-                    {{ libelleResultat(a.resultat, a.resultat_precision) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
-                    @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }}@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
-                    @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
-                      <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
-                    }
-                  } @else { <span class="muted">à venir</span> }
-                </td>
-                <td><app-menu-actions [actions]="actionsPourAudience(a)" /></td>
-              </tr>
-              @if (editionAudienceId() === a.id) {
-                <tr class="edition">
-                  <td colspan="6">
-                    <div class="grid2">
-                      <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
-                      <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
-                      <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
-                      <div>
-                        <label>Type</label>
-                        <select class="in" [(ngModel)]="editAudience.type" name="eaType">
-                          <option value="mise_en_etat">Mise en état</option>
-                          <option value="plaidoirie">Plaidoirie</option>
-                          <option value="conciliation">Conciliation</option>
-                          <option value="refere">Référé</option>
-                          <option value="prononce">Prononcé</option>
-                          <option value="autre">Autre</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label>Audiencier</label>
-                        <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
-                          <option value="">—</option>
-                          @for (u of utilisateursAudiencier(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
-                        </select>
-                      </div>
-                      <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
-                    </div>
-                    <div class="actions">
-                      <button class="btn" (click)="enregistrerEditionAudience(a)">Enregistrer</button>
-                      <button class="btn ghost" (click)="editionAudienceId.set(null)">Annuler</button>
-                    </div>
-                    @if (erreurEditionAudience()) { <p class="err">{{ erreurEditionAudience() }}</p> }
+      <!-- 26/10/2026 — pas d'audience en conseil, sauf si le dossier en a déjà. -->
+      @if (d.pole === 'contentieux' || audiences().length) {
+        <section class="panel">
+          <h3>Audiences</h3>
+          <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier) — mais une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
+          @if (audiences().length) {
+            <table>
+              <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
+              @for (a of audiences(); track a.id) {
+                <tr [class.urgent]="a.urgente">
+                  <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
+                  <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
+                  <td>{{ a.juridiction || '—' }}</td>
+                  <td>{{ a.avocat_nom || '—' }}</td>
+                  <td>
+                    @if (a.resultat) {
+                      {{ libelleResultat(a.resultat, a.resultat_precision) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
+                      @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }}@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
+                      @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
+                        <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
+                      }
+                    } @else { <span class="muted">à venir</span> }
                   </td>
+                  <td><app-menu-actions [actions]="actionsPourAudience(a)" /></td>
                 </tr>
-              }
-              @if (correctionRetourId() === a.id) {
-                <!-- 24/09/2026 — même formulaire que "Saisir/Corriger le
-                     retour" du Rôle d'audience, réutilise la même route
-                     POST/PUT (corrigerRetourAudience appelle toujours PUT
-                     — le serveur distingue lui-même 1re saisie/correction
-                     via /retour d'un côté, l'existence préalable d'un
-                     resultat de l'autre ; voir CLAUDE.md). -->
-                <tr class="edition">
-                  <td colspan="6">
-                    <div class="grid2">
-                      <div>
-                        <label>Résultat</label>
-                        <select class="in" [(ngModel)]="retourCorrection.resultat" name="rcResultat">
-                          @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
-                        </select>
-                      </div>
-                      <!-- 14/10/2026 — même gap que le Rôle d'audience, même
-                           jour : libellé libre si "Autre". -->
-                      @if (retourCorrection.resultat === 'autre') {
-                        <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.resultat_precision" name="rcResultatPrecision" /></div>
-                      }
-                      @if (retourCorrection.resultat === 'avant_dire_droit') {
-                        <div class="col2"><p class="muted">Décision intermédiaire — aucune audience suivante n'est programmée automatiquement. Le dossier apparaît dans la tuile « En attente de réenrôlement » du Tableau de bord jusqu'à la demande de réenrôlement auprès du tribunal.</p></div>
-                      }
-                      @if (retourCorrection.resultat === 'decision_rendue') {
-                        <div class="col2">
-                          <label>Document de la décision (jugement/arrêt/ordonnance)</label>
-                          @if (a.decision_document_id) {
-                            <p class="muted">
-                              Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(a)">{{ a.decision_document_nom }}</button>
-                              (<button type="button" class="lien" (click)="telechargerDecision(a)">Télécharger</button>)
-                              — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).
-                            </p>
-                          }
-                          <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
-                          <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(a)">Joindre le document</button>
-                          @if (erreurDecision) { <p class="err">{{ erreurDecision }}</p> }
-                        </div>
-                      }
-                      @if (retourCorrection.resultat === 'renvoi') {
+                @if (editionAudienceId() === a.id) {
+                  <tr class="edition">
+                    <td colspan="6">
+                      <div class="grid2">
+                        <div><label>Date</label><input class="in" type="date" [(ngModel)]="editAudience.date_audience" name="eaDate" /></div>
+                        <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
+                        <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
                         <div>
-                          <label>Motif du renvoi</label>
-                          <select class="in" [(ngModel)]="retourCorrection.motif_renvoi_id" name="rcMotif">
-                            <option value="">—</option>
-                            @for (m of motifsRenvoi(); track m.id) { <option [value]="m.id">{{ m.libelle }}</option> }
+                          <label>Type</label>
+                          <select class="in" [(ngModel)]="editAudience.type" name="eaType">
+                            <option value="mise_en_etat">Mise en état</option>
+                            <option value="plaidoirie">Plaidoirie</option>
+                            <option value="conciliation">Conciliation</option>
+                            <option value="refere">Référé</option>
+                            <option value="prononce">Prononcé</option>
+                            <option value="autre">Autre</option>
                           </select>
                         </div>
-                        @if (motifEstAutre(retourCorrection.motif_renvoi_id)) {
-                          <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.motif_renvoi_precision" name="rcMotifPrecision" /></div>
+                        <div>
+                          <label>Audiencier</label>
+                          <select class="in" [(ngModel)]="editAudience.avocat_id" name="eaAvocat">
+                            <option value="">—</option>
+                            @for (u of utilisateursAudiencier(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                          </select>
+                        </div>
+                        <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
+                      </div>
+                      <div class="actions">
+                        <button class="btn" (click)="enregistrerEditionAudience(a)">Enregistrer</button>
+                        <button class="btn ghost" (click)="editionAudienceId.set(null)">Annuler</button>
+                      </div>
+                      @if (erreurEditionAudience()) { <p class="err">{{ erreurEditionAudience() }}</p> }
+                    </td>
+                  </tr>
+                }
+                @if (correctionRetourId() === a.id) {
+                  <!-- 24/09/2026 — même formulaire que "Saisir/Corriger le
+                       retour" du Rôle d'audience, réutilise la même route
+                       POST/PUT (corrigerRetourAudience appelle toujours PUT
+                       — le serveur distingue lui-même 1re saisie/correction
+                       via /retour d'un côté, l'existence préalable d'un
+                       resultat de l'autre ; voir CLAUDE.md). -->
+                  <tr class="edition">
+                    <td colspan="6">
+                      <div class="grid2">
+                        <div>
+                          <label>Résultat</label>
+                          <select class="in" [(ngModel)]="retourCorrection.resultat" name="rcResultat">
+                            @for (r of resultats(); track r.code) { <option [value]="r.code">{{ r.libelle }}</option> }
+                          </select>
+                        </div>
+                        <!-- 14/10/2026 — même gap que le Rôle d'audience, même
+                             jour : libellé libre si "Autre". -->
+                        @if (retourCorrection.resultat === 'autre') {
+                          <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.resultat_precision" name="rcResultatPrecision" /></div>
                         }
-                      }
-                      @if (retourCorrection.resultat === 'renvoi' || retourCorrection.resultat === 'delibere') {
-                        <!-- 24/09/2026 — étendue à "Mise en délibéré" (date de
-                             prononcé, facultative), même règle que le Rôle
-                             d'audience — voir CLAUDE.md. -->
-                        <div>
-                          <label>{{ retourCorrection.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
-                            <span class="muted">{{ retourCorrection.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
-                          <input class="in" type="date" [(ngModel)]="retourCorrection.prochaine_date" name="rcProchaine" />
-                        </div>
-                        <!-- 10/10/2026 — heure de la prochaine audience
-                             (facultative, toujours), même patron que le Rôle
-                             d'audience. -->
-                        <div>
-                          <label>Heure <span class="muted">(facultatif)</span></label>
-                          <input class="in" type="time" [(ngModel)]="retourCorrection.prochaine_heure" name="rcProchaineHeure" />
-                        </div>
-                      }
-                      <div class="col2"><label>Observations</label><input class="in" [(ngModel)]="retourCorrection.observations" name="rcObs" /></div>
-                    </div>
-                    <div class="actions">
-                      <button class="btn" (click)="enregistrerCorrectionRetour(a)">Enregistrer</button>
-                      <button class="btn ghost" (click)="correctionRetourId.set(null)">Annuler</button>
-                    </div>
-                    @if (erreurCorrectionRetour()) { <p class="err">{{ erreurCorrectionRetour() }}</p> }
-                  </td>
-                </tr>
+                        @if (retourCorrection.resultat === 'avant_dire_droit') {
+                          <div class="col2"><p class="muted">Décision intermédiaire — aucune audience suivante n'est programmée automatiquement. Le dossier apparaît dans la tuile « En attente de réenrôlement » du Tableau de bord jusqu'à la demande de réenrôlement auprès du tribunal.</p></div>
+                        }
+                        @if (retourCorrection.resultat === 'decision_rendue') {
+                          <div class="col2">
+                            <label>Document de la décision (jugement/arrêt/ordonnance)</label>
+                            @if (a.decision_document_id) {
+                              <p class="muted">
+                                Déjà joint : <button type="button" class="lien" (click)="ouvrirDecision(a)">{{ a.decision_document_nom }}</button>
+                                (<button type="button" class="lien" (click)="telechargerDecision(a)">Télécharger</button>)
+                                — en joindre un nouveau remplace cette référence (l'ancien document reste dans les Pièces GED).
+                              </p>
+                            }
+                            <input class="in" type="file" (change)="selectionnerDecisionFichier($event)" />
+                            <button type="button" class="btn ghost" [disabled]="!decisionFichier" (click)="televerserDecision(a)">Joindre le document</button>
+                            @if (erreurDecision) { <p class="err">{{ erreurDecision }}</p> }
+                          </div>
+                        }
+                        @if (retourCorrection.resultat === 'renvoi') {
+                          <div>
+                            <label>Motif du renvoi</label>
+                            <select class="in" [(ngModel)]="retourCorrection.motif_renvoi_id" name="rcMotif">
+                              <option value="">—</option>
+                              @for (m of motifsRenvoi(); track m.id) { <option [value]="m.id">{{ m.libelle }}</option> }
+                            </select>
+                          </div>
+                          @if (motifEstAutre(retourCorrection.motif_renvoi_id)) {
+                            <div><label>Préciser</label><input class="in" [(ngModel)]="retourCorrection.motif_renvoi_precision" name="rcMotifPrecision" /></div>
+                          }
+                        }
+                        @if (retourCorrection.resultat === 'renvoi' || retourCorrection.resultat === 'delibere') {
+                          <!-- 24/09/2026 — étendue à "Mise en délibéré" (date de
+                               prononcé, facultative), même règle que le Rôle
+                               d'audience — voir CLAUDE.md. -->
+                          <div>
+                            <label>{{ retourCorrection.resultat === 'renvoi' ? 'Prochaine date' : 'Date de prononcé' }}
+                              <span class="muted">{{ retourCorrection.resultat === 'renvoi' ? '(obligatoire pour un renvoi)' : '(facultatif)' }}</span></label>
+                            <input class="in" type="date" [(ngModel)]="retourCorrection.prochaine_date" name="rcProchaine" />
+                          </div>
+                          <!-- 10/10/2026 — heure de la prochaine audience
+                               (facultative, toujours), même patron que le Rôle
+                               d'audience. -->
+                          <div>
+                            <label>Heure <span class="muted">(facultatif)</span></label>
+                            <input class="in" type="time" [(ngModel)]="retourCorrection.prochaine_heure" name="rcProchaineHeure" />
+                          </div>
+                        }
+                        <div class="col2"><label>Observations</label><input class="in" [(ngModel)]="retourCorrection.observations" name="rcObs" /></div>
+                      </div>
+                      <div class="actions">
+                        <button class="btn" (click)="enregistrerCorrectionRetour(a)">Enregistrer</button>
+                        <button class="btn ghost" (click)="correctionRetourId.set(null)">Annuler</button>
+                      </div>
+                      @if (erreurCorrectionRetour()) { <p class="err">{{ erreurCorrectionRetour() }}</p> }
+                    </td>
+                  </tr>
+                }
               }
-            }
-          </table>
-        } @else { <p class="muted">Aucune audience enregistrée pour ce dossier.</p> }
-      </section>
+            </table>
+          } @else { <p class="muted">Aucune audience enregistrée pour ce dossier.</p> }
+        </section>
+      }
 
       @if (auth.peut('audiences.consulter')) {
         <section class="panel">

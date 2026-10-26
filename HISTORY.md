@@ -4245,3 +4245,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 26/10/2026 — Fiche dossier de conseil : « Montant du litige »
 - Retour utilisateur : l'étiquette « Montant du litige » s'affichait aussi sur les dossiers de conseil. Saisie (ouverture, modification) déjà réservée au contentieux ; seul l'affichage de l'en-tête de la fiche ne l'était pas. Désormais masqué pour le conseil, sauf montant déjà saisi (alors libellé « Montant concerné »). Build OK. **Non déployé.**
+- Tuile « Audiences » de la fiche masquée pour les dossiers de conseil, sauf s'ils ont déjà une audience (26/10/2026). Build OK. **Non déployé.**
