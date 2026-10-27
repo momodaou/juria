@@ -832,6 +832,10 @@ export class ApiService {
     return this.http.get(`${this.base}/api/actes/${id}/pdf`, { responseType: 'blob' });
   }
 
+  // Balises disponibles dans les modèles (27/10/2026).
+  balisesActes(): Observable<{ cle: string; groupe: string; description: string }[]> {
+    return this.http.get<{ cle: string; groupe: string; description: string }[]>(`${this.base}/api/actes/balises`);
+  }
   // Gestion du catalogue de modèles (13/09/2026, actes.modeles.gerer).
   modelesActesTous(): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/actes/modeles/tous`);

@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
@@ -105,13 +105,15 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         <h3>Gérer les modèles <button class="lien" (click)="afficherGestion.set(!afficherGestion())">{{ afficherGestion() ? 'Masquer' : 'Afficher' }}</button></h3>
         @if (afficherGestion()) {
           <p class="muted">
-            Placeholders disponibles dans le corps d'un modèle :
-            {{ '{{client}}' }}, {{ '{{partie_adverse}}' }}, {{ '{{destinataire}}' }}, {{ '{{dossier_numero}}' }},
-            {{ '{{dossier_intitule}}' }}, {{ '{{dossier_objet_ou_intitule}}' }}, {{ '{{dossier_juridiction}}' }},
-            {{ '{{dossier_mode_honoraires}}' }}, {{ '{{date}}' }}, {{ '{{avocat}}' }}, {{ '{{cabinet_raison_sociale}}' }},
-            {{ '{{cabinet_forme}}' }}, {{ '{{cabinet_adresse}}' }}, {{ '{{cabinet_telephone}}' }}, {{ '{{cabinet_email}}' }},
-            {{ '{{cabinet_rccm}}' }}, {{ '{{cabinet_nif}}' }}, {{ '{{cabinet_compte_carpa}}' }}.
+            Balises disponibles dans le corps d'un modèle (une donnée absente de la fiche apparaît « [à compléter] » dans l'acte) :
           </p>
+          @for (g of groupesBalises(); track g.groupe) {
+            <p class="muted"><strong>{{ g.groupe }}</strong> :
+              @for (b of g.balises; track b.cle) {
+                <span [title]="b.description">{{ '{{' + b.cle + '}}' }}{{ $last ? '.' : ', ' }}</span>
+              }
+            </p>
+          }
 
           <table>
             <tr><th>Nom</th><th>Catégorie</th><th>Statut</th><th></th></tr>
@@ -202,7 +204,10 @@ export class ActesComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.modelesActes().subscribe({ next: (m) => this.modeles.set(m) });
-    if (this.auth.peut('actes.modeles.gerer')) this.chargerModelesGestion();
+    if (this.auth.peut('actes.modeles.gerer')) {
+      this.chargerModelesGestion();
+      this.api.balisesActes().subscribe({ next: (b) => this.balises.set(b) });
+    }
   }
 
   // Recherche par mot-clé plutôt qu'un <select> géant (13/09/2026) — filtre
@@ -274,6 +279,17 @@ export class ActesComponent implements OnInit {
 
   // --- Gestion des modèles (actes.modeles.gerer) ---
   readonly afficherGestion = signal(false);
+  readonly balises = signal<{ cle: string; groupe: string; description: string }[]>([]);
+  // Balises regroupées par rubrique (Dossier, Client, Partie adverse…), ordre du catalogue.
+  readonly groupesBalises = computed(() => {
+    const groupes: { groupe: string; balises: { cle: string; description: string }[] }[] = [];
+    for (const b of this.balises()) {
+      let g = groupes.find((x) => x.groupe === b.groupe);
+      if (!g) { g = { groupe: b.groupe, balises: [] }; groupes.push(g); }
+      g.balises.push(b);
+    }
+    return groupes;
+  });
   readonly modelesGestion = signal<any[]>([]);
   readonly modeleEditId = signal<string | null>(null);
   readonly erreurModele = signal('');

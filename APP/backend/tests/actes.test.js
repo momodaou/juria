@@ -108,6 +108,41 @@ describe("Gestion du catalogue — réservée à actes.modeles.gerer", () => {
   });
 });
 
+describe("Balises enrichies (27/10/2026)", () => {
+  test("GET /balises renvoie le catalogue, et chaque balise est fournie par applatirContexte", async () => {
+    const res = await request(app).get("/api/actes/balises").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const { applatirContexte } = require("../src/routes/actes");
+    const plat = applatirContexte({ date: "01/01/2026", dossier: {}, cabinet: {} });
+    const cles = res.body.map((b) => b.cle);
+    expect(cles.length).toBeGreaterThan(30);
+    for (const cle of cles) expect(plat).toHaveProperty(cle);
+    // Aucune balise fournie mais non documentée.
+    for (const cle of Object.keys(plat)) expect(cles).toContain(cle);
+  });
+
+  test("client complet, instance en cours, parties adverses et prochaine audience sont fusionnés", async () => {
+    const cl = await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`).send({
+      type: "morale", denomination: `Société Balises ${Date.now()}`, forme_juridique: "SARL", rccm: "ML-BKO-2020-B-1234",
+      nif: "NIF-777", adresse: "Hamdallaye ACI 2000", ville: "Bamako",
+    });
+    const dossierId = await creerDossier(cl.body.id);
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, conseil) VALUES ($1,'adverse','Alpha SA','Me Konaté'), ($1,'adverse','Beta SARL',NULL)", [dossierId]);
+    await pool.query("INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut, statut_partie) VALUES ($1,'appel','Cour d''appel de Bamako','RG 42/26','2026-09-01','demandeur')", [dossierId]);
+    await pool.query("INSERT INTO audiences (dossier_id, juridiction, date_audience) VALUES ($1,'Cour d''appel de Bamako', current_date + 10)", [dossierId]);
+    await pool.query(
+      "INSERT INTO modeles_actes (code, nom, corps) VALUES ($1,'Test balises',$2) ON CONFLICT (code) DO NOTHING",
+      ["test_balises", "{{client_identification}}|{{parties_adverses}}|{{conseil_adverse}}|{{instance_degre}}|{{instance_numero_role}}|{{client_qualite}}|{{audience_prochaine_juridiction}}|{{client_telephone}}"]
+    );
+    const res = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "test_balises" });
+    expect(res.status).toBe(201);
+    expect(res.body.texte).toContain("SARL, immatriculée au RCCM sous le n° ML-BKO-2020-B-1234, NIF NIF-777, dont le siège social est situé à Hamdallaye ACI 2000, Bamako");
+    expect(res.body.texte).toContain("Alpha SA et Beta SARL|Me Konaté|appel|RG 42/26|Appelant|Cour d'appel de Bamako|[à compléter]");
+    expect(res.body.texte).not.toContain("{{");
+  });
+});
+
 describe("POST /api/actes/generer — fusion des placeholders", () => {
   test("le texte généré contient bien le client et la référence du dossier", async () => {
     const clientId = await creerClient();

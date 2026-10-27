@@ -18,6 +18,9 @@ const { generer } = require("../ia");
 const { requirePermission } = require("../permissions");
 const { envoyerActePdf } = require("../actePdf");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
+const {
+  BALISES, A_COMPLETER, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt, identificationClient,
+} = require("../balisesActes");
 const router = express.Router();
 
 // Audit du 03/10/2026 : GET /:id/pdf, PUT /:id et POST /:id/statut
@@ -33,10 +36,6 @@ async function verifierAccesDocument(dossierId, confidentialite, user) {
   return estDocumentVisible(confidentialite, contexte, user, false);
 }
 
-function fmtDate(d) {
-  return new Date(d).toLocaleDateString("fr-FR");
-}
-
 // GET /api/actes/modeles — modèles actifs, pour le sélecteur de génération.
 router.get("/modeles", requirePermission("actes.consulter"), async (req, res) => {
   try {
@@ -48,6 +47,12 @@ router.get("/modeles", requirePermission("actes.consulter"), async (req, res) =>
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// GET /api/actes/balises — catalogue des balises {{cle}} utilisables dans un
+// modèle (aide de l'écran de gestion ; source unique : balisesActes.js).
+router.get("/balises", requirePermission("actes.consulter"), (req, res) => {
+  res.json(BALISES);
 });
 
 // GET /api/actes/modeles/tous — y compris désactivés, pour l'écran de
@@ -120,21 +125,52 @@ router.delete("/modeles/:id", requirePermission("actes.modeles.gerer"), async (r
 
 async function construireContexte(dossierId, avocatNom) {
   const d = await pool.query(
-    `SELECT d.*, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
-     FROM dossiers d JOIN clients c ON c.id = d.client_id WHERE d.id = $1`,
+    `SELECT d.*, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
+            c.type AS c_type, c.denomination AS c_denomination, c.forme_juridique AS c_forme_juridique,
+            c.rccm AS c_rccm, c.nif AS c_nif, c.prenom AS c_prenom, c.nom AS c_nom,
+            c.nationalite AS c_nationalite, c.adresse AS c_adresse, c.ville AS c_ville, c.pays AS c_pays,
+            c.email AS c_email, c.telephone AS c_telephone,
+            COALESCE(r.prenom || ' ' || r.nom, '') AS responsable_nom
+     FROM dossiers d
+     JOIN clients c ON c.id = d.client_id
+     LEFT JOIN utilisateurs r ON r.id = d.responsable_id
+     WHERE d.id = $1`,
     [dossierId]
   );
   if (!d.rows[0]) return null;
   const dossier = d.rows[0];
-  const partie = await pool.query(
-    `SELECT denomination FROM dossier_parties WHERE dossier_id = $1 AND role = 'adverse' LIMIT 1`,
+  const parties = await pool.query(
+    `SELECT denomination, conseil FROM dossier_parties WHERE dossier_id = $1 AND role = 'adverse' ORDER BY cree_le, id`,
     [dossierId]
   );
   const cab = await pool.query("SELECT * FROM parametres_cabinet WHERE id = 1");
+  // Instance la plus récente : même tri que instanceActuelle.js (fiche dossier, Rôle d'audience).
+  const inst = await pool.query(
+    `SELECT degre, juridiction, numero_role, date_debut, statut_partie, statut_partie_precision
+     FROM instances WHERE dossier_id = $1 ORDER BY date_debut DESC NULLS LAST, cree_le DESC LIMIT 1`,
+    [dossierId]
+  );
+  const aud = await pool.query(
+    `SELECT date_audience, juridiction FROM audiences
+     WHERE dossier_id = $1 AND resultat IS NULL AND date_audience >= current_date
+     ORDER BY date_audience LIMIT 1`,
+    [dossierId]
+  );
   return {
     date: fmtDate(new Date()),
     client: dossier.client_nom,
-    partieAdverse: partie.rows[0]?.denomination || null,
+    partieAdverse: parties.rows[0]?.denomination || null,
+    partiesAdverses: parties.rows.map((p) => p.denomination),
+    conseilAdverse: parties.rows[0]?.conseil || null,
+    clientFiche: {
+      type: dossier.c_type, denomination: dossier.c_denomination, forme_juridique: dossier.c_forme_juridique,
+      rccm: dossier.c_rccm, nif: dossier.c_nif, prenom: dossier.c_prenom, nom: dossier.c_nom,
+      nationalite: dossier.c_nationalite, adresse: dossier.c_adresse, ville: dossier.c_ville, pays: dossier.c_pays,
+      email: dossier.c_email, telephone: dossier.c_telephone,
+    },
+    instance: inst.rows[0] || null,
+    prochaineAudience: aud.rows[0] || null,
+    responsable: dossier.responsable_nom || "",
     dossier,
     cabinet: cab.rows[0] || {},
     avocat: avocatNom,
@@ -147,19 +183,51 @@ async function construireContexte(dossierId, avocatNom) {
 // ceux des anciens modèles codés en dur, simplifiés en un seul repli par
 // champ (ces modèles sont désormais éditables par le cabinet lui-même,
 // pas besoin d'une fidélité byte à byte à l'ancien code).
+// Enrichi le 27/10/2026 : client complet, parties adverses, instance en cours,
+// prochaine audience (catalogue : balisesActes.js).
 function applatirContexte(ctx) {
   const d = ctx.dossier || {};
   const cab = ctx.cabinet || {};
+  const c = ctx.clientFiche || null;
+  const inst = ctx.instance || null;
+  const aud = ctx.prochaineAudience || null;
+  const adverses = ctx.partiesAdverses || (ctx.partieAdverse ? [ctx.partieAdverse] : []);
   return {
     date: ctx.date,
     client: ctx.client || "",
+    client_type: c ? (c.type === "morale" ? "personne morale" : "personne physique") : A_COMPLETER,
+    client_forme_juridique: ou(c && c.forme_juridique),
+    client_rccm: ou(c && c.rccm),
+    client_nif: ou(c && c.nif),
+    client_adresse: ou(c && c.adresse),
+    client_ville: ou(c && c.ville),
+    client_pays: ou(c && c.pays),
+    client_nationalite: ou(c && c.nationalite),
+    client_email: ou(c && c.email),
+    client_telephone: ou(c && c.telephone),
+    client_identification: identificationClient(c) || ctx.client || A_COMPLETER,
     partie_adverse: ctx.partieAdverse || "—",
+    parties_adverses: jointureEt(adverses) || "—",
+    conseil_adverse: ctx.conseilAdverse || "—",
     destinataire: ctx.partieAdverse || ctx.client || "",
+    instance_degre: inst ? libelleDegre(inst.degre) : A_COMPLETER,
+    instance_juridiction: ou((inst && inst.juridiction) || d.juridiction),
+    instance_numero_role: ou((inst && inst.numero_role) || d.numero_role),
+    instance_date_debut: inst && inst.date_debut ? fmtDate(inst.date_debut) : A_COMPLETER,
+    client_qualite: inst && inst.statut_partie
+      ? libelleStatutPartie(inst.statut_partie, inst.degre, inst.statut_partie_precision)
+      : A_COMPLETER,
+    audience_prochaine_date: aud ? fmtDate(aud.date_audience) : A_COMPLETER,
+    audience_prochaine_juridiction: ou(aud && (aud.juridiction || (inst && inst.juridiction) || d.juridiction)),
     dossier_numero: d.numero || "",
     dossier_intitule: d.intitule || "",
     dossier_objet: d.objet || "",
     dossier_objet_ou_intitule: d.objet || d.intitule || "",
     dossier_juridiction: d.juridiction || "—",
+    dossier_pole: d.pole === "conseil" ? "conseil" : d.pole === "contentieux" ? "contentieux" : "",
+    dossier_montant_litige: d.montant_litige ? `${Number(d.montant_litige).toLocaleString("fr-FR")} FCFA` : A_COMPLETER,
+    dossier_date_ouverture: d.date_ouverture_origine || d.date_ouverture ? fmtDate(d.date_ouverture_origine || d.date_ouverture) : A_COMPLETER,
+    dossier_responsable: ctx.responsable || A_COMPLETER,
     dossier_mode_honoraires: d.mode_honoraires || "à convenir",
     dossier_montant_convenu: d.montant_convenu_xof ? `${Number(d.montant_convenu_xof).toLocaleString("fr-FR")} FCFA` : "à convenir",
     avocat: ctx.avocat || "",
