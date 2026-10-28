@@ -20,7 +20,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, code, prenom, nom, email, role, pole FROM utilisateurs WHERE id = $1",
+      "SELECT id, code, prenom, nom, email, role, pole, titre_avocat FROM utilisateurs WHERE id = $1",
       [req.user.sub]
     );
     if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable" });
@@ -34,6 +34,25 @@ router.get("/", async (req, res) => {
       [req.user.role, req.user.sub]
     );
     res.json({ ...rows[0], permissions: perms.rows.map((r) => r.action_code) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/profil  { titre_avocat } — titre porté dans la signature des actes
+// (« Avocat au Barreau du Mali et de Paris »), saisi par chacun pour lui-même.
+router.put("/", async (req, res) => {
+  const titre = typeof req.body?.titre_avocat === "string" ? req.body.titre_avocat.trim() : null;
+  if (titre === null) return res.status(400).json({ error: "titre_avocat requis" });
+  if (titre.length > 200) return res.status(400).json({ error: "titre_avocat : 200 caractères maximum" });
+  try {
+    const { rows } = await pool.query(
+      "UPDATE utilisateurs SET titre_avocat = NULLIF($1::text,'') WHERE id = $2 RETURNING titre_avocat",
+      [titre, req.user.sub]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json(rows[0]);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

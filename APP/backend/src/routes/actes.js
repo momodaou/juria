@@ -19,8 +19,10 @@ const { requirePermission } = require("../permissions");
 const { envoyerActePdf } = require("../actePdf");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const {
-  BALISES, A_COMPLETER, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt, identificationClient,
+  BALISES, A_COMPLETER, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt,
+  dateLongue, naissance, filiation, representant, identification, depuisClient, depuisPartie, CIVILITES,
 } = require("../balisesActes");
+const { selectChamps, CHAMPS_CLIENT, CHAMPS_PARTIE } = require("../identiteActes");
 const router = express.Router();
 
 // Audit du 03/10/2026 : GET /:id/pdf, PUT /:id et POST /:id/statut
@@ -123,13 +125,14 @@ router.delete("/modeles/:id", requirePermission("actes.modeles.gerer"), async (r
   }
 });
 
-async function construireContexte(dossierId, avocatNom) {
+async function construireContexte(dossierId, avocatNom, avocatFiche) {
   const d = await pool.query(
     `SELECT d.*, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
             c.type AS c_type, c.denomination AS c_denomination, c.forme_juridique AS c_forme_juridique,
             c.rccm AS c_rccm, c.nif AS c_nif, c.prenom AS c_prenom, c.nom AS c_nom,
             c.nationalite AS c_nationalite, c.adresse AS c_adresse, c.ville AS c_ville, c.pays AS c_pays,
             c.email AS c_email, c.telephone AS c_telephone,
+            ${selectChamps(CHAMPS_CLIENT, "c", "c_")},
             COALESCE(r.prenom || ' ' || r.nom, '') AS responsable_nom
      FROM dossiers d
      JOIN clients c ON c.id = d.client_id
@@ -140,7 +143,7 @@ async function construireContexte(dossierId, avocatNom) {
   if (!d.rows[0]) return null;
   const dossier = d.rows[0];
   const parties = await pool.query(
-    `SELECT denomination, conseil FROM dossier_parties WHERE dossier_id = $1 AND role = 'adverse' ORDER BY cree_le, id`,
+    `SELECT denomination, conseil, ${selectChamps(CHAMPS_PARTIE)} FROM dossier_parties WHERE dossier_id = $1 AND role = 'adverse' ORDER BY cree_le, id`,
     [dossierId]
   );
   const cab = await pool.query("SELECT * FROM parametres_cabinet WHERE id = 1");
@@ -161,19 +164,23 @@ async function construireContexte(dossierId, avocatNom) {
     client: dossier.client_nom,
     partieAdverse: parties.rows[0]?.denomination || null,
     partiesAdverses: parties.rows.map((p) => p.denomination),
+    partiesAdversesFiches: parties.rows.map(depuisPartie),
     conseilAdverse: parties.rows[0]?.conseil || null,
-    clientFiche: {
+    conseilAdverseAdresse: parties.rows[0]?.conseil_adresse || null,
+    clientFiche: depuisClient({
       type: dossier.c_type, denomination: dossier.c_denomination, forme_juridique: dossier.c_forme_juridique,
       rccm: dossier.c_rccm, nif: dossier.c_nif, prenom: dossier.c_prenom, nom: dossier.c_nom,
       nationalite: dossier.c_nationalite, adresse: dossier.c_adresse, ville: dossier.c_ville, pays: dossier.c_pays,
       email: dossier.c_email, telephone: dossier.c_telephone,
-    },
+      ...Object.fromEntries(CHAMPS_CLIENT.map(([col]) => [col, dossier[`c_${col}`]])),
+    }),
     instance: inst.rows[0] || null,
     prochaineAudience: aud.rows[0] || null,
     responsable: dossier.responsable_nom || "",
     dossier,
     cabinet: cab.rows[0] || {},
     avocat: avocatNom,
+    avocatFiche: avocatFiche || { titre: null, code: null },
   };
 }
 
@@ -192,6 +199,8 @@ function applatirContexte(ctx) {
   const inst = ctx.instance || null;
   const aud = ctx.prochaineAudience || null;
   const adverses = ctx.partiesAdverses || (ctx.partieAdverse ? [ctx.partieAdverse] : []);
+  const fiches = ctx.partiesAdversesFiches || adverses.map((denomination) => depuisPartie({ denomination }));
+  const av = ctx.avocatFiche || {};
   return {
     date: ctx.date,
     client: ctx.client || "",
@@ -205,8 +214,21 @@ function applatirContexte(ctx) {
     client_nationalite: ou(c && c.nationalite),
     client_email: ou(c && c.email),
     client_telephone: ou(c && c.telephone),
-    client_identification: identificationClient(c) || ctx.client || A_COMPLETER,
+    client_civilite: ou(c && CIVILITES[c.civilite]),
+    client_date_naissance: c && c.date_naissance ? dateLongue(c.date_naissance) : A_COMPLETER,
+    client_lieu_naissance: ou(c && c.lieu_naissance),
+    client_naissance: (c && naissance(c)) || A_COMPLETER,
+    client_filiation: (c && filiation(c)) || A_COMPLETER,
+    client_profession: ou(c && c.profession),
+    client_capital_social: ou(c && c.capital_social),
+    client_representant: (c && representant(c)) || A_COMPLETER,
+    client_boite_postale: ou(c && c.boite_postale),
+    client_droit_applicable: ou(c && c.droit_applicable),
+    client_identification: identification(c) || ctx.client || A_COMPLETER,
     partie_adverse: ctx.partieAdverse || "—",
+    partie_adverse_identification: fiches[0] ? identification(fiches[0]) : "—",
+    parties_adverses_identification: fiches.length ? fiches.map(identification).join("\n") : "—",
+    conseil_adverse_adresse: ctx.conseilAdverseAdresse || "—",
     parties_adverses: jointureEt(adverses) || "—",
     conseil_adverse: ctx.conseilAdverse || "—",
     destinataire: ctx.partieAdverse || ctx.client || "",
@@ -231,6 +253,9 @@ function applatirContexte(ctx) {
     dossier_mode_honoraires: d.mode_honoraires || "à convenir",
     dossier_montant_convenu: d.montant_convenu_xof ? `${Number(d.montant_convenu_xof).toLocaleString("fr-FR")} FCFA` : "à convenir",
     avocat: ctx.avocat || "",
+    avocat_titre: av.titre || "Avocat au Barreau du Mali",
+    avocat_initiales: av.code ? String(av.code).toUpperCase() : A_COMPLETER,
+    avocat_identification: [ctx.avocat, av.titre || "Avocat au Barreau du Mali"].filter(Boolean).join(", "),
     cabinet_raison_sociale: cab.raison_sociale || "",
     cabinet_forme: cab.forme || "Avocat au Barreau du Mali",
     cabinet_adresse: cab.adresse || "",
@@ -256,8 +281,8 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
   const b = req.body || {};
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });
   try {
-    const avocat = await pool.query("SELECT prenom || ' ' || nom AS nom FROM utilisateurs WHERE id = $1", [req.user.sub]);
-    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "");
+    const avocat = await pool.query("SELECT prenom || ' ' || nom AS nom, titre_avocat AS titre, code FROM utilisateurs WHERE id = $1", [req.user.sub]);
+    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "", avocat.rows[0]);
     if (!ctx) return res.status(404).json({ error: "Dossier introuvable" });
 
     let texte, nom, categorie;

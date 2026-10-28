@@ -656,6 +656,57 @@ import { LibellePipe } from '../../core/libelles';
           </table>
         } @else { <p class="muted">Aucune partie enregistrée.</p> }
 
+        @if (partieIdentiteId()) {
+          <div class="identite-partie">
+            <h4>Identité pour les actes — {{ partieIdentiteNom() }}</h4>
+            <p class="muted">Facultatif : repris dans l'Atelier d'actes (une rubrique vide apparaît « [à compléter] »).</p>
+            <div class="grille-identite">
+              <div>
+                <label>Nature</label>
+                <select class="in" [(ngModel)]="partieIdent.type_partie" name="piType">
+                  <option value="">Non précisée</option>
+                  <option value="physique">Personne physique</option>
+                  <option value="morale">Personne morale</option>
+                </select>
+              </div>
+              @if (partieIdent.type_partie === 'morale') {
+                <div><label>Forme juridique</label><input class="in" [(ngModel)]="partieIdent.forme_juridique" name="piForme" /></div>
+                <div><label>RCCM</label><input class="in" [(ngModel)]="partieIdent.rccm" name="piRccm" /></div>
+                <div><label>Date d'immatriculation</label><input class="in" type="date" [(ngModel)]="partieIdent.rccm_date" name="piRccmDate" /></div>
+                <div><label>Capital social</label><input class="in" [(ngModel)]="partieIdent.capital_social" name="piCapital" /></div>
+                <div><label>Représentant légal</label><input class="in" [(ngModel)]="partieIdent.representant_nom" name="piRepNom" /></div>
+                <div><label>Qualité du représentant</label><input class="in" [(ngModel)]="partieIdent.representant_qualite" name="piRepQualite" /></div>
+                <div><label>Droit applicable (société étrangère)</label><input class="in" [(ngModel)]="partieIdent.droit_applicable" name="piDroit" /></div>
+              } @else if (partieIdent.type_partie === 'physique') {
+                <div>
+                  <label>Civilité</label>
+                  <select class="in" [(ngModel)]="partieIdent.civilite" name="piCivilite">
+                    <option value="">—</option>
+                    <option value="M">Monsieur</option>
+                    <option value="Mme">Madame</option>
+                    <option value="Mlle">Mademoiselle</option>
+                  </select>
+                </div>
+                <div><label>Profession</label><input class="in" [(ngModel)]="partieIdent.profession" name="piProfession" /></div>
+                <div><label>Date de naissance</label><input class="in" type="date" [(ngModel)]="partieIdent.date_naissance" name="piNaissance" /></div>
+                <div><label>Lieu de naissance</label><input class="in" [(ngModel)]="partieIdent.lieu_naissance" name="piLieuNaissance" /></div>
+                <div><label>Père</label><input class="in" [(ngModel)]="partieIdent.pere" name="piPere" /></div>
+                <div><label>Mère</label><input class="in" [(ngModel)]="partieIdent.mere" name="piMere" /></div>
+                <div><label>Nationalité</label><input class="in" [(ngModel)]="partieIdent.nationalite" name="piNationalite" /></div>
+              }
+              <div><label>Adresse (siège ou domicile)</label><input class="in" [(ngModel)]="partieIdent.adresse" name="piAdresse" /></div>
+              <div><label>Boîte postale</label><input class="in" [(ngModel)]="partieIdent.boite_postale" name="piBp" /></div>
+              <div><label>Adresse du conseil</label><input class="in" [(ngModel)]="partieIdent.conseil_adresse" name="piConseilAdresse" /></div>
+            </div>
+            <div class="upload">
+              <button class="btn" (click)="enregistrerIdentitePartie()" [disabled]="identitePartieEnCours()">
+                {{ identitePartieEnCours() ? 'Enregistrement…' : 'Enregistrer' }}
+              </button>
+              <button class="btn ghost" (click)="fermerIdentitePartie()">Annuler</button>
+            </div>
+          </div>
+        }
+
         @if (auth.peut('dossiers.parties.gerer')) {
           <div class="upload">
             <select class="in" style="margin:0;max-width:180px" [(ngModel)]="nouvellePartie.role" name="npRole">
@@ -1162,6 +1213,10 @@ import { LibellePipe } from '../../core/libelles';
     .edition td{background:var(--light);padding:12px 14px}
     .hint{display:block;font-size:var(--fs-sm);color:#9a6c12;margin:4px 0 0}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+    .identite-partie{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:14px 0}
+    .identite-partie h4{margin:0 0 4px}
+    .grille-identite{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;margin:10px 0}
+    .grille-identite label{display:block;font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .actions-tuile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
@@ -1788,6 +1843,7 @@ export class DossierDetailComponent implements OnInit {
   // sans être traduite ici.
   private readonly LIBELLES_ACTIONS_AUDIT: Record<string, string> = {
     modifier_dossier: 'fiche du dossier modifiée',
+    modifier_identite_actes: 'identité détaillée d\'une partie modifiée',
     basculer_pro_bono: 'statut pro bono modifié',
     creer_instance: 'instance ajoutée',
     modifier_instance: 'instance modifiée',
@@ -1874,6 +1930,43 @@ export class DossierDetailComponent implements OnInit {
     return this.rolesPartie.find((r) => r.code === code)?.libelle ?? code;
   }
 
+  // Identité détaillée pour les actes (27/10/2026) : panneau sous le tableau, une partie à la fois.
+  private readonly champsIdentitePartie = [
+    'type_partie', 'civilite', 'date_naissance', 'lieu_naissance', 'pere', 'mere', 'profession', 'nationalite', 'adresse',
+    'boite_postale', 'forme_juridique', 'rccm', 'rccm_date', 'capital_social', 'representant_nom', 'representant_qualite',
+    'droit_applicable', 'conseil_adresse',
+  ];
+  readonly partieIdentiteId = signal<string | null>(null);
+  readonly partieIdentiteNom = signal('');
+  readonly identitePartieEnCours = signal(false);
+  partieIdent: any = {};
+
+  ouvrirIdentitePartie(p: any): void {
+    this.partieIdent = Object.fromEntries(this.champsIdentitePartie.map((c) => [c, p[c] ?? '']));
+    this.partieIdentiteNom.set(p.denomination);
+    this.erreurPartie.set('');
+    this.partieIdentiteId.set(p.id);
+  }
+
+  fermerIdentitePartie(): void {
+    this.partieIdentiteId.set(null);
+  }
+
+  enregistrerIdentitePartie(): void {
+    const id = this.partieIdentiteId();
+    if (!id) return;
+    this.identitePartieEnCours.set(true);
+    this.erreurPartie.set('');
+    this.api.majPartieDossier(this.id, id, this.partieIdent).subscribe({
+      next: () => {
+        this.identitePartieEnCours.set(false);
+        this.partieIdentiteId.set(null);
+        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+      },
+      error: (e) => { this.identitePartieEnCours.set(false); this.erreurPartie.set(e?.error?.error ?? 'Enregistrement impossible.'); },
+    });
+  }
+
   demarrerEditionPartie(p: any): void {
     this.partieEdit = { role: p.role, denomination: p.denomination, conseil: p.conseil };
     this.erreurPartie.set('');
@@ -1928,6 +2021,7 @@ export class DossierDetailComponent implements OnInit {
     if (!this.auth.peut('dossiers.parties.gerer')) return [];
     return [
       { label: 'Modifier', action: () => this.demarrerEditionPartie(p) },
+      { label: 'Identité pour les actes', action: () => this.ouvrirIdentitePartie(p) },
       { label: 'Retirer', action: () => this.retirerPartie(p.id), danger: true },
     ];
   }

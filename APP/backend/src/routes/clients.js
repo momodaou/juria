@@ -22,6 +22,8 @@ const CHAMPS_IDENTITE_CLIENT = [
   "nationalite", "email", "telephone", "adresse", "ville", "pays", "kyc_statut",
 ];
 
+const { CHAMPS_CLIENT, clausesMaj, selectChamps } = require("../identiteActes");
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 Mo
@@ -260,7 +262,8 @@ router.put("/:id/abonnement", requirePermission("clients.modifier"), async (req,
 router.get("/:id", async (req, res) => {
   try {
     const cli = await pool.query(
-      `SELECT c.*, cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom,
+      `SELECT c.*, ${selectChamps(CHAMPS_CLIENT.filter(([, t]) => t === "date"), "c")},
+              cp.code AS cree_par_code, cp.prenom || ' ' || cp.nom AS cree_par_nom,
               abf.derniere_facture_le AS abonnement_derniere_facture_le
        FROM clients c
        LEFT JOIN utilisateurs cp ON cp.id = c.cree_par
@@ -361,6 +364,11 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
       [b.type, denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
        b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays, req.user.sub]
     );
+    // Identité détaillée pour les actes (27/10/2026) : champs facultatifs, écrits à part.
+    const ident = clausesMaj(b, CHAMPS_CLIENT, 2);
+    if (ident.sets.length) {
+      await pool.query(`UPDATE clients SET ${ident.sets.join(", ")} WHERE id = $1`, [rows[0].id, ...ident.params]);
+    }
     // Traçabilité des doublons (12/10/2026) : `ignorer_doublon` n'est envoyé
     // par le frontend que sur le chemin "Créer quand même" (après qu'un
     // avertissement non bloquant de GET /verifier-doublon a déjà été
@@ -375,7 +383,7 @@ router.post("/", requirePermission("clients.creer"), async (req, res) => {
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
   }
 });
 
@@ -404,16 +412,20 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
     // cette précision (arrondi à la milliseconde) — sans ce troncage, une
     // comparaison d'égalité stricte échouerait presque toujours, y compris
     // pour une écriture parfaitement légitime juste après le chargement.
-    const clauseConcurrence = b.maj_le_attendu != null
-      ? "AND date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz)"
-      : "";
+    // $17 est toujours référencé (null = pas de contrôle de concurrence) : les
+    // paramètres de l'identité détaillée viennent après lui.
+    const clauseConcurrence = "AND ($17::timestamptz IS NULL OR date_trunc('milliseconds', maj_le) = date_trunc('milliseconds', $17::timestamptz))";
     // Même normalisation qu'à la création (voir POST /) : '' -> NULL pour
     // que COALESCE(denomination, prenom||' '||nom) fonctionne à l'affichage.
     const denomination = b.denomination === "" ? null : b.denomination;
     const params = [denomination, b.rccm, b.nif, b.forme_juridique, b.prenom, b.nom,
       b.nationalite, b.email, b.telephone, b.adresse, b.ville, b.pays,
       b.beneficiaires_effectifs, b.notes, b.kyc_statut, req.params.id];
-    if (b.maj_le_attendu != null) params.push(b.maj_le_attendu);
+    params.push(b.maj_le_attendu != null ? b.maj_le_attendu : null);
+    // Identité détaillée pour les actes (27/10/2026) : champ absent = inchangé, '' = effacé.
+    const ident = clausesMaj(b, CHAMPS_CLIENT, 18);
+    params.push(...ident.params);
+    const setsIdentite = ident.sets.length ? `${ident.sets.join(", ")},` : "";
 
     const { rows } = await pool.query(
       `UPDATE clients SET
@@ -427,6 +439,7 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
          notes = COALESCE($14, notes),
          kyc_statut = COALESCE($15, kyc_statut),
          kyc_maj_le = CASE WHEN $15 IS NOT NULL THEN current_date ELSE kyc_maj_le END,
+         ${setsIdentite}
          maj_le = now()
        WHERE id = $16 ${clauseConcurrence}
        RETURNING id, kyc_statut, kyc_maj_le, maj_le,
@@ -439,6 +452,12 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
       if (!existe.rows[0]) return res.status(404).json({ error: "Client introuvable" });
       return res.status(409).json({ error: "Cette fiche a été modifiée entre-temps par quelqu'un d'autre — rechargez avant de réessayer." });
     }
+    if (ident.sets.length) {
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_identite_actes", entite: "clients",
+        entiteId: req.params.id, details: { champs: Object.keys(b).filter((k) => CHAMPS_CLIENT.some(([c]) => c === k)) }, ip: req.ip,
+      });
+    }
     const changements = diffChamps(avant, rows[0], CHAMPS_IDENTITE_CLIENT);
     if (Object.keys(changements).length) {
       await logAudit({
@@ -449,7 +468,7 @@ router.put("/:id", requirePermission("clients.modifier"), async (req, res) => {
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
   }
 });
 

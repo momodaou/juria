@@ -37,11 +37,24 @@ const BALISES = [
   { cle: "client_nationalite", groupe: "Client", description: "Nationalité (personne physique)" },
   { cle: "client_email", groupe: "Client", description: "E-mail" },
   { cle: "client_telephone", groupe: "Client", description: "Téléphone" },
-  { cle: "client_identification", groupe: "Client", description: "Identité complète en une phrase (dénomination, forme, RCCM, NIF, siège ou domicile)" },
+  { cle: "client_civilite", groupe: "Client", description: "Monsieur / Madame / Mademoiselle" },
+  { cle: "client_date_naissance", groupe: "Client", description: "Date de naissance (personne physique)" },
+  { cle: "client_lieu_naissance", groupe: "Client", description: "Lieu de naissance" },
+  { cle: "client_naissance", groupe: "Client", description: "« né(e) le … à … » accordé selon la civilité" },
+  { cle: "client_filiation", groupe: "Client", description: "« fils/fille de … et de … »" },
+  { cle: "client_profession", groupe: "Client", description: "Profession" },
+  { cle: "client_capital_social", groupe: "Client", description: "Capital social (personne morale)" },
+  { cle: "client_representant", groupe: "Client", description: "Représentant légal et sa qualité" },
+  { cle: "client_boite_postale", groupe: "Client", description: "Boîte postale" },
+  { cle: "client_droit_applicable", groupe: "Client", description: "Droit applicable / immatriculation (société étrangère)" },
+  { cle: "client_identification", groupe: "Client", description: "Identité complète en une phrase, telle qu'en tête d'un acte (personne physique ou morale)" },
   // Partie adverse
   { cle: "partie_adverse", groupe: "Partie adverse", description: "Première partie adverse" },
   { cle: "parties_adverses", groupe: "Partie adverse", description: "Toutes les parties adverses, séparées par « et »" },
+  { cle: "partie_adverse_identification", groupe: "Partie adverse", description: "Identité complète de la première partie adverse" },
+  { cle: "parties_adverses_identification", groupe: "Partie adverse", description: "Identité complète de chaque partie adverse (une par ligne)" },
   { cle: "conseil_adverse", groupe: "Partie adverse", description: "Conseil de la première partie adverse" },
+  { cle: "conseil_adverse_adresse", groupe: "Partie adverse", description: "Adresse du conseil de la première partie adverse" },
   { cle: "destinataire", groupe: "Partie adverse", description: "Partie adverse, ou à défaut le client" },
   // Instance et audience
   { cle: "instance_degre", groupe: "Instance", description: "Degré de l'instance en cours (première instance, appel…)" },
@@ -54,6 +67,9 @@ const BALISES = [
   // Cabinet et rédacteur
   { cle: "date", groupe: "Cabinet", description: "Date du jour" },
   { cle: "avocat", groupe: "Cabinet", description: "Utilisateur qui génère l'acte" },
+  { cle: "avocat_titre", groupe: "Cabinet", description: "Titre de l'avocat (Mon compte), ex. Avocat au Barreau du Mali" },
+  { cle: "avocat_initiales", groupe: "Cabinet", description: "Code (initiales) de l'avocat, pour les N/Réf." },
+  { cle: "avocat_identification", groupe: "Cabinet", description: "Nom et titre de l'avocat" },
   { cle: "cabinet_raison_sociale", groupe: "Cabinet", description: "Raison sociale du cabinet" },
   { cle: "cabinet_forme", groupe: "Cabinet", description: "Forme / qualité du cabinet" },
   { cle: "cabinet_adresse", groupe: "Cabinet", description: "Adresse du cabinet" },
@@ -105,26 +121,101 @@ function jointureEt(noms) {
   return `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
 }
 
-// Identité du client en une phrase, telle qu'on l'écrit en tête d'un acte.
-// Seules les rubriques renseignées sont reprises (pas de « RCCM [à compléter] »
-// en plein milieu de phrase pour une donnée qui n'existe pas) ; ce sont les
-// balises unitaires (client_rccm…) qui signalent un manque.
-function identificationClient(c) {
-  if (!c) return A_COMPLETER;
-  const lieu = [c.adresse, c.ville].filter((x) => x && String(x).trim()).join(", ");
-  if (c.type === "morale") {
-    const parts = [c.denomination, c.forme_juridique];
-    if (c.rccm) parts.push(`immatriculée au RCCM sous le n° ${c.rccm}`);
-    if (c.nif) parts.push(`NIF ${c.nif}`);
-    if (lieu) parts.push(`dont le siège social est situé à ${lieu}`);
-    return parts.filter((x) => x && String(x).trim()).join(", ");
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+
+// « 1985-12-14 » -> « 14 décembre 1985 » (« 1er » pour le premier du mois).
+function dateLongue(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return "";
+  const jour = Number(m[3]);
+  return `${jour === 1 ? "1er" : jour} ${MOIS[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+// « de Berthe » / « d'Étienne » (élision devant voyelle ou h muet).
+function de(nom) {
+  return /^[aeiouyhâàéèêëîïôûAEIOUYHÂÀÉÈÊËÎÏÔÛ]/.test(nom) ? `d'${nom}` : `de ${nom}`;
+}
+
+const nonVide = (x) => x && String(x).trim();
+
+function genre(civilite) {
+  if (civilite === "M") return "m";
+  if (civilite === "Mme" || civilite === "Mlle") return "f";
+  return "";
+}
+
+const CIVILITES = { M: "Monsieur", Mme: "Madame", Mlle: "Mademoiselle" };
+
+// « né le … à … » accordé selon la civilité ; « né(e) » quand elle n'est pas renseignée.
+function naissance(p) {
+  const g = genre(p.civilite);
+  const ne = g === "m" ? "né" : g === "f" ? "née" : "né(e)";
+  const date = dateLongue(p.date_naissance);
+  if (!date && !nonVide(p.lieu_naissance)) return "";
+  return `${ne}${date ? ` le ${date}` : ""}${nonVide(p.lieu_naissance) ? ` à ${p.lieu_naissance.trim()}` : ""}`;
+}
+
+function filiation(p) {
+  const g = genre(p.civilite);
+  const fils = g === "m" ? "fils" : g === "f" ? "fille" : "fils/fille";
+  const parents = [p.pere, p.mere].filter(nonVide).map((n) => de(n.trim()));
+  return parents.length ? `${fils} ${parents.join(" et ")}` : "";
+}
+
+function representant(p) {
+  if (!nonVide(p.representant_nom)) return "";
+  return nonVide(p.representant_qualite) ? `${p.representant_nom.trim()}, ${p.representant_qualite.trim()}` : p.representant_nom.trim();
+}
+
+// Identité d'une partie (client ou partie au dossier, mêmes noms de champs) en une
+// phrase, telle qu'on l'écrit en tête d'un acte. Seules les rubriques renseignées
+// sont reprises (pas de « RCCM [à compléter] » en plein milieu de phrase pour une
+// donnée qui n'existe pas) ; ce sont les balises unitaires (client_rccm…) qui
+// signalent un manque. p.type : 'morale' | 'physique' | null (inconnu : nom seul si
+// aucun détail).
+function identification(p) {
+  if (!p) return A_COMPLETER;
+  const lieu = [p.adresse, nonVide(p.boite_postale) ? `BP ${p.boite_postale.trim()}` : null, p.ville].filter(nonVide).join(", ");
+  if (p.type === "morale") {
+    const parts = [p.denomination, p.forme_juridique];
+    if (nonVide(p.droit_applicable)) parts.push(p.droit_applicable.trim());
+    if (nonVide(p.capital_social)) parts.push(`au capital de ${p.capital_social.trim()}`);
+    if (nonVide(p.rccm)) {
+      parts.push(`immatriculée au RCCM sous le numéro ${p.rccm.trim()}${p.rccm_date ? ` du ${dateLongue(p.rccm_date)}` : ""}`);
+    }
+    if (nonVide(p.nif)) parts.push(`NIF ${p.nif.trim()}`);
+    if (lieu) parts.push(`ayant son siège social à ${lieu}`);
+    const rep = representant(p);
+    if (rep) parts.push(`représentée par ${rep}`);
+    return parts.filter(nonVide).join(", ");
   }
-  const parts = [[c.prenom, c.nom].filter(Boolean).join(" ")];
-  if (c.nationalite) parts.push(`de nationalité ${c.nationalite}`);
-  if (lieu) parts.push(`demeurant à ${lieu}`);
-  return parts.filter((x) => x && String(x).trim()).join(", ");
+  const nom = p.denomination || [p.prenom, p.nom].filter(nonVide).join(" ");
+  const g = genre(p.civilite);
+  const domicilie = g === "m" ? "domicilié" : g === "f" ? "domiciliée" : "domicilié(e)";
+  const parts = [[CIVILITES[p.civilite], nom].filter(nonVide).join(" ")];
+  if (nonVide(p.profession)) parts.push(p.profession.trim());
+  const nais = naissance(p);
+  if (nais) parts.push(nais);
+  const fil = filiation(p);
+  if (fil) parts.push(fil);
+  if (nonVide(p.nationalite)) parts.push(`de nationalité ${p.nationalite.trim()}`);
+  if (lieu) parts.push(`${domicilie} à ${lieu}`);
+  return parts.filter(nonVide).join(", ");
+}
+
+// Un client : 'entrepreneur_individuel' s'écrit comme une personne physique.
+function depuisClient(c) {
+  return c ? { ...c, type: c.type === "morale" ? "morale" : "physique" } : null;
+}
+
+// Une partie au dossier : sans type enregistré, déduit des rubriques d'une société ; sans aucun détail, nom seul.
+function depuisPartie(p) {
+  if (!p) return null;
+  const societe = p.type_partie === "morale" || (!p.type_partie && [p.forme_juridique, p.rccm, p.capital_social, p.representant_nom].some(nonVide));
+  return { ...p, type: societe ? "morale" : "physique" };
 }
 
 module.exports = {
-  BALISES, A_COMPLETER, DEGRES, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt, identificationClient,
+  BALISES, A_COMPLETER, DEGRES, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt,
+  dateLongue, naissance, filiation, representant, identification, depuisClient, depuisPartie, CIVILITES,
 };

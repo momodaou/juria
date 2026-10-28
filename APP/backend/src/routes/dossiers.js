@@ -14,6 +14,7 @@ const { estDocumentVisible, chargerContexteDossier } = require("../confidentiali
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
 const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
+const { CHAMPS_PARTIE, clausesMaj, selectChamps } = require("../identiteActes");
 const { envoiSuspendu } = require("../suspensionEmails");
 const router = express.Router();
 
@@ -476,7 +477,7 @@ router.get("/:id", async (req, res) => {
     // vers la fiche client, voir CLAUDE.md/HISTORY.md.
 
     const parties = await pool.query(
-      "SELECT id, role, denomination, conseil FROM dossier_parties WHERE dossier_id = $1",
+      `SELECT id, role, denomination, conseil, ${selectChamps(CHAMPS_PARTIE)} FROM dossier_parties WHERE dossier_id = $1 ORDER BY cree_le, id`,
       [id]
     );
     // Intervenants (12/09/2026, gap comblé) : la table existait depuis le
@@ -1447,6 +1448,11 @@ router.post("/:id/parties", requirePermission("dossiers.parties.gerer"), async (
        RETURNING id, role, denomination, conseil`,
       [req.params.id, b.role || null, b.denomination, b.conseil || null]
     );
+    // Identité détaillée pour les actes (27/10/2026) : champs facultatifs, écrits à part.
+    const ident = clausesMaj(b, CHAMPS_PARTIE, 2);
+    if (ident.sets.length) {
+      await pool.query(`UPDATE dossier_parties SET ${ident.sets.join(", ")} WHERE id = $1`, [rows[0].id, ...ident.params]);
+    }
     await logAudit({
       utilisateurId: req.user.sub, action: "creer_partie", entite: "dossier_parties", entiteId: rows[0].id,
       details: { dossier_id: req.params.id, partie: rows[0] }, ip: req.ip,
@@ -1487,10 +1493,22 @@ router.put("/:id/parties/:partieId", requirePermission("dossiers.parties.gerer")
         entiteId: req.params.partieId, details: { dossier_id: req.params.id, changements }, ip: req.ip,
       });
     }
+    // Identité détaillée pour les actes (27/10/2026) : champ absent = inchangé, '' = effacé.
+    const ident = clausesMaj(b, CHAMPS_PARTIE, 3);
+    if (ident.sets.length) {
+      await pool.query(
+        `UPDATE dossier_parties SET ${ident.sets.join(", ")} WHERE id = $1 AND dossier_id = $2`,
+        [req.params.partieId, req.params.id, ...ident.params]
+      );
+      await logAudit({
+        utilisateurId: req.user.sub, action: "modifier_identite_actes", entite: "dossier_parties",
+        entiteId: req.params.partieId, details: { dossier_id: req.params.id, champs: Object.keys(b).filter((k) => CHAMPS_PARTIE.some(([c]) => c === k)) }, ip: req.ip,
+      });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
   }
 });
 

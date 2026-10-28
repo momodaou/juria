@@ -50,6 +50,13 @@ import { LibellePipe } from '../../core/libelles';
           <div><span>Téléphone</span><b>{{ c.telephone || '—' }}</b></div>
           <div><span>Adresse</span><b>{{ c.adresse || '—' }}, {{ c.ville }}</b></div>
           <div><span>Dernière MAJ KYC</span><b>{{ c.kyc_maj_le ? (c.kyc_maj_le | date:'dd/MM/yyyy') : '—' }}</b></div>
+          @if (c.type === 'morale') {
+            @if (c.capital_social) { <div><span>Capital social</span><b>{{ c.capital_social }}</b></div> }
+            @if (c.representant_nom) { <div><span>Représentant légal</span><b>{{ c.representant_nom }}{{ c.representant_qualite ? ', ' + c.representant_qualite : '' }}</b></div> }
+          } @else {
+            @if (c.date_naissance || c.lieu_naissance) { <div><span>Naissance</span><b>{{ c.date_naissance ? (c.date_naissance | date:'dd/MM/yyyy') : '—' }}{{ c.lieu_naissance ? ' à ' + c.lieu_naissance : '' }}</b></div> }
+            @if (c.profession) { <div><span>Profession</span><b>{{ c.profession }}</b></div> }
+          }
         </div>
         <!-- 09/10/2026, repositionné le 09/10/2026 (2e passe, retour utilisateur :
              « entre-mêlées avec les sous-rubriques ») — rattaché au pied de l'en-tête
@@ -94,6 +101,33 @@ import { LibellePipe } from '../../core/libelles';
             <div class="col2"><label>Adresse</label><input class="in" [(ngModel)]="edit.adresse" name="editAdresse" /></div>
             <div class="col2"><label>Bénéficiaires effectifs</label><input class="in" [(ngModel)]="edit.beneficiaires_effectifs" name="editBenef" /></div>
             <div class="col2"><label>Notes</label><input class="in" [(ngModel)]="edit.notes" name="editNotes" /></div>
+          </div>
+          <h4 class="sous-titre">Identité pour les actes <span class="muted">(facultatif — reprise dans l'Atelier d'actes ; une rubrique vide apparaît « [à compléter] »)</span></h4>
+          <div class="grid2">
+            @if (c.type === 'morale') {
+              <div><label>Capital social</label><input class="in" [(ngModel)]="edit.capital_social" name="editCapital" placeholder="Ex. 5.000.000 F CFA" /></div>
+              <div><label>Date d'immatriculation (RCCM)</label><input class="in" type="date" [(ngModel)]="edit.rccm_date" name="editRccmDate" /></div>
+              <div><label>Représentant légal</label><input class="in" [(ngModel)]="edit.representant_nom" name="editRepNom" /></div>
+              <div><label>Qualité du représentant</label><input class="in" [(ngModel)]="edit.representant_qualite" name="editRepQualite" placeholder="Ex. Directeur général" /></div>
+              <div><label>Boîte postale</label><input class="in" [(ngModel)]="edit.boite_postale" name="editBp" /></div>
+              <div><label>Droit applicable (société étrangère)</label><input class="in" [(ngModel)]="edit.droit_applicable" name="editDroit" placeholder="Ex. société de droit français" /></div>
+            } @else {
+              <div>
+                <label>Civilité</label>
+                <select class="in" [(ngModel)]="edit.civilite" name="editCivilite">
+                  <option [ngValue]="null">—</option>
+                  <option value="M">Monsieur</option>
+                  <option value="Mme">Madame</option>
+                  <option value="Mlle">Mademoiselle</option>
+                </select>
+              </div>
+              <div><label>Profession</label><input class="in" [(ngModel)]="edit.profession" name="editProfession" /></div>
+              <div><label>Date de naissance</label><input class="in" type="date" [(ngModel)]="edit.date_naissance" name="editNaissance" /></div>
+              <div><label>Lieu de naissance</label><input class="in" [(ngModel)]="edit.lieu_naissance" name="editLieuNaissance" /></div>
+              <div><label>Père (prénom et nom)</label><input class="in" [(ngModel)]="edit.pere" name="editPere" /></div>
+              <div><label>Mère (prénom et nom)</label><input class="in" [(ngModel)]="edit.mere" name="editMere" /></div>
+              <div><label>Boîte postale</label><input class="in" [(ngModel)]="edit.boite_postale" name="editBp2" /></div>
+            }
           </div>
           <button class="btn" (click)="enregistrerFiche()" [disabled]="enregistrement()">
             {{ enregistrement() ? 'Enregistrement…' : 'Enregistrer' }}
@@ -317,6 +351,8 @@ import { LibellePipe } from '../../core/libelles';
     }
   `,
   styles: [`
+    .sous-titre{margin:18px 0 6px;font-size:var(--fs-md)}
+    .sous-titre .muted{font-weight:400;font-size:var(--fs-sm)}
     /* 09/10/2026 — traçabilité procédurale, intégrée au pied de l'en-tête bleu
        (repositionnée le 09/10/2026, 2e passe), même patron que dossier-detail.component.ts. */
     .dcard-foot{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14);font-size:var(--fs-xs);color:#9aa7bd}
@@ -569,6 +605,10 @@ export class ClientDetailComponent implements OnInit {
       prenom: c.prenom, nom: c.nom, nationalite: c.nationalite,
       email: c.email, telephone: c.telephone, adresse: c.adresse, ville: c.ville, pays: c.pays,
       beneficiaires_effectifs: c.beneficiaires_effectifs, notes: c.notes,
+      civilite: c.civilite, date_naissance: c.date_naissance, lieu_naissance: c.lieu_naissance, pere: c.pere, mere: c.mere,
+      profession: c.profession, capital_social: c.capital_social, rccm_date: c.rccm_date,
+      representant_nom: c.representant_nom, representant_qualite: c.representant_qualite,
+      boite_postale: c.boite_postale, droit_applicable: c.droit_applicable,
     };
     this.erreurEdition.set('');
     this.modeEdition.set(true);

@@ -28,6 +28,18 @@ import { libelleRole } from '../../core/roles';
     }
 
     <section class="panel">
+      <h3>Signature des actes</h3>
+      <label>Titre (avocats)</label>
+      <input class="in" [(ngModel)]="titre" name="titre" maxlength="200" placeholder="Ex. Avocat au Barreau du Mali et de Paris" />
+      <p class="muted">Repris dans la signature des actes générés par l'Atelier d'actes (balise « avocat_titre »).</p>
+      <button class="btn" (click)="enregistrerTitre()" [disabled]="enCoursTitre()">
+        {{ enCoursTitre() ? 'Enregistrement…' : 'Enregistrer le titre' }}
+      </button>
+      @if (succesTitre()) { <p class="ok-msg">✓ Titre enregistré.</p> }
+      @if (erreurTitre()) { <p class="err">{{ erreurTitre() }}</p> }
+    </section>
+
+    <section class="panel">
       <h3>Changer mon mot de passe</h3>
       <label>Mot de passe actuel</label>
       <input class="in" type="password" [(ngModel)]="ancien" name="ancien" autocomplete="current-password" />
@@ -64,12 +76,27 @@ export class MonCompteComponent implements OnInit {
   readonly succes = signal(false);
   readonly erreur = signal('');
 
+  readonly enCoursTitre = signal(false);
+  readonly succesTitre = signal(false);
+  readonly erreurTitre = signal('');
+  titre = '';
+
   ancien = '';
   nouveau = '';
   confirmation = '';
 
   ngOnInit(): void {
-    this.api.monProfil().subscribe({ next: (p) => this.profil.set(p) });
+    this.api.monProfil().subscribe({ next: (p) => { this.profil.set(p); this.titre = p.titre_avocat ?? ''; } });
+  }
+
+  enregistrerTitre(): void {
+    this.enCoursTitre.set(true);
+    this.succesTitre.set(false);
+    this.erreurTitre.set('');
+    this.api.majMonTitre(this.titre).subscribe({
+      next: () => { this.enCoursTitre.set(false); this.succesTitre.set(true); },
+      error: (e) => { this.enCoursTitre.set(false); this.erreurTitre.set(e?.error?.error ?? 'Enregistrement impossible.'); },
+    });
   }
 
   peutChanger(): boolean {

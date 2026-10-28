@@ -123,11 +123,13 @@ describe("Balises enrichies (27/10/2026)", () => {
 
   test("client complet, instance en cours, parties adverses et prochaine audience sont fusionnés", async () => {
     const cl = await request(app).post("/api/clients").set("Authorization", `Bearer ${token}`).send({
-      type: "morale", denomination: `Société Balises ${Date.now()}`, forme_juridique: "SARL", rccm: "ML-BKO-2020-B-1234",
-      nif: "NIF-777", adresse: "Hamdallaye ACI 2000", ville: "Bamako",
+      type: "morale", denomination: `Société Balises ${Date.now()}`, forme_juridique: "SARL", rccm: "XX-TEST-2020-B-0001",
+      nif: "NIF-777", adresse: "Rue Fictive 3", ville: "Bamako",
     });
     const dossierId = await creerDossier(cl.body.id);
-    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, conseil) VALUES ($1,'adverse','Alpha SA','Me Konaté'), ($1,'adverse','Beta SARL',NULL)", [dossierId]);
+    // Deux instructions distinctes (comme à l'ouverture) : l'ordre des parties suit leur horodatage de création.
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, conseil) VALUES ($1,'adverse','Alpha SA','Me Fictif')", [dossierId]);
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination) VALUES ($1,'adverse','Beta SARL')", [dossierId]);
     await pool.query("INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut, statut_partie) VALUES ($1,'appel','Cour d''appel de Bamako','RG 42/26','2026-09-01','demandeur')", [dossierId]);
     await pool.query("INSERT INTO audiences (dossier_id, juridiction, date_audience) VALUES ($1,'Cour d''appel de Bamako', current_date + 10)", [dossierId]);
     await pool.query(
@@ -137,8 +139,8 @@ describe("Balises enrichies (27/10/2026)", () => {
     const res = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
       .send({ dossier_id: dossierId, mode: "modele", modele_code: "test_balises" });
     expect(res.status).toBe(201);
-    expect(res.body.texte).toContain("SARL, immatriculée au RCCM sous le n° ML-BKO-2020-B-1234, NIF NIF-777, dont le siège social est situé à Hamdallaye ACI 2000, Bamako");
-    expect(res.body.texte).toContain("Alpha SA et Beta SARL|Me Konaté|appel|RG 42/26|Appelant|Cour d'appel de Bamako|[à compléter]");
+    expect(res.body.texte).toContain("SARL, immatriculée au RCCM sous le numéro XX-TEST-2020-B-0001, NIF NIF-777, ayant son siège social à Rue Fictive 3, Bamako");
+    expect(res.body.texte).toContain("Alpha SA et Beta SARL|Me Fictif|appel|RG 42/26|Appelant|Cour d'appel de Bamako|[à compléter]");
     expect(res.body.texte).not.toContain("{{");
   });
 });

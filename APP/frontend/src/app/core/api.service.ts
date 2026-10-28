@@ -1003,6 +1003,9 @@ export class ApiService {
   monProfil(): Observable<any> {
     return this.http.get<any>(`${this.base}/api/profil`);
   }
+  majMonTitre(titre_avocat: string): Observable<{ titre_avocat: string | null }> {
+    return this.http.put<{ titre_avocat: string | null }>(`${this.base}/api/profil`, { titre_avocat });
+  }
   changerMotDePasse(ancien_mot_de_passe: string, nouveau_mot_de_passe: string): Observable<any> {
     return this.http.put<any>(`${this.base}/api/profil/mot-de-passe`, { ancien_mot_de_passe, nouveau_mot_de_passe });
   }

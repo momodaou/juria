@@ -5165,3 +5165,49 @@ CREATE TABLE IF NOT EXISTS etats_charges_lignes (
 );
 CREATE INDEX IF NOT EXISTS idx_etats_charges_lignes_etat ON etats_charges_lignes(etat_id);
 CREATE INDEX IF NOT EXISTS idx_etats_charges_lignes_report ON etats_charges_lignes(report_de);
+
+-- =====================================================================
+--  IDENTITÉ DÉTAILLÉE POUR LES ACTES (27/10/2026)
+--  Modèles d'actes (Atelier d'actes) : les actes de procédure s'ouvrent sur
+--  une identité complète des parties (« né le… à…, fils de… et de…,
+--  profession… » ; « société…, au capital de…, représentée par… ») que les
+--  fiches ne conservaient pas. Toutes les colonnes sont facultatives
+--  (aucune obligation de saisie) ; une donnée absente apparaît
+--  « [à compléter] » dans l'acte généré. Migration idempotente.
+--  Capital social en texte libre (devise variable : F CFA, €…).
+-- =====================================================================
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS civilite VARCHAR(12);          -- M, Mme, Mlle (accords « né/née », « domicilié/domiciliée »)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS date_naissance DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS lieu_naissance VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS pere VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS mere VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS profession VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS capital_social VARCHAR(80);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS rccm_date DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS representant_nom VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS representant_qualite VARCHAR(160);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS boite_postale VARCHAR(60);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS droit_applicable VARCHAR(200);  -- société étrangère : « droit français, RCS Strasbourg »
+
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS type_partie VARCHAR(12);  -- 'physique' | 'morale'
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS civilite VARCHAR(12);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS date_naissance DATE;
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS lieu_naissance VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS pere VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS mere VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS profession VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS nationalite VARCHAR(80);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS adresse TEXT;
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS boite_postale VARCHAR(60);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS forme_juridique VARCHAR(80);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS rccm VARCHAR(60);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS rccm_date DATE;
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS capital_social VARCHAR(80);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS representant_nom VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS representant_qualite VARCHAR(160);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS droit_applicable VARCHAR(200);
+ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS conseil_adresse TEXT;
+
+-- Titre de l'avocat signataire (« Avocat au Barreau du Mali et de Paris »), saisi par chacun dans Mon compte.
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS titre_avocat VARCHAR(200);
+-- ============ FIN IDENTITÉ DÉTAILLÉE POUR LES ACTES ============
