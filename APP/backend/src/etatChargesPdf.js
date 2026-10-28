@@ -28,6 +28,17 @@ function periode(l) {
 
 const DECISIONS = { en_attente: "À décider", approuvee: "Approuvée", rejetee: "Rejetée", reportee: "Reportée" };
 
+// Précisions utiles aux associés pour décider (28/10/2026) : nature d'« Autre », dossier, bénéficiaire, arriéré, justificatifs.
+function details(l) {
+  const d = [];
+  if (l.categorie === "autre" && l.precision_autre) d.push(`Autre : ${l.precision_autre}`);
+  if (l.nature === "dossier") d.push(`Dossier ${l.dossier_numero || ""}${l.refacturable_client ? " (refacturable au client)" : ""}`.trim());
+  if (l.beneficiaire) d.push(`Bénéficiaire : ${l.beneficiaire}`);
+  if (!l.report_de && l.periode_debut && l.mois_etat && String(l.periode_debut).slice(0, 7) < String(l.mois_etat).slice(0, 7)) d.push("Arriéré");
+  if (l.nb_pieces) d.push(`${l.nb_pieces} justificatif(s) joint(s)`);
+  return d;
+}
+
 function genererEtatChargesPdf({ etat, lignes, raisonSociale }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: MARGE });
@@ -61,12 +72,12 @@ function genererEtatChargesPdf({ etat, lignes, raisonSociale }) {
     enteteTableau();
 
     let total = 0;
-    for (const l of lignes) {
+    for (const l of lignes.map((x) => ({ ...x, mois_etat: etat.mois }))) {
       const moyen = [l.mode_paiement ? libelleMoyen(l.mode_paiement) : "", l.compte_intitule || ""].filter(Boolean).join(" — ");
       const cellules = [
-        l.libelle + (l.observation ? `\n${l.observation}` : "") + (l.report_de ? "\n(reporté d'un mois précédent)" : ""),
+        l.libelle + details(l).map((t) => `\n${t}`).join("") + (l.observation ? `\n${l.observation}` : "") + (l.report_de ? "\n(reporté d'un mois précédent)" : ""),
         periode(l),
-        nombre(l.montant),
+        nombre(l.montant) + (l.montant_precedent != null ? `\nmois préc. : ${nombre(l.montant_precedent)}` : ""),
         l.retard_mois ? `${l.retard_mois} mois` : "",
         moyen,
         l.decision === "en_attente" ? "" : DECISIONS[l.decision] + (l.motif ? ` — ${l.motif}` : ""),

@@ -182,6 +182,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                       </select>
                     </div>
                     <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
+                    <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="editForm.beneficiaire" name="edBeneficiaire" /></div>
                     <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
                     <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
@@ -734,6 +735,7 @@ export class DepensesComponent implements OnInit {
       date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '', references: { ...(d.references_paiement ?? {}) },
       petite_caisse: d.petite_caisse, justificatif: d.justificatif, refacturable_client: d.refacturable_client,
       nature: d.nature ?? (d.dossier_id ? 'dossier' : 'cabinet'), dossier_id: d.dossier_id ?? null,
+      beneficiaire: d.beneficiaire ?? '',
     };
     this.editionId.set(d.id);
   }

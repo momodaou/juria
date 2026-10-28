@@ -166,3 +166,33 @@ describe("Justificatif exigé avant décaissement (seuil facultatif)", () => {
     expect((await put("/api/parametres/honoraires", { seuil_justificatif_decaissement: 0 })).status).toBe(200);
   });
 });
+
+describe("Arriéré, PDF enrichi, bénéficiaire modifiable (28/10/2026)", () => {
+  test("une charge ajoutée avec une période antérieure (arriéré) est enregistrée et le PDF se génère avec les précisions", async () => {
+    const dossier = await creerDossier();
+    const etat = (await post("/api/charges/etats", { mois: "2033-02" })).body;
+    const l = await post(`/api/charges/etats/${etat.id}/lignes`, {
+      libelle: "Bloc arriéré loyer", categorie: "loyer", montant: 1350000, periode_debut: "2032-12-01", periode_fin: "2033-02-28",
+      observation: "3 mois d'arriéré", beneficiaire: "Bailleur", nature: "dossier", dossier_id: dossier.id });
+    expect(l.status).toBe(201);
+    expect(l.body.periode_debut.slice(0, 10)).toBe("2032-12-01");
+    const lu = ligne((await get(`/api/charges/etats/${etat.id}`)).body, "Bloc arriéré loyer");
+    expect(lu.periode_debut.slice(0, 7)).toBe("2032-12");
+    const pdf = await request(app).get(`/api/charges/etats/${etat.id}/pdf`).set(auth());
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers["content-type"]).toMatch(/pdf/);
+  });
+
+  test("le bénéficiaire d'une dépense soumise se modifie et s'efface", async () => {
+    const d = await post("/api/depenses", { type: "ponctuelle", categorie: "papeterie", libelle: "Bloc papier", montant: 5000, beneficiaire: "Librairie X" });
+    expect(d.status).toBe(201);
+    const lire = async () => (await get("/api/depenses")).body.find((x) => x.id === d.body.id);
+    expect((await lire()).beneficiaire).toBe("Librairie X");
+    expect((await put(`/api/depenses/${d.body.id}`, { beneficiaire: "Librairie Y" })).status).toBe(200);
+    expect((await lire()).beneficiaire).toBe("Librairie Y");
+    expect((await put(`/api/depenses/${d.body.id}`, { libelle: "Bloc papier bis" })).status).toBe(200);
+    expect((await lire()).beneficiaire).toBe("Librairie Y"); // champ absent = inchangé
+    expect((await put(`/api/depenses/${d.body.id}`, { beneficiaire: "" })).status).toBe(200);
+    expect((await lire()).beneficiaire).toBeNull();
+  });
+});

@@ -407,13 +407,15 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
          justificatif = COALESCE($9, justificatif),
          refacturable_client = COALESCE($10, refacturable_client),
          nature = $13,
-         dossier_id = $11
+         dossier_id = $11,
+         beneficiaire = CASE WHEN $16::boolean THEN $17 ELSE beneficiaire END
        WHERE id = $12 AND statut = 'soumise'
        RETURNING id, type, categorie, libelle, montant, statut`,
       [b.type || null, b.categorie || null, b.libelle || null, b.montant ?? null,
        b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
        b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : (b.refacturable_client === undefined ? undefined : false), n.dossierId, req.params.id, n.nature,
-       modeFourni, JSON.stringify(regl.valeurs.references)]
+       modeFourni, JSON.stringify(regl.valeurs.references),
+       Object.prototype.hasOwnProperty.call(b, "beneficiaire"), String(b.beneficiaire || "").trim().slice(0, 160) || null]
     );
     if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps — non modifiable." });
     res.json(rows[0]);

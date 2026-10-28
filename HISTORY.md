@@ -4355,3 +4355,9 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Options : montant du mois précédent + écart % par ligne ; champ Bénéficiaire (catalogue, ligne, dépense) ; décision groupée facultative `POST /etats/:id/approuver-tout` (tout ou rien, lignes en attente à montant positif, garde le moyen existant sinon moyen par défaut, confirmation avec total, audit) ; justificatif (facture/autre) exigé avant décaissement au-delà d'un seuil réglable `seuil_justificatif_decaissement` (0 = désactivé, réglage dans Accès & permissions › Seuils).
 - Migrations (2 imports successifs) : `migration-categories-depense.sql` (ENUM) puis `migration-etat-charges-bloc.sql` (colonnes + table). Tests 781/781, build OK.
 - Déployé : 2 migrations importées (ENUM puis colonnes + table), API `juria-00195-xkd`, frontend `juria-web-00260-xgx`, `/health` et `/` = 200 ; fichiers de migration supprimés.
+
+## 28/10/2026 — État des charges : arriéré visible + omissions du « bloc »
+- Constat : l'arriéré ne se renseignait que via « Modifier » (champs Période début/fin + observation), jamais à l'ajout d'une ligne ; rien ne le signalait dans la liste. Omission d'origine, pas une régression.
+- Champ « Arriéré (mois impayés avant ce mois) » dans « Modifier » et « Ajouter une charge ponctuelle » : calcule la période couverte (du plus ancien mois impayé à la fin du mois de l'état) ; étiquette « arriéré depuis <mois> » dans la liste (hors lignes reportées, qui ont leur propre étiquette). Le montant saisi est le total dû sur la période.
+- Omissions de mon bloc corrigées : le PDF des associés affiche maintenant précision « Autre », dossier (refacturable), bénéficiaire, « Arriéré », nombre de justificatifs et montant du mois précédent ; le bénéficiaire d'une dépense soumise est modifiable (PUT /depenses/:id, absent = inchangé, vide = effacé).
+- Tests 783/783, build OK, pas de migration.

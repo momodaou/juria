@@ -119,6 +119,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                 <b>{{ l.libelle }}</b>
                 @if (l.categorie === 'autre' && l.precision_autre) { <span class="tag">Autre : {{ l.precision_autre }}</span> }
                 @if (l.type !== 'fixe') { <span class="tag">ponctuelle</span> }
+                @if (estArriere(l, d.mois)) { <span class="tag report">arriéré depuis {{ libelleMois(l.periode_debut.slice(0, 7)) }}</span> }
                 @if (l.nature === 'dossier') { <span class="tag">Dossier {{ l.dossier_numero }}@if (l.refacturable_client) { · refacturable }</span> }
                 @if (l.beneficiaire) { <div class="obs">Bénéficiaire : {{ l.beneficiaire }}</div> }
                 @if (l.report_de) { <span class="tag report">reportée · retard {{ l.retard_mois }} mois</span> }
@@ -213,6 +214,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                       <div class="large"><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="eb" placeholder="Fournisseur ou personne payée" /></div>
                       <div><label>Type</label>
                         <select class="in" [(ngModel)]="form.type" name="et"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle</option></select></div>
+                      <div class="etroit"><label>Arriéré (mois impayés avant ce mois)</label>
+                        <input class="in" type="number" min="0" max="36" [ngModel]="form.arriere" (ngModelChange)="appliquerArriere(form, $event, d.mois)" name="ear" /></div>
                       <div><label>Période — début</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="ed" /></div>
                       <div><label>Période — fin</label><input class="in" type="date" [(ngModel)]="form.periode_fin" name="ef" /></div>
                       <div class="large"><label>Observation (ex. 3 mois d’arriéré)</label><input class="in" [(ngModel)]="form.observation" name="eo" /></div>
@@ -267,6 +270,9 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             }
             <div class="large"><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="ajout.beneficiaire" name="ab" placeholder="Fournisseur ou personne payée" /></div>
             <div><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="ajout.montant" name="am" /></div>
+            <div class="etroit"><label>Arriéré (mois impayés avant ce mois)</label>
+              <input class="in" type="number" min="0" max="36" [ngModel]="ajout.arriere" (ngModelChange)="appliquerArriere(ajout, $event, d.mois)" name="aar" /></div>
+            @if (ajout.arriere > 0) { <p class="hint large">Période couverte : {{ libelleMois(ajout.periode_debut.slice(0, 7)) }} → {{ libelleMois(ajout.periode_fin.slice(0, 7)) }}. Le montant est le total dû sur cette période.</p> }
             <div class="large"><label>Observation</label><input class="in" [(ngModel)]="ajout.observation" name="ao" /></div>
           </div>
           <p class="hint">Le moyen de paiement et le compte sont orientés par les associés au moment de la décision. Les justificatifs s’ajoutent ensuite avec « 📎 Pièces ».</p>
@@ -403,7 +409,7 @@ export class EtatChargesComponent implements OnInit {
     this.chargerModeles();
   }
 
-  private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', nature: 'cabinet', dossier_id: null, refacturable_client: false, beneficiaire: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
+  private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', nature: 'cabinet', dossier_id: null, refacturable_client: false, beneficiaire: '', arriere: 0, periode_debut: '', periode_fin: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
   private modeleVide(): any {
     return { libelle: '', categorie: 'autre', precision_autre: '', beneficiaire: '', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
   }
@@ -434,6 +440,24 @@ export class EtatChargesComponent implements OnInit {
     return pct === 0 ? ' (stable)' : ` (${pct > 0 ? '+' : ''}${pct} %)`;
   }
   readonly estDebours = estDebours;
+
+  // Arriéré (28/10/2026) : nombre de mois impayés avant le mois de l'état ; la période couverte va alors du
+  // premier jour du plus ancien mois impayé à la fin du mois de l'état (le montant saisi est le total dû).
+  private iso(d: Date): string { return d.toISOString().slice(0, 10); }
+  appliquerArriere(f: any, n: any, mois: string): void {
+    const k = Math.max(0, Math.min(36, Math.floor(Number(n) || 0)));
+    const [a, m] = (mois || '').slice(0, 7).split('-').map(Number);
+    f.arriere = k;
+    f.periode_debut = this.iso(new Date(Date.UTC(a, m - 1 - k, 1)));
+    f.periode_fin = this.iso(new Date(Date.UTC(a, m, 0)));
+  }
+  arriereDe(l: any, mois?: string): number {
+    if (!l.periode_debut || !mois) return 0;
+    const [a, m] = mois.slice(0, 7).split('-').map(Number);
+    const [b, n] = l.periode_debut.slice(0, 7).split('-').map(Number);
+    return Math.max(0, (a * 12 + m) - (b * 12 + n));
+  }
+  estArriere(l: any, mois: string): boolean { return !l.report_de && this.arriereDe(l, mois) > 0; }
 
   // Justificatifs d'une ligne (28/10/2026).
   readonly piecesLigneId = signal<string | null>(null);
@@ -528,7 +552,7 @@ export class EtatChargesComponent implements OnInit {
   }
 
   editer(l: any): void {
-    this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', nature: l.nature ?? 'cabinet', dossier_id: l.dossier_id ?? null, dossier_numero: l.dossier_numero ?? null, refacturable_client: !!l.refacturable_client, beneficiaire: l.beneficiaire ?? '', type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
+    this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', nature: l.nature ?? 'cabinet', dossier_id: l.dossier_id ?? null, dossier_numero: l.dossier_numero ?? null, refacturable_client: !!l.refacturable_client, beneficiaire: l.beneficiaire ?? '', arriere: this.arriereDe(l, this.detail()?.mois), type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
       periode_debut: l.periode_debut ?? '', periode_fin: l.periode_fin ?? '', mode_paiement: l.mode_paiement ?? '', compte_id: l.compte_id ?? '', references: {}, motif: '' };
     this.edition.set(l);
   }
@@ -555,7 +579,7 @@ export class EtatChargesComponent implements OnInit {
   ajouterLigne(etatId: string): void {
     const a = this.ajout;
     this.enCours.set(true);
-    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, precision_autre: a.categorie === 'autre' ? a.precision_autre : null, nature: a.nature, dossier_id: a.nature === 'dossier' ? a.dossier_id : null, refacturable_client: a.nature === 'dossier' && !!a.refacturable_client, beneficiaire: a.beneficiaire || null, type: 'ponctuelle', montant: Number(a.montant || 0),
+    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, precision_autre: a.categorie === 'autre' ? a.precision_autre : null, nature: a.nature, dossier_id: a.nature === 'dossier' ? a.dossier_id : null, refacturable_client: a.nature === 'dossier' && !!a.refacturable_client, beneficiaire: a.beneficiaire || null, periode_debut: a.arriere > 0 ? a.periode_debut : null, periode_fin: a.arriere > 0 ? a.periode_fin : null, type: 'ponctuelle', montant: Number(a.montant || 0),
       observation: a.observation || null, mode_paiement: a.mode_paiement || null, compte_id: a.compte_id || null }).subscribe({
       next: () => { this.ajout = this.ligneVide(); this.fini(); }, error: (e) => this.echec(e) });
   }
