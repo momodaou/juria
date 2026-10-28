@@ -233,3 +233,119 @@ describe("Requête en injonction de payer", () => {
     expect(sans.body.texte).toContain("F.CFA 500 000 (Cinq Cent Mille Francs CFA)");
   });
 });
+
+describe("Champs calculés et choix dans une liste (28/10/2026)", () => {
+  const { evaluerFormule } = require("../src/questionnaireActes");
+
+  test("évaluateur de formule : priorités, parenthèses, champ absent = 0, rejet du code", () => {
+    const v = { a: 3, b: 4 };
+    expect(evaluerFormule("a*(b+2)", (n) => v[n])).toBe(18);
+    expect(evaluerFormule("a+b*2-1", (n) => v[n])).toBe(10);
+    expect(evaluerFormule("a*absent", (n) => v[n])).toBe(0);
+    expect(() => evaluerFormule("a / (b - 4)", (n) => v[n])).toThrow(/division/);
+    expect(() => evaluerFormule("process.exit()", () => 1)).toThrow();
+    expect(() => evaluerFormule("a +", () => 1)).toThrow();
+  });
+
+  test("calcul sur une liste et des montants à devise fixe", () => {
+    const champs = [
+      { cle: "enfants", libelle: "Enfants", type: "liste", sous_champs: [{ cle: "prenom", libelle: "p", type: "texte" }, { cle: "garde_a", libelle: "g", type: "choix", options: [{ valeur: "mere", libelle: "leur mère" }] }] },
+      { cle: "pension", libelle: "Pension", type: "montant", devise_fixe: "XOF" },
+      { cle: "total", libelle: "Total", type: "calcul", formule: "enfants_nombre*pension" },
+    ];
+    const { valeurs } = traiterReponses(champs, { enfants: [{ prenom: "A", garde_a: "mere" }, { prenom: "B", garde_a: "" }], pension: { valeur: 150000, devise: "EUR" } }, {});
+    expect(valeurs.enfants[0].garde_a_libelle).toBe("leur mère");
+    expect(valeurs.enfants[1].garde_a_libelle).toBe("");
+    expect(valeurs.pension_chiffres).toBe("F.CFA 150 000");                    // devise imposée malgré « EUR »
+    expect(valeurs.total_phrase).toBe("F.CFA 300 000 (Trois Cent Mille Francs CFA)");
+    expect(() => traiterReponses(champs, { enfants: [{ prenom: "A", garde_a: "inconnu" }] }, {})).toThrow(/choix invalide/);
+  });
+
+  test("définitions refusées : formule invalide, devise fixe inconnue, sous-champ choix sans options", () => {
+    expect(() => validerDefinition([{ cle: "t", libelle: "T", type: "calcul", formule: "a ** b" }])).toThrow(/formule/);
+    expect(() => validerDefinition([{ cle: "m", libelle: "M", type: "montant", devise_fixe: "USD" }])).toThrow(/devise_fixe/);
+    expect(() => validerDefinition([{ cle: "l", libelle: "L", type: "liste", sous_champs: [{ cle: "x", libelle: "X", type: "choix" }] }])).toThrow(/options/);
+  });
+});
+
+describe("Convention de divorce par consentement mutuel", () => {
+  const base = {
+    client_est: "epoux", mariage_date: "2022-09-06", mariage_centre: "Centre secondaire de Ville-Test", mariage_commune: "Commune V du District de Bamako",
+    option: "monogamie", regime: "separation",
+  };
+  async function dossierConvention() {
+    const dossierId = await nouveauDossier({ prenom: "Paul", lieu_naissance: "Ville-Test", date_naissance: "1985-12-14" });
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, civilite, type_partie) VALUES ($1,'co_demandeur','Claire TESTEUR','Mme','physique')", [dossierId]);
+    return dossierId;
+  }
+
+  test("avec enfants : garde, pension, totaux calculés, conditions particulières", async () => {
+    await valider("convention_divorce_consentement_mutuel");
+    const dossierId = await dossierConvention();
+    const res = await generer(dossierId, "convention_divorce_consentement_mutuel", {
+      ...base,
+      enfants: [{ prenom: "Aïcha", naissance: "2015-01-01", lieu: "Ville-Test", garde_a: "epouse", garde_jusqua: "ses 10 ans" }, { prenom: "Moussa", naissance: "2018-02-02", lieu: "Ville-Test", garde_a: "epouse", garde_jusqua: "" }],
+      garde_retour: "epoux", debiteur_pension: "epoux", frais_scolarite: "oui", frais_sante: "Couverts par l'assurance médicale de l'époux.",
+      frais_transport: { valeur: 80000 }, pension_principale: { valeur: 150000 }, pension_complementaire: { valeur: 100000 },
+      conditions: [{ titre: "Frais exceptionnels de déménagement", texte: "L'époux prend en charge un forfait de 380 euros." }],
+    });
+    expect(res.status).toBe(201);
+    const t = res.body.texte;
+    expect(t).toContain("• Monsieur Paul TESTEUR");
+    expect(t).toContain("Ci-après dénommé « l'époux », d'une part ;");
+    expect(t).toContain("ET\n• Madame Claire TESTEUR");
+    expect(t).toContain("sont issus 2 enfants mineurs");
+    expect(t).toContain("• La garde de l'enfant Aïcha sera confiée à l'épouse jusqu'à ses 10 ans ;");
+    expect(t).toContain("• La garde de l'enfant Moussa sera confiée à l'épouse ;");
+    expect(t).toContain("la garde des enfants reviendra à l'époux, au domicile duquel ils résideront");
+    expect(t).toContain("Au titre des charges des enfants, l'époux s'engage à prendre en charge l'intégralité de leurs frais de scolarité");
+    expect(t).toContain("S'agissant des frais de santé : Couverts par l'assurance médicale de l'époux.");
+    expect(t).toContain("fixés à F.CFA 80 000 par mois");
+    expect(t).toContain("s'engage à verser à l'épouse :");
+    expect(t).toContain("la somme de F.CFA 150 000 par mois et par enfant, soit une somme totale de F.CFA 300 000 par mois ;");
+    expect(t).toContain("la somme de F.CFA 100 000 par mois et par enfant, soit une somme totale de F.CFA 200 000 par mois.");
+    expect(t).toContain("la somme totale de F.CFA 500 000 (Cinq Cent Mille Francs CFA) par mois");
+    expect(t).toContain("• Frais exceptionnels de déménagement\nL'époux prend en charge un forfait de 380 euros.");
+    expect(t).toContain("Les époux étant mariés sous le régime de la séparation de biens");
+    expect(t).toContain("L'époux : Paul");
+    expect(t).toContain("L'épouse : Claire TESTEUR");
+    expect(t).not.toContain("{{");
+    expect(t).not.toContain("Sans objet");
+  });
+
+  test("sans enfant, client épouse, résidence attribuée, autre régime : articles « sans objet »", async () => {
+    // La cliente est l'épouse ; l'époux est le co-demandeur : il doit venir en premier dans la convention.
+    const cl = await request(app).post("/api/clients").set(auth()).send({ type: "physique", prenom: "Claire", nom: `TESTEUSE ${Date.now()}`, civilite: "Mme" });
+    const d = await request(app).post("/api/dossiers").set(auth()).send({
+      numero: `PIL-${Date.now()}-${Math.floor(Math.random() * 100000)}`, intitule: "Dossier convention", pole: "contentieux",
+      client_id: cl.body.id, responsable_id: associeId, mode_honoraires: "forfait",
+    });
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, civilite, type_partie) VALUES ($1,'co_demandeur','Paul TESTEUR','M','physique')", [d.body.id]);
+    const res = await generer(d.body.id, "convention_divorce_consentement_mutuel", {
+      ...base, client_est: "epouse", regime: "communaute", liquidation_texte: "Les époux procèdent au partage des biens communs comme suit : [à rédiger].",
+      residence: "attribuee", residence_adresse: "Rue Fictive 9, Ville-Test", residence_attribuee: "epouse",
+    });
+    expect(res.status).toBe(201);
+    const t = res.body.texte;
+    expect(t).toContain("ENTRE :\n• Monsieur Paul TESTEUR\nCi-après dénommé « l'époux », d'une part ;\nET\n• Madame Claire TESTEUSE");
+    expect(t).toContain("Ci-après dénommée « l'épouse », d'autre part ;");
+    expect(t).toContain("L'époux : Paul TESTEUR\nL'épouse : Claire TESTEUSE");
+    expect(t).toContain("n'est issu aucun enfant");
+    expect((t.match(/Sans objet : aucun enfant mineur/g) || []).length).toBe(3);    // articles 5, 6 et 7
+    expect(t).toContain("La résidence conjugale située à Rue Fictive 9, Ville-Test est attribuée à l'épouse");
+    expect(t).toContain("sous le régime matrimonial de la communauté de biens");
+    expect(t).toContain("Les époux procèdent au partage des biens communs");
+    expect(t).not.toContain("n'ayant acquis aucun bien en commun");
+    expect(t).toContain("Les époux déclarent n'avoir convenu d'aucune condition particulière.");
+    expect(t).not.toContain("{{");
+  });
+
+  test("pension principale requise quand il y a des enfants", async () => {
+    const dossierId = await dossierConvention();
+    const res = await generer(dossierId, "convention_divorce_consentement_mutuel", {
+      ...base, enfants: [{ prenom: "Aïcha", naissance: "2015-01-01", lieu: "Ville-Test", garde_a: "epouse" }], debiteur_pension: "epoux",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Pension alimentaire principale/);
+  });
+});

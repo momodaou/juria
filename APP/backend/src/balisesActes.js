@@ -55,6 +55,7 @@ const BALISES = [
   { cle: "parties_adverses", groupe: "Partie adverse", description: "Toutes les parties adverses, séparées par « et »" },
   { cle: "partie_adverse_identification", groupe: "Partie adverse", description: "Identité complète de la première partie adverse" },
   { cle: "parties_adverses_identification", groupe: "Partie adverse", description: "Identité complète de chaque partie adverse (une par ligne)" },
+  { cle: "co_demandeur_nom", groupe: "Partie adverse", description: "Nom du premier co-demandeur du dossier (ex. l'autre époux)" },
   { cle: "co_demandeurs_identification", groupe: "Partie adverse", description: "Identité complète des co-demandeurs du dossier (ex. les deux époux), une par ligne" },
   { cle: "conseil_adverse", groupe: "Partie adverse", description: "Conseil de la première partie adverse" },
   { cle: "conseil_adverse_adresse", groupe: "Partie adverse", description: "Adresse du conseil de la première partie adverse" },

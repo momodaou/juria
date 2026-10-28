@@ -319,6 +319,7 @@ function applatirContexte(ctx) {
     partie_adverse_identification: fiches[0] ? identification(fiches[0]) : "—",
     parties_adverses_identification: fiches.length ? fiches.map(identification).join("\n") : "—",
     conseil_adverse_adresse: ctx.conseilAdverseAdresse || "—",
+    co_demandeur_nom: coDem.length && coDem[0].denomination ? coDem[0].denomination : A_COMPLETER,
     co_demandeurs_identification: coDem.length ? coDem.map(identification).join("\n") : A_COMPLETER,
     clients_nombre: String([c, ...clientsAdd].filter(Boolean).length),
     clients_identification: [c, ...clientsAdd].filter(Boolean).map((p) => identification(p) || A_COMPLETER).join("\n") || A_COMPLETER,

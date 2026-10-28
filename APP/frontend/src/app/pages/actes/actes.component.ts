@@ -83,12 +83,16 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                 @case ('montant') {
                   <div class="montant">
                     <input class="in" inputmode="decimal" placeholder="Montant" [(ngModel)]="reponses[c.cle].valeur" [name]="'q_' + c.cle + '_v'" />
-                    <select class="in" [(ngModel)]="reponses[c.cle].devise" [name]="'q_' + c.cle + '_d'">
-                      <option value="XOF">F CFA</option>
-                      <option value="EUR">Euro (contre-valeur au taux fixe)</option>
-                      <option value="autre">Autre devise</option>
-                    </select>
-                    @if (reponses[c.cle].devise === 'autre') {
+                    @if (c.devise_fixe) {
+                      <span class="muted">{{ c.devise_fixe === 'XOF' ? 'F CFA' : 'Euro' }}</span>
+                    } @else {
+                      <select class="in" [(ngModel)]="reponses[c.cle].devise" [name]="'q_' + c.cle + '_d'">
+                        <option value="XOF">F CFA</option>
+                        <option value="EUR">Euro (contre-valeur au taux fixe)</option>
+                        <option value="autre">Autre devise</option>
+                      </select>
+                    }
+                    @if (!c.devise_fixe && reponses[c.cle].devise === 'autre') {
                       <input class="in" placeholder="Devise (ex. USD)" [(ngModel)]="reponses[c.cle].devise_libelle" [name]="'q_' + c.cle + '_l'" />
                       <input class="in" inputmode="decimal" placeholder="Contre-valeur en F CFA" [(ngModel)]="reponses[c.cle].contrevaleur" [name]="'q_' + c.cle + '_c'" />
                     }
@@ -100,6 +104,12 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                       @for (sc of c.sous_champs; track sc.cle) {
                         @switch (sc.type) {
                           @case ('date') { <input class="in" type="date" [title]="sc.libelle" [(ngModel)]="el[sc.cle]" [name]="'q_' + c.cle + $index + sc.cle" /> }
+                          @case ('choix') {
+                            <select class="in" [title]="sc.libelle" [(ngModel)]="el[sc.cle]" [name]="'q_' + c.cle + $index + sc.cle">
+                              <option value="">{{ sc.libelle }}</option>
+                              @for (o of sc.options; track o.valeur) { <option [value]="o.valeur">{{ o.libelle }}</option> }
+                            </select>
+                          }
                           @case ('pieces') { <textarea class="in ta" [placeholder]="sc.libelle" [(ngModel)]="el[sc.cle]" [name]="'q_' + c.cle + $index + sc.cle"></textarea> }
                           @default { <input class="in" [placeholder]="sc.libelle" [(ngModel)]="el[sc.cle]" [name]="'q_' + c.cle + $index + sc.cle" /> }
                         }
@@ -341,7 +351,7 @@ export class ActesComponent implements OnInit {
   }
 
   champsVisibles(): any[] {
-    return (this.modeleChoisi()?.champs ?? []).filter((c: any) => this.conditionVraie(c.si));
+    return (this.modeleChoisi()?.champs ?? []).filter((c: any) => c.type !== 'calcul' && this.conditionVraie(c.si));
   }
 
   ajouterElement(cle: string): void {

@@ -2,7 +2,7 @@
 //
 // Un modèle déclare ses champs (modeles_actes.champs, JSONB) :
 //   { cle, libelle, type, requis?, defaut?, defaut_balise?, options?, sous_champs?, si?, aide? }
-// types : texte | texte_long | date | choix | oui_non | nombre | juridiction | montant | liste
+// types : texte | texte_long | date | choix | oui_non | nombre | juridiction | montant | liste | calcul
 //  - choix : options = [{ valeur, libelle }] ; balises « cle » (valeur) et « cle_libelle »
 //  - date : AAAA-MM-JJ (ou JJ/MM/AAAA pour une valeur par défaut tirée d'une balise) ;
 //           balises « cle » (« 14 décembre 1985 ») et « cle_iso »
@@ -13,14 +13,19 @@
 //  - liste : éléments { sous_champs } (types texte | date | pieces) ; le sous-champ « pieces »
 //    (une pièce par ligne) est numéroté en continu sur tout l'acte et alimente aussi le bordereau ;
 //    chaque élément reçoit « pieces_texte » (« Pièce N°1 : … ») et « pieces_refs » (« n° 1, n° 2 »)
+//  - montant : « devise_fixe: "XOF" » impose la devise (champ utilisé dans un calcul) ;
+//  - calcul : montant en F CFA calculé, sans saisie : { formule: "enfants_nombre*(pension+complement)" } — + - * /
+//    et parenthèses sur des champs « nombre » ou « montant », sur « liste_nombre » ou sur un autre calcul
+//    (un champ absent vaut 0 ; à placer après les champs qu'il utilise) ; mêmes balises qu'un montant ;
+//  - sous-champs d'une liste : texte | date | pieces | choix (options { valeur, libelle } ; balises « cle » et « cle_libelle ») ;
 //  - si : « autre_cle=valeur » — le champ n'est demandé (et requis) que si la condition est vraie.
 // Les clés ne doivent pas entrer en collision avec une balise du catalogue (balisesActes.js).
 
 const { montantEnLettres } = require("./nombreEnLettres");
 const { dateLongue, BALISES } = require("./balisesActes");
 
-const TYPES = ["texte", "texte_long", "date", "choix", "oui_non", "nombre", "juridiction", "montant", "liste"];
-const TYPES_SOUS_CHAMP = ["texte", "date", "pieces"];
+const TYPES = ["texte", "texte_long", "date", "choix", "oui_non", "nombre", "juridiction", "montant", "liste", "calcul"];
+const TYPES_SOUS_CHAMP = ["texte", "date", "pieces", "choix"];
 const TAUX_EURO_XOF = 655.957;       // parité fixe (règle du projet)
 const CLE = /^[a-z][a-z0-9_]{0,40}$/;
 const RESERVEES = new Set(BALISES.map((b) => b.cle));
@@ -29,6 +34,42 @@ function erreur(message) {
   const e = new Error(message);
   e.status = 400;
   return e;
+}
+
+// Évaluateur arithmétique minimal (+ - * / parenthèses, nombres, identifiants) — pas d'eval.
+// valeur(nom) donne la valeur numérique d'un identifiant.
+function evaluerFormule(formule, valeur) {
+  const jetons = formule.match(/\s*([A-Za-z_]\w*|\d+(?:\.\d+)?|[()+\-*/])/g);
+  if (!jetons || jetons.join("").replace(/\s/g, "") !== formule.replace(/\s/g, "")) throw new Error("caractère non autorisé");
+  const t = jetons.map((j) => j.trim());
+  let i = 0;
+  const facteur = () => {
+    const j = t[i++];
+    if (j === undefined) throw new Error("expression incomplète");
+    if (j === "(") { const v = expression(); if (t[i++] !== ")") throw new Error("parenthèse non fermée"); return v; }
+    if (j === "-") return -facteur();
+    if (/^\d/.test(j)) return Number(j);
+    if (/^[A-Za-z_]/.test(j)) return Number(valeur(j)) || 0;
+    throw new Error(`« ${j} » inattendu`);
+  };
+  const terme = () => {
+    let v = facteur();
+    while (t[i] === "*" || t[i] === "/") {
+      const op = t[i++];
+      const d = facteur();
+      if (op === "/" && d === 0) throw new Error("division par zéro");
+      v = op === "*" ? v * d : v / d;
+    }
+    return v;
+  };
+  function expression() {
+    let v = terme();
+    while (t[i] === "+" || t[i] === "-") v = t[i++] === "+" ? v + terme() : v - terme();
+    return v;
+  }
+  const resultat = expression();
+  if (i !== t.length) throw new Error(`« ${t[i]} » inattendu`);
+  return resultat;
 }
 
 // Valide la définition des champs d'un modèle à l'enregistrement.
@@ -51,8 +92,16 @@ function validerDefinition(champs) {
       if (!Array.isArray(c.sous_champs) || !c.sous_champs.length) throw erreur(`champs : « ${c.cle} » (liste) demande des sous_champs`);
       for (const s of c.sous_champs) {
         if (!CLE.test(s.cle || "") || !s.libelle || !TYPES_SOUS_CHAMP.includes(s.type)) throw erreur(`champs : sous-champ invalide dans « ${c.cle} »`);
+        if (s.type === "choix" && (!Array.isArray(s.options) || !s.options.length || s.options.some((o) => !o || !o.valeur || !o.libelle))) {
+          throw erreur(`champs : le sous-champ « ${s.cle} » (choix) demande des options { valeur, libelle }`);
+        }
       }
     }
+    if (c.type === "calcul") {
+      if (typeof c.formule !== "string") throw erreur(`champs : « ${c.cle} » (calcul) demande une formule`);
+      try { evaluerFormule(c.formule, () => 1); } catch (e) { throw erreur(`champs : formule de « ${c.cle} » invalide (${e.message})`); }
+    }
+    if (c.devise_fixe !== undefined && !["XOF", "EUR"].includes(c.devise_fixe)) throw erreur(`champs : devise_fixe de « ${c.cle} » : XOF ou EUR`);
     if (c.si !== undefined && !/^\w+\s*(!=|=)\s*.+$/.test(c.si)) throw erreur(`champs : condition « si » invalide pour « ${c.cle} »`);
   }
   return champs;
@@ -79,7 +128,7 @@ function conditionVraie(si, valeurs) {
 function traiterMontant(c, brut) {
   const valeur = Number(String((brut && brut.valeur) ?? "").replace(/\s/g, "").replace(",", "."));
   if (!Number.isFinite(valeur) || valeur <= 0) throw erreur(`« ${c.libelle} » : montant invalide`);
-  const devise = (brut && brut.devise) || "XOF";
+  const devise = c.devise_fixe || (brut && brut.devise) || "XOF";
   if (!["XOF", "EUR", "autre"].includes(devise)) throw erreur(`« ${c.libelle} » : devise invalide`);
   const libelleDevise = devise === "XOF" ? "F.CFA" : devise === "EUR" ? "EUR" : String((brut && brut.devise_libelle) || "").trim();
   if (devise === "autre" && !libelleDevise) throw erreur(`« ${c.libelle} » : précisez la devise`);
@@ -95,6 +144,7 @@ function traiterMontant(c, brut) {
   const fcfaChiffres = `F.CFA ${milliers(fcfa)}`;
   const fcfaLettres = montantEnLettres(fcfa, "XOF");
   return {
+    __n: valeur,
     [`${c.cle}_chiffres`]: chiffres,
     [`${c.cle}_lettres`]: lettres,
     [`${c.cle}_fcfa`]: fcfaChiffres,
@@ -110,6 +160,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
   const rep = reponses && typeof reponses === "object" ? reponses : {};
   const valeurs = {};
   const pieces = [];
+  const numeriques = {};   // valeurs numériques disponibles pour les champs « calcul »
   for (const c of champs) {
     const demande = conditionVraie(c.si, valeurs);
     let brut = rep[c.cle];
@@ -117,10 +168,20 @@ function traiterReponses(champs, reponses, plat, juridictions) {
       if (c.defaut !== undefined) brut = c.defaut;
       else if (c.defaut_balise && plat[c.defaut_balise] && plat[c.defaut_balise] !== "[à compléter]") brut = plat[c.defaut_balise];
     }
+    if (c.type === "calcul") {
+      if (!demande) { valeurs[c.cle] = ""; continue; }
+      const resultat = evaluerFormule(c.formule, (nom) => numeriques[nom]);
+      if (!Number.isFinite(resultat) || resultat <= 0) { valeurs[c.cle] = ""; numeriques[c.cle] = 0; continue; }
+      const { __n, ...balises } = traiterMontant({ ...c, devise_fixe: "XOF" }, { valeur: resultat, devise: "XOF" });
+      Object.assign(valeurs, balises);
+      numeriques[c.cle] = resultat;
+      continue;
+    }
     const vide = brut === undefined || brut === null || brut === "" || (Array.isArray(brut) && !brut.length);
     if (!demande || vide) {
       if (demande && c.requis) throw erreur(`« ${c.libelle} » est requis`);
-      if (c.type === "liste") { valeurs[c.cle] = []; valeurs[`${c.cle}_nombre`] = "0"; }
+      if (c.type === "liste") { valeurs[c.cle] = []; valeurs[`${c.cle}_nombre`] = "0"; numeriques[`${c.cle}_nombre`] = 0; }
+      else if (c.type === "montant" || c.type === "nombre") { valeurs[c.cle] = ""; numeriques[c.cle] = 0; }
       else if (c.type === "oui_non") valeurs[c.cle] = "non";
       else valeurs[c.cle] = "";
       continue;
@@ -154,6 +215,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
         const n = Number(String(brut).replace(/\s/g, "").replace(",", "."));
         if (!Number.isFinite(n)) throw erreur(`« ${c.libelle} » : nombre invalide`);
         valeurs[c.cle] = String(n);
+        numeriques[c.cle] = n;
         break;
       }
       case "juridiction": {
@@ -163,9 +225,12 @@ function traiterReponses(champs, reponses, plat, juridictions) {
         valeurs[`${c.cle}_code`] = String(brut);
         break;
       }
-      case "montant":
-        Object.assign(valeurs, traiterMontant(c, brut));
+      case "montant": {
+        const { __n, ...balises } = traiterMontant(c, brut);
+        Object.assign(valeurs, balises);
+        numeriques[c.cle] = __n;
         break;
+      }
       case "liste": {
         if (!Array.isArray(brut) || brut.length > 60) throw erreur(`« ${c.libelle} » : liste invalide (60 éléments au plus)`);
         valeurs[c.cle] = brut.map((el) => {
@@ -176,6 +241,11 @@ function traiterReponses(champs, reponses, plat, juridictions) {
             if (s.type === "pieces") {
               const lignes = (Array.isArray(v) ? v : String(v).split("\n")).map((l) => String(l).trim()).filter(Boolean);
               for (const intitule of lignes) { pieces.push(intitule); piecesItem.push({ n: pieces.length, intitule }); }
+            } else if (s.type === "choix") {
+              const o = v === "" ? null : s.options.find((x) => x.valeur === String(v));
+              if (v !== "" && !o) throw erreur(`« ${c.libelle} » : choix invalide pour « ${s.libelle} »`);
+              item[s.cle] = o ? o.valeur : "";
+              item[`${s.cle}_libelle`] = o ? o.libelle : "";
             } else if (s.type === "date") {
               const iso = v === "" ? "" : versIso(v);
               if (v !== "" && !iso) throw erreur(`« ${c.libelle} » : date invalide (AAAA-MM-JJ attendu)`);
@@ -192,6 +262,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
           return item;
         });
         valeurs[`${c.cle}_nombre`] = String(valeurs[c.cle].length);
+        numeriques[`${c.cle}_nombre`] = valeurs[c.cle].length;
         break;
       }
     }
@@ -199,4 +270,4 @@ function traiterReponses(champs, reponses, plat, juridictions) {
   return { valeurs, pieces };
 }
 
-module.exports = { validerDefinition, traiterReponses, TYPES, TAUX_EURO_XOF };
+module.exports = { validerDefinition, traiterReponses, evaluerFormule, TYPES, TAUX_EURO_XOF };

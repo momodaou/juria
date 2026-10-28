@@ -5406,3 +5406,131 @@ Le Président du Tribunal
 {{/si}}
 $mod$, $mod$Requêtes unilatérales au président$mod$, $mod$recouvrement$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tc_bamako", "options": [{"valeur": "tc_bamako", "libelle": "du Tribunal de Commerce de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "montant", "libelle": "Somme réclamée en principal", "type": "montant", "requis": true}, {"cle": "faits", "libelle": "Exposé des faits (un paragraphe par ligne, avec ses pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "mise_en_demeure", "libelle": "Une mise en demeure préalable a été adressée", "type": "oui_non", "defaut": "non"}, {"cle": "mise_en_demeure_date", "libelle": "Date de la mise en demeure", "type": "date", "requis": true, "si": "mise_en_demeure=oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, art. 5 et suivants", "verifie_le": null}]$mod$::jsonb, 'a_valider')
 ON CONFLICT (code) DO NOTHING;
+
+-- Convention de divorce par consentement mutuel (28/10/2026), créée « à valider » : à relire et valider par un avocat.
+INSERT INTO modeles_actes (code, nom, categorie, corps, famille, matiere, champs, courrier_depart, textes_cites, statut_validation) VALUES
+($mod$convention_divorce_consentement_mutuel$mod$, $mod$Convention de divorce par consentement mutuel$mod$, 'contrat', $mod$CONVENTION DE DIVORCE PAR CONSENTEMENT MUTUEL
+
+ENTRE :
+• {{#si client_est=epoux}}{{client_identification}}{{#sinon}}{{co_demandeurs_identification}}{{/si}}
+Ci-après dénommé « l'époux », d'une part ;
+ET
+• {{#si client_est=epoux}}{{co_demandeurs_identification}}{{#sinon}}{{client_identification}}{{/si}}
+Ci-après dénommée « l'épouse », d'autre part ;
+
+EXPOSÉ PRÉLIMINAIRE
+
+Les époux ont contracté mariage le {{mariage_date}} par devant l'Officier de l'État civil du {{mariage_centre}}, {{mariage_commune}}, sous le régime matrimonial de {{#si regime=autre}}{{regime_autre}}{{#sinon}}{{regime_libelle}}{{/si}} et avec comme option matrimoniale la {{option_libelle}} (cf. pièce jointe) ;
+{{#si enfants}}
+De cette union {{#si enfants_nombre=1}}est issu un enfant mineur{{#sinon}}sont issus {{enfants_nombre}} enfants mineurs{{/si}} :
+{{#chaque enfants}}
+• {{prenom}}, né(e) le {{naissance}} à {{lieu}} ;
+{{/chaque}}
+{{#sinon}}
+De cette union n'est issu aucun enfant ;
+{{/si}}
+Que pour des raisons qui leur sont personnelles et en raison d'une volonté librement manifestée, éclairée et exempte de vice, conformément aux dispositions de l'article 337 et suivants de la loi n° 2011-087 du 30 décembre 2011 portant Code des Personnes et de la Famille, ils souhaitent voir mettre fin au lien conjugal qui les unit ;
+En conséquence, ils entendent par le présent acte convenir des mesures qui suivent, lesquelles seront soumises à l'examen et à l'approbation du juge.
+
+Article 1er : SUR LE PRINCIPE DU DIVORCE
+Les époux décident, de commun accord, de dissoudre leur mariage par la voie de la procédure de divorce par consentement mutuel.
+Les parties conviennent de n'invoquer aucun grief l'un à l'égard de l'autre au cours de cette procédure qui soit de nature à mettre en cause les mœurs, la moralité ou la dignité de l'un ou l'autre des époux.
+
+Article 2 : SUR LE NOM DE L'ÉPOUSE
+Conformément à l'article 367 du Code des Personnes et de la Famille, à la suite du divorce, l'épouse précédemment mariée reprendra l'usage de son nom de jeune fille.
+
+Article 3 : SUR LA SÉPARATION DES ÉPOUX
+{{#si residence=attribuee}}
+La résidence conjugale située à {{residence_adresse}} est attribuée à {{residence_attribuee_libelle}}, l'autre époux s'engageant à la quitter.
+{{#sinon}}
+Les époux ayant, au moment des présentes, chacun une nouvelle résidence, conviennent qu'il n'y a pas lieu de déterminer l'attribution d'une résidence commune à l'un ou à l'autre.
+{{/si}}
+
+Article 4 : VÊTEMENTS ET EFFETS PERSONNELS
+Les époux déclarent qu'ils ont d'ores et déjà repris possession de leurs vêtements et effets personnels.
+
+Article 5 : SUR LA GARDE DES ENFANTS
+{{#si enfants}}
+Les époux s'accordent sur les modalités de garde de leurs enfants suivantes :
+{{#chaque enfants}}
+• La garde de l'enfant {{prenom}} sera confiée à {{garde_a_libelle}}{{#si garde_jusqua}} jusqu'à {{garde_jusqua}}{{/si}} ;
+{{/chaque}}
+{{#si garde_retour!=aucun}}
+À l'échéance des périodes indiquées ci-dessus, la garde des enfants reviendra à {{garde_retour_libelle}}, au domicile duquel ils résideront désormais.
+{{/si}}
+{{#si engagement_documents}}
+Aux fins d'assurer le retour des enfants dans de bonnes conditions, le parent qui en a la garde s'engage à fournir, produire et/ou signer tout document administratif requis (notamment les autorisations de voyage) pour le voyage et la réinstallation des enfants chez l'autre parent.
+{{/si}}
+Les parents conviennent qu'au cours de la période pendant laquelle l'un dispose de la garde d'un enfant, l'autre parent bénéficie de droits de visite dont le rythme, la période, les conditions et modalités, ainsi que la durée sont arrêtés de commun accord, avec la plus grande flexibilité et sans que ces accords soient figés dans le temps.
+En outre, les parents s'entendent par avance sur les modalités d'organisation des vacances scolaires de leurs enfants. Le parent qui envisage de voyager en compagnie de l'un ou de plusieurs des enfants doit impérativement en informer l'autre à l'avance et requérir son autorisation le cas échéant.
+Enfin, les parents s'engagent à se comporter en adultes responsables concernant l'éducation de leurs enfants. Ils s'engagent notamment à privilégier le dialogue.
+{{#sinon}}
+Sans objet : aucun enfant mineur n'est issu du mariage.
+{{/si}}
+
+Article 6 : SUR LA PENSION ALIMENTAIRE ET AUTRES CHARGES DES ENFANTS
+{{#si enfants}}
+{{#si frais_scolarite}}
+Au titre des charges des enfants, {{debiteur_pension_libelle}} s'engage à prendre en charge l'intégralité de leurs frais de scolarité.
+{{/si}}
+{{#si frais_sante}}
+S'agissant des frais de santé : {{frais_sante}}
+{{/si}}
+{{#si frais_transport}}
+Les frais de transport des enfants entre leur lieu de résidence et l'école sont pris en charge par {{debiteur_pension_libelle}} ; ils sont fixés à {{frais_transport_chiffres}} par mois.
+{{/si}}
+Les frais indiqués ci-dessus seront acquittés au bénéfice des enfants par {{debiteur_pension_libelle}}, sous réserve de la présentation des justificatifs de chaque dépense par l'autre parent.
+En outre, {{debiteur_pension_libelle}} s'engage à verser à {{#si debiteur_pension=epoux}}l'épouse{{#sinon}}l'époux{{/si}} :
+• Au titre de la pension alimentaire principale : la somme de {{pension_principale_chiffres}} par mois et par enfant, soit une somme totale de {{pension_principale_totale_chiffres}} par mois ;
+{{#si pension_complementaire}}
+• Au titre de la pension alimentaire complémentaire : la somme de {{pension_complementaire_chiffres}} par mois et par enfant, soit une somme totale de {{pension_complementaire_totale_chiffres}} par mois.
+{{/si}}
+Il est ainsi mis à la charge de {{debiteur_pension_libelle}} le paiement de la somme totale de {{pension_totale_phrase}} par mois au titre de la pension alimentaire.
+{{#sinon}}
+Sans objet : aucun enfant mineur n'est issu du mariage.
+{{/si}}
+
+Article 7 : RÉVISION ÉVENTUELLE DE LA PENSION ALIMENTAIRE
+{{#si enfants}}
+Il est expressément convenu entre les époux que, dans l'hypothèse où des événements nouveaux et imprévus interviendraient dans la situation professionnelle de {{debiteur_pension_libelle}} et auraient pour conséquence de baisser ses revenus, il sera procédé, au moyen d'un avenant, à la révision du montant de la pension alimentaire.
+Les termes et modalités de cette révision seront discutés par les époux, toujours dans le sens de la sauvegarde de l'intérêt des enfants.
+{{#sinon}}
+Sans objet : aucun enfant mineur n'est issu du mariage.
+{{/si}}
+
+Article 8 : SUR LA LIQUIDATION DES DROITS MATRIMONIAUX
+{{#si regime=separation}}
+Les époux étant mariés sous le régime de la séparation de biens et n'ayant acquis aucun bien en commun, ils reconnaissent le droit de propriété de chacun sur les biens acquis à titre personnel avant et pendant le mariage.
+{{#sinon}}
+{{liquidation_texte}}
+{{/si}}
+
+Article 9 : SUR LES CONDITIONS SPÉCIFIQUES
+{{#si conditions}}
+Les époux ont constaté la nécessité de s'entendre sur un certain nombre de modalités pratiques. En conséquence, ils conviennent, à titre de conditions particulières, de ce qui suit :
+{{#chaque conditions}}
+• {{titre}}
+{{texte}}
+{{/chaque}}
+{{#sinon}}
+Les époux déclarent n'avoir convenu d'aucune condition particulière.
+{{/si}}
+
+Article 10 : SUR LA DATE D'EFFET DU DIVORCE
+La date du divorce sera fixée au prononcé du jugement qui sera rendu par la juridiction désignée par requête conjointe aux fins de dissolution du mariage contracté par les époux.
+
+Article 11 : SUR LES EFFETS DE LA CONVENTION
+La présente convention vaut transaction entre les parties, qui reconnaissent avoir pris connaissance des dispositions de l'article 77 du Régime Général des Obligations en vigueur en République du Mali, qui dispose :
+« Les conventions légalement formées tiennent lieu de loi à ceux qui les ont faites ».
+En conséquence, la présente convention constitue entre les parties une transaction. Elle aura, dès son homologation, autorité de chose jugée.
+En contrepartie de la bonne exécution de ce qui précède, les époux déclarent :
+• Ne plus avoir aucun grief l'un envers l'autre ;
+• Renoncer à toute instance, action ou poursuite présente ou à venir, à l'exception de la seule procédure de divorce entre eux, les présentes valant transaction.
+
+Faite et passée à Bamako, le {{date}}.
+(Précédée de la mention « lu et approuvé »)
+
+L'époux : {{#si client_est=epoux}}{{client}}{{#sinon}}{{co_demandeur_nom}}{{/si}}
+L'épouse : {{#si client_est=epoux}}{{co_demandeur_nom}}{{#sinon}}{{client}}{{/si}}
+$mod$, $mod$Conventions et contrats$mod$, $mod$famille$mod$, $mod$[{"cle": "client_est", "libelle": "Notre client est", "type": "choix", "requis": true, "options": [{"valeur": "epoux", "libelle": "l'époux"}, {"valeur": "epouse", "libelle": "l'épouse"}], "aide": "Détermine l'ordre des parties et les mentions « l'époux » / « l'épouse »."}, {"cle": "mariage_date", "libelle": "Date du mariage", "type": "date", "requis": true}, {"cle": "mariage_centre", "libelle": "Centre d'état civil (ex. Centre secondaire de …)", "type": "texte", "requis": true}, {"cle": "mariage_commune", "libelle": "Commune du mariage (ex. Commune V du District de Bamako)", "type": "texte", "requis": true}, {"cle": "option", "libelle": "Option matrimoniale", "type": "choix", "requis": true, "defaut": "monogamie", "options": [{"valeur": "monogamie", "libelle": "monogamie"}, {"valeur": "polygamie", "libelle": "polygamie"}]}, {"cle": "regime", "libelle": "Régime matrimonial", "type": "choix", "requis": true, "options": [{"valeur": "separation", "libelle": "la séparation de biens"}, {"valeur": "communaute", "libelle": "la communauté de biens"}, {"valeur": "autre", "libelle": "Autre régime (à préciser)"}]}, {"cle": "regime_autre", "libelle": "Régime matrimonial (désignation)", "type": "texte", "requis": true, "si": "regime=autre"}, {"cle": "enfants", "libelle": "Enfants mineurs issus du mariage", "type": "liste", "sous_champs": [{"cle": "prenom", "libelle": "Prénoms", "type": "texte"}, {"cle": "naissance", "libelle": "Date de naissance", "type": "date"}, {"cle": "lieu", "libelle": "Lieu de naissance", "type": "texte"}, {"cle": "garde_a", "libelle": "Garde confiée à", "type": "choix", "options": [{"valeur": "epouse", "libelle": "l'épouse"}, {"valeur": "epoux", "libelle": "l'époux"}]}, {"cle": "garde_jusqua", "libelle": "Jusqu'à (ex. ses 10 ans, la rentrée 2028-2029)", "type": "texte"}]}, {"cle": "residence", "libelle": "Résidence conjugale", "type": "choix", "requis": true, "defaut": "separes", "options": [{"valeur": "separes", "libelle": "Chaque époux a une nouvelle résidence"}, {"valeur": "attribuee", "libelle": "La résidence conjugale est attribuée à l'un des époux"}]}, {"cle": "residence_adresse", "libelle": "Adresse de la résidence conjugale", "type": "texte", "requis": true, "si": "residence=attribuee"}, {"cle": "residence_attribuee", "libelle": "Résidence attribuée à", "type": "choix", "requis": true, "si": "residence=attribuee", "options": [{"valeur": "epoux", "libelle": "l'époux"}, {"valeur": "epouse", "libelle": "l'épouse"}]}, {"cle": "garde_retour", "libelle": "À l'échéance des périodes de garde, les enfants reviennent à", "type": "choix", "si": "enfants_nombre!=0", "defaut": "aucun", "options": [{"valeur": "aucun", "libelle": "Aucun changement prévu"}, {"valeur": "epoux", "libelle": "l'époux"}, {"valeur": "epouse", "libelle": "l'épouse"}]}, {"cle": "engagement_documents", "libelle": "Prévoir l'engagement de fournir les documents administratifs pour le voyage et la réinstallation des enfants", "type": "oui_non", "si": "enfants_nombre!=0", "defaut": "non"}, {"cle": "debiteur_pension", "libelle": "Époux qui supporte les frais et la pension", "type": "choix", "requis": true, "si": "enfants_nombre!=0", "options": [{"valeur": "epoux", "libelle": "l'époux"}, {"valeur": "epouse", "libelle": "l'épouse"}]}, {"cle": "frais_scolarite", "libelle": "Frais de scolarité intégralement pris en charge", "type": "oui_non", "si": "enfants_nombre!=0", "defaut": "oui"}, {"cle": "frais_sante", "libelle": "Frais de santé (rédaction libre, ex. couverts par l'assurance médicale du père)", "type": "texte_long", "si": "enfants_nombre!=0"}, {"cle": "frais_transport", "libelle": "Frais de transport scolaire, par mois (facultatif)", "type": "montant", "devise_fixe": "XOF", "si": "enfants_nombre!=0"}, {"cle": "pension_principale", "libelle": "Pension alimentaire principale, par mois et par enfant", "type": "montant", "devise_fixe": "XOF", "requis": true, "si": "enfants_nombre!=0"}, {"cle": "pension_complementaire", "libelle": "Pension alimentaire complémentaire, par mois et par enfant (facultatif)", "type": "montant", "devise_fixe": "XOF", "si": "enfants_nombre!=0"}, {"cle": "pension_principale_totale", "libelle": "Total pension principale", "type": "calcul", "formule": "enfants_nombre*pension_principale", "si": "enfants_nombre!=0"}, {"cle": "pension_complementaire_totale", "libelle": "Total pension complémentaire", "type": "calcul", "formule": "enfants_nombre*pension_complementaire", "si": "enfants_nombre!=0"}, {"cle": "pension_totale", "libelle": "Total pension", "type": "calcul", "formule": "enfants_nombre*(pension_principale+pension_complementaire)", "si": "enfants_nombre!=0"}, {"cle": "liquidation_texte", "libelle": "Liquidation des droits matrimoniaux (rédaction libre)", "type": "texte_long", "requis": true, "si": "regime!=separation"}, {"cle": "conditions", "libelle": "Conditions particulières (une par élément)", "type": "liste", "sous_champs": [{"cle": "titre", "libelle": "Intitulé", "type": "texte"}, {"cle": "texte", "libelle": "Texte", "type": "texte"}]}]$mod$::jsonb, FALSE, $mod$[{"texte": "Loi n° 2011-087 du 30 décembre 2011 portant Code des personnes et de la famille, art. 337 et suivants, art. 367", "verifie_le": null}, {"texte": "Régime général des obligations (Mali), art. 77", "verifie_le": null}]$mod$::jsonb, 'a_valider')
+ON CONFLICT (code) DO NOTHING;
