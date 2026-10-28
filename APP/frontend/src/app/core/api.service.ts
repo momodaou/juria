@@ -814,10 +814,10 @@ export class ApiService {
   }
 
   // Atelier d'actes
-  modelesActes(): Observable<{ code: string; nom: string; categorie: string }[]> {
-    return this.http.get<{ code: string; nom: string; categorie: string }[]>(`${this.base}/api/actes/modeles`);
+  modelesActes(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/actes/modeles`);
   }
-  genererActe(payload: { dossier_id: string; mode: 'modele' | 'ia'; modele_code?: string; instructions_ia?: string; pieces?: string[] }): Observable<any> {
+  genererActe(payload: { dossier_id: string; mode: 'modele' | 'ia'; modele_code?: string; instructions_ia?: string; pieces?: string[]; reponses?: any; numeroter?: boolean }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/actes/generer`, payload);
   }
 
@@ -836,6 +836,10 @@ export class ApiService {
     return this.http.get(`${this.base}/api/actes/${id}/docx`, { responseType: 'blob' });
   }
 
+  // Validation d'un modèle par un avocat (28/10/2026).
+  validerModeleActe(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/actes/modeles/${id}/valider`, {});
+  }
   // Balises disponibles dans les modèles (27/10/2026).
   balisesActes(): Observable<{ cle: string; groupe: string; description: string }[]> {
     return this.http.get<{ cle: string; groupe: string; description: string }[]>(`${this.base}/api/actes/balises`);

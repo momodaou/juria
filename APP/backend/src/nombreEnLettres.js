@@ -32,12 +32,14 @@ function deuxChiffres(n) {
   return base + "-" + UNITES[u];
 }
 
-function troisChiffres(n) {
+// devantMille : « cent » et « quatre-vingts » restent invariables devant « mille »
+// (deux cent mille, quatre-vingt mille — alors que deux cents millions, quatre-vingts millions).
+function troisChiffres(n, devantMille = false) {
   const c = Math.floor(n / 100);
   const reste = n % 100;
   const mots = [];
-  if (c > 0) mots.push(c === 1 ? "cent" : UNITES[c] + " cent" + (reste === 0 ? "s" : ""));
-  if (reste > 0) mots.push(deuxChiffres(reste));
+  if (c > 0) mots.push(c === 1 ? "cent" : UNITES[c] + " cent" + (reste === 0 && !devantMille ? "s" : ""));
+  if (reste > 0) mots.push(devantMille ? deuxChiffres(reste).replace(/quatre-vingts$/, "quatre-vingt") : deuxChiffres(reste));
   return mots.join(" ");
 }
 
@@ -58,7 +60,7 @@ function nombreEnLettres(n) {
   for (const g of GROUPES) {
     const q = Math.floor(reste / g.valeur);
     if (q > 0) {
-      if (g.nom === "mille") parties.push(q === 1 ? "mille" : troisChiffres(q) + " mille");
+      if (g.nom === "mille") parties.push(q === 1 ? "mille" : troisChiffres(q, true) + " mille");
       else parties.push(troisChiffres(q) + " " + (q === 1 ? g.nom : g.nom + "s"));
       reste %= g.valeur;
     }

@@ -5211,3 +5211,198 @@ ALTER TABLE dossier_parties ADD COLUMN IF NOT EXISTS conseil_adresse TEXT;
 -- Titre de l'avocat signataire (« Avocat au Barreau du Mali et de Paris »), saisi par chacun dans Mon compte.
 ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS titre_avocat VARCHAR(200);
 -- ============ FIN IDENTITÉ DÉTAILLÉE POUR LES ACTES ============
+
+-- =====================================================================
+--  MODÈLES D'ACTES : QUESTIONNAIRE, VALIDATION, CLASSEMENT (28/10/2026)
+--  Pilote des modèles d'actes : un modèle déclare les champs à renseigner à
+--  la génération (`champs`, JSONB — voir questionnaireActes.js), peut
+--  réserver un numéro de courrier départ (`courrier_depart`, numérotation du
+--  registre du courrier), et n'est proposé à la génération qu'une fois
+--  validé par un avocat (`statut_validation`). Les modèles existants restent
+--  « valide ». Idempotent.
+-- =====================================================================
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS famille VARCHAR(80);
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS matiere VARCHAR(80);
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS champs JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS courrier_depart BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS statut_validation VARCHAR(12) NOT NULL DEFAULT 'valide';
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS valide_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS valide_le TIMESTAMPTZ;
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS responsable_id UUID REFERENCES utilisateurs(id);
+ALTER TABLE modeles_actes ADD COLUMN IF NOT EXISTS textes_cites JSONB NOT NULL DEFAULT '[]'::jsonb;  -- [{ texte, verifie_le }]
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_modeles_actes_validation') THEN
+    ALTER TABLE modeles_actes ADD CONSTRAINT chk_modeles_actes_validation CHECK (statut_validation IN ('valide','a_valider'));
+  END IF;
+END $$;
+
+-- Juridictions rencontrées dans les actes de référence (liste complétée par le cabinet au fil de l'eau).
+INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
+ ('juridiction','tgi_sikasso','Tribunal de Grande Instance de Sikasso',19,FALSE),
+ ('juridiction','cour_supreme_section_judiciaire','Cour Suprême — Section judiciaire',20,FALSE),
+ ('juridiction','cour_supreme_chambre_instruction_criminelle','Cour Suprême — Chambre d''instruction criminelle',21,FALSE),
+ ('juridiction','cour_appel_bamako_chambre_sociale','Cour d''Appel de Bamako — Chambre sociale',22,FALSE),
+ ('juridiction','cour_appel_bamako_chambre_referes','Cour d''Appel de Bamako — Chambre des référés',23,FALSE)
+ON CONFLICT (domaine, code) DO NOTHING;
+-- ============ FIN MODÈLES D'ACTES : QUESTIONNAIRE ============
+
+-- Trois modèles pilotes (28/10/2026), créés « à valider » : à relire et valider par un avocat avant tout usage.
+INSERT INTO modeles_actes (code, nom, categorie, corps, famille, matiere, champs, courrier_depart, textes_cites, statut_validation) VALUES
+($mod$lettre_constitution_juridiction$mod$, $mod$Lettre de constitution (à la juridiction)$mod$, 'courrier_officiel', $mod$Bamako, le {{date}}
+
+À {{destinataire_titre_libelle}}
+{{#si juridiction_destinataire=autre}}
+{{juridiction_autre}}
+{{#sinon}}
+{{juridiction_destinataire_libelle}}
+{{/si}}
+Bamako
+
+N/Réf : {{n_ref}}
+{{#si client_defendeur}}
+Affaire : {{partie_adverse}}
+C/
+{{client}}
+{{#sinon}}
+Affaire : {{client}}
+C/
+{{partie_adverse}}
+{{/si}}
+{{#si audience_date}}
+Audience du {{audience_date}}
+{{/si}}
+Nature : {{nature}}
+Objet : {{objet}}
+
+{{destinataire_titre_libelle}},
+
+Nous avons l'honneur de vous informer de notre constitution{{#si confrere}}, aux côtés du Cabinet {{confrere}},{{/si}} pour assurer la défense des intérêts de {{client}}{{#si client_qualite}} ({{client_qualite}}){{/si}} dans le cadre de l'affaire visée ci-dessus.
+{{#si en_appel}}
+Cette affaire fait suite à l'appel interjeté, par acte d'appel n° {{appel_acte_numero}} du {{appel_acte_date}}, contre le jugement n° {{jugement_numero}} rendu le {{jugement_date}} par {{jugement_juridiction}}.
+{{/si}}
+{{#si renvoi}}
+Par la présente, nous sollicitons le renvoi de l'évocation de cette affaire pour citation régulière de {{client}}. En effet, celui-ci (celle-ci) n'est pas domicilié(e) au Mali mais à l'adresse suivante :
+{{adresse_etranger}}
+{{/si}}
+Nous vous prions de bien vouloir nous en donner acte et nous associer aux différents actes de la procédure.
+
+En vous souhaitant bonne réception de la présente, nous vous prions de recevoir, {{destinataire_titre_libelle}}, l'expression de nos salutations distinguées.
+
+P/La SCPA JFC AVOCATS MALI
+{{avocat}}
+{{avocat_titre}}
+$mod$, $mod$Lettres à la juridiction$mod$, NULL, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}, {"valeur": "m_premier_president", "libelle": "Monsieur le Premier Président"}, {"valeur": "mme_premiere_presidente", "libelle": "Madame la Première Présidente"}, {"valeur": "m_greffier", "libelle": "Monsieur le Greffier en Chef"}]}, {"cle": "juridiction_destinataire", "libelle": "Juridiction", "type": "choix", "requis": true, "options": [{"valeur": "tgi_c1", "libelle": "du Tribunal de Grande Instance de la Commune I du District de Bamako"}, {"valeur": "tgi_c2", "libelle": "du Tribunal de Grande Instance de la Commune II du District de Bamako"}, {"valeur": "tgi_c3", "libelle": "du Tribunal de Grande Instance de la Commune III du District de Bamako"}, {"valeur": "tgi_c4", "libelle": "du Tribunal de Grande Instance de la Commune IV du District de Bamako"}, {"valeur": "tgi_c5", "libelle": "du Tribunal de Grande Instance de la Commune V du District de Bamako"}, {"valeur": "tgi_c6", "libelle": "du Tribunal de Grande Instance de la Commune VI du District de Bamako"}, {"valeur": "tc_bamako", "libelle": "du Tribunal de Commerce de Bamako"}, {"valeur": "tt_bamako", "libelle": "du Tribunal du Travail de Bamako"}, {"valeur": "ta_bamako", "libelle": "du Tribunal Administratif de Bamako"}, {"valeur": "ca_bamako", "libelle": "de la Cour d'Appel de Bamako"}, {"valeur": "caa_bamako", "libelle": "de la Cour d'Appel Administrative de Bamako"}, {"valeur": "cs_judiciaire", "libelle": "de la Cour Suprême du Mali (Section judiciaire)"}, {"valeur": "cs_instruction", "libelle": "de la Chambre d'instruction criminelle de la Cour Suprême du Mali"}, {"valeur": "tgi_sikasso", "libelle": "du Tribunal de Grande Instance de Sikasso"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction_destinataire=autre"}, {"cle": "nature", "libelle": "Nature de l'affaire", "type": "texte", "requis": true, "aide": "Ex. Divorce, Réclamation de droits et dommages-intérêts"}, {"cle": "objet", "libelle": "Objet", "type": "texte", "requis": true, "defaut": "Constitution"}, {"cle": "audience_date", "libelle": "Audience du", "type": "date", "defaut_balise": "audience_prochaine_date"}, {"cle": "client_defendeur", "libelle": "Notre client est défendeur ou intimé (la partie adverse est citée en premier)", "type": "oui_non", "defaut": "non"}, {"cle": "confrere", "libelle": "Constitution aux côtés d'un confrère : nom du cabinet", "type": "texte"}, {"cle": "en_appel", "libelle": "L'affaire est en appel", "type": "oui_non", "defaut": "non"}, {"cle": "appel_acte_numero", "libelle": "Acte d'appel : numéro", "type": "texte", "si": "en_appel=oui"}, {"cle": "appel_acte_date", "libelle": "Acte d'appel : date", "type": "date", "si": "en_appel=oui"}, {"cle": "jugement_numero", "libelle": "Jugement attaqué : numéro", "type": "texte", "si": "en_appel=oui"}, {"cle": "jugement_date", "libelle": "Jugement attaqué : date", "type": "date", "si": "en_appel=oui"}, {"cle": "jugement_juridiction", "libelle": "Jugement attaqué : juridiction", "type": "texte", "si": "en_appel=oui"}, {"cle": "renvoi", "libelle": "Demander le renvoi pour citation régulière", "type": "oui_non", "defaut": "non"}, {"cle": "adresse_etranger", "libelle": "Adresse du client à l'étranger", "type": "texte_long", "requis": true, "si": "renvoi=oui"}]$mod$::jsonb, TRUE, $mod$[{"texte": "Acte uniforme OHADA sur les procédures simplifiées de recouvrement et les voies d'exécution (cité dans la déclaration d'appel de référence)", "verifie_le": null}]$mod$::jsonb, 'a_valider'),
+($mod$requete_divorce_consentement_mutuel$mod$, $mod$Requête conjointe de divorce par consentement mutuel$mod$, 'conclusions', $mod$REQUETE CONJOINTE AUX FINS DE DIVORCE PAR CONSENTEMENT MUTUEL
+
+À {{destinataire_titre_libelle}}
+du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako.
+
+À la demande de :
+{{client_identification}}
+ET
+{{co_demandeurs_identification}}
+
+Ayant pour Conseil la SCPA JFC AVOCATS, cabinet d'avocats inscrit au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}}, plaidant par l'organe de Me {{avocat}}, {{avocat_titre}}, en l'étude duquel domicile est élu pour les besoins de la présente et ses suites éventuelles ;
+
+ONT L'HONNEUR DE VOUS EXPOSER
+
+Qu'ils ont contracté mariage le {{mariage_date}} par devant l'Officier de l'État civil du {{mariage_centre}}, {{mariage_commune}}, sous le régime matrimonial de {{#si regime=autre}}{{regime_autre}}{{#sinon}}{{regime_libelle}}{{/si}} et avec comme option matrimoniale la {{option_libelle}} ;
+(Cf. Extrait d'acte de mariage, pièce n° 1).
+{{#si enfants}}
+De cette union {{#si enfants_nombre=1}}est né un enfant mineur{{#sinon}}sont nés {{enfants_nombre}} enfants mineurs{{/si}} :
+{{#chaque enfants}}
+• {{prenom}}, né(e) le {{naissance}} à {{lieu}} ;
+{{/chaque}}
+(Cf. Extraits de naissance des enfants, pièce n° 2).
+{{#sinon}}
+De leur union n'est issu aucun enfant ;
+{{/si}}
+Attendu que les époux ne sont plus en mesure de poursuivre une vie conjugale commune pour des raisons qui leur sont personnelles ;
+Que, conformément aux dispositions légales relatives au divorce par consentement mutuel, ils ne sont pas tenus d'exposer les raisons de leur séparation, leur accord valant seule cause du divorce ;
+Qu'ils ont donc décidé de taire ces raisons en vertu des dispositions de l'article 337 de la loi n° 2011-087 du 30 décembre 2011 portant Code des Personnes et de la Famille qui dispose :
+« Les deux époux, lorsqu'ils demandent conjointement le divorce, n'ont pas à en faire connaître la cause ; ils doivent seulement soumettre à l'approbation du juge un projet de convention qui en règle les conséquences » ;
+Attendu que les époux, tous deux majeurs, ont librement et sérieusement consenti à leur séparation, comme en témoignent leurs signatures et la constitution d'un avocat ;
+Qu'ils confirment leur volonté claire et persistante de rompre le lien conjugal et qu'ils ont établi, à cet effet, une convention de divorce annexée à la présente requête, destinée à régler les conséquences de leur rupture ;
+(Cf. Convention de divorce, pièce n° {{#si enfants}}3{{#sinon}}2{{/si}}).
+Qu'en tout état de cause les époux sont éligibles aux conditions de fond de la procédure de divorce par consentement mutuel en ce que leur mariage date de plus de 6 mois et qu'ils ne sont pas placés sous le régime de protection des incapables.
+En conséquence, au vu des dispositions des articles 338 à 347 ainsi que de l'article 367 du Code des personnes et de la famille du Mali, les époux sollicitent respectueusement :
+{{#si convocation}}
+• De les convoquer pour constater la recevabilité de la requête ;
+{{#sinon}}
+• De constater la recevabilité de la requête ;
+{{/si}}
+• De constater la réalité de leur consentement libre et éclairé ;
+• De prononcer leur divorce par consentement mutuel ;
+• D'homologuer la convention de divorce annexée à la présente requête, réglant leurs rapports et les conséquences de leur séparation.
+{{#si par_ces_motifs}}
+
+PAR CES MOTIFS
+
+EN LA FORME :
+• Déclarer recevable leur requête conjointe de divorce.
+
+AU FOND :
+• Déclarer la requête bien fondée, y faisant droit ;
+• Prononcer en dernier ressort le divorce entre les époux ;
+• Homologuer la convention réglant les effets et conséquences du divorce.
+{{/si}}
+
+Bamako, le {{date}}
+
+P/Les époux
+Le Conseil
+{{avocat_identification}}
+$mod$, $mod$Requêtes conjointes$mod$, $mod$famille$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "commune", "libelle": "Tribunal de Grande Instance de la Commune", "type": "choix", "requis": true, "options": [{"valeur": "I", "libelle": "I"}, {"valeur": "II", "libelle": "II"}, {"valeur": "III", "libelle": "III"}, {"valeur": "IV", "libelle": "IV"}, {"valeur": "V", "libelle": "V"}, {"valeur": "VI", "libelle": "VI"}]}, {"cle": "mariage_date", "libelle": "Date du mariage", "type": "date", "requis": true}, {"cle": "mariage_centre", "libelle": "Centre d'état civil (ex. Centre secondaire de …)", "type": "texte", "requis": true}, {"cle": "mariage_commune", "libelle": "Commune du mariage (ex. Commune V du District de Bamako)", "type": "texte", "requis": true}, {"cle": "option", "libelle": "Option matrimoniale", "type": "choix", "requis": true, "defaut": "monogamie", "options": [{"valeur": "monogamie", "libelle": "monogamie"}, {"valeur": "polygamie", "libelle": "polygamie"}]}, {"cle": "regime", "libelle": "Régime matrimonial", "type": "choix", "requis": true, "options": [{"valeur": "separation", "libelle": "la séparation de biens"}, {"valeur": "communaute", "libelle": "la communauté de biens"}, {"valeur": "autre", "libelle": "Autre régime (à préciser)"}]}, {"cle": "regime_autre", "libelle": "Régime matrimonial (désignation)", "type": "texte", "requis": true, "si": "regime=autre"}, {"cle": "enfants", "libelle": "Enfants mineurs issus du mariage", "type": "liste", "sous_champs": [{"cle": "prenom", "libelle": "Prénoms", "type": "texte"}, {"cle": "naissance", "libelle": "Date de naissance", "type": "date"}, {"cle": "lieu", "libelle": "Lieu de naissance", "type": "texte"}]}, {"cle": "convocation", "libelle": "Demander la convocation des époux", "type": "oui_non", "defaut": "non"}, {"cle": "par_ces_motifs", "libelle": "Ajouter le dispositif « Par ces motifs »", "type": "oui_non", "defaut": "oui"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Loi n° 2011-087 du 30 décembre 2011 portant Code des personnes et de la famille, art. 337, 338 à 347, 367", "verifie_le": null}]$mod$::jsonb, 'a_valider'),
+($mod$requete_injonction_de_payer$mod$, $mod$Requête en injonction de payer$mod$, 'conclusions', $mod$REQUETE AUX FINS D'INJONCTION DE PAYER
+(Article 5 et suivants de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution)
+
+À {{destinataire_titre_libelle}} {{#si juridiction=autre}}{{juridiction_autre}}{{#sinon}}{{juridiction_libelle}}{{/si}}.
+
+{{clients_identification}}
+
+{{#si clients_nombre!=1}}Tous ayant{{#sinon}}Ayant{{/si}} pour Conseil la SCPA JFC AVOCATS, plaidant par {{avocats_dossier}}, Avocats inscrits au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}}, en l'étude desquels domicile est élu pour les besoins de la présente et de ses suites éventuelles ;
+
+ONT L'HONNEUR DE VOUS EXPOSER CE QUI SUIT :
+
+{{#chaque faits}}
+{{texte}}
+{{#si pieces_texte}}
+{{pieces_texte}}
+{{/si}}
+
+{{/chaque}}
+{{#si mise_en_demeure}}
+Préalablement à toute action contentieuse, les requérants ont mis en demeure les débiteurs de payer, par l'intermédiaire de leur Conseil, selon courrier du {{mise_en_demeure_date}} ;
+
+{{/si}}
+C'est pourquoi, conformément aux dispositions des articles 5 et suivants de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, il vous est demandé d'enjoindre à :
+{{parties_adverses_identification}}
+le paiement de la somme de {{montant_phrase}} en principal, outre les frais, au bénéfice de :
+{{clients_identification}}
+
+SOUS TOUTES RESERVES
+
+Bamako, le {{date}}
+Le Conseil
+SCPA JFC AVOCATS MALI
+{{#si projet_ordonnance}}
+
+ORDONNANCE N° ______________ :
+
+Nous, {{#si president_nom}}{{president_nom}}{{#sinon}}[à compléter]{{/si}}, Président {{#si juridiction=autre}}{{juridiction_autre}}{{#sinon}}{{juridiction_libelle}}{{/si}}.
+Vu la requête qui précède, les arguments y développés, les pièces à l'appui et les dispositions de la loi, notamment les articles 5 et suivants de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution,
+Enjoignons à :
+{{parties_adverses_identification}}
+de payer à :
+{{clients_identification}}
+la somme de {{montant_phrase}} en principal, outre les frais.
+Désignons Maître __________________________________, Huissier-Commissaire de Justice à Bamako pour formalisation.
+DONNÉE EN NOTRE CABINET, Bamako, le ______________
+Le Président du Tribunal
+{{/si}}
+{{#si pieces_nombre!=0}}
+
+{{bordereau_pieces}}
+{{/si}}
+$mod$, $mod$Requêtes unilatérales au président$mod$, $mod$recouvrement$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tc_bamako", "options": [{"valeur": "tc_bamako", "libelle": "du Tribunal de Commerce de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "montant", "libelle": "Somme réclamée en principal", "type": "montant", "requis": true}, {"cle": "faits", "libelle": "Exposé des faits (un paragraphe par ligne, avec ses pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "mise_en_demeure", "libelle": "Une mise en demeure préalable a été adressée", "type": "oui_non", "defaut": "non"}, {"cle": "mise_en_demeure_date", "libelle": "Date de la mise en demeure", "type": "date", "requis": true, "si": "mise_en_demeure=oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, art. 5 et suivants", "verifie_le": null}]$mod$::jsonb, 'a_valider')
+ON CONFLICT (code) DO NOTHING;

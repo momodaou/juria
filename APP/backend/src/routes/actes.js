@@ -16,6 +16,7 @@ const { pool } = require("../db");
 const { saveObject, enteteContentDisposition } = require("../storage");
 const { generer } = require("../ia");
 const { requirePermission } = require("../permissions");
+const { logAudit } = require("../audit");
 const { envoyerActePdf } = require("../actePdf");
 const { envoyerActeDocx } = require("../acteDocx");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
@@ -24,6 +25,9 @@ const {
   dateLongue, naissance, filiation, representant, identification, depuisClient, depuisPartie, CIVILITES,
 } = require("../balisesActes");
 const { selectChamps, CHAMPS_CLIENT, CHAMPS_PARTIE } = require("../identiteActes");
+const { rendre, analyser } = require("../moteurModele");
+const { validerDefinition, traiterReponses } = require("../questionnaireActes");
+const { genererReference } = require("../referenceCourrier");
 const router = express.Router();
 
 // Audit du 03/10/2026 : GET /:id/pdf, PUT /:id et POST /:id/statut
@@ -39,11 +43,13 @@ async function verifierAccesDocument(dossierId, confidentialite, user) {
   return estDocumentVisible(confidentialite, contexte, user, false);
 }
 
-// GET /api/actes/modeles — modèles actifs, pour le sélecteur de génération.
+// GET /api/actes/modeles — modèles actifs ET validés, pour le sélecteur de génération (un modèle
+// non validé par un avocat n'est jamais proposé ; il reste visible dans la gestion des modèles).
 router.get("/modeles", requirePermission("actes.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT code, nom, categorie FROM modeles_actes WHERE actif = TRUE ORDER BY categorie, nom"
+      `SELECT code, nom, categorie, famille, matiere, champs, courrier_depart
+       FROM modeles_actes WHERE actif = TRUE AND statut_validation = 'valide' ORDER BY categorie, nom`
     );
     res.json(rows);
   } catch (e) {
@@ -64,7 +70,11 @@ router.get("/balises", requirePermission("actes.consulter"), (req, res) => {
 router.get("/modeles/tous", requirePermission("actes.modeles.gerer"), async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, code, nom, categorie, corps, actif, cree_le, modifie_le FROM modeles_actes ORDER BY categorie, nom"
+      `SELECT m.id, m.code, m.nom, m.categorie, m.corps, m.actif, m.cree_le, m.modifie_le, m.famille, m.matiere, m.champs,
+              m.courrier_depart, m.statut_validation, m.valide_le, m.textes_cites,
+              v.prenom || ' ' || v.nom AS valide_par_nom
+       FROM modeles_actes m LEFT JOIN utilisateurs v ON v.id = m.valide_par
+       ORDER BY m.categorie, m.nom`
     );
     res.json(rows);
   } catch (e) {
@@ -73,42 +83,89 @@ router.get("/modeles/tous", requirePermission("actes.modeles.gerer"), async (req
   }
 });
 
-// POST /api/actes/modeles  { code, nom, categorie, corps }
+// Contrôle commun à la création et à la modification d'un modèle : syntaxe des blocs du corps,
+// définition du questionnaire (clés, types) et textes cités.
+function verifierModele(b) {
+  if (b.corps !== undefined && b.corps !== null) analyser(b.corps);
+  if (b.champs !== undefined && b.champs !== null) validerDefinition(b.champs);
+  if (b.textes_cites !== undefined && b.textes_cites !== null) {
+    if (!Array.isArray(b.textes_cites) || b.textes_cites.some((t) => !t || typeof t.texte !== "string")) {
+      const e = new Error("textes_cites : liste de { texte, verifie_le }");
+      e.status = 400;
+      throw e;
+    }
+  }
+}
+
+const COLONNES_MODELE = "id, code, nom, categorie, corps, actif, famille, matiere, champs, courrier_depart, statut_validation, textes_cites";
+
+// POST /api/actes/modeles  { code, nom, categorie, corps, famille?, matiere?, champs?, courrier_depart?, textes_cites? }
+// Un modèle créé ou modifié n'est pas utilisable tant qu'un avocat ne l'a pas validé (POST /modeles/:id/valider).
 router.post("/modeles", requirePermission("actes.modeles.gerer"), async (req, res) => {
   const b = req.body || {};
   if (!b.code || !b.nom || !b.corps) return res.status(400).json({ error: "code, nom et corps requis" });
   try {
+    verifierModele(b);
     const { rows } = await pool.query(
-      `INSERT INTO modeles_actes (code, nom, categorie, corps, cree_par)
-       VALUES ($1,$2,COALESCE($3::categorie_document,'autre'),$4,$5)
-       RETURNING id, code, nom, categorie, corps, actif`,
-      [b.code, b.nom, b.categorie || null, b.corps, req.user.sub]
+      `INSERT INTO modeles_actes (code, nom, categorie, corps, cree_par, famille, matiere, champs, courrier_depart, textes_cites, statut_validation)
+       VALUES ($1,$2,COALESCE($3::categorie_document,'autre'),$4,$5,$6,$7,COALESCE($8::jsonb,'[]'::jsonb),COALESCE($9::boolean,FALSE),COALESCE($10::jsonb,'[]'::jsonb),'a_valider')
+       RETURNING ${COLONNES_MODELE}`,
+      [b.code, b.nom, b.categorie || null, b.corps, req.user.sub, b.famille || null, b.matiere || null,
+       b.champs ? JSON.stringify(b.champs) : null, b.courrier_depart ?? null, b.textes_cites ? JSON.stringify(b.textes_cites) : null]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Ce code de modèle existe déjà" });
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
   }
 });
 
-// PUT /api/actes/modeles/:id  { nom?, categorie?, corps?, actif? }
+// PUT /api/actes/modeles/:id  { nom?, categorie?, corps?, actif?, famille?, matiere?, champs?, courrier_depart?, textes_cites? }
+// Modifier le texte ou le questionnaire d'un modèle le repasse « à valider » (validation par un avocat à refaire).
 router.put("/modeles/:id", requirePermission("actes.modeles.gerer"), async (req, res) => {
   const b = req.body || {};
   try {
+    verifierModele(b);
+    const contenuModifie = (b.corps !== undefined && b.corps !== null) || (b.champs !== undefined && b.champs !== null);
     const { rows } = await pool.query(
       `UPDATE modeles_actes
        SET nom = COALESCE($1, nom), categorie = COALESCE($2::categorie_document, categorie),
-           corps = COALESCE($3, corps), actif = COALESCE($4, actif), modifie_le = now()
+           corps = COALESCE($3, corps), actif = COALESCE($4, actif),
+           famille = COALESCE($6, famille), matiere = COALESCE($7, matiere),
+           champs = COALESCE($8::jsonb, champs), courrier_depart = COALESCE($9::boolean, courrier_depart),
+           textes_cites = COALESCE($10::jsonb, textes_cites),
+           statut_validation = CASE WHEN $11::boolean THEN 'a_valider' ELSE statut_validation END,
+           valide_par = CASE WHEN $11::boolean THEN NULL ELSE valide_par END,
+           valide_le = CASE WHEN $11::boolean THEN NULL ELSE valide_le END,
+           modifie_le = now()
        WHERE id = $5
-       RETURNING id, code, nom, categorie, corps, actif`,
-      [b.nom ?? null, b.categorie ?? null, b.corps ?? null, b.actif ?? null, req.params.id]
+       RETURNING ${COLONNES_MODELE}`,
+      [b.nom ?? null, b.categorie ?? null, b.corps ?? null, b.actif ?? null, req.params.id, b.famille ?? null, b.matiere ?? null,
+       b.champs ? JSON.stringify(b.champs) : null, b.courrier_depart ?? null, b.textes_cites ? JSON.stringify(b.textes_cites) : null, contenuModifie]
     );
     if (!rows[0]) return res.status(404).json({ error: "Modèle introuvable" });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
+  }
+});
+
+// POST /api/actes/modeles/:id/valider — un avocat valide le modèle (nom, date et auteur conservés).
+router.post("/modeles/:id/valider", requirePermission("actes.modeles.gerer"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE modeles_actes SET statut_validation = 'valide', valide_par = $1, valide_le = now()
+       WHERE id = $2 RETURNING ${COLONNES_MODELE}, valide_le`,
+      [req.user.sub, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Modèle introuvable" });
+    await logAudit({ utilisateurId: req.user.sub, action: "valider_modele_acte", entite: "modeles_actes", entiteId: req.params.id, details: { code: rows[0].code }, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
@@ -147,6 +204,29 @@ async function construireContexte(dossierId, avocatNom, avocatFiche, pieces) {
     `SELECT denomination, conseil, ${selectChamps(CHAMPS_PARTIE)} FROM dossier_parties WHERE dossier_id = $1 AND role = 'adverse' ORDER BY cree_le, id`,
     [dossierId]
   );
+  // Co-demandeurs (ex. les deux époux d'une requête conjointe), clients additionnels (co-requérants) et
+  // avocats du dossier (responsable + intervenants avocats) — balises ajoutées le 28/10/2026.
+  const coDemandeurs = await pool.query(
+    `SELECT denomination, ${selectChamps(CHAMPS_PARTIE)} FROM dossier_parties WHERE dossier_id = $1 AND role = 'co_demandeur' ORDER BY cree_le, id`,
+    [dossierId]
+  );
+  const clientsAdd = await pool.query(
+    `SELECT c.type, c.denomination, c.forme_juridique, c.rccm, c.nif, c.prenom, c.nom, c.nationalite, c.adresse, c.ville,
+            ${selectChamps(CHAMPS_CLIENT, "c")}
+     FROM dossier_clients_additionnels a JOIN clients c ON c.id = a.client_id
+     WHERE a.dossier_id = $1 ORDER BY a.cree_le`,
+    [dossierId]
+  );
+  const avocats = await pool.query(
+    `SELECT prenom || ' ' || nom AS nom FROM (
+       SELECT u.prenom, u.nom, 0 AS rang FROM dossiers d JOIN utilisateurs u ON u.id = d.responsable_id
+        WHERE d.id = $1 AND u.role IN ('associe','associe_fondateur','of_counsel','avocat_stagiaire','collaborateur')
+       UNION
+       SELECT u.prenom, u.nom, 1 FROM dossier_intervenants i JOIN utilisateurs u ON u.id = i.utilisateur_id
+        WHERE i.dossier_id = $1 AND u.role IN ('associe','associe_fondateur','of_counsel','avocat_stagiaire','collaborateur')
+     ) x ORDER BY rang, nom`,
+    [dossierId]
+  );
   const cab = await pool.query("SELECT * FROM parametres_cabinet WHERE id = 1");
   // Instance la plus récente : même tri que instanceActuelle.js (fiche dossier, Rôle d'audience).
   const inst = await pool.query(
@@ -166,6 +246,9 @@ async function construireContexte(dossierId, avocatNom, avocatFiche, pieces) {
     partieAdverse: parties.rows[0]?.denomination || null,
     partiesAdverses: parties.rows.map((p) => p.denomination),
     partiesAdversesFiches: parties.rows.map(depuisPartie),
+    coDemandeursFiches: coDemandeurs.rows.map(depuisPartie),
+    clientsAdditionnelsFiches: clientsAdd.rows.map(depuisClient),
+    avocatsDossier: avocats.rows.map((r) => r.nom),
     conseilAdverse: parties.rows[0]?.conseil || null,
     conseilAdverseAdresse: parties.rows[0]?.conseil_adresse || null,
     clientFiche: depuisClient({
@@ -183,6 +266,7 @@ async function construireContexte(dossierId, avocatNom, avocatFiche, pieces) {
     avocat: avocatNom,
     avocatFiche: avocatFiche || { titre: null, code: null },
     pieces: pieces || [],
+    nRef: null,
   };
 }
 
@@ -204,6 +288,9 @@ function applatirContexte(ctx) {
   const fiches = ctx.partiesAdversesFiches || adverses.map((denomination) => depuisPartie({ denomination }));
   const av = ctx.avocatFiche || {};
   const pieces = ctx.pieces || [];
+  const coDem = ctx.coDemandeursFiches || [];
+  const clientsAdd = ctx.clientsAdditionnelsFiches || [];
+  const avocatsDossier = ctx.avocatsDossier || [];
   return {
     date: ctx.date,
     client: ctx.client || "",
@@ -232,6 +319,9 @@ function applatirContexte(ctx) {
     partie_adverse_identification: fiches[0] ? identification(fiches[0]) : "—",
     parties_adverses_identification: fiches.length ? fiches.map(identification).join("\n") : "—",
     conseil_adverse_adresse: ctx.conseilAdverseAdresse || "—",
+    co_demandeurs_identification: coDem.length ? coDem.map(identification).join("\n") : A_COMPLETER,
+    clients_nombre: String([c, ...clientsAdd].filter(Boolean).length),
+    clients_identification: [c, ...clientsAdd].filter(Boolean).map((p) => identification(p) || A_COMPLETER).join("\n") || A_COMPLETER,
     parties_adverses: jointureEt(adverses) || "—",
     conseil_adverse: ctx.conseilAdverse || "—",
     destinataire: ctx.partieAdverse || ctx.client || "",
@@ -255,6 +345,10 @@ function applatirContexte(ctx) {
     dossier_responsable: ctx.responsable || A_COMPLETER,
     dossier_mode_honoraires: d.mode_honoraires || "à convenir",
     dossier_montant_convenu: d.montant_convenu_xof ? `${Number(d.montant_convenu_xof).toLocaleString("fr-FR")} FCFA` : "à convenir",
+    n_ref: ctx.nRef || A_COMPLETER,
+    avocats_dossier: avocatsDossier.length
+      ? `${avocatsDossier.length > 1 ? "Maîtres" : "Maître"} ${avocatsDossier.length > 1 ? `${avocatsDossier.slice(0, -1).join(", ")} et ${avocatsDossier[avocatsDossier.length - 1]}` : avocatsDossier[0]}`
+      : A_COMPLETER,
     pieces_nombre: String(pieces.length),
     pieces_liste: pieces.length ? pieces.map((p, i) => `Pièce n° ${i + 1} : ${p}`).join("\n") : A_COMPLETER,
     bordereau_pieces: pieces.length ? `BORDEREAU DES PIÈCES\n${pieces.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : A_COMPLETER,
@@ -273,35 +367,45 @@ function applatirContexte(ctx) {
   };
 }
 
-// Substitution simple {{cle}} -> valeur — pas de moteur de template
-// externe (cohérent avec le reste du projet, aucune nouvelle dépendance).
-// Un placeholder inconnu est laissé tel quel plutôt que silencieusement
-// vidé, pour rester visible et corrigible par l'auteur du modèle.
+// Fusion d'un corps de modèle avec ses valeurs : substitution {{cle}} et blocs {{#si}} / {{#chaque}}
+// (moteurModele.js). Une balise inconnue reste visible plutôt que silencieusement vidée.
 function fusionner(corps, plat) {
-  return corps.replace(/\{\{(\w+)\}\}/g, (m, cle) => (cle in plat ? String(plat[cle]) : m));
+  return rendre(corps, plat);
 }
 
 // POST /api/actes/generer
-// { dossier_id, mode: 'modele'|'ia', modele_code?, instructions_ia? }
+// { dossier_id, mode: 'modele'|'ia', modele_code?, instructions_ia?, pieces?, reponses?, numeroter? }
+//  - reponses : réponses au questionnaire du modèle (questionnaireActes.js) ;
+//  - pieces : pièces supplémentaires, numérotées à la suite de celles du questionnaire ;
+//  - numeroter : pour un modèle « courrier départ », false = ne pas réserver de numéro au registre du courrier.
 router.post("/generer", requirePermission("actes.generer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     const avocat = await pool.query("SELECT prenom || ' ' || nom AS nom, titre_avocat AS titre, code FROM utilisateurs WHERE id = $1", [req.user.sub]);
     // Pièces à citer (28/10/2026) : liste saisie une seule fois, reprise dans l'exposé et le bordereau.
-    let pieces = [];
+    let piecesLibres = [];
     if (b.pieces !== undefined) {
       if (!Array.isArray(b.pieces) || b.pieces.length > 100 || b.pieces.some((p) => typeof p !== "string" || p.length > 300)) {
+        await client.query("ROLLBACK");
         return res.status(400).json({ error: "pieces : liste de 100 intitulés au plus (300 caractères chacun)" });
       }
-      pieces = b.pieces.map((p) => p.trim()).filter(Boolean);
+      piecesLibres = b.pieces.map((p) => p.trim()).filter(Boolean);
     }
-    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "", avocat.rows[0], pieces);
-    if (!ctx) return res.status(404).json({ error: "Dossier introuvable" });
+    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "", avocat.rows[0], piecesLibres);
+    if (!ctx) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Dossier introuvable" });
+    }
 
-    let texte, nom, categorie;
+    let texte, nom, categorie, courrierRef = null, courrierMeta = null;
     if (b.mode === "ia") {
-      if (!b.instructions_ia) return res.status(400).json({ error: "instructions_ia requis en mode IA" });
+      if (!b.instructions_ia) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "instructions_ia requis en mode IA" });
+      }
       const instruction =
         "Tu es un assistant juridique pour un cabinet d'avocats au Mali (droit national et OHADA). " +
         "Rédige un projet d'acte en français, professionnel et sobre, sur la base des instructions et du contexte " +
@@ -316,27 +420,64 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
       categorie = "note_interne";
     } else {
       const { rows: [modele] } = await pool.query(
-        "SELECT nom, categorie, corps FROM modeles_actes WHERE code = $1 AND actif = TRUE",
+        "SELECT nom, categorie, corps, champs, courrier_depart, statut_validation FROM modeles_actes WHERE code = $1 AND actif = TRUE",
         [b.modele_code]
       );
-      if (!modele) return res.status(400).json({ error: "Modèle inconnu ou désactivé" });
-      texte = fusionner(modele.corps, applatirContexte(ctx));
+      if (!modele) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Modèle inconnu ou désactivé" });
+      }
+      if (modele.statut_validation !== "valide") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Ce modèle n'a pas encore été validé par un avocat : il n'est pas utilisable." });
+      }
+      // 1. Questionnaire : valeurs par défaut tirées des balises du dossier, pièces rattachées aux éléments.
+      const champs = Array.isArray(modele.champs) ? modele.champs : [];
+      let juridictions = null;
+      if (champs.some((c) => c.type === "juridiction")) {
+        const { rows } = await pool.query("SELECT code, libelle FROM listes_valeurs WHERE domaine = 'juridiction' AND actif = TRUE");
+        juridictions = Object.fromEntries(rows.map((r) => [r.code, r.libelle]));
+      }
+      const { valeurs, pieces: piecesQuestionnaire } = traiterReponses(champs, b.reponses, applatirContexte(ctx), juridictions);
+      ctx.pieces = [...piecesQuestionnaire, ...piecesLibres];
+      // 2. N/Réf : un modèle « courrier départ » réserve son numéro dans le registre du courrier (même transaction).
+      if (modele.courrier_depart && b.numeroter !== false) {
+        courrierRef = await genererReference(client, "depart", new Date());
+        ctx.nRef = courrierRef;
+        courrierMeta = {
+          correspondant: valeurs.juridiction_autre || valeurs.juridiction_destinataire_libelle || null,
+          objet: valeurs.objet || modele.nom,
+        };
+      }
+      texte = fusionner(modele.corps, { ...applatirContexte(ctx), ...valeurs });
       nom = `${modele.nom} — ${ctx.dossier.numero}`;
       categorie = modele.categorie;
     }
 
     const dest = `${b.dossier_id}/${Date.now()}_${nom}.txt`.replace(/\s+/g, "_");
     const chemin = await saveObject(Buffer.from(texte, "utf-8"), dest, "text/plain");
-    const ins = await pool.query(
+    const ins = await client.query(
       `INSERT INTO documents (dossier_id, nom, categorie, statut, chemin_storage, type_mime, taille_octets, auteur_id, ocr_texte)
        VALUES ($1,$2,$3,'brouillon',$4,'text/plain',$5,$6,$7)
        RETURNING id, nom, categorie, statut, version, cree_le`,
       [b.dossier_id, nom, categorie, chemin, Buffer.byteLength(texte, "utf-8"), req.user.sub, texte]
     );
-    res.status(201).json({ ...ins.rows[0], texte });
+    if (courrierRef) {
+      await client.query(
+        `INSERT INTO courriers (reference, sens, type, date_courrier, acteur_type, correspondant, objet, dossier_id, support,
+                                statut, cree_par, recu_par, document_id)
+         VALUES ($1,'depart','lettre',current_date,'juridiction',$2,$3,$4,'numerique','recu',$5,$5,$6)`,
+        [courrierRef, courrierMeta.correspondant, String(courrierMeta.objet).slice(0, 300), b.dossier_id, req.user.sub, ins.rows[0].id]
+      );
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ ...ins.rows[0], texte, courrier_reference: courrierRef });
   } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error(e);
-    res.status(400).json({ error: e.message });
+    res.status(e.status || 400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

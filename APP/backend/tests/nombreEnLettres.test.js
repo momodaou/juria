@@ -24,6 +24,13 @@ describe("nombreEnLettres — cas irréguliers du français", () => {
     [100, "cent"],
     [101, "cent un"],
     [200, "deux cents"],
+    // cent / quatre-vingts invariables devant « mille » (28/10/2026 : « cinq cents mille » était faux)
+    [200000, "deux cent mille"],
+    [500000, "cinq cent mille"],
+    [80000, "quatre-vingt mille"],
+    [180000, "cent quatre-vingt mille"],
+    [200000000, "deux cents millions"],
+    [80000000, "quatre-vingts millions"],
     [234, "deux cent trente-quatre"],
     [1000, "mille"],
     [2000, "deux mille"],

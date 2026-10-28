@@ -13,6 +13,7 @@ const router = express.Router();
 // ici, convention déjà suivie dans ce projet pour ce genre de petite
 // constante plutôt qu'un module partagé) : seul un avocat peut "viser"
 // un courrier (voir POST /:id/viser).
+const { genererReference } = require("../referenceCourrier");
 const ROLES_AVOCAT = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
 
 // 17/10/2026 — parcours « acte reçu sans dossier » : l'assistante enregistre avec
@@ -61,22 +62,6 @@ async function classerDansGed(poolOuClient, dossierId, nom, buffer, mimetype, ta
     [dossierId, nom, v.rows[0].v, chemin, mimetype, taille, auteurId]
   );
   return doc.rows[0].id;
-}
-
-// Génère la référence ARR-2026-000123 / DEP-2026-000045 (par sens + année).
-async function genererReference(client, sens, dateCourrier) {
-  const prefixe = sens === "arrivee" ? "ARR" : "DEP";
-  const annee = new Date(dateCourrier || Date.now()).getFullYear();
-  // 21/10/2026 — « plus grand numéro + 1 » (et non « nombre de courriers + 1 ») + verrou de
-  // transaction : même défaut que les numéros de dossier et de facture (doublon après suppression
-  // ou lors de deux enregistrements simultanés).
-  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`reference_courrier_${sens}`]);
-  const { rows } = await client.query(
-    `SELECT COALESCE(MAX(CAST(substring(reference from '-([0-9]+)$') AS integer)), 0) + 1 AS n
-     FROM courriers WHERE reference LIKE $1`,
-    [`${prefixe}-${annee}-%`]
-  );
-  return `${prefixe}-${annee}-${String(rows[0].n).padStart(6, "0")}`;
 }
 
 // Applique les déclencheurs configurés (type_courrier -> événement/diligence/tâche suggéré).
