@@ -4334,3 +4334,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - API (`charges.js`, `preciserAutre`) : précision obligatoire si catégorie « Autre » (400 sinon, 120 car. max), ignorée (NULL) pour une autre catégorie ; recopiée du catalogue et des reports vers les lignes de l'état ; modifiable en préparation. Pas exigée pour la correction de montant par les associés après soumission.
 - Écran : champ « Précisez « Autre » * » affiché dès que « Autre » est choisi (catalogue, ligne ponctuelle, modification d'une ligne) ; étiquette « Autre : … » dans les listes ; boutons désactivés tant que la précision manque.
 - Les charges existantes en catégorie « Autre » n'ont pas de précision : à renseigner à la prochaine modification. Tests : 771/771 ; build Angular OK.
+- Déployé : migration importée (2 colonnes `precision_autre`), API `juria-00192-f4z`, frontend `juria-web-00257-478`, `/health` et `/` = 200 ; fichier de migration supprimé.
