@@ -139,6 +139,7 @@ export interface ParametresHonoraires {
   quota_pro_bono_mensuel: number;
   seuil_alerte_vignettes: number;
   petite_caisse_plafond_depense: number | null;
+  seuil_justificatif_decaissement: number;
 }
 
 // Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
@@ -723,6 +724,21 @@ export class ApiService {
   ajouterLigneCharge(etatId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes`, payload); }
   modifierLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`, payload); }
   supprimerLigneCharge(etatId: string, ligneId: string): Observable<any> { return this.http.delete(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`); }
+  // Justificatifs d'une ligne de l'état (28/10/2026) et décision groupée.
+  piecesLigneCharge(etatId: string, ligneId: string): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/pieces`); }
+  ajouterPieceLigneCharge(etatId: string, ligneId: string, type: string, fichier: File): Observable<any> {
+    const fd = new FormData(); fd.append('type', type); fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/pieces`, fd);
+  }
+  telechargerPieceLigneCharge(etatId: string, ligneId: string, pieceId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/pieces/${pieceId}/fichier`, { responseType: 'blob' });
+  }
+  retirerPieceLigneCharge(etatId: string, ligneId: string, pieceId: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/pieces/${pieceId}`);
+  }
+  approuverToutEtatCharges(etatId: string, payload: { mode_paiement?: string | null; compte_id?: string | null }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/approuver-tout`, payload);
+  }
   completerEtatCharges(etatId: string): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/completer`, {}); }
   actionEtatCharges(etatId: string, action: 'soumettre' | 'rouvrir' | 'cloturer'): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/${action}`, {}); }
   decisionLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/decision`, payload); }

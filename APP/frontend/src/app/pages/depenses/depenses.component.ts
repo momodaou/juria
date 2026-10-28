@@ -6,6 +6,7 @@ import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, libelleCategorieDepense } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 
@@ -66,18 +67,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div>
             <label>Catégorie</label>
             <select class="in" [(ngModel)]="form.categorie" name="categorie">
-              <option value="loyer">Loyer</option><option value="eau">Eau</option>
-              <option value="electricite">Électricité</option><option value="nettoyage">Nettoyage</option>
-              <option value="carburant">Carburant</option><option value="telephonie">Téléphonie</option>
-              <option value="internet">Internet</option><option value="consommables">Consommables</option>
-              <option value="fournitures">Fournitures</option><option value="deplacement">Déplacement</option>
-              <option value="hebergement">Hébergement</option><option value="restauration">Restauration</option>
-              <option value="entretien">Entretien</option><option value="vignette_plaidoirie">Vignette de plaidoirie</option>
-              <option value="frais_procedure">Frais de procédure</option><option value="charges_fiscales_sociales">Charges fiscales et sociales</option>
-              <option value="autre">Autre</option>
+              <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
             </select>
           </div>
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="form.libelle" name="libelle" /></div>
+          <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="beneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="form.montant" name="montant" /></div>
           <div><label>Date</label><input class="in" type="date" [(ngModel)]="form.date_depense" name="date" /></div>
           <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
@@ -141,7 +136,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @for (d of depenses(); track d.id) {
             <tr [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
-              <td>{{ d.libelle }} @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }</td>
+              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }</td>
               <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
@@ -182,15 +177,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div>
                       <label>Catégorie</label>
                       <select class="in" [(ngModel)]="editForm.categorie" name="edCategorie">
-                        <option value="loyer">Loyer</option><option value="eau">Eau</option>
-                        <option value="electricite">Électricité</option><option value="nettoyage">Nettoyage</option>
-                        <option value="carburant">Carburant</option><option value="telephonie">Téléphonie</option>
-                        <option value="internet">Internet</option><option value="consommables">Consommables</option>
-                        <option value="fournitures">Fournitures</option><option value="deplacement">Déplacement</option>
-                        <option value="hebergement">Hébergement</option><option value="restauration">Restauration</option>
-                        <option value="entretien">Entretien</option><option value="vignette_plaidoirie">Vignette de plaidoirie</option>
-                        <option value="frais_procedure">Frais de procédure</option><option value="charges_fiscales_sociales">Charges fiscales et sociales</option>
-                        <option value="autre">Autre</option>
+                        <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
                       </select>
                     </div>
                     <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
@@ -477,14 +465,9 @@ export class DepensesComponent implements OnInit {
 
   // 28/09/2026 — audit menu par menu : catégorie/statut affichés en code
   // ENUM brut, motif déjà corrigé sur d'autres modules de l'appli.
-  private readonly libellesCategorie: Record<string, string> = {
-    loyer: 'Loyer', eau: 'Eau', electricite: 'Électricité', nettoyage: 'Nettoyage',
-    carburant: 'Carburant', telephonie: 'Téléphonie', internet: 'Internet', consommables: 'Consommables',
-    fournitures: 'Fournitures', deplacement: 'Déplacement', hebergement: 'Hébergement', restauration: 'Restauration',
-    entretien: 'Entretien', vignette_plaidoirie: 'Vignette de plaidoirie', frais_procedure: 'Frais de procédure',
-    charges_fiscales_sociales: 'Charges fiscales et sociales', autre: 'Autre',
-  };
-  libelleCategorie(c: string): string { return this.libellesCategorie[c] ?? c; }
+  readonly categoriesCabinet = CATEGORIES_CABINET;
+  readonly categoriesDebours = CATEGORIES_DEBOURS;
+  libelleCategorie(c: string): string { return libelleCategorieDepense(c); }
   private readonly libellesStatut: Record<string, string> = {
     soumise: 'Soumise', validee: 'Validée', rejetee: 'Rejetée', decaissee: 'Décaissée',
   };

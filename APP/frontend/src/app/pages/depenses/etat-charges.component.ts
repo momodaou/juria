@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, estDebours } from '../../core/categories-depense';
 import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 
@@ -15,17 +17,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 // Pas de zone.js : tout changement passe par un signal ; les formulaires sont
 // des objets simples relus à l'envoi, puis l'écran est rechargé.
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-const CATEGORIES: [string, string][] = [
-  ['loyer', 'Loyer'], ['eau', 'Eau'], ['electricite', 'Électricité'], ['nettoyage', 'Nettoyage'], ['carburant', 'Carburant'],
-  ['telephonie', 'Téléphonie'], ['internet', 'Internet'], ['consommables', 'Consommables'], ['fournitures', 'Fournitures'],
-  ['deplacement', 'Déplacement'], ['hebergement', 'Hébergement'], ['restauration', 'Restauration'], ['entretien', 'Entretien'],
-  ['charges_fiscales_sociales', 'Charges fiscales et sociales'], ['autre', 'Autre'],
-];
 
 @Component({
   selector: 'app-etat-charges',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, RouterLink, ReglementFormComponent],
+  imports: [DecimalPipe, FormsModule, RouterLink, ReglementFormComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -92,10 +88,28 @@ const CATEGORIES: [string, string][] = [
           @if (d.statut === 'soumis' && auth.peut('depenses.creer') && !decisionsPrises(d)) {
             <button class="btn ghost sm" (click)="action(d.id, 'rouvrir')" [disabled]="enCours()">Rouvrir pour modifier</button>
           }
+          @if (d.statut === 'soumis' && auth.peut('depenses.decision') && aApprouver(d).length) {
+            <button class="btn ghost sm" (click)="groupeOuvert.set(!groupeOuvert())" title="Raccourci facultatif : les lignes peuvent toujours être décidées une à une">Approuver toutes les lignes en attente…</button>
+          }
           @if (d.statut === 'soumis' && auth.peut('depenses.decision')) {
             <button class="btn sm" (click)="action(d.id, 'cloturer')" [disabled]="enCours() || aDecider(d)">Clôturer l’état</button>
           }
         </div>
+
+        @if (groupeOuvert() && d.statut === 'soumis') {
+          <div class="groupe">
+            <b>Approuver {{ aApprouver(d).length }} ligne(s) en attente — {{ totalAApprouver(d) | number }} FCFA</b>
+            <p class="hint">Les lignes déjà rejetées, reportées ou approuvées ne sont pas touchées ; celles à montant nul restent à traiter à la main. Une ligne qui a déjà un moyen de paiement le garde ; le moyen ci-dessous ne sert qu’aux autres (il pourra être précisé ou corrigé au décaissement).</p>
+            <div class="reglement-bloc">
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                                  [modele]="groupe" [catalogue]="catalogue()"></app-reglement-form>
+            </div>
+            <div class="btns">
+              <button class="btn sm" (click)="approuverTout(d)" [disabled]="enCours()">Confirmer l’approbation</button>
+              <button class="lien" (click)="groupeOuvert.set(false)">Annuler</button>
+            </div>
+          </div>
+        }
 
         <table>
           <tr><th>Charge</th><th>Période couverte</th><th class="num">Montant (FCFA)</th><th>Moyen / compte</th><th>Décision</th><th></th></tr>
@@ -105,11 +119,13 @@ const CATEGORIES: [string, string][] = [
                 <b>{{ l.libelle }}</b>
                 @if (l.categorie === 'autre' && l.precision_autre) { <span class="tag">Autre : {{ l.precision_autre }}</span> }
                 @if (l.type !== 'fixe') { <span class="tag">ponctuelle</span> }
+                @if (l.nature === 'dossier') { <span class="tag">Dossier {{ l.dossier_numero }}@if (l.refacturable_client) { · refacturable }</span> }
+                @if (l.beneficiaire) { <div class="obs">Bénéficiaire : {{ l.beneficiaire }}</div> }
                 @if (l.report_de) { <span class="tag report">reportée · retard {{ l.retard_mois }} mois</span> }
                 @if (l.observation) { <div class="obs">{{ l.observation }}</div> }
               </td>
               <td>{{ periode(l) }}</td>
-              <td class="num">{{ l.montant | number }}</td>
+              <td class="num">{{ l.montant | number }}@if (l.montant_precedent !== null && l.montant_precedent !== undefined) { <div class="obs">mois préc. : {{ l.montant_precedent | number }}{{ ecart(l) }}</div> }</td>
               <td>{{ moyen(l) }}</td>
               <td>
                 @switch (l.decision) {
@@ -124,6 +140,9 @@ const CATEGORIES: [string, string][] = [
                 }
               </td>
               <td class="actions">
+                @if (d.statut !== 'clos' || l.nb_pieces) {
+                  <button class="lien" (click)="ouvrirPieces(d, l)">📎 Pièces@if (l.nb_pieces) { ({{ l.nb_pieces }}) }</button>
+                }
                 @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
                   <button class="lien" (click)="editer(l)">Modifier</button>
                   @if (!l.report_de) { <button class="lien" (click)="supprimer(d.id, l.id)">Retirer</button> }
@@ -133,6 +152,44 @@ const CATEGORIES: [string, string][] = [
                 }
               </td>
             </tr>
+            @if (piecesLigneId() === l.id) {
+              <tr class="edit">
+                <td colspan="6">
+                  <b>Justificatifs de la charge</b> — devis, facture, preuve de paiement. Ils suivent la dépense à l’approbation.
+                  @if (listePieces().length) {
+                    <table>
+                      <tr><th>Type</th><th>Fichier</th><th>Ajouté par</th><th></th></tr>
+                      @for (p of listePieces(); track p.id) {
+                        <tr>
+                          <td>{{ libellePiece(p.type) }}</td><td>{{ p.nom }}</td><td>{{ p.ajoute_par || '—' }}</td>
+                          <td class="actions">
+                            <button class="lien" (click)="apercuPiece(d, l, p)">Aperçu</button>
+                            @if (peutAjouterPiece(d, l)) { <button class="lien" (click)="retirerPiece(d, l, p)">Retirer</button> }
+                          </td>
+                        </tr>
+                      }
+                    </table>
+                  } @else { <p class="muted">Aucun justificatif.</p> }
+                  @if (peutAjouterPiece(d, l)) {
+                    <div class="champs">
+                      <div><label>Type de pièce</label>
+                        <select class="in" [(ngModel)]="pieceType" name="pieceType">
+                          <option value="devis">Devis</option><option value="facture">Facture</option>
+                          <option value="preuve_paiement">Preuve de paiement</option><option value="autre">Autre</option>
+                        </select></div>
+                      <div class="large"><label>Fichier (PDF, image, Word, Excel)</label><input class="in" type="file" (change)="choisirPiece($event)" /></div>
+                    </div>
+                    <div class="btns">
+                      <button class="btn sm" (click)="ajouterPiece(d, l)" [disabled]="!pieceFichier || pieceEnCours()">{{ pieceEnCours() ? 'Envoi…' : 'Ajouter le justificatif' }}</button>
+                      <button class="lien" (click)="piecesLigneId.set(null)">Fermer</button>
+                    </div>
+                  } @else {
+                    @if (l.decision !== 'en_attente') { <p class="hint">Charge déjà décidée : les justificatifs s’ajoutent désormais sur la dépense (Dépenses &amp; caisse › Pièces / devis).</p> }
+                    <button class="lien" (click)="piecesLigneId.set(null)">Fermer</button>
+                  }
+                </td>
+              </tr>
+            }
             @if (edition()?.id === l.id) {
               <tr class="edit">
                 <td colspan="6">
@@ -140,10 +197,20 @@ const CATEGORIES: [string, string][] = [
                     <div class="champs">
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
                       <div><label>Catégorie</label>
-                        <select class="in" [(ngModel)]="form.categorie" name="ec">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+                        <select class="in" [(ngModel)]="form.categorie" name="ec"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
                       @if (form.categorie === 'autre') {
                         <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="form.precision_autre" name="ep" placeholder="Nature de la charge" /></div>
                       }
+                      <div><label>Rattachement</label>
+                        <select class="in" [(ngModel)]="form.nature" name="en"><option value="cabinet">Charge du cabinet</option><option value="dossier">Liée à un dossier (débours)</option></select></div>
+                      @if (form.nature === 'dossier') {
+                        <div class="large"><label>Dossier *</label>
+                          <app-dossier-picker [valeur]="form.dossier_id" [nomInitial]="form.dossier_numero" (valeurChange)="form.dossier_id = $event"></app-dossier-picker></div>
+                        <div class="large cases"><label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="er" /> Débours refacturable au client</label></div>
+                      } @else if (estDebours(form.categorie)) {
+                        <p class="hint large">Cette catégorie concerne en général un dossier : choisissez « Liée à un dossier » pour la rattacher et la refacturer.</p>
+                      }
+                      <div class="large"><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="eb" placeholder="Fournisseur ou personne payée" /></div>
                       <div><label>Type</label>
                         <select class="in" [(ngModel)]="form.type" name="et"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle</option></select></div>
                       <div><label>Période — début</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="ed" /></div>
@@ -157,11 +224,11 @@ const CATEGORIES: [string, string][] = [
                       <div class="large"><label>Motif (obligatoire pour rejeter)</label><input class="in" [(ngModel)]="form.motif" name="emo" /></div>
                     }
                   </div>
-                  <div class="reglement-bloc">
-                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
-                                        [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
-                  </div>
                   @if (d.statut === 'soumis') {
+                    <div class="reglement-bloc">
+                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                                          [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
+                    </div>
                     <div class="btns">
                       <button class="btn sm" (click)="decider(d.id, l.id, 'approuvee')" [disabled]="enCours()">Approuver</button>
                       <button class="btn ghost sm" (click)="decider(d.id, l.id, 'reportee')" [disabled]="enCours()">Reporter au mois suivant</button>
@@ -170,7 +237,7 @@ const CATEGORIES: [string, string][] = [
                     </div>
                   } @else {
                     <div class="btns">
-                      <button class="btn sm" (click)="enregistrerLigne(d.id, l.id)" [disabled]="enCours() || !form.libelle || (form.categorie === 'autre' && !form.precision_autre?.trim())">Enregistrer</button>
+                      <button class="btn sm" (click)="enregistrerLigne(d.id, l.id)" [disabled]="enCours() || !form.libelle || (form.categorie === 'autre' && !form.precision_autre?.trim()) || (form.nature === 'dossier' && !form.dossier_id)">Enregistrer</button>
                       <button class="lien" (click)="edition.set(null)">Annuler</button>
                     </div>
                   }
@@ -185,18 +252,25 @@ const CATEGORIES: [string, string][] = [
           <div class="champs">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="ajout.libelle" name="al" /></div>
             <div><label>Catégorie</label>
-              <select class="in" [(ngModel)]="ajout.categorie" name="ac">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+              <select class="in" [(ngModel)]="ajout.categorie" name="ac"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
             @if (ajout.categorie === 'autre') {
               <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="ajout.precision_autre" name="ap" placeholder="Nature de la charge" /></div>
             }
+            <div><label>Rattachement</label>
+              <select class="in" [(ngModel)]="ajout.nature" name="an"><option value="cabinet">Charge du cabinet</option><option value="dossier">Liée à un dossier (débours)</option></select></div>
+            @if (ajout.nature === 'dossier') {
+              <div class="large"><label>Dossier *</label>
+                <app-dossier-picker [valeur]="ajout.dossier_id" (valeurChange)="ajout.dossier_id = $event"></app-dossier-picker></div>
+              <div class="large cases"><label><input type="checkbox" [(ngModel)]="ajout.refacturable_client" name="ar" /> Débours refacturable au client</label></div>
+            } @else if (estDebours(ajout.categorie)) {
+              <p class="hint large">Cette catégorie concerne en général un dossier : choisissez « Liée à un dossier » pour la rattacher et la refacturer.</p>
+            }
+            <div class="large"><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="ajout.beneficiaire" name="ab" placeholder="Fournisseur ou personne payée" /></div>
             <div><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="ajout.montant" name="am" /></div>
             <div class="large"><label>Observation</label><input class="in" [(ngModel)]="ajout.observation" name="ao" /></div>
           </div>
-          <div class="reglement-bloc">
-            <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
-                                [modele]="ajout" [catalogue]="catalogue()"></app-reglement-form>
-          </div>
-          <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle || (ajout.categorie === 'autre' && !ajout.precision_autre?.trim())">Ajouter à l’état</button>
+          <p class="hint">Le moyen de paiement et le compte sont orientés par les associés au moment de la décision. Les justificatifs s’ajoutent ensuite avec « 📎 Pièces ».</p>
+          <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle || (ajout.categorie === 'autre' && !ajout.precision_autre?.trim()) || (ajout.nature === 'dossier' && !ajout.dossier_id)">Ajouter à l’état</button>
         }
         @if (d.statut === 'clos') { <p class="hint">État clos. Les charges approuvées sont à décaisser dans « Dépenses &amp; caisse » ; les charges reportées reviennent dans l’état du mois suivant.</p> }
       </section>
@@ -228,9 +302,9 @@ const CATEGORIES: [string, string][] = [
           <div class="champs">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
-              <select class="in" [(ngModel)]="modele.categorie" name="mc">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+              <select class="in" [(ngModel)]="modele.categorie" name="mc"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
             @if (modele.categorie === 'autre') {
-              <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="modele.precision_autre" name="mp" placeholder="Nature de la charge" /></div>
+              <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="modele.precision_autre" name="mpa" placeholder="Nature de la charge" /></div>
             }
             <div><label>Type</label>
               <select class="in" [(ngModel)]="modele.type" name="mt"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle récurrente</option></select></div>
@@ -243,11 +317,8 @@ const CATEGORIES: [string, string][] = [
               <div><label>{{ modele.periodicite === 'annuelle' ? 'Mois d’échéance' : '1er mois du cycle' }}</label>
                 <select class="in" [(ngModel)]="modele.mois_echeance" name="me">@for (n of mois12; track n) { <option [ngValue]="n">{{ moisNom(n) }}</option> }</select></div>
             }
+            <div class="large"><label>Bénéficiaire habituel (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="modele.beneficiaire" name="mb" placeholder="Fournisseur ou personne payée" /></div>
             <div class="large cases"><label><input type="checkbox" [(ngModel)]="modele.montant_variable" name="mv" /> Le montant change d’un mois à l’autre</label></div>
-          </div>
-          <div class="reglement-bloc">
-            <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
-                                [modele]="modele" [catalogue]="catalogue()"></app-reglement-form>
           </div>
           <div class="btns">
             <button class="btn" (click)="enregistrerModele()" [disabled]="enCours() || !modele.libelle || (modele.categorie === 'autre' && !modele.precision_autre?.trim())">{{ modeleEnEdition() ? 'Enregistrer' : 'Ajouter au catalogue' }}</button>
@@ -260,6 +331,7 @@ const CATEGORIES: [string, string][] = [
   styles: [`
     :host{display:block;padding-bottom:90px}
     .creation{display:flex;gap:8px;align-items:center}
+    .groupe{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:#fffdf5}
     .sel,.in{font-family:inherit;border:1px solid var(--line);border-radius:8px;background:#fff;color:#22303f}
     .sel{padding:8px 10px;font-size:var(--fs-base)}
     .in{display:block;width:100%;box-sizing:border-box;padding:9px 12px;margin:4px 0 0;font-size:var(--fs-base)}
@@ -305,7 +377,8 @@ export class EtatChargesComponent implements OnInit {
   private readonly preview = inject(DocumentPreviewService);
 
   readonly seuil = 2;
-  readonly categories = CATEGORIES;
+  readonly categoriesCabinet = CATEGORIES_CABINET;
+  readonly categoriesDebours = CATEGORIES_DEBOURS;
   readonly mois12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   readonly etats = signal<any[]>([]);
   readonly detail = signal<any | null>(null);
@@ -330,9 +403,9 @@ export class EtatChargesComponent implements OnInit {
     this.chargerModeles();
   }
 
-  private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
+  private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', nature: 'cabinet', dossier_id: null, refacturable_client: false, beneficiaire: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
   private modeleVide(): any {
-    return { libelle: '', categorie: 'autre', precision_autre: '', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
+    return { libelle: '', categorie: 'autre', precision_autre: '', beneficiaire: '', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
   }
 
   libelleMois(m: string): string { const [a, n] = (m || '').split('-'); return `${MOIS[+n - 1] ?? ''} ${a}`; }
@@ -353,6 +426,65 @@ export class EtatChargesComponent implements OnInit {
     const m = this.catalogue().find((x) => x.code === l.mode_paiement)?.libelle ?? l.mode_paiement ?? '';
     return [m, l.compte_intitule].filter(Boolean).join(' — ') || '—';
   }
+  // Plus-value d'une ligne par rapport au mois précédent (même charge) — repère pour les montants variables.
+  ecart(l: any): string {
+    const avant = Number(l.montant_precedent); const maintenant = Number(l.montant);
+    if (!avant) return '';
+    const pct = Math.round(((maintenant - avant) / avant) * 100);
+    return pct === 0 ? ' (stable)' : ` (${pct > 0 ? '+' : ''}${pct} %)`;
+  }
+  readonly estDebours = estDebours;
+
+  // Justificatifs d'une ligne (28/10/2026).
+  readonly piecesLigneId = signal<string | null>(null);
+  readonly listePieces = signal<any[]>([]);
+  pieceType = 'facture';
+  pieceFichier: File | null = null;
+  readonly pieceEnCours = signal(false);
+  libellePiece(t: string): string { return ({ devis: 'Devis', facture: 'Facture', preuve_paiement: 'Preuve de paiement', autre: 'Autre' } as any)[t] ?? t; }
+  peutAjouterPiece(d: any, l: any): boolean { return this.auth.peut('depenses.creer') && d.statut !== 'clos' && l.decision === 'en_attente'; }
+  ouvrirPieces(d: any, l: any): void {
+    if (this.piecesLigneId() === l.id) { this.piecesLigneId.set(null); return; }
+    this.erreur.set(''); this.pieceFichier = null; this.pieceType = 'facture';
+    this.piecesLigneId.set(l.id);
+    this.chargerPieces(d.id, l.id);
+  }
+  private chargerPieces(etatId: string, ligneId: string): void {
+    this.api.piecesLigneCharge(etatId, ligneId).subscribe({ next: (p) => this.listePieces.set(p), error: () => this.listePieces.set([]) });
+  }
+  choisirPiece(ev: Event): void { this.pieceFichier = (ev.target as HTMLInputElement).files?.[0] ?? null; }
+  ajouterPiece(d: any, l: any): void {
+    if (!this.pieceFichier || this.pieceEnCours()) return;
+    this.erreur.set(''); this.pieceEnCours.set(true);
+    this.api.ajouterPieceLigneCharge(d.id, l.id, this.pieceType, this.pieceFichier).subscribe({
+      next: () => { this.pieceEnCours.set(false); this.pieceFichier = null; this.chargerPieces(d.id, l.id); this.fini(); this.piecesLigneId.set(l.id); },
+      error: (e) => { this.pieceEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
+    });
+  }
+  apercuPiece(d: any, l: any, p: any): void { this.preview.ouvrir(p.nom, this.api.telechargerPieceLigneCharge(d.id, l.id, p.id)); }
+  retirerPiece(d: any, l: any, p: any): void {
+    if (!confirm(`Retirer le justificatif « ${p.nom} » ?`)) return;
+    this.api.retirerPieceLigneCharge(d.id, l.id, p.id).subscribe({
+      next: () => { this.chargerPieces(d.id, l.id); this.fini(); this.piecesLigneId.set(l.id); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
+  // Décision groupée (facultative).
+  readonly groupeOuvert = signal(false);
+  groupe: any = { mode_paiement: '', compte_id: '', references: {} };
+  aApprouver(d: any): any[] { return d.lignes.filter((l: any) => l.decision === 'en_attente' && Number(l.montant) > 0); }
+  totalAApprouver(d: any): number { return this.aApprouver(d).reduce((s: number, l: any) => s + Number(l.montant), 0); }
+  approuverTout(d: any): void {
+    const n = this.aApprouver(d).length;
+    if (!confirm(`Approuver ${n} ligne(s) pour ${this.totalAApprouver(d).toLocaleString('fr-FR')} FCFA ? Les dépenses correspondantes passeront « à décaisser ».`)) return;
+    this.enCours.set(true);
+    this.api.approuverToutEtatCharges(d.id, { mode_paiement: this.groupe.mode_paiement || null, compte_id: this.groupe.compte_id || null }).subscribe({
+      next: () => { this.groupeOuvert.set(false); this.groupe = { mode_paiement: '', compte_id: '', references: {} }; this.fini(); },
+      error: (e) => this.echec(e),
+    });
+  }
+
   decisionsPrises(d: any): boolean { return d.lignes.some((l: any) => l.decision !== 'en_attente'); }
   aDecider(d: any): boolean { return d.lignes.some((l: any) => l.decision === 'en_attente'); }
 
@@ -396,13 +528,13 @@ export class EtatChargesComponent implements OnInit {
   }
 
   editer(l: any): void {
-    this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
+    this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', nature: l.nature ?? 'cabinet', dossier_id: l.dossier_id ?? null, dossier_numero: l.dossier_numero ?? null, refacturable_client: !!l.refacturable_client, beneficiaire: l.beneficiaire ?? '', type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
       periode_debut: l.periode_debut ?? '', periode_fin: l.periode_fin ?? '', mode_paiement: l.mode_paiement ?? '', compte_id: l.compte_id ?? '', references: {}, motif: '' };
     this.edition.set(l);
   }
   private charge(): any {
     const f = this.form;
-    return { libelle: f.libelle, categorie: f.categorie, precision_autre: f.categorie === 'autre' ? f.precision_autre : null, type: f.type, montant: Number(f.montant), observation: f.observation || null,
+    return { libelle: f.libelle, categorie: f.categorie, precision_autre: f.categorie === 'autre' ? f.precision_autre : null, nature: f.nature, dossier_id: f.nature === 'dossier' ? f.dossier_id : null, refacturable_client: f.nature === 'dossier' && !!f.refacturable_client, beneficiaire: f.beneficiaire || null, type: f.type, montant: Number(f.montant), observation: f.observation || null,
       periode_debut: f.periode_debut || null, periode_fin: f.periode_fin || null, mode_paiement: f.mode_paiement || null, compte_id: f.compte_id || null };
   }
   enregistrerLigne(etatId: string, ligneId: string): void {
@@ -423,21 +555,21 @@ export class EtatChargesComponent implements OnInit {
   ajouterLigne(etatId: string): void {
     const a = this.ajout;
     this.enCours.set(true);
-    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, precision_autre: a.categorie === 'autre' ? a.precision_autre : null, type: 'ponctuelle', montant: Number(a.montant || 0),
+    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, precision_autre: a.categorie === 'autre' ? a.precision_autre : null, nature: a.nature, dossier_id: a.nature === 'dossier' ? a.dossier_id : null, refacturable_client: a.nature === 'dossier' && !!a.refacturable_client, beneficiaire: a.beneficiaire || null, type: 'ponctuelle', montant: Number(a.montant || 0),
       observation: a.observation || null, mode_paiement: a.mode_paiement || null, compte_id: a.compte_id || null }).subscribe({
       next: () => { this.ajout = this.ligneVide(); this.fini(); }, error: (e) => this.echec(e) });
   }
 
   nouveauModele(): void { this.modele = this.modeleVide(); this.modeleEnEdition.set(null); }
   editerModele(m: any): void {
-    this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
+    this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', beneficiaire: m.beneficiaire ?? '', type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
       periodicite: m.periodicite, mois_echeance: m.mois_echeance ?? 1, mode_paiement: m.mode_paiement ?? '', compte_id: m.compte_id ?? '', references: {} };
     this.modeleEnEdition.set(m.id);
   }
   enregistrerModele(): void {
     const m = this.modele;
     this.enCours.set(true);
-    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, precision_autre: m.categorie === 'autre' ? m.precision_autre : null, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
+    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, precision_autre: m.categorie === 'autre' ? m.precision_autre : null, beneficiaire: m.beneficiaire || null, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
       montant_variable: !!m.montant_variable, periodicite: m.periodicite, mois_echeance: m.periodicite === 'mensuelle' ? null : Number(m.mois_echeance),
       mode_paiement: m.mode_paiement || null, compte_id: m.compte_id || null }, this.modeleEnEdition() ?? undefined).subscribe({
       next: () => { this.nouveauModele(); this.erreur.set(''); this.enCours.set(false); this.chargerModeles(); }, error: (e) => this.echec(e) });

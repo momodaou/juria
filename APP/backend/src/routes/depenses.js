@@ -54,7 +54,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement, d.references_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              d.facture_id, d.dossier_id, d.nature, c.intitule AS compte,
+              d.facture_id, d.dossier_id, d.nature, d.beneficiaire, c.intitule AS compte,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
               EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
@@ -117,13 +117,14 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id, recurrente,
-          soumis_par, cree_par, references_paiement)
+          soumis_par, cree_par, references_paiement, beneficiaire)
        VALUES ($14,$1::type_depense,COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5,current_date),
-               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13,$15::jsonb)
+               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13,$15::jsonb,$16)
        RETURNING id, nature, type, categorie, libelle, montant, statut`,
       [b.type, b.categorie, b.libelle, b.montant, b.date_depense || null, regl.valeurs.mode_paiement,
        regl.valeurs.compte_id, b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : false,
-       n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references)]
+       n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references),
+       String(b.beneficiaire || '').trim().slice(0, 160) || null]
     );
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -564,8 +565,17 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
   const b = req.body || {};
   try {
     const { rows: [d] } = await pool.query(
-      "SELECT statut, mode_paiement, compte_id, references_paiement FROM depenses WHERE id = $1", [req.params.id]);
+      "SELECT statut, montant, mode_paiement, compte_id, references_paiement FROM depenses WHERE id = $1", [req.params.id]);
     if (!d || d.statut !== "validee") return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
+    // Justificatif exigé au-delà d'un seuil (réglage facultatif, 0 = désactivé) : au moins une facture ou une pièce « autre ».
+    const { rows: [par] } = await pool.query("SELECT seuil_justificatif_decaissement AS seuil FROM parametres_cabinet WHERE id = 1");
+    const seuil = Number(par && par.seuil);
+    if (seuil > 0 && Number(d.montant) >= seuil) {
+      const { rows: [j] } = await pool.query("SELECT 1 FROM depense_pieces WHERE depense_id = $1 AND type IN ('facture','autre') LIMIT 1", [req.params.id]);
+      if (!j) {
+        return res.status(409).json({ error: `Un justificatif (facture ou autre pièce) est exigé avant de décaisser une dépense de ${seuil.toLocaleString("fr-FR")} FCFA ou plus : ajoutez-le dans « Pièces / devis ».` });
+      }
+    }
     // Le moyen, le compte et les références peuvent être précisés ou corrigés au
     // décaissement ; les références du moyen sont alors exigées (l'argent sort).
     const regl = await preparerDecaissement(pool, {

@@ -188,6 +188,10 @@ import { ROLES } from '../../core/roles';
               <label>Plafond par dépense — petite caisse (FCFA)</label>
               <input class="in" type="number" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
             </div>
+            <div>
+              <label>Justificatif exigé avant décaissement à partir de (FCFA)</label>
+              <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.seuil_justificatif_decaissement" name="seuilJustificatif" placeholder="0 = non exigé" />
+            </div>
           </div>
           <button class="btn" (click)="enregistrerParametres()">Enregistrer</button>
           @if (parametresMessage()) { <p class="muted" style="margin-top:8px">{{ parametresMessage() }}</p> }

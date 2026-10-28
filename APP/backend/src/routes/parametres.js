@@ -29,7 +29,7 @@ const router = express.Router();
 router.get("/honoraires", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense
+      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement
        FROM parametres_cabinet WHERE id = 1`
     );
     res.json(rows[0]);
@@ -54,10 +54,11 @@ router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), a
          frais_procedure_pro_bono_min_xof = COALESCE($1, frais_procedure_pro_bono_min_xof),
          quota_pro_bono_mensuel = COALESCE($2, quota_pro_bono_mensuel),
          seuil_alerte_vignettes = COALESCE($3, seuil_alerte_vignettes),
-         petite_caisse_plafond_depense = COALESCE($4, petite_caisse_plafond_depense)
+         petite_caisse_plafond_depense = COALESCE($4, petite_caisse_plafond_depense),
+         seuil_justificatif_decaissement = COALESCE($5, seuil_justificatif_decaissement)
        WHERE id = 1
-       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense`,
-      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null]
+       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement`,
+      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null, b.seuil_justificatif_decaissement ?? null]
     );
     res.json(rows[0]);
   } catch (e) {

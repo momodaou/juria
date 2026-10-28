@@ -5578,3 +5578,50 @@ ALTER TABLE charges_modeles ALTER COLUMN periodicite TYPE VARCHAR(20);
 -- ============================================================
 ALTER TABLE charges_modeles ADD COLUMN IF NOT EXISTS precision_autre VARCHAR(120);
 ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS precision_autre VARCHAR(120);
+
+-- ============================================================
+-- ÉTAT DES CHARGES : catégories étoffées, justificatifs, dossier, bénéficiaire (28/10/2026)
+-- (a) valeurs d'ENUM : à importer SEPARÉMENT en production (ALTER TYPE ADD VALUE) ;
+-- (b) le reste est indépendant des nouvelles valeurs.
+-- ============================================================
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'telephonie_fixe';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'credit_telephonique';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'transport';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'papeterie';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'petit_materiel';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'impressions';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'encres';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'maintenance_informatique';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'reparation';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'abonnements';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'assurance';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_bancaires';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_expedition';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_consignation';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_grosse';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'extrait_plumitif';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_diligences';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_huissier';
+
+ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS nature VARCHAR(10) NOT NULL DEFAULT 'cabinet';
+ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS dossier_id UUID REFERENCES dossiers(id) ON DELETE SET NULL;
+ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS refacturable_client BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS beneficiaire VARCHAR(160);
+ALTER TABLE charges_modeles ADD COLUMN IF NOT EXISTS beneficiaire VARCHAR(160);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS beneficiaire VARCHAR(160);
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS seuil_justificatif_decaissement NUMERIC(14,0) NOT NULL DEFAULT 0;
+
+-- Pièces justificatives d'une ligne de l'état (avant et après soumission) ; à l'approbation elles sont
+-- recopiées (fichier compris) dans depense_pieces.
+CREATE TABLE IF NOT EXISTS etats_charges_pieces (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ligne_id       UUID NOT NULL REFERENCES etats_charges_lignes(id) ON DELETE CASCADE,
+    type           VARCHAR(20) NOT NULL CHECK (type IN ('devis','facture','preuve_paiement','autre')),
+    nom            VARCHAR(240) NOT NULL,
+    type_mime      VARCHAR(120),
+    taille_octets  BIGINT,
+    chemin_storage TEXT NOT NULL,
+    ajoute_par     UUID REFERENCES utilisateurs(id),
+    ajoute_le      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_etats_charges_pieces_ligne ON etats_charges_pieces(ligne_id);
