@@ -4327,3 +4327,10 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - `POST /api/documents` : champ `nom` facultatif, extension d'origine conservée. Nouveau `PUT /api/documents/:id/nom` (permission `documents.creer`, contrôle de confidentialité du document, `modifie_le/modifie_par`, journal d'audit `document_renomme` avant/après ; rien n'est journalisé si le nom ne change pas). Le chemin dans le bucket ne change jamais.
 - Écran dossier : champ « Nom du document » (pré-rempli) après choix du fichier ; action « Renommer » dans le menu ⋮ de chaque pièce (saisie sans l'extension).
 - Tests : `renommerDocument.test.js` (6) — suite complète 768/768 ; build Angular OK.
+- Déployé : API `juria-00191-zll` ; 1re construction du frontend en échec (erreur réseau de `npm install` dans Cloud Build), relancée avec succès. `/health` et `/` = 200.
+
+## 28/10/2026 — État des charges : précision de la catégorie « Autre »
+- Constat : aucun champ pour préciser « Autre » (charges habituelles et ponctuelles). Colonne `precision_autre VARCHAR(120)` sur `charges_modeles` et `etats_charges_lignes` (migration idempotente, bloc final de schema.sql).
+- API (`charges.js`, `preciserAutre`) : précision obligatoire si catégorie « Autre » (400 sinon, 120 car. max), ignorée (NULL) pour une autre catégorie ; recopiée du catalogue et des reports vers les lignes de l'état ; modifiable en préparation. Pas exigée pour la correction de montant par les associés après soumission.
+- Écran : champ « Précisez « Autre » * » affiché dès que « Autre » est choisi (catalogue, ligne ponctuelle, modification d'une ligne) ; étiquette « Autre : … » dans les listes ; boutons désactivés tant que la précision manque.
+- Les charges existantes en catégorie « Autre » n'ont pas de précision : à renseigner à la prochaine modification. Tests : 771/771 ; build Angular OK.

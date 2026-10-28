@@ -101,6 +101,7 @@ const CATEGORIES: [string, string][] = [
             <tr [class.retard-ligne]="l.retard_mois >= seuil && l.decision === 'en_attente'">
               <td>
                 <b>{{ l.libelle }}</b>
+                @if (l.categorie === 'autre' && l.precision_autre) { <span class="tag">Autre : {{ l.precision_autre }}</span> }
                 @if (l.type !== 'fixe') { <span class="tag">ponctuelle</span> }
                 @if (l.report_de) { <span class="tag report">reportée · retard {{ l.retard_mois }} mois</span> }
                 @if (l.observation) { <div class="obs">{{ l.observation }}</div> }
@@ -138,6 +139,9 @@ const CATEGORIES: [string, string][] = [
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
                       <div><label>Catégorie</label>
                         <select class="in" [(ngModel)]="form.categorie" name="ec">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+                      @if (form.categorie === 'autre') {
+                        <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="form.precision_autre" name="ep" placeholder="Nature de la charge" /></div>
+                      }
                       <div><label>Type</label>
                         <select class="in" [(ngModel)]="form.type" name="et"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle</option></select></div>
                       <div><label>Période — début</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="ed" /></div>
@@ -164,7 +168,7 @@ const CATEGORIES: [string, string][] = [
                     </div>
                   } @else {
                     <div class="btns">
-                      <button class="btn sm" (click)="enregistrerLigne(d.id, l.id)" [disabled]="enCours() || !form.libelle">Enregistrer</button>
+                      <button class="btn sm" (click)="enregistrerLigne(d.id, l.id)" [disabled]="enCours() || !form.libelle || (form.categorie === 'autre' && !form.precision_autre?.trim())">Enregistrer</button>
                       <button class="lien" (click)="edition.set(null)">Annuler</button>
                     </div>
                   }
@@ -180,6 +184,9 @@ const CATEGORIES: [string, string][] = [
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="ajout.libelle" name="al" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="ajout.categorie" name="ac">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+            @if (ajout.categorie === 'autre') {
+              <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="ajout.precision_autre" name="ap" placeholder="Nature de la charge" /></div>
+            }
             <div><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="ajout.montant" name="am" /></div>
             <div class="large"><label>Observation</label><input class="in" [(ngModel)]="ajout.observation" name="ao" /></div>
           </div>
@@ -187,7 +194,7 @@ const CATEGORIES: [string, string][] = [
             <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
                                 [modele]="ajout" [catalogue]="catalogue()"></app-reglement-form>
           </div>
-          <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle">Ajouter à l’état</button>
+          <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle || (ajout.categorie === 'autre' && !ajout.precision_autre?.trim())">Ajouter à l’état</button>
         }
         @if (d.statut === 'clos') { <p class="hint">État clos. Les charges approuvées sont à décaisser dans « Dépenses &amp; caisse » ; les charges reportées reviennent dans l’état du mois suivant.</p> }
       </section>
@@ -201,7 +208,7 @@ const CATEGORIES: [string, string][] = [
           <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
           @for (m of modeles(); track m.id) {
             <tr>
-              <td><b>{{ m.libelle }}</b> @if (m.montant_variable) { <span class="tag">montant variable</span> }</td>
+              <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> }</td>
               <td>{{ libellePeriodicite(m) }}</td>
               <td class="num">{{ m.montant_habituel | number }}</td>
               <td>{{ moyen(m) }}</td>
@@ -220,6 +227,9 @@ const CATEGORIES: [string, string][] = [
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="modele.categorie" name="mc">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
+            @if (modele.categorie === 'autre') {
+              <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="modele.precision_autre" name="mp" placeholder="Nature de la charge" /></div>
+            }
             <div><label>Type</label>
               <select class="in" [(ngModel)]="modele.type" name="mt"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle récurrente</option></select></div>
             <div><label>Montant habituel (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="modele.montant_habituel" name="mm" /></div>
@@ -238,7 +248,7 @@ const CATEGORIES: [string, string][] = [
                                 [modele]="modele" [catalogue]="catalogue()"></app-reglement-form>
           </div>
           <div class="btns">
-            <button class="btn" (click)="enregistrerModele()" [disabled]="enCours() || !modele.libelle">{{ modeleEnEdition() ? 'Enregistrer' : 'Ajouter au catalogue' }}</button>
+            <button class="btn" (click)="enregistrerModele()" [disabled]="enCours() || !modele.libelle || (modele.categorie === 'autre' && !modele.precision_autre?.trim())">{{ modeleEnEdition() ? 'Enregistrer' : 'Ajouter au catalogue' }}</button>
             @if (modeleEnEdition()) { <button class="lien" (click)="nouveauModele()">Annuler</button> }
           </div>
         }
@@ -318,9 +328,9 @@ export class EtatChargesComponent implements OnInit {
     this.chargerModeles();
   }
 
-  private ligneVide(): any { return { libelle: '', categorie: 'autre', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
+  private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
   private modeleVide(): any {
-    return { libelle: '', categorie: 'autre', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
+    return { libelle: '', categorie: 'autre', precision_autre: '', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
   }
 
   libelleMois(m: string): string { const [a, n] = (m || '').split('-'); return `${MOIS[+n - 1] ?? ''} ${a}`; }
@@ -371,13 +381,13 @@ export class EtatChargesComponent implements OnInit {
   }
 
   editer(l: any): void {
-    this.form = { libelle: l.libelle, categorie: l.categorie, type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
+    this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
       periode_debut: l.periode_debut ?? '', periode_fin: l.periode_fin ?? '', mode_paiement: l.mode_paiement ?? '', compte_id: l.compte_id ?? '', references: {}, motif: '' };
     this.edition.set(l);
   }
   private charge(): any {
     const f = this.form;
-    return { libelle: f.libelle, categorie: f.categorie, type: f.type, montant: Number(f.montant), observation: f.observation || null,
+    return { libelle: f.libelle, categorie: f.categorie, precision_autre: f.categorie === 'autre' ? f.precision_autre : null, type: f.type, montant: Number(f.montant), observation: f.observation || null,
       periode_debut: f.periode_debut || null, periode_fin: f.periode_fin || null, mode_paiement: f.mode_paiement || null, compte_id: f.compte_id || null };
   }
   enregistrerLigne(etatId: string, ligneId: string): void {
@@ -398,21 +408,21 @@ export class EtatChargesComponent implements OnInit {
   ajouterLigne(etatId: string): void {
     const a = this.ajout;
     this.enCours.set(true);
-    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, type: 'ponctuelle', montant: Number(a.montant || 0),
+    this.api.ajouterLigneCharge(etatId, { libelle: a.libelle, categorie: a.categorie, precision_autre: a.categorie === 'autre' ? a.precision_autre : null, type: 'ponctuelle', montant: Number(a.montant || 0),
       observation: a.observation || null, mode_paiement: a.mode_paiement || null, compte_id: a.compte_id || null }).subscribe({
       next: () => { this.ajout = this.ligneVide(); this.fini(); }, error: (e) => this.echec(e) });
   }
 
   nouveauModele(): void { this.modele = this.modeleVide(); this.modeleEnEdition.set(null); }
   editerModele(m: any): void {
-    this.modele = { libelle: m.libelle, categorie: m.categorie, type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
+    this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
       periodicite: m.periodicite, mois_echeance: m.mois_echeance ?? 1, mode_paiement: m.mode_paiement ?? '', compte_id: m.compte_id ?? '', references: {} };
     this.modeleEnEdition.set(m.id);
   }
   enregistrerModele(): void {
     const m = this.modele;
     this.enCours.set(true);
-    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
+    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, precision_autre: m.categorie === 'autre' ? m.precision_autre : null, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
       montant_variable: !!m.montant_variable, periodicite: m.periodicite, mois_echeance: m.periodicite === 'mensuelle' ? null : Number(m.mois_echeance),
       mode_paiement: m.mode_paiement || null, compte_id: m.compte_id || null }, this.modeleEnEdition() ?? undefined).subscribe({
       next: () => { this.nouveauModele(); this.erreur.set(''); this.enCours.set(false); this.chargerModeles(); }, error: (e) => this.echec(e) });

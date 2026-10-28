@@ -5571,3 +5571,10 @@ UPDATE modeles_actes SET actif = FALSE, modifie_le = now() WHERE code = 'lettre_
 -- =====================================================================
 ALTER TABLE charges_modeles ALTER COLUMN periodicite TYPE VARCHAR(20);
 -- ============ FIN ÉTAT DES CHARGES : PERIODICITE ============
+
+-- ============================================================
+-- ÉTAT DES CHARGES : PRÉCISION DE LA CATÉGORIE « AUTRE » (28/10/2026)
+-- Nature de la charge, obligatoire quand la catégorie est « Autre » (contrôlé par l'API).
+-- ============================================================
+ALTER TABLE charges_modeles ADD COLUMN IF NOT EXISTS precision_autre VARCHAR(120);
+ALTER TABLE etats_charges_lignes ADD COLUMN IF NOT EXISTS precision_autre VARCHAR(120);

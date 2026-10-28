@@ -38,6 +38,16 @@ function libellePeriode(debut, fin) {
 // l'approbation). Message clair plutôt que l'erreur brute « value too long for type character varying ».
 const LIBELLE_MAX = 240;
 const libelleTropLong = (libelle) => String(libelle || "").trim().length > LIBELLE_MAX;
+// Catégorie « Autre » (28/10/2026) : la nature de la charge doit être précisée (120 caractères au plus) ;
+// pour toute autre catégorie la précision est ignorée (NULL).
+const PRECISION_MAX = 120;
+function preciserAutre(categorie, precision) {
+  if ((categorie || "autre") !== "autre") return { valeur: null };
+  const p = String(precision ?? "").trim();
+  if (!p) return { erreur: "Précisez la nature de la charge (catégorie « Autre »)." };
+  if (p.length > PRECISION_MAX) return { erreur: `Précision trop longue (${PRECISION_MAX} caractères au plus).` };
+  return { valeur: p };
+}
 const MESSAGE_LIBELLE = `Libellé trop long (${LIBELLE_MAX} caractères au plus) : gardez un intitulé court et mettez le détail dans le champ Observation.`;
 
 // Libellé de la dépense créée à l'approbation : « libellé — période », borné à 240 caractères (colonne
@@ -110,16 +120,18 @@ async function ecrireModele(req, res, id) {
   if (periodicite !== "mensuelle" && !(moisEch >= 1 && moisEch <= 12)) return res.status(400).json({ error: "Précisez le mois d'échéance (1 à 12) pour une charge trimestrielle ou annuelle." });
   const regl = await reglement(b);
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+  const prec = preciserAutre(b.categorie, b.precision_autre);
+  if (prec.erreur) return res.status(400).json({ error: prec.erreur });
   const v = [String(b.libelle).trim(), b.categorie || "autre", b.type || "fixe", montant, !!b.montant_variable,
-    periodicite, periodicite === "mensuelle" ? null : moisEch, regl.valeurs.mode_paiement, regl.valeurs.compte_id];
+    periodicite, periodicite === "mensuelle" ? null : moisEch, regl.valeurs.mode_paiement, regl.valeurs.compte_id, prec.valeur];
   try {
     const sql = id
       ? `UPDATE charges_modeles SET libelle=$1, categorie=$2::categorie_depense, type=$3::type_depense, montant_habituel=$4,
            montant_variable=$5, periodicite=$6, mois_echeance=$7, mode_paiement=$8::mode_paiement, compte_id=$9::uuid,
-           actif = COALESCE($11::boolean, actif)
-         WHERE id=$10::uuid RETURNING *`
-      : `INSERT INTO charges_modeles (libelle,categorie,type,montant_habituel,montant_variable,periodicite,mois_echeance,mode_paiement,compte_id,cree_par)
-         VALUES ($1,$2::categorie_depense,$3::type_depense,$4,$5,$6,$7,$8::mode_paiement,$9::uuid,$10::uuid) RETURNING *`;
+           precision_autre=$10, actif = COALESCE($12::boolean, actif)
+         WHERE id=$11::uuid RETURNING *`
+      : `INSERT INTO charges_modeles (libelle,categorie,type,montant_habituel,montant_variable,periodicite,mois_echeance,mode_paiement,compte_id,precision_autre,cree_par)
+         VALUES ($1,$2::categorie_depense,$3::type_depense,$4,$5,$6,$7,$8::mode_paiement,$9::uuid,$10,$11::uuid) RETURNING *`;
     const params = id ? [...v, id, typeof b.actif === "boolean" ? b.actif : null] : [...v, req.user.sub];
     const { rows } = await pool.query(sql, params);
     if (!rows[0]) return res.status(404).json({ error: "Charge introuvable." });
@@ -178,9 +190,9 @@ router.post("/etats", requirePermission("depenses.creer"), async (req, res) => {
     // Charges reportées non encore reprises.
     await client.query(
       `INSERT INTO etats_charges_lignes
-         (etat_id, modele_id, libelle, categorie, type, montant, periode_debut, periode_fin, observation,
+         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, observation,
           mode_paiement, compte_id, report_de, retard_mois, ordre)
-       SELECT $1::uuid, l.modele_id, l.libelle, l.categorie, l.type, l.montant, l.periode_debut, l.periode_fin, l.observation,
+       SELECT $1::uuid, l.modele_id, l.libelle, l.categorie, l.precision_autre, l.type, l.montant, l.periode_debut, l.periode_fin, l.observation,
               l.mode_paiement, l.compte_id, l.id, l.retard_mois + 1, 0
        FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id
        WHERE l.decision = 'reportee' AND e.mois < $2::date
@@ -189,8 +201,8 @@ router.post("/etats", requirePermission("depenses.creer"), async (req, res) => {
     // Charges habituelles du mois (mensuelles ; trimestrielles/annuelles à leur échéance).
     await client.query(
       `INSERT INTO etats_charges_lignes
-         (etat_id, modele_id, libelle, categorie, type, montant, periode_debut, periode_fin, mode_paiement, compte_id, ordre)
-       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.type, m.montant_habituel, $2::date,
+         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, mode_paiement, compte_id, ordre)
+       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel, $2::date,
               ($2::date + CASE m.periodicite WHEN 'mensuelle' THEN interval '1 month' WHEN 'trimestrielle' THEN interval '3 months' ELSE interval '12 months' END
                - interval '1 day')::date,
               m.mode_paiement, m.compte_id, 10
@@ -232,18 +244,20 @@ router.post("/etats/:id/lignes", requirePermission("depenses.creer"), async (req
   if (!montantValide(montant)) return res.status(400).json({ error: "Montant invalide (entier en FCFA)." });
   const regl = await reglement(b);
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+  const prec = preciserAutre(b.categorie, b.precision_autre);
+  if (prec.erreur) return res.status(400).json({ error: prec.erreur });
   try {
     const etat = await etatDe(req.params.id);
     if (!etat) return res.status(404).json({ error: "État introuvable." });
     if (etat.statut !== "en_preparation") return res.status(409).json({ error: "L'état est déjà soumis : rouvrez-le pour ajouter une ligne." });
     const { rows } = await pool.query(
       `INSERT INTO etats_charges_lignes
-         (etat_id, libelle, categorie, type, montant, periode_debut, periode_fin, observation, mode_paiement, compte_id, ordre)
+         (etat_id, libelle, categorie, type, montant, periode_debut, periode_fin, observation, mode_paiement, compte_id, precision_autre, ordre)
        SELECT e.id, $2, $3::categorie_depense, $4::type_depense, $5, COALESCE($6::date, e.mois),
-              COALESCE($7::date, $6::date, (e.mois + interval '1 month' - interval '1 day')::date), $8, $9::mode_paiement, $10::uuid, 20
+              COALESCE($7::date, $6::date, (e.mois + interval '1 month' - interval '1 day')::date), $8, $9::mode_paiement, $10::uuid, $11, 20
        FROM etats_charges e WHERE e.id = $1::uuid RETURNING *`,
       [req.params.id, String(b.libelle).trim(), b.categorie || "autre", b.type || "ponctuelle", montant,
-       b.periode_debut || null, b.periode_fin || null, b.observation || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id]);
+       b.periode_debut || null, b.periode_fin || null, b.observation || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id, prec.valeur]);
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });
@@ -270,15 +284,23 @@ router.put("/etats/:id/lignes/:ligneId", requirePermission("depenses.consulter")
     const libelle = prepa && b.libelle !== undefined ? String(b.libelle).trim() : l.libelle;
     if (!libelle) return res.status(400).json({ error: "Le libellé est requis." });
     if (libelleTropLong(libelle)) return res.status(400).json({ error: MESSAGE_LIBELLE });
+    const categorie = prepa && b.categorie ? b.categorie : l.categorie;
+    let precision = l.precision_autre;
+    if (prepa) {
+      const prec = preciserAutre(categorie, "precision_autre" in b ? b.precision_autre : l.precision_autre);
+      if (prec.erreur) return res.status(400).json({ error: prec.erreur });
+      precision = prec.valeur;
+    }
     const { rows } = await pool.query(
       `UPDATE etats_charges_lignes SET libelle=$1, categorie=$2::categorie_depense, type=$3::type_depense, montant=$4,
-         periode_debut=$5::date, periode_fin=$6::date, observation=$7, mode_paiement=$8::mode_paiement, compte_id=$9::uuid
+         periode_debut=$5::date, periode_fin=$6::date, observation=$7, mode_paiement=$8::mode_paiement, compte_id=$9::uuid,
+         precision_autre=$11
        WHERE id=$10::uuid RETURNING *`,
-      [libelle, prepa && b.categorie ? b.categorie : l.categorie, prepa && b.type ? b.type : l.type, montant,
+      [libelle, categorie, prepa && b.type ? b.type : l.type, montant,
        prepa && "periode_debut" in b ? b.periode_debut || null : l.periode_debut,
        prepa && "periode_fin" in b ? b.periode_fin || null : l.periode_fin,
        prepa && "observation" in b ? b.observation || null : l.observation,
-       regl.valeurs.mode_paiement, regl.valeurs.compte_id, l.id]);
+       regl.valeurs.mode_paiement, regl.valeurs.compte_id, l.id, precision]);
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });

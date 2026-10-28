@@ -21,8 +21,8 @@ describe("Catalogue des charges habituelles", () => {
   test("création, périodicité exigeant un mois d'échéance, moyen/compte compatibles", async () => {
     expect((await post("/api/charges/modeles", { libelle: "Loyer", categorie: "loyer", montant_habituel: 450000, mode_paiement: "virement", compte_id: banque })).status).toBe(201);
     expect((await post("/api/charges/modeles", { libelle: "Café", categorie: "consommables", type: "ponctuelle", montant_habituel: 30000, montant_variable: true })).status).toBe(201);
-    expect((await post("/api/charges/modeles", { libelle: "RC pro", categorie: "autre", montant_habituel: 900000, periodicite: "annuelle", mois_echeance: 11 })).status).toBe(201);
-    expect((await post("/api/charges/modeles", { libelle: "Trimestrielle", montant_habituel: 1, periodicite: "trimestrielle" })).status).toBe(400);
+    expect((await post("/api/charges/modeles", { libelle: "RC pro", categorie: "autre", precision_autre: "Assurance professionnelle", montant_habituel: 900000, periodicite: "annuelle", mois_echeance: 11 })).status).toBe(201);
+    expect((await post("/api/charges/modeles", { categorie: "entretien", libelle: "Trimestrielle", montant_habituel: 1, periodicite: "trimestrielle" })).status).toBe(400);
     expect((await post("/api/charges/modeles", { libelle: "X", mode_paiement: "orange_money", compte_id: banque })).status).toBe(400);
     expect((await post("/api/charges/modeles", { libelle: "", montant_habituel: 1 })).status).toBe(400);
   });
@@ -49,7 +49,7 @@ describe("Cycle d'un état mensuel", () => {
     expect(ajout.status).toBe(201);
     expect((await post(`/api/charges/etats/${octobre.id}/lignes/${loyer.id}/decision`, { decision: "approuvee" })).status).toBe(409);
     expect((await post(`/api/charges/etats/${octobre.id}/soumettre`)).status).toBe(200);
-    expect((await post(`/api/charges/etats/${octobre.id}/lignes`, { libelle: "Trop tard", montant: 1 })).status).toBe(409);
+    expect((await post(`/api/charges/etats/${octobre.id}/lignes`, { categorie: "entretien", libelle: "Trop tard", montant: 1 })).status).toBe(409);
   });
 
   test("approbation : dépense validée créée, moyen orienté par les associés ; rejet exige un motif", async () => {
@@ -112,7 +112,7 @@ describe("Charge trimestrielle et libellés longs (28/10/2026)", () => {
   afterAll(async () => { await pool.query("DELETE FROM etats_charges WHERE mois >= '2031-01-01'; DELETE FROM charges_modeles WHERE libelle LIKE 'Essai 28/10%';"); });
 
   test("une charge habituelle trimestrielle se crée et réapparaît dans l'état du mois de son cycle", async () => {
-    const cree = await post("/api/charges/modeles", { libelle: "Essai 28/10 assurance", categorie: "autre", montant_habituel: 150000, periodicite: "trimestrielle", mois_echeance: 3 });
+    const cree = await post("/api/charges/modeles", { libelle: "Essai 28/10 assurance", categorie: "autre", precision_autre: "Assurance", montant_habituel: 150000, periodicite: "trimestrielle", mois_echeance: 3 });
     expect(cree.status).toBe(201);
     expect(cree.body.periodicite).toBe("trimestrielle");
     const mars = (await post("/api/charges/etats", { mois: "2031-03" })).body;           // mois du cycle (3, 6, 9, 12)
@@ -126,13 +126,13 @@ describe("Charge trimestrielle et libellés longs (28/10/2026)", () => {
   test("libellé de 241 caractères : message clair (catalogue, ligne ponctuelle, modification) ; 240 accepté", async () => {
     const etat = (await post("/api/charges/etats", { mois: "2031-05" })).body;
     const trop = "x".repeat(241);
-    const modele = await post("/api/charges/modeles", { libelle: trop, montant_habituel: 1 });
+    const modele = await post("/api/charges/modeles", { categorie: "entretien", libelle: trop, montant_habituel: 1 });
     expect(modele.status).toBe(400);
     expect(modele.body.error).toMatch(/Libellé trop long/);
-    const ligne = await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: trop, montant: 1000 });
+    const ligne = await post(`/api/charges/etats/${etat.id}/lignes`, { categorie: "entretien", libelle: trop, montant: 1000 });
     expect(ligne.status).toBe(400);
     expect(ligne.body.error).toMatch(/Observation/);
-    const ok = await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: "y".repeat(240), montant: 1000 });
+    const ok = await post(`/api/charges/etats/${etat.id}/lignes`, { categorie: "entretien", libelle: "y".repeat(240), montant: 1000 });
     expect(ok.status).toBe(201);
     const maj = await request(app).put(`/api/charges/etats/${etat.id}/lignes/${ok.body.id}`).set(auth()).send({ libelle: trop });
     expect(maj.status).toBe(400);
@@ -140,12 +140,52 @@ describe("Charge trimestrielle et libellés longs (28/10/2026)", () => {
 
   test("approuver une charge au libellé de 240 caractères ne déborde pas la dépense créée", async () => {
     const etat = (await post("/api/charges/etats", { mois: "2031-07" })).body;
-    const ligne = (await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: "z".repeat(240), montant: 2000 })).body;
+    const ligne = (await post(`/api/charges/etats/${etat.id}/lignes`, { categorie: "entretien", libelle: "z".repeat(240), montant: 2000 })).body;
     await post(`/api/charges/etats/${etat.id}/soumettre`);
     const dec = await post(`/api/charges/etats/${etat.id}/lignes/${ligne.id}/decision`, { decision: "approuvee" });
     expect(dec.status).toBe(200);
     const { rows } = await pool.query("SELECT libelle FROM depenses WHERE id = $1", [dec.body.depense_id]);
     expect(rows[0].libelle.length).toBeLessThanOrEqual(240);
     expect(rows[0].libelle).toMatch(/juillet 2031$/);       // la période est conservée, c'est le libellé qui est rogné
+  });
+});
+
+describe("Catégorie « Autre » : précision obligatoire (28/10/2026)", () => {
+  test("charge habituelle : refusée sans précision, trop longue refusée, précision effacée si autre catégorie", async () => {
+    expect((await post("/api/charges/modeles", { libelle: "Divers", categorie: "autre", montant_habituel: 1 })).status).toBe(400);
+    expect((await post("/api/charges/modeles", { libelle: "Divers", categorie: "autre", precision_autre: "   ", montant_habituel: 1 })).status).toBe(400);
+    expect((await post("/api/charges/modeles", { libelle: "Divers", categorie: "autre", precision_autre: "x".repeat(121), montant_habituel: 1 })).status).toBe(400);
+    const ok = await post("/api/charges/modeles", { libelle: "Abonnement revue", categorie: "autre", precision_autre: "  Documentation juridique ", montant_habituel: 1 });
+    expect(ok.status).toBe(201);
+    expect(ok.body.precision_autre).toBe("Documentation juridique");
+    const autre = await post("/api/charges/modeles", { libelle: "Eau", categorie: "consommables", precision_autre: "ignorée", montant_habituel: 1 });
+    expect(autre.body.precision_autre).toBeNull();
+    await request(app).delete(`/api/charges/modeles/${ok.body.id}`).set(auth());
+    await request(app).delete(`/api/charges/modeles/${autre.body.id}`).set(auth());
+  });
+
+  test("charge ponctuelle : précision exigée, conservée, recopiée dans l'état, modifiable", async () => {
+    const etat = await post("/api/charges/etats", { mois: "2030-05" });
+    expect(etat.status).toBe(201);
+    const id = etat.body.id;
+    expect((await post(`/api/charges/etats/${id}/lignes`, { libelle: "Imprévu", categorie: "autre", montant: 5000 })).status).toBe(400);
+    const l = await post(`/api/charges/etats/${id}/lignes`, { libelle: "Imprévu", categorie: "autre", precision_autre: "Réparation climatiseur", montant: 5000 });
+    expect(l.status).toBe(201);
+    expect(l.body.precision_autre).toBe("Réparation climatiseur");
+    const maj = await request(app).put(`/api/charges/etats/${id}/lignes/${l.body.id}`).set(auth()).send({ precision_autre: "Réparation imprimante" });
+    expect(maj.status).toBe(200);
+    expect(maj.body.precision_autre).toBe("Réparation imprimante");
+    const vide = await request(app).put(`/api/charges/etats/${id}/lignes/${l.body.id}`).set(auth()).send({ precision_autre: "" });
+    expect(vide.status).toBe(400);
+    const cat = await request(app).put(`/api/charges/etats/${id}/lignes/${l.body.id}`).set(auth()).send({ categorie: "entretien" });
+    expect(cat.body.precision_autre).toBeNull();
+  });
+
+  test("le catalogue recopie la précision dans la ligne de l'état du mois", async () => {
+    const m = await post("/api/charges/modeles", { libelle: "Frais de bouche", categorie: "autre", precision_autre: "Réceptions clients", montant_habituel: 7000 });
+    const etat = await post("/api/charges/etats", { mois: "2030-06" });
+    const ligne = etat.body.lignes.find((x) => x.libelle === "Frais de bouche");
+    expect(ligne.precision_autre).toBe("Réceptions clients");
+    await request(app).delete(`/api/charges/modeles/${m.body.id}`).set(auth());
   });
 });
