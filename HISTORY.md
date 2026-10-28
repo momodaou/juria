@@ -4361,3 +4361,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Champ « Arriéré (mois impayés avant ce mois) » dans « Modifier » et « Ajouter une charge ponctuelle » : calcule la période couverte (du plus ancien mois impayé à la fin du mois de l'état) ; étiquette « arriéré depuis <mois> » dans la liste (hors lignes reportées, qui ont leur propre étiquette). Le montant saisi est le total dû sur la période.
 - Omissions de mon bloc corrigées : le PDF des associés affiche maintenant précision « Autre », dossier (refacturable), bénéficiaire, « Arriéré », nombre de justificatifs et montant du mois précédent ; le bénéficiaire d'une dépense soumise est modifiable (PUT /depenses/:id, absent = inchangé, vide = effacé).
 - Tests 783/783, build OK, pas de migration.
+- Déployé : API `juria-00196-4sw`, frontend `juria-web-00261-9rz`, `/health` et `/` = 200.
