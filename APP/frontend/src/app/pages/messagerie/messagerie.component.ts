@@ -168,14 +168,15 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
           </div>
           @if (auth.peut('messagerie.envoyer_message')) {
             <div class="saisie">
-              <input
-                class="sel"
+              <textarea
+                class="sel saisie-zone"
+                rows="1"
                 [(ngModel)]="brouillon"
                 name="brouillon"
-                placeholder="Écrire un message…"
+                placeholder="Écrire un message… (Maj+Entrée : nouvelle ligne)"
                 (input)="onSaisie()"
-                (keydown.enter)="envoyer()"
-              />
+                (keydown.enter)="surEntree($event)"
+              ></textarea>
               <button
                 type="button"
                 class="btn-important"
@@ -311,6 +312,7 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     .msg.moi .msg-heure{color:#cfd6e3}
     .saisie{display:flex;gap:8px;margin-top:10px}
     .saisie .sel{flex:1}
+    .saisie-zone{resize:none;min-height:36px;max-height:140px;field-sizing:content;font-family:inherit}
     .btn-important{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;color:var(--grey)}
     .btn-important.actif{background:#fdecec;border-color:#e08a8a;color:#b23b3b;font-weight:600}
     .msg.important{border:1px solid #e08a8a}
@@ -569,6 +571,13 @@ export class MessagerieComponent implements OnInit, OnDestroy {
   // sécurité pour le cas où la diffusion temps réel échoue silencieusement
   // (message trop long pour pg_notify, voir messagerie-bus.js) : sans lui,
   // l'émetteur d'un tel message ne le voyait jamais apparaître.
+  // Entrée envoie ; Maj+Entrée insère un retour à la ligne.
+  surEntree(ev: Event): void {
+    if ((ev as KeyboardEvent).shiftKey) return;
+    ev.preventDefault();
+    this.envoyer();
+  }
+
   envoyer(): void {
     const contenu = this.brouillon.trim();
     const id = this.messagerie.conversationActiveId();

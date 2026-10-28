@@ -166,8 +166,8 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
             </div>
             @if (auth.peut('messagerie.envoyer_message')) {
               <div class="mw-saisie">
-                <input class="mw-input" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message…"
-                       (input)="onSaisie()" (keydown.enter)="envoyer()" />
+                <textarea class="mw-input mw-zone" rows="1" [(ngModel)]="brouillon" name="mwBrouillon" placeholder="Écrire un message… (Maj+Entrée : nouvelle ligne)"
+                       (input)="onSaisie()" (keydown.enter)="surEntree($event)"></textarea>
                 <button
                   type="button"
                   class="mw-icon-btn mw-important-btn"
@@ -262,6 +262,7 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     .mw-saisie{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);flex-shrink:0}
     .mw-input{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:var(--fs-base);width:100%}
     .mw-saisie .mw-input{flex:1}
+    .mw-zone{resize:none;min-height:34px;max-height:120px;field-sizing:content;font-family:inherit}
     .mw-btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:7px 12px;font-weight:600;font-size:var(--fs-base);cursor:pointer;white-space:nowrap}
     .mw-btn:disabled{opacity:.6;cursor:not-allowed}
     .mw-point{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4caf7d;margin-right:5px;flex-shrink:0}
@@ -537,6 +538,13 @@ export class MessagerieWidgetComponent implements OnInit {
       },
       error: () => this.creationEnCours.set(false),
     });
+  }
+
+  // Entrée envoie ; Maj+Entrée insère un retour à la ligne.
+  surEntree(ev: Event): void {
+    if ((ev as KeyboardEvent).shiftKey) return;
+    ev.preventDefault();
+    this.envoyer();
   }
 
   envoyer(): void {

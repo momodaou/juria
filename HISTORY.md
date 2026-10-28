@@ -4317,3 +4317,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - **Corrections** : `periodicite` → `VARCHAR(20)` (`schema.sql` + `ALTER` idempotent, la contrainte CHECK est conservée) ; libellé limité à 240 caractères avec message clair (« gardez un intitulé court et mettez le détail dans le champ Observation ») sur le catalogue, l'ajout et la modification d'une ligne, et `maxlength` à l'écran ; le libellé de la dépense créée à l'approbation (« libellé — période ») est désormais borné à 240 en rognant le libellé et jamais la période (il pouvait déborder pour un libellé de 225 à 240 caractères).
 - **Vérification** : tests backend **762/762** (3 nouveaux : trimestrielle créée et présente dans l'état de son cycle seulement, libellés de 240/241 caractères, approbation d'un libellé de 240 caractères), build Angular OK. Migration : `migration-periodicite-charges.sql` (racine, non committée).
 - **Déployé (28/10/2026, lancé par l'utilisateur via `!`)** : migration Cloud SQL importée (succès), puis API `juria-00190-2fs` et frontend `juria-web-00254-lbf` ; `/health` et `/` en 200 ; fichier de migration supprimé du dépôt.
+
+## 28/10/2026 — Messagerie : messages sur plusieurs lignes
+- Zone de saisie (écran plein page et widget) passée de `<input>` à `<textarea>` : Entrée envoie, Maj+Entrée insère un retour à la ligne. L'affichage conservait déjà les sauts de ligne (`white-space: pre-wrap`). Build Angular OK ; frontend seul à déployer.
+- Déployé : frontend `juria-web-00255-q2l`, `/` = 200.
