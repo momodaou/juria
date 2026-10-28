@@ -4340,3 +4340,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Constat : suppression d'un achat refusée (« rendrait le stock négatif ») car des vignettes de test avaient été utilisées ; aucune action ne permettait d'annuler une utilisation, et retirer l'instance d'un dossier laisse l'utilisation comptée (instance_id → NULL), donc introuvable depuis l'écran.
 - `GET /api/depenses/vignettes/utilisations` et `DELETE /api/depenses/vignettes/utilisations/:id` (permission `depenses.vignettes.mouvement`) : le numéro redevient disponible, la dépense « Vignette de plaidoirie n°… » créée à l'utilisation est supprimée, journal d'audit `annuler_utilisation_vignette`.
 - Écran Dépenses & caisse › Vignettes : tableau « Vignettes utilisées » (étiquette « sans instance » pour les orphelines) avec « Annuler ». Tests 773/773, build OK. Pas de migration.
+- Déployé : API `juria-00193-nbg`, frontend `juria-web-00258-d2b`, `/health` et `/` = 200.
