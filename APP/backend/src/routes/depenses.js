@@ -326,6 +326,43 @@ router.delete("/vignettes/achats/:id", requirePermission("depenses.vignettes.mou
   finally { client.release(); }
 });
 
+// Vignettes utilisées (28/10/2026) — liste et annulation d'une utilisation (saisie de test ou d'erreur,
+// y compris une vignette « orpheline » dont l'instance a été retirée du dossier). Le numéro redevient
+// disponible dans le stock et la dépense « Vignette de plaidoirie n°… » créée à l'utilisation est supprimée.
+router.get("/vignettes/utilisations", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT v.id, v.numero_vignette, v.date_mouvement, v.refacturee, v.instance_id,
+              d.numero AS dossier_numero, d.intitule AS dossier_intitule, u.prenom || ' ' || u.nom AS par
+       FROM vignettes_plaidoirie v
+       LEFT JOIN dossiers d ON d.id = v.dossier_id
+       LEFT JOIN utilisateurs u ON u.id = v.cree_par
+       WHERE v.mouvement = 'utilisation' ORDER BY v.date_mouvement DESC, v.cree_le DESC LIMIT 100`);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+router.delete("/vignettes/utilisations/:id", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [u] } = await client.query(
+      "SELECT id, numero_vignette, dossier_id, depense_id FROM vignettes_plaidoirie WHERE id = $1 AND mouvement = 'utilisation' FOR UPDATE", [req.params.id]);
+    if (!u) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Utilisation introuvable" }); }
+    await client.query("UPDATE vignettes_numeros_stock SET disponible = TRUE, utilisation_id = NULL WHERE utilisation_id = $1", [u.id]);
+    await client.query("DELETE FROM vignettes_plaidoirie WHERE id = $1", [u.id]);
+    if (u.depense_id) await client.query("DELETE FROM depenses WHERE id = $1 AND categorie = 'vignette_plaidoirie'", [u.depense_id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "annuler_utilisation_vignette", entite: "vignettes_plaidoirie", entiteId: u.id,
+      details: { numero_vignette: u.numero_vignette, dossier_id: u.dossier_id }, ip: req.ip });
+    res.status(204).end();
+  } catch (e) {
+    await client.query("ROLLBACK"); console.error(e);
+    if (e.code === "23503") return res.status(409).json({ error: "La dépense liée à cette vignette est référencée ailleurs : annulation impossible." });
+    res.status(500).json({ error: "Erreur serveur" });
+  } finally { client.release(); }
+});
+
 // PUT /api/depenses/:id — corriger une dépense avant décision (19/09/2026,
 // gap comblé — jusqu'ici seul recours : la rejeter puis la resaisir).
 // Restreint au déposant lui-même OU à quelqu'un habilité à décider

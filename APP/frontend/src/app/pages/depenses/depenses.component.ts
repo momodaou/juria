@@ -361,6 +361,22 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             }
           </table>
         }
+        @if (utilisationsVignettes().length) {
+          <h4 class="sous-titre" style="margin-top:14px">Vignettes utilisées</h4>
+          <table>
+            <tr><th>Date</th><th>N°</th><th>Dossier</th><th>Par</th><th></th></tr>
+            @for (u of utilisationsVignettes(); track u.id) {
+              <tr>
+                <td>{{ u.date_mouvement | date:'dd/MM/yyyy' }}</td>
+                <td>{{ u.numero_vignette ? pad7(u.numero_vignette) : '—' }}</td>
+                <td>{{ u.dossier_numero ? u.dossier_numero + ' — ' + u.dossier_intitule : '—' }}@if (!u.instance_id) { <span class="tag">sans instance</span> }</td>
+                <td>{{ u.par || '—' }}</td>
+                <td><button class="lien" (click)="annulerUtilisation(u)">Annuler</button></td>
+              </tr>
+            }
+          </table>
+          <p class="muted" style="margin-top:6px">Annuler une utilisation remet le numéro en stock et supprime la dépense « Vignette de plaidoirie » correspondante. À réserver aux saisies de test ou d’erreur.</p>
+        }
       }
     </section>
   `,
@@ -442,6 +458,7 @@ export class DepensesComponent implements OnInit {
     this.chargerCaisse();
     if (this.auth.peut('depenses.petite_caisse.doter')) { this.chargerRapprochements(); this.chargerDotations(); }
     this.chargerAchatsVignettes();
+    this.chargerUtilisationsVignettes();
     this.chargerStockVignettes();
   }
 
@@ -553,6 +570,20 @@ export class DepensesComponent implements OnInit {
   readonly achatsVignettes = signal<any[]>([]);
   chargerAchatsVignettes(): void {
     if (this.auth.peut('depenses.vignettes.mouvement')) this.api.achatsVignettes().subscribe({ next: (r) => this.achatsVignettes.set(r), error: () => {} });
+  }
+  readonly utilisationsVignettes = signal<any[]>([]);
+  chargerUtilisationsVignettes(): void {
+    if (this.auth.peut('depenses.vignettes.mouvement')) this.api.utilisationsVignettes().subscribe({ next: (r) => this.utilisationsVignettes.set(r), error: () => {} });
+  }
+  pad7(n: number): string { return String(n).padStart(7, '0'); }
+  annulerUtilisation(u: any): void {
+    const num = u.numero_vignette ? ' n°' + this.pad7(u.numero_vignette) : '';
+    if (!confirm(`Annuler l’utilisation de la vignette${num} ? Elle sera remise en stock et la dépense correspondante supprimée.`)) return;
+    this.erreur.set('');
+    this.api.annulerUtilisationVignette(u.id).subscribe({
+      next: () => { this.chargerUtilisationsVignettes(); this.chargerAchatsVignettes(); this.chargerStockVignettes(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Annulation impossible.'),
+    });
   }
   supprimerAchat(a: any): void {
     if (!confirm(`Supprimer cet achat de ${a.quantite} vignette(s) ?`)) return;

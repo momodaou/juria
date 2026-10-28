@@ -270,3 +270,43 @@ describe("Vignettes de plaidoirie — ancrage instance + facturation (08/10/2026
     expect(relecture.body.seuil_alerte_vignettes).toBe(25);
   });
 });
+
+describe("Annulation d'une utilisation de vignette (28/10/2026)", () => {
+  test("liste, annulation → numéro remis en stock, dépense supprimée ; orpheline (instance retirée) annulable aussi", async () => {
+    const base = 6000000 + Math.floor(Math.random() * 300000);
+    expect((await achat({ numeros: `${base}-${base + 1}` })).status).toBe(201);
+    const stock0 = (await request(app).get("/api/depenses/vignettes/stock").set("Authorization", `Bearer ${token}`)).body.stock;
+
+    const dossierId = await creerDossier();
+    const instanceId = await creerInstance(dossierId);
+    const util = await request(app).post(`/api/dossiers/${dossierId}/instances/${instanceId}/vignette`)
+      .set("Authorization", `Bearer ${token}`).send({ numero_vignette: base });
+    expect(util.status).toBe(201);
+    const stockApres = (await request(app).get("/api/depenses/vignettes/stock").set("Authorization", `Bearer ${token}`)).body.stock;
+    expect(stockApres).toBe(stock0 - 1);
+
+    // Instance retirée : la vignette reste comptée, sans instance.
+    await request(app).delete(`/api/dossiers/${dossierId}/instances/${instanceId}`).set("Authorization", `Bearer ${token}`);
+    const liste = (await request(app).get("/api/depenses/vignettes/utilisations").set("Authorization", `Bearer ${token}`)).body;
+    const ligne = liste.find((u) => u.id === util.body.id);
+    expect(ligne).toBeTruthy();
+    expect(ligne.numero_vignette).toBe(base);
+    expect(ligne.instance_id).toBeNull();
+
+    expect((await request(app).delete(`/api/depenses/vignettes/utilisations/${util.body.id}`).set("Authorization", `Bearer ${token}`)).status).toBe(204);
+    expect((await request(app).get("/api/depenses/vignettes/stock").set("Authorization", `Bearer ${token}`)).body.stock).toBe(stock0);
+    const dispo = await request(app).get("/api/depenses/vignettes/numeros-disponibles").set("Authorization", `Bearer ${token}`);
+    expect(dispo.body).toContain(base);
+    const dep = await pool.query("SELECT 1 FROM depenses WHERE id = $1", [util.body.depense_id]);
+    expect(dep.rows.length).toBe(0);
+    const audit = await pool.query("SELECT 1 FROM journal_audit WHERE action = 'annuler_utilisation_vignette' AND entite_id = $1", [util.body.id]);
+    expect(audit.rows.length).toBe(1);
+    expect((await request(app).delete(`/api/depenses/vignettes/utilisations/${util.body.id}`).set("Authorization", `Bearer ${token}`)).status).toBe(404);
+  });
+
+  test("sans la permission vignettes.mouvement : refusé (403)", async () => {
+    const stagiaire = await creerUtilisateurRole("stagiaire");
+    const r = await request(app).get("/api/depenses/vignettes/utilisations").set("Authorization", `Bearer ${stagiaire.token}`);
+    expect(r.status).toBe(403);
+  });
+});

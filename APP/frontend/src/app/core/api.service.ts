@@ -953,6 +953,8 @@ export class ApiService {
   appliquerRegularisationChemises(exclure: string[]): Observable<any> { return this.http.post<any>(`${this.base}/api/stock-chemises/regularisation`, { exclure }); }
   dotationsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/dotations`); }
   achatsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/achats`); }
+  utilisationsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/utilisations`); }
+  annulerUtilisationVignette(id: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/vignettes/utilisations/${id}`); }
   supprimerAchatVignettes(id: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/vignettes/achats/${id}`); }
 
   // Petite caisse renforcée (17/10/2026)
