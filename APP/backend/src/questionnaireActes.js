@@ -18,6 +18,8 @@
 //    et parenthèses sur des champs « nombre » ou « montant », sur « liste_nombre » ou sur un autre calcul
 //    (un champ absent vaut 0 ; à placer après les champs qu'il utilise) ; mêmes balises qu'un montant ;
 //  - sous-champs d'une liste : texte | date | pieces | choix (options { valeur, libelle } ; balises « cle » et « cle_libelle ») ;
+//  - memoriser : true = la réponse est conservée par dossier (table actes_reponses) et proposée, modifiable,
+//    dans les actes suivants du même dossier (pas pour les types montant et calcul) ;
 //  - si : « autre_cle=valeur » — le champ n'est demandé (et requis) que si la condition est vraie.
 // Les clés ne doivent pas entrer en collision avec une balise du catalogue (balisesActes.js).
 
@@ -101,6 +103,9 @@ function validerDefinition(champs) {
       if (typeof c.formule !== "string") throw erreur(`champs : « ${c.cle} » (calcul) demande une formule`);
       try { evaluerFormule(c.formule, () => 1); } catch (e) { throw erreur(`champs : formule de « ${c.cle} » invalide (${e.message})`); }
     }
+    if (c.memoriser !== undefined && (typeof c.memoriser !== "boolean" || (c.memoriser && ["montant", "calcul"].includes(c.type)))) {
+      throw erreur(`champs : « memoriser » invalide pour « ${c.cle} » (booléen ; impossible pour un montant ou un calcul)`);
+    }
     if (c.devise_fixe !== undefined && !["XOF", "EUR"].includes(c.devise_fixe)) throw erreur(`champs : devise_fixe de « ${c.cle} » : XOF ou EUR`);
     if (c.si !== undefined && !/^\w+\s*(!=|=)\s*.+$/.test(c.si)) throw erreur(`champs : condition « si » invalide pour « ${c.cle} »`);
   }
@@ -154,6 +159,17 @@ function traiterMontant(c, brut) {
   };
 }
 
+// Forme conservée d'une réponse : celle que l'écran sait ré-afficher (date AAAA-MM-JJ, code d'un choix,
+// « oui »/« non », éléments de liste réduits à leurs sous-champs).
+function brutMemorisable(c, brut) {
+  if (c.type === "date") return versIso(brut);
+  if (c.type === "oui_non") return brut === true || String(brut).toLowerCase() === "oui" ? "oui" : "non";
+  if (c.type === "liste") {
+    return (Array.isArray(brut) ? brut : []).map((el) => Object.fromEntries(c.sous_champs.map((s) => [s.cle, el && el[s.cle] != null ? el[s.cle] : ""])));
+  }
+  return String(brut);
+}
+
 // reponses : objet saisi à l'écran ; plat : balises déjà calculées (valeurs par défaut) ;
 // juridictions : { code: libellé } (listes_valeurs). Renvoie { valeurs, pieces }.
 function traiterReponses(champs, reponses, plat, juridictions) {
@@ -161,6 +177,8 @@ function traiterReponses(champs, reponses, plat, juridictions) {
   const valeurs = {};
   const pieces = [];
   const numeriques = {};   // valeurs numériques disponibles pour les champs « calcul »
+  const memoire = {};      // réponses à conserver pour le dossier (champs « memoriser »)
+  const oubli = [];        // champs « memoriser » demandés mais laissés vides : à effacer de la mémoire
   for (const c of champs) {
     const demande = conditionVraie(c.si, valeurs);
     let brut = rep[c.cle];
@@ -179,6 +197,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
     }
     const vide = brut === undefined || brut === null || brut === "" || (Array.isArray(brut) && !brut.length);
     if (!demande || vide) {
+      if (c.memoriser && demande) oubli.push(c.cle);
       if (demande && c.requis) throw erreur(`« ${c.libelle} » est requis`);
       if (c.type === "liste") { valeurs[c.cle] = []; valeurs[`${c.cle}_nombre`] = "0"; numeriques[`${c.cle}_nombre`] = 0; }
       else if (c.type === "montant" || c.type === "nombre") { valeurs[c.cle] = ""; numeriques[c.cle] = 0; }
@@ -186,6 +205,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
       else valeurs[c.cle] = "";
       continue;
     }
+    if (c.memoriser) memoire[c.cle] = brutMemorisable(c, brut);
     switch (c.type) {
       case "texte":
       case "texte_long": {
@@ -267,7 +287,7 @@ function traiterReponses(champs, reponses, plat, juridictions) {
       }
     }
   }
-  return { valeurs, pieces };
+  return { valeurs, pieces, memoire, oubli };
 }
 
 module.exports = { validerDefinition, traiterReponses, evaluerFormule, TYPES, TAUX_EURO_XOF };

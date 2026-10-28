@@ -836,6 +836,13 @@ export class ApiService {
     return this.http.get(`${this.base}/api/actes/${id}/docx`, { responseType: 'blob' });
   }
 
+  // Mémoire des réponses d'un dossier, d'un acte à l'autre (28/10/2026).
+  memoireActes(dossierId: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/actes/memoire/${dossierId}`);
+  }
+  oublierMemoireActes(dossierId: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/actes/memoire/${dossierId}`);
+  }
   // Validation d'un modèle par un avocat (28/10/2026).
   validerModeleActe(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/actes/modeles/${id}/valider`, {});

@@ -28,7 +28,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
     <section class="panel">
       <h3>1. Dossier concerné</h3>
-      <app-dossier-picker [valeur]="dossierId" (valeurChange)="dossierId = $event ?? ''"></app-dossier-picker>
+      <app-dossier-picker [valeur]="dossierId" (valeurChange)="choisirDossier($event)"></app-dossier-picker>
     </section>
 
     <section class="panel">
@@ -53,9 +53,13 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         </div>
         @if (champsVisibles().length) {
           <h4 class="sous-titre">Questionnaire</h4>
+          @if (prefilles().length) {
+            <p class="muted">Réponses reprises d'un acte précédent de ce dossier : {{ libellesPrefilles() }} — vérifiez-les, elles restent modifiables.
+              <button type="button" class="lien" (click)="oublierMemoire()">Oublier les réponses mémorisées de ce dossier</button></p>
+          }
           @for (c of champsVisibles(); track c.cle) {
             <div class="champ">
-              <label>{{ c.libelle }}@if (c.requis) { <span class="req"> *</span> }</label>
+              <label>{{ c.libelle }}@if (c.requis) { <span class="req"> *</span> }@if (prefilles().includes(c.cle)) { <span class="muted"> (repris)</span> }</label>
               @if (c.aide) { <p class="muted">{{ c.aide }}</p> }
               @switch (c.type) {
                 @case ('texte') { <input class="in" [(ngModel)]="reponses[c.cle]" [name]="'q_' + c.cle" [placeholder]="c.defaut_balise ? '(rempli automatiquement si vide)' : ''" /> }
@@ -304,6 +308,9 @@ export class ActesComponent implements OnInit {
   piecesTexte = '';
   reponses: any = {};
   numeroter = true;
+  // Mémoire des réponses du dossier (28/10/2026) : proposée dans le questionnaire, jamais imposée.
+  readonly memoireDossier = signal<any>({});
+  readonly prefilles = signal<string[]>([]);
   readonly juridictions = signal<{ code: string; libelle: string }[]>([]);
   modeleCode = '';
   modeleRecherche = '';
@@ -332,6 +339,57 @@ export class ActesComponent implements OnInit {
     return this.modeles().find((m) => m.code === this.modeleCode) ?? null;
   }
 
+  choisirDossier(id: string | null): void {
+    this.dossierId = id ?? '';
+    this.memoireDossier.set({});
+    this.prefilles.set([]);
+    if (!this.dossierId) return;
+    this.chargerMemoire(this.dossierId, true);
+  }
+
+  private chargerMemoire(dossierId: string, appliquer: boolean): void {
+    this.api.memoireActes(dossierId).subscribe({
+      next: (m) => {
+        if (dossierId !== this.dossierId) return;            // le dossier a changé entre-temps
+        this.memoireDossier.set(m ?? {});
+        if (appliquer) this.appliquerMemoire();
+      },
+      error: () => {},
+    });
+  }
+
+  // Reprend, pour les champs « memoriser » du modèle, les réponses déjà données dans ce dossier.
+  private appliquerMemoire(): void {
+    const memoire = this.memoireDossier();
+    const reprises: string[] = [];
+    for (const c of this.modeleChoisi()?.champs ?? []) {
+      const v = memoire[c.cle];
+      if (!c.memoriser || v === undefined) continue;
+      if (c.type === 'choix' && !c.options.some((o: any) => o.valeur === v)) continue;
+      if (c.type === 'liste') {
+        if (!Array.isArray(v) || !v.length) continue;
+        this.reponses[c.cle] = v.map((el: any) => Object.fromEntries(c.sous_champs.map((sc: any) => [sc.cle, el?.[sc.cle] ?? ''])));
+      } else {
+        this.reponses[c.cle] = v;
+      }
+      reprises.push(c.cle);
+    }
+    this.prefilles.set(reprises);
+  }
+
+  libellesPrefilles(): string {
+    const champs = this.modeleChoisi()?.champs ?? [];
+    return this.prefilles().map((cle) => champs.find((c: any) => c.cle === cle)?.libelle ?? cle).join(' · ');
+  }
+
+  oublierMemoire(): void {
+    if (!this.dossierId || !window.confirm('Oublier les réponses mémorisées de ce dossier ? Les valeurs affichées restent dans le formulaire mais ne seront plus reprises dans les prochains actes.')) return;
+    this.api.oublierMemoireActes(this.dossierId).subscribe({
+      next: () => { this.memoireDossier.set({}); this.prefilles.set([]); },
+      error: () => this.erreur.set('Impossible d\'oublier les réponses mémorisées.'),
+    });
+  }
+
   choisirModele(code: string): void {
     this.modeleCode = code;
     this.reponses = {};
@@ -341,6 +399,7 @@ export class ActesComponent implements OnInit {
       else if (c.defaut !== undefined) this.reponses[c.cle] = c.defaut;
       else if (c.type === 'oui_non') this.reponses[c.cle] = 'non';
     }
+    this.appliquerMemoire();
   }
 
   private conditionVraie(si?: string): boolean {
@@ -394,7 +453,10 @@ export class ActesComponent implements OnInit {
     } else payload.instructions_ia = this.instructionsIa;
 
     this.api.genererActe(payload).subscribe({
-      next: (r) => { this.generation.set(false); this.resultat.set(r); this.texteEdit = r.texte; },
+      next: (r) => {
+        this.generation.set(false); this.resultat.set(r); this.texteEdit = r.texte;
+        this.chargerMemoire(this.dossierId, false);       // les réponses de cet acte serviront aux suivants
+      },
       error: (e) => { this.generation.set(false); this.erreur.set(e?.error?.error ?? 'Génération impossible.'); },
     });
   }

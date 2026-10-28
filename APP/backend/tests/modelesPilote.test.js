@@ -349,3 +349,72 @@ describe("Convention de divorce par consentement mutuel", () => {
     expect(res.body.error).toMatch(/Pension alimentaire principale/);
   });
 });
+
+describe("Mémoire des réponses par dossier (28/10/2026)", () => {
+  const memoire = (dossierId) => request(app).get(`/api/actes/memoire/${dossierId}`).set(auth());
+  const requeteDivorce = {
+    destinataire_titre: "m_president", commune: "V", mariage_date: "2022-09-06", mariage_centre: "Centre secondaire de Ville-Test",
+    mariage_commune: "Commune V du District de Bamako", option: "polygamie", regime: "autre", regime_autre: "la communauté réduite aux acquêts",
+    enfants: [{ prenom: "Aïcha", naissance: "2015-01-01", lieu: "Ville-Test" }],
+  };
+
+  async function dossierDivorce() {
+    const dossierId = await nouveauDossier();
+    await pool.query("INSERT INTO dossier_parties (dossier_id, role, denomination, civilite, type_partie) VALUES ($1,'co_demandeur','Claire TESTEUR','Mme','physique')", [dossierId]);
+    return dossierId;
+  }
+
+  test("seuls les champs marqués « memoriser » sont conservés après une génération réussie", async () => {
+    await valider("requete_divorce_consentement_mutuel");
+    const dossierId = await dossierDivorce();
+    expect((await memoire(dossierId)).body).toEqual({});
+    expect((await generer(dossierId, "requete_divorce_consentement_mutuel", requeteDivorce)).status).toBe(201);
+    const m = (await memoire(dossierId)).body;
+    expect(m.mariage_date).toBe("2022-09-06");
+    expect(m.mariage_centre).toBe("Centre secondaire de Ville-Test");
+    expect(m.option).toBe("polygamie");
+    expect(m.regime).toBe("autre");
+    expect(m.regime_autre).toBe("la communauté réduite aux acquêts");
+    expect(m.enfants).toEqual([{ prenom: "Aïcha", naissance: "2015-01-01", lieu: "Ville-Test" }]);
+    expect(m).not.toHaveProperty("commune");               // propre à cet acte : non marqué
+    expect(m).not.toHaveProperty("destinataire_titre");
+    expect(m).not.toHaveProperty("convocation");
+  });
+
+  test("un second acte met la mémoire à jour ; un champ laissé vide est oublié", async () => {
+    await valider("convention_divorce_consentement_mutuel");
+    const dossierId = await dossierDivorce();
+    await generer(dossierId, "requete_divorce_consentement_mutuel", requeteDivorce);
+    // La convention reprend le mariage mais corrige le régime et supprime les enfants.
+    const conv = await generer(dossierId, "convention_divorce_consentement_mutuel", {
+      client_est: "epoux", mariage_date: "2022-09-07", mariage_centre: "Centre secondaire de Ville-Test", mariage_commune: "Commune V du District de Bamako",
+      option: "polygamie", regime: "separation", enfants: [],
+    });
+    expect(conv.status).toBe(201);
+    const m = (await memoire(dossierId)).body;
+    expect(m.mariage_date).toBe("2022-09-07");
+    expect(m.regime).toBe("separation");
+    expect(m).not.toHaveProperty("enfants");                // vidée : oubliée
+    expect(m.regime_autre).toBe("la communauté réduite aux acquêts");   // champ non demandé cette fois : inchangé
+  });
+
+  test("une génération refusée ne mémorise rien ; la mémoire est propre à chaque dossier ; elle peut être oubliée", async () => {
+    const dossierId = await dossierDivorce();
+    const refus = await generer(dossierId, "requete_divorce_consentement_mutuel", { ...requeteDivorce, mariage_centre: undefined });
+    expect(refus.status).toBe(400);
+    expect((await memoire(dossierId)).body).toEqual({});
+    await generer(dossierId, "requete_divorce_consentement_mutuel", requeteDivorce);
+    const autre = await dossierDivorce();
+    expect((await memoire(autre)).body).toEqual({});
+    const oubli = await request(app).delete(`/api/actes/memoire/${dossierId}`).set(auth());
+    expect(oubli.status).toBe(200);
+    expect(oubli.body.oubliees).toBeGreaterThan(0);
+    expect((await memoire(dossierId)).body).toEqual({});
+  });
+
+  test("définition : « memoriser » refusé sur un montant ou une valeur non booléenne", () => {
+    expect(() => validerDefinition([{ cle: "m", libelle: "M", type: "montant", memoriser: true }])).toThrow(/memoriser/);
+    expect(() => validerDefinition([{ cle: "t", libelle: "T", type: "texte", memoriser: "oui" }])).toThrow(/memoriser/);
+    expect(() => validerDefinition([{ cle: "t", libelle: "T", type: "texte", memoriser: true }])).not.toThrow();
+  });
+});

@@ -401,7 +401,7 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
       return res.status(404).json({ error: "Dossier introuvable" });
     }
 
-    let texte, nom, categorie, courrierRef = null, courrierMeta = null;
+    let texte, nom, categorie, courrierRef = null, courrierMeta = null, memoireAEnregistrer = {}, memoireAOublier = [];
     if (b.mode === "ia") {
       if (!b.instructions_ia) {
         await client.query("ROLLBACK");
@@ -439,7 +439,9 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
         const { rows } = await pool.query("SELECT code, libelle FROM listes_valeurs WHERE domaine = 'juridiction' AND actif = TRUE");
         juridictions = Object.fromEntries(rows.map((r) => [r.code, r.libelle]));
       }
-      const { valeurs, pieces: piecesQuestionnaire } = traiterReponses(champs, b.reponses, applatirContexte(ctx), juridictions);
+      const { valeurs, pieces: piecesQuestionnaire, memoire, oubli } = traiterReponses(champs, b.reponses, applatirContexte(ctx), juridictions);
+      memoireAEnregistrer = memoire;
+      memoireAOublier = oubli;
       ctx.pieces = [...piecesQuestionnaire, ...piecesLibres];
       // 2. N/Réf : un modèle « courrier départ » réserve son numéro dans le registre du courrier (même transaction).
       if (modele.courrier_depart && b.numeroter !== false) {
@@ -470,6 +472,17 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
          VALUES ($1,'depart','lettre',current_date,'juridiction',$2,$3,$4,'numerique','recu',$5,$5,$6)`,
         [courrierRef, courrierMeta.correspondant, String(courrierMeta.objet).slice(0, 300), b.dossier_id, req.user.sub, ins.rows[0].id]
       );
+    }
+    // Mémoire des réponses du dossier (champs « memoriser ») : conservée avec l'acte, dans la même transaction.
+    for (const [cle, valeur] of Object.entries(memoireAEnregistrer)) {
+      await client.query(
+        `INSERT INTO actes_reponses (dossier_id, cle, valeur, modifie_par) VALUES ($1,$2,$3::jsonb,$4)
+         ON CONFLICT (dossier_id, cle) DO UPDATE SET valeur = EXCLUDED.valeur, modifie_par = EXCLUDED.modifie_par, modifie_le = now()`,
+        [b.dossier_id, cle, JSON.stringify(valeur), req.user.sub]
+      );
+    }
+    if (memoireAOublier.length) {
+      await client.query("DELETE FROM actes_reponses WHERE dossier_id = $1 AND cle = ANY($2::text[])", [b.dossier_id, memoireAOublier]);
     }
     await client.query("COMMIT");
     res.status(201).json({ ...ins.rows[0], texte, courrier_reference: courrierRef });
@@ -560,6 +573,30 @@ router.get("/:id/pdf", requirePermission("actes.consulter"), async (req, res) =>
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/actes/memoire/:dossierId — réponses mémorisées du dossier (clé -> valeur), pour pré-remplir le
+// questionnaire d'un nouvel acte. Réservé à qui peut générer un acte.
+router.get("/memoire/:dossierId", requirePermission("actes.generer"), async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT cle, valeur FROM actes_reponses WHERE dossier_id = $1", [req.params.dossierId]);
+    res.json(Object.fromEntries(rows.map((r) => [r.cle, r.valeur])));
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: "Dossier invalide" });
+  }
+});
+
+// DELETE /api/actes/memoire/:dossierId — oublie les réponses mémorisées du dossier.
+router.delete("/memoire/:dossierId", requirePermission("actes.generer"), async (req, res) => {
+  try {
+    const { rowCount } = await pool.query("DELETE FROM actes_reponses WHERE dossier_id = $1", [req.params.dossierId]);
+    await logAudit({ utilisateurId: req.user.sub, action: "oublier_memoire_actes", entite: "dossiers", entiteId: req.params.dossierId, details: { lignes: rowCount }, ip: req.ip });
+    res.json({ oubliees: rowCount });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: "Dossier invalide" });
   }
 });
 
