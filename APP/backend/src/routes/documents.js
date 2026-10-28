@@ -5,6 +5,8 @@ const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
+const { nomAvecExtension } = require("../nomDocument");
+const { logAudit } = require("../audit");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 
 const upload = multer({
@@ -21,7 +23,7 @@ router.post("/", requirePermission("documents.creer"), upload.single("fichier"),
   if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });
   try {
-    const nom = b.nom || req.file.originalname;
+    const nom = b.nom && String(b.nom).trim() ? nomAvecExtension(b.nom, req.file.originalname) : req.file.originalname;
     // Versioning : version = max(version) + 1 pour le même dossier + nom
     const v = await pool.query(
       "SELECT COALESCE(MAX(version), 0) + 1 AS v FROM documents WHERE dossier_id = $1 AND nom = $2",
@@ -101,6 +103,37 @@ router.put("/:id/confidentialite", requirePermission("documents.creer"), async (
     if (!rows[0]) return res.status(404).json({ error: "Document introuvable" });
     res.json(rows[0]);
   } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// PUT /api/documents/:id/nom  { nom }
+// Renomme la pièce (nom affiché seulement : le fichier stocké ne bouge pas). Extension
+// verrouillée ; même permission que le téléversement ; tracé dans le journal d'audit.
+router.put("/:id/nom", requirePermission("documents.creer"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, dossier_id, nom, confidentialite FROM documents WHERE id = $1", [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Document introuvable" });
+    const ctx = await chargerContexteDossier(pool, rows[0].dossier_id);
+    if (!estDocumentVisible(rows[0].confidentialite, ctx, req.user, false)) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
+    const nom = nomAvecExtension(req.body?.nom, rows[0].nom);
+    if (nom === rows[0].nom) return res.json({ id: rows[0].id, nom });
+    const maj = await pool.query(
+      "UPDATE documents SET nom = $1, modifie_le = NOW(), modifie_par = $2 WHERE id = $3 RETURNING id, nom",
+      [nom, req.user.sub, req.params.id]
+    );
+    await logAudit({
+      utilisateurId: req.user.sub, action: "document_renomme", entite: "document", entiteId: req.params.id,
+      details: { dossier_id: rows[0].dossier_id, avant: rows[0].nom, apres: nom }, ip: req.ip,
+    });
+    res.json(maj.rows[0]);
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }

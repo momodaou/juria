@@ -234,9 +234,10 @@ export class ApiService {
   }
 
   // GED — téléverser une pièce dans un dossier
-  televerserDocument(dossierId: string, fichier: File, meta: { categorie?: string; confidentialite?: string } = {}): Observable<any> {
+  televerserDocument(dossierId: string, fichier: File, meta: { categorie?: string; confidentialite?: string; nom?: string } = {}): Observable<any> {
     const fd = new FormData();
     fd.append('fichier', fichier);
+    if (meta.nom && meta.nom.trim()) fd.append('nom', meta.nom.trim());
     fd.append('dossier_id', dossierId);
     if (meta.categorie) fd.append('categorie', meta.categorie);
     if (meta.confidentialite) fd.append('confidentialite', meta.confidentialite);
@@ -256,6 +257,10 @@ export class ApiService {
   // GED — supprimer une pièce (28/08/2026, gap comblé : aucune route n'existait)
   supprimerDocument(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/api/documents/${id}`);
+  }
+  // GED — renommer une pièce (nom affiché ; l'extension reste celle du fichier)
+  renommerDocument(id: string, nom: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/documents/${id}/nom`, { nom });
   }
   // GED — modifier la confidentialité d'un document après coup (03/10/2026,
   // gap comblé : jusqu'ici réglable seulement au téléversement).

@@ -1070,6 +1070,9 @@ import { LibellePipe } from '../../core/libelles';
         @if (auth.peut('documents.creer')) {
           <div class="upload">
             <input type="file" (change)="fichierChoisi($event)" />
+            @if (fichier()) {
+              <input class="in" [(ngModel)]="nomDocument" name="nomDocument" placeholder="Nom du document (facultatif — l'extension est conservée)" title="Nom sous lequel la pièce sera classée" style="min-width:260px" />
+            }
             <select [(ngModel)]="categorie" name="categorie">
               <option value="piece_client">Pièce client</option>
               <option value="correspondance">Correspondance</option>
@@ -1096,7 +1099,14 @@ import { LibellePipe } from '../../core/libelles';
             <tr><th>Nom</th><th>Catégorie</th><th>Version</th><th>Statut</th><th>Confidentialité</th><th></th></tr>
             @for (doc of documents(); track doc.id) {
               <tr>
-                <td>{{ doc.nom }}</td><td>{{ doc.categorie | libelle:'categorieDocument' }}</td>
+                <td>
+                  @if (renommageId() === doc.id) {
+                    <input class="in" [(ngModel)]="nomEdit" [name]="'nomEdit'+doc.id" style="min-width:220px" (keydown.enter)="enregistrerNom(doc)" (keydown.escape)="renommageId.set(null)" />
+                    <span class="muted">{{ extensionDe(doc.nom) }}</span>
+                    <button class="lien" (click)="enregistrerNom(doc)">Enregistrer</button>
+                    <button class="lien" (click)="renommageId.set(null)">Annuler</button>
+                  } @else { {{ doc.nom }} }
+                </td><td>{{ doc.categorie | libelle:'categorieDocument' }}</td>
                 <td>v{{ doc.version }}</td><td>{{ doc.statut | libelle:'statutDocument' }}</td>
                 <td>
                   @if (confidentialiteEditId() === doc.id) {
@@ -2540,7 +2550,34 @@ export class DossierDetailComponent implements OnInit {
 
   fichierChoisi(event: Event): void {
     const input = event.target as HTMLInputElement;
-    this.fichier.set(input.files && input.files.length ? input.files[0] : null);
+    const f = input.files && input.files.length ? input.files[0] : null;
+    this.fichier.set(f);
+    this.nomDocument = f ? this.sansExtension(f.name) : '';
+  }
+
+  // Renommage des pièces (28/10/2026) : nom saisi sans l'extension, qui reste celle du fichier.
+  nomDocument = '';
+  nomEdit = '';
+  readonly renommageId = signal<string | null>(null);
+
+  extensionDe(nom: string): string {
+    const m = /\.[A-Za-z0-9]{1,8}$/.exec(nom || '');
+    return m ? m[0] : '';
+  }
+  sansExtension(nom: string): string {
+    const ext = this.extensionDe(nom);
+    return ext ? nom.slice(0, -ext.length) : nom;
+  }
+  ouvrirRenommage(doc: any): void {
+    this.renommageId.set(doc.id);
+    this.nomEdit = this.sansExtension(doc.nom);
+  }
+  enregistrerNom(doc: any): void {
+    this.erreur.set('');
+    this.api.renommerDocument(doc.id, this.nomEdit).subscribe({
+      next: () => { this.renommageId.set(null); this.rafraichirDocuments(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Renommage impossible.'),
+    });
   }
 
   televerser(): void {
@@ -2548,8 +2585,8 @@ export class DossierDetailComponent implements OnInit {
     if (!f) return;
     this.envoi.set(true);
     this.erreur.set('');
-    this.api.televerserDocument(this.id, f, { categorie: this.categorie, confidentialite: this.confidentialiteDoc }).subscribe({
-      next: () => { this.envoi.set(false); this.fichier.set(null); this.rafraichirDocuments(); },
+    this.api.televerserDocument(this.id, f, { categorie: this.categorie, confidentialite: this.confidentialiteDoc, nom: this.nomDocument ? this.nomDocument + this.extensionDe(f.name) : undefined }).subscribe({
+      next: () => { this.envoi.set(false); this.fichier.set(null); this.nomDocument = ''; this.rafraichirDocuments(); },
       error: (e) => { this.envoi.set(false); this.erreur.set(e?.error?.error ?? 'Téléversement impossible'); },
     });
   }
@@ -2581,6 +2618,7 @@ export class DossierDetailComponent implements OnInit {
       { label: 'Aperçu', action: () => this.apercu(doc) },
       { label: 'Ouvrir', action: () => this.ouvrir(doc) },
     ];
+    if (this.auth.peut('documents.creer')) items.push({ label: 'Renommer', action: () => this.ouvrirRenommage(doc) });
     if (this.auth.peut('documents.creer')) items.push({ label: 'Confidentialité', action: () => this.ouvrirEditionConfidentialite(doc) });
     if (this.auth.peut('documents.supprimer')) items.push({ label: 'Supprimer', action: () => this.supprimerDocument(doc), danger: true });
     return items;

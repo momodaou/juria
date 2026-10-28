@@ -4321,3 +4321,9 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 28/10/2026 — Messagerie : messages sur plusieurs lignes
 - Zone de saisie (écran plein page et widget) passée de `<input>` à `<textarea>` : Entrée envoie, Maj+Entrée insère un retour à la ligne. L'affichage conservait déjà les sauts de ligne (`white-space: pre-wrap`). Build Angular OK ; frontend seul à déployer.
 - Déployé : frontend `juria-web-00255-q2l`, `/` = 200.
+
+## 28/10/2026 — GED : renommer les pièces (au téléversement et après coup)
+- `backend/src/nomDocument.js` : nom nettoyé (séparateurs/espaces), **extension verrouillée** (celle du fichier d'origine / de l'ancien nom), 240 caractères max.
+- `POST /api/documents` : champ `nom` facultatif, extension d'origine conservée. Nouveau `PUT /api/documents/:id/nom` (permission `documents.creer`, contrôle de confidentialité du document, `modifie_le/modifie_par`, journal d'audit `document_renomme` avant/après ; rien n'est journalisé si le nom ne change pas). Le chemin dans le bucket ne change jamais.
+- Écran dossier : champ « Nom du document » (pré-rempli) après choix du fichier ; action « Renommer » dans le menu ⋮ de chaque pièce (saisie sans l'extension).
+- Tests : `renommerDocument.test.js` (6) — suite complète 768/768 ; build Angular OK.
