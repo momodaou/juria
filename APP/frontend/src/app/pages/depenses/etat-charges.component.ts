@@ -135,7 +135,7 @@ const CATEGORIES: [string, string][] = [
                 <td colspan="6">
                   @if (d.statut === 'en_preparation') {
                     <div class="champs">
-                      <div class="large"><label>Libellé</label><input class="in" [(ngModel)]="form.libelle" name="el" /></div>
+                      <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
                       <div><label>Catégorie</label>
                         <select class="in" [(ngModel)]="form.categorie" name="ec">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
                       <div><label>Type</label>
@@ -177,7 +177,7 @@ const CATEGORIES: [string, string][] = [
         @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
           <h4 class="sous-titre">Ajouter une charge ponctuelle</h4>
           <div class="champs">
-            <div class="large"><label>Libellé</label><input class="in" [(ngModel)]="ajout.libelle" name="al" /></div>
+            <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="ajout.libelle" name="al" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="ajout.categorie" name="ac">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
             <div><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="ajout.montant" name="am" /></div>
@@ -217,7 +217,7 @@ const CATEGORIES: [string, string][] = [
         @if (auth.peut('depenses.creer')) {
           <h4 class="sous-titre">{{ modeleEnEdition() ? 'Modifier la charge' : 'Ajouter une charge habituelle' }}</h4>
           <div class="champs">
-            <div class="large"><label>Libellé</label><input class="in" [(ngModel)]="modele.libelle" name="ml" /></div>
+            <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="modele.categorie" name="mc">@for (c of categories; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
             <div><label>Type</label>

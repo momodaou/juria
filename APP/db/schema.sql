@@ -5116,7 +5116,7 @@ CREATE TABLE IF NOT EXISTS charges_modeles (
     type             type_depense NOT NULL DEFAULT 'fixe',
     montant_habituel NUMERIC(14,0) NOT NULL DEFAULT 0,        -- FCFA, point de départ modifiable
     montant_variable BOOLEAN NOT NULL DEFAULT FALSE,          -- le montant change d'un mois à l'autre
-    periodicite      VARCHAR(12) NOT NULL DEFAULT 'mensuelle'
+    periodicite      VARCHAR(20) NOT NULL DEFAULT 'mensuelle'
                      CHECK (periodicite IN ('mensuelle','trimestrielle','annuelle')),
     mois_echeance    SMALLINT CHECK (mois_echeance BETWEEN 1 AND 12),   -- mois de l'année (annuelle) ou 1er mois du cycle (trimestrielle)
     mode_paiement    mode_paiement,                           -- moyen habituel (proposition aux associés)
@@ -5562,3 +5562,12 @@ WHERE code IN ('requete_divorce_consentement_mutuel','convention_divorce_consent
 -- Ancienne « Lettre de constitution d'avocat » (squelette de 2026) supplantée par `lettre_constitution_juridiction`
 -- (28/10/2026) : désactivée, jamais supprimée (historique). Idempotent.
 UPDATE modeles_actes SET actif = FALSE, modifie_le = now() WHERE code = 'lettre_constitution' AND actif;
+
+-- =====================================================================
+--  ÉTAT DES CHARGES : colonne « periodicite » trop courte (28/10/2026)
+--  VARCHAR(12) refusait « trimestrielle » (13 caractères) : impossible d'ajouter au catalogue une charge
+--  habituelle trimestrielle (« value too long for type character varying(12) »). Élargie à 20 ; la
+--  contrainte CHECK est conservée. Idempotent (sans effet si déjà élargie).
+-- =====================================================================
+ALTER TABLE charges_modeles ALTER COLUMN periodicite TYPE VARCHAR(20);
+-- ============ FIN ÉTAT DES CHARGES : PERIODICITE ============

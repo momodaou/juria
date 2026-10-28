@@ -104,3 +104,48 @@ describe("Cycle d'un état mensuel", () => {
     expect(pdf.body.slice(0, 4).toString()).toBe("%PDF");
   });
 });
+
+// 28/10/2026 — « value too long for type character varying » : charges_modeles.periodicite était en VARCHAR(12)
+// alors que « trimestrielle » compte 13 caractères (aucune charge trimestrielle ne pouvait être créée ; l'ancien
+// test ne créait qu'un cas refusé). Libellés trop longs : message clair, et dépense d'approbation bornée à 240.
+describe("Charge trimestrielle et libellés longs (28/10/2026)", () => {
+  afterAll(async () => { await pool.query("DELETE FROM etats_charges WHERE mois >= '2031-01-01'; DELETE FROM charges_modeles WHERE libelle LIKE 'Essai 28/10%';"); });
+
+  test("une charge habituelle trimestrielle se crée et réapparaît dans l'état du mois de son cycle", async () => {
+    const cree = await post("/api/charges/modeles", { libelle: "Essai 28/10 assurance", categorie: "autre", montant_habituel: 150000, periodicite: "trimestrielle", mois_echeance: 3 });
+    expect(cree.status).toBe(201);
+    expect(cree.body.periodicite).toBe("trimestrielle");
+    const mars = (await post("/api/charges/etats", { mois: "2031-03" })).body;           // mois du cycle (3, 6, 9, 12)
+    expect(mars.lignes.some((l) => l.libelle === "Essai 28/10 assurance")).toBe(true);
+    const avril = (await post("/api/charges/etats", { mois: "2031-04" })).body;           // hors cycle
+    expect(avril.lignes.some((l) => l.libelle === "Essai 28/10 assurance")).toBe(false);
+    const juin = (await post("/api/charges/etats", { mois: "2031-06" })).body;
+    expect(juin.lignes.some((l) => l.libelle === "Essai 28/10 assurance")).toBe(true);
+  });
+
+  test("libellé de 241 caractères : message clair (catalogue, ligne ponctuelle, modification) ; 240 accepté", async () => {
+    const etat = (await post("/api/charges/etats", { mois: "2031-05" })).body;
+    const trop = "x".repeat(241);
+    const modele = await post("/api/charges/modeles", { libelle: trop, montant_habituel: 1 });
+    expect(modele.status).toBe(400);
+    expect(modele.body.error).toMatch(/Libellé trop long/);
+    const ligne = await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: trop, montant: 1000 });
+    expect(ligne.status).toBe(400);
+    expect(ligne.body.error).toMatch(/Observation/);
+    const ok = await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: "y".repeat(240), montant: 1000 });
+    expect(ok.status).toBe(201);
+    const maj = await request(app).put(`/api/charges/etats/${etat.id}/lignes/${ok.body.id}`).set(auth()).send({ libelle: trop });
+    expect(maj.status).toBe(400);
+  });
+
+  test("approuver une charge au libellé de 240 caractères ne déborde pas la dépense créée", async () => {
+    const etat = (await post("/api/charges/etats", { mois: "2031-07" })).body;
+    const ligne = (await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: "z".repeat(240), montant: 2000 })).body;
+    await post(`/api/charges/etats/${etat.id}/soumettre`);
+    const dec = await post(`/api/charges/etats/${etat.id}/lignes/${ligne.id}/decision`, { decision: "approuvee" });
+    expect(dec.status).toBe(200);
+    const { rows } = await pool.query("SELECT libelle FROM depenses WHERE id = $1", [dec.body.depense_id]);
+    expect(rows[0].libelle.length).toBeLessThanOrEqual(240);
+    expect(rows[0].libelle).toMatch(/juillet 2031$/);       // la période est conservée, c'est le libellé qui est rogné
+  });
+});

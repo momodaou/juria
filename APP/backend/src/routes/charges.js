@@ -34,6 +34,19 @@ function libellePeriode(debut, fin) {
   return `${ABREGE[+m - 1]} ${a} – ${ABREGE[+n - 1]} ${b}`;
 }
 
+// Libellé d'une charge : 240 caractères au plus (colonne VARCHAR(240), reprise telle quelle dans la dépense créée à
+// l'approbation). Message clair plutôt que l'erreur brute « value too long for type character varying ».
+const LIBELLE_MAX = 240;
+const libelleTropLong = (libelle) => String(libelle || "").trim().length > LIBELLE_MAX;
+const MESSAGE_LIBELLE = `Libellé trop long (${LIBELLE_MAX} caractères au plus) : gardez un intitulé court et mettez le détail dans le champ Observation.`;
+
+// Libellé de la dépense créée à l'approbation : « libellé — période », borné à 240 caractères (colonne
+// depenses.libelle) en rognant le libellé, jamais la période.
+function libelleDepense(libelle, periode) {
+  const suffixe = periode ? ` — ${periode}` : "";
+  return `${String(libelle).slice(0, Math.max(0, LIBELLE_MAX - suffixe.length))}${suffixe}`;
+}
+
 const entier = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 const montantValide = (v) => Number.isInteger(v) && v >= 0;
 
@@ -89,6 +102,7 @@ async function ecrireModele(req, res, id) {
   const b = req.body || {};
   const montant = entier(b.montant_habituel ?? 0);
   if (!b.libelle || !String(b.libelle).trim()) return res.status(400).json({ error: "Le libellé est requis." });
+  if (libelleTropLong(b.libelle)) return res.status(400).json({ error: MESSAGE_LIBELLE });
   if (!montantValide(montant)) return res.status(400).json({ error: "Montant habituel invalide (entier en FCFA)." });
   const periodicite = b.periodicite || "mensuelle";
   if (!["mensuelle", "trimestrielle", "annuelle"].includes(periodicite)) return res.status(400).json({ error: "Périodicité invalide." });
@@ -214,6 +228,7 @@ router.post("/etats/:id/lignes", requirePermission("depenses.creer"), async (req
   const b = req.body || {};
   const montant = entier(b.montant);
   if (!b.libelle || !String(b.libelle).trim()) return res.status(400).json({ error: "Le libellé est requis." });
+  if (libelleTropLong(b.libelle)) return res.status(400).json({ error: MESSAGE_LIBELLE });
   if (!montantValide(montant)) return res.status(400).json({ error: "Montant invalide (entier en FCFA)." });
   const regl = await reglement(b);
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
@@ -254,6 +269,7 @@ router.put("/etats/:id/lignes/:ligneId", requirePermission("depenses.consulter")
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
     const libelle = prepa && b.libelle !== undefined ? String(b.libelle).trim() : l.libelle;
     if (!libelle) return res.status(400).json({ error: "Le libellé est requis." });
+    if (libelleTropLong(libelle)) return res.status(400).json({ error: MESSAGE_LIBELLE });
     const { rows } = await pool.query(
       `UPDATE etats_charges_lignes SET libelle=$1, categorie=$2::categorie_depense, type=$3::type_depense, montant=$4,
          periode_debut=$5::date, periode_fin=$6::date, observation=$7, mode_paiement=$8::mode_paiement, compte_id=$9::uuid
@@ -338,7 +354,7 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
          VALUES ('cabinet', $1::type_depense, $2::categorie_depense, $3, $4, current_date, $5::mode_paiement, $6::uuid, 'validee',
                  $7::uuid, $8::uuid, now(), $7::uuid)
          RETURNING id`,
-        [l.type, l.categorie, `${l.libelle} — ${libellePeriode(l.periode_debut, l.periode_fin) || libellePeriode(l.mois)}`, montant, v.mode_paiement, v.compte_id,
+        [l.type, l.categorie, libelleDepense(l.libelle, libellePeriode(l.periode_debut, l.periode_fin) || libellePeriode(l.mois)), montant, v.mode_paiement, v.compte_id,
          (await client.query("SELECT prepare_par FROM etats_charges WHERE id = $1::uuid", [req.params.id])).rows[0].prepare_par || req.user.sub,
          req.user.sub]);
       depenseId = d.id;
