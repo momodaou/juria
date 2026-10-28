@@ -221,6 +221,35 @@ router.post("/etats", requirePermission("depenses.creer"), async (req, res) => {
   } finally { client.release(); }
 });
 
+// Compléter un état en préparation avec les charges habituelles dues ce mois-ci et pas encore présentes
+// (28/10/2026) : le catalogue n'est recopié qu'à la création de l'état ; une charge habituelle ajoutée
+// ensuite n'y figurait pas. Idempotent : une charge déjà dans l'état (même modèle) n'est jamais doublée.
+router.post("/etats/:id/completer", requirePermission("depenses.creer"), async (req, res) => {
+  try {
+    const { rows: [etat] } = await pool.query("SELECT id, statut, mois::text AS mois FROM etats_charges WHERE id = $1::uuid", [req.params.id]);
+    if (!etat) return res.status(404).json({ error: "État introuvable." });
+    if (etat.statut !== "en_preparation") return res.status(409).json({ error: "L'état est déjà soumis : rouvrez-le pour le compléter." });
+    const ajout = await pool.query(
+      `INSERT INTO etats_charges_lignes
+         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, mode_paiement, compte_id, ordre)
+       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel, $2::date,
+              ($2::date + CASE m.periodicite WHEN 'mensuelle' THEN interval '1 month' WHEN 'trimestrielle' THEN interval '3 months' ELSE interval '12 months' END
+               - interval '1 day')::date,
+              m.mode_paiement, m.compte_id, 10
+       FROM charges_modeles m
+       WHERE m.actif AND (m.periodicite = 'mensuelle'
+          OR (m.periodicite = 'annuelle' AND m.mois_echeance = EXTRACT(MONTH FROM $2::date))
+          OR (m.periodicite = 'trimestrielle' AND MOD(EXTRACT(MONTH FROM $2::date)::int - m.mois_echeance + 12, 3) = 0))
+         AND NOT EXISTS (SELECT 1 FROM etats_charges_lignes x WHERE x.etat_id = $1::uuid AND x.modele_id = m.id)
+       ORDER BY m.libelle
+       RETURNING id`, [etat.id, etat.mois]);
+    await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_complete", entite: "etat_charges", entiteId: etat.id, details: { ajoutees: ajout.rowCount } });
+    const complet = await chargerEtat(etat.id);
+    complet.ajoutees = ajout.rowCount;
+    res.json(complet);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 router.put("/etats/:id", requirePermission("depenses.creer"), async (req, res) => {
   try {
     const { rowCount } = await pool.query("UPDATE etats_charges SET note = $1 WHERE id = $2::uuid AND statut = 'en_preparation'",

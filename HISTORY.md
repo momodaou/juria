@@ -4341,3 +4341,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - `GET /api/depenses/vignettes/utilisations` et `DELETE /api/depenses/vignettes/utilisations/:id` (permission `depenses.vignettes.mouvement`) : le numéro redevient disponible, la dépense « Vignette de plaidoirie n°… » créée à l'utilisation est supprimée, journal d'audit `annuler_utilisation_vignette`.
 - Écran Dépenses & caisse › Vignettes : tableau « Vignettes utilisées » (étiquette « sans instance » pour les orphelines) avec « Annuler ». Tests 773/773, build OK. Pas de migration.
 - Déployé : API `juria-00193-nbg`, frontend `juria-web-00258-d2b`, `/health` et `/` = 200.
+
+## 28/10/2026 — État des charges : compléter avec les charges habituelles manquantes
+- Constat (vérifié dans le code et par test) : ni l'aperçu PDF ni « Soumettre » ne filtrent sur le type de charge ; ils agissent sur toutes les lignes de l'état. Mais le catalogue des charges habituelles n'est recopié qu'à la CRÉATION de l'état : une charge habituelle ajoutée après (ou un état créé avant le catalogue) n'y figure pas, d'où un état qui ne montre que les ponctuelles saisies à la main.
+- `POST /api/charges/etats/:id/completer` (permission `depenses.creer`, état en préparation, idempotent, journal d'audit `etat_charges_complete`) ajoute les charges habituelles dues ce mois-ci et absentes (par modèle). Bouton « + Charges habituelles manquantes » dans l'état, message du nombre ajouté, mention dans l'intro du catalogue. Tests 774/774, build OK, pas de migration.

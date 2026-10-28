@@ -189,3 +189,30 @@ describe("Catégorie « Autre » : précision obligatoire (28/10/2026)", () => {
     await request(app).delete(`/api/charges/modeles/${m.body.id}`).set(auth());
   });
 });
+
+describe("Compléter un état avec les charges habituelles manquantes (28/10/2026)", () => {
+  test("une charge habituelle ajoutée après la création de l'état n'y figure pas ; « compléter » l'ajoute une seule fois", async () => {
+    const etat = await post("/api/charges/etats", { mois: "2030-08" });
+    expect(etat.status).toBe(201);
+    const avant = etat.body.lignes.length;
+    const m = await post("/api/charges/modeles", { libelle: "Essai complétion", categorie: "entretien", montant_habituel: 12000 });
+    expect(m.status).toBe(201);
+    expect((await get(`/api/charges/etats/${etat.body.id}`)).body.lignes.some((l) => l.libelle === "Essai complétion")).toBe(false);
+
+    const c1 = await post(`/api/charges/etats/${etat.body.id}/completer`);
+    expect(c1.status).toBe(200);
+    expect(c1.body.ajoutees).toBe(1);
+    expect(c1.body.lignes.length).toBe(avant + 1);
+    const ligne = c1.body.lignes.find((l) => l.libelle === "Essai complétion");
+    expect(ligne).toMatchObject({ type: "fixe", montant: "12000", modele_id: m.body.id });
+
+    const c2 = await post(`/api/charges/etats/${etat.body.id}/completer`);
+    expect(c2.body.ajoutees).toBe(0);
+    expect(c2.body.lignes.length).toBe(avant + 1);
+
+    expect((await post(`/api/charges/etats/${etat.body.id}/soumettre`)).status).toBe(200);
+    expect((await post(`/api/charges/etats/${etat.body.id}/completer`)).status).toBe(409);
+    expect((await post(`/api/charges/etats/00000000-0000-0000-0000-000000000000/completer`)).status).toBe(404);
+    await request(app).delete(`/api/charges/modeles/${m.body.id}`).set(auth());
+  });
+});

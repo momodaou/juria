@@ -723,6 +723,7 @@ export class ApiService {
   ajouterLigneCharge(etatId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes`, payload); }
   modifierLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`, payload); }
   supprimerLigneCharge(etatId: string, ligneId: string): Observable<any> { return this.http.delete(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`); }
+  completerEtatCharges(etatId: string): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/completer`, {}); }
   actionEtatCharges(etatId: string, action: 'soumettre' | 'rouvrir' | 'cloturer'): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/${action}`, {}); }
   decisionLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/decision`, payload); }
   telechargerEtatChargesPdf(etatId: string): Observable<Blob> { return this.http.get(`${this.base}/api/charges/etats/${etatId}/pdf`, { responseType: 'blob' }); }

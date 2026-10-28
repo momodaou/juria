@@ -82,9 +82,11 @@ const CATEGORIES: [string, string][] = [
           <div class="kpi"><div class="n">{{ d.totaux.a_decider | number }}</div><div class="l">À décider (FCFA)</div></div>
         </div>
 
+        @if (messageCompletion()) { <p class="hint">{{ messageCompletion() }}</p> }
         <div class="barre">
           <button class="btn ghost sm" (click)="apercu(d)">👁 Aperçu / PDF</button>
           @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
+            <button class="btn ghost sm" (click)="completer(d.id)" [disabled]="enCours()" title="Ajoute à cet état les charges habituelles du catalogue dues ce mois-ci et qui n’y figurent pas encore">+ Charges habituelles manquantes</button>
             <button class="btn sm" (click)="action(d.id, 'soumettre')" [disabled]="enCours() || !d.lignes.length">Soumettre aux associés</button>
           }
           @if (d.statut === 'soumis' && auth.peut('depenses.creer') && !decisionsPrises(d)) {
@@ -202,7 +204,7 @@ const CATEGORIES: [string, string][] = [
 
     <section class="panel">
       <h3>Charges habituelles <button class="lien" (click)="catalogueOuvert.set(!catalogueOuvert())">{{ catalogueOuvert() ? 'Masquer' : 'Afficher' }}</button></h3>
-      <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
+      <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état (pour un état déjà créé, utilisez « + Charges habituelles manquantes ») : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
       @if (catalogueOuvert()) {
         <table>
           <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
@@ -374,6 +376,19 @@ export class EtatChargesComponent implements OnInit {
   }
 
   apercu(d: any): void { this.preview.ouvrir(`Etat des charges ${d.mois.slice(0, 7)}.pdf`, this.api.telechargerEtatChargesPdf(d.id)); }
+
+  readonly messageCompletion = signal('');
+  completer(id: string): void {
+    this.enCours.set(true);
+    this.messageCompletion.set('');
+    this.api.completerEtatCharges(id).subscribe({
+      next: (r) => {
+        this.messageCompletion.set(r.ajoutees ? `${r.ajoutees} charge(s) habituelle(s) ajoutée(s) à l’état.` : 'Aucune charge habituelle manquante : l’état est complet.');
+        this.fini();
+      },
+      error: (e) => this.echec(e),
+    });
+  }
 
   action(id: string, a: 'soumettre' | 'rouvrir' | 'cloturer'): void {
     this.enCours.set(true);
