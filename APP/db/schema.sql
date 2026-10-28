@@ -5558,3 +5558,7 @@ UPDATE modeles_actes SET champs = (
   FROM jsonb_array_elements(champs) WITH ORDINALITY AS t(c, ord))
 WHERE code IN ('requete_divorce_consentement_mutuel','convention_divorce_consentement_mutuel') AND jsonb_array_length(champs) > 0;
 -- ============ FIN MÉMOIRE DES RÉPONSES ============
+
+-- Ancienne « Lettre de constitution d'avocat » (squelette de 2026) supplantée par `lettre_constitution_juridiction`
+-- (28/10/2026) : désactivée, jamais supprimée (historique). Idempotent.
+UPDATE modeles_actes SET actif = FALSE, modifie_le = now() WHERE code = 'lettre_constitution' AND actif;
