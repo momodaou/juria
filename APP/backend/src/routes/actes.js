@@ -13,10 +13,11 @@
 // (actePdf.js, même patron que facturePdf.js).
 const express = require("express");
 const { pool } = require("../db");
-const { saveObject } = require("../storage");
+const { saveObject, enteteContentDisposition } = require("../storage");
 const { generer } = require("../ia");
 const { requirePermission } = require("../permissions");
 const { envoyerActePdf } = require("../actePdf");
+const { envoyerActeDocx } = require("../acteDocx");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const {
   BALISES, A_COMPLETER, libelleStatutPartie, libelleDegre, fmtDate, ou, jointureEt,
@@ -125,7 +126,7 @@ router.delete("/modeles/:id", requirePermission("actes.modeles.gerer"), async (r
   }
 });
 
-async function construireContexte(dossierId, avocatNom, avocatFiche) {
+async function construireContexte(dossierId, avocatNom, avocatFiche, pieces) {
   const d = await pool.query(
     `SELECT d.*, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom,
             c.type AS c_type, c.denomination AS c_denomination, c.forme_juridique AS c_forme_juridique,
@@ -181,6 +182,7 @@ async function construireContexte(dossierId, avocatNom, avocatFiche) {
     cabinet: cab.rows[0] || {},
     avocat: avocatNom,
     avocatFiche: avocatFiche || { titre: null, code: null },
+    pieces: pieces || [],
   };
 }
 
@@ -201,6 +203,7 @@ function applatirContexte(ctx) {
   const adverses = ctx.partiesAdverses || (ctx.partieAdverse ? [ctx.partieAdverse] : []);
   const fiches = ctx.partiesAdversesFiches || adverses.map((denomination) => depuisPartie({ denomination }));
   const av = ctx.avocatFiche || {};
+  const pieces = ctx.pieces || [];
   return {
     date: ctx.date,
     client: ctx.client || "",
@@ -252,6 +255,9 @@ function applatirContexte(ctx) {
     dossier_responsable: ctx.responsable || A_COMPLETER,
     dossier_mode_honoraires: d.mode_honoraires || "à convenir",
     dossier_montant_convenu: d.montant_convenu_xof ? `${Number(d.montant_convenu_xof).toLocaleString("fr-FR")} FCFA` : "à convenir",
+    pieces_nombre: String(pieces.length),
+    pieces_liste: pieces.length ? pieces.map((p, i) => `Pièce n° ${i + 1} : ${p}`).join("\n") : A_COMPLETER,
+    bordereau_pieces: pieces.length ? `BORDEREAU DES PIÈCES\n${pieces.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : A_COMPLETER,
     avocat: ctx.avocat || "",
     avocat_titre: av.titre || "Avocat au Barreau du Mali",
     avocat_initiales: av.code ? String(av.code).toUpperCase() : A_COMPLETER,
@@ -282,7 +288,15 @@ router.post("/generer", requirePermission("actes.generer"), async (req, res) => 
   if (!b.dossier_id) return res.status(400).json({ error: "dossier_id requis" });
   try {
     const avocat = await pool.query("SELECT prenom || ' ' || nom AS nom, titre_avocat AS titre, code FROM utilisateurs WHERE id = $1", [req.user.sub]);
-    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "", avocat.rows[0]);
+    // Pièces à citer (28/10/2026) : liste saisie une seule fois, reprise dans l'exposé et le bordereau.
+    let pieces = [];
+    if (b.pieces !== undefined) {
+      if (!Array.isArray(b.pieces) || b.pieces.length > 100 || b.pieces.some((p) => typeof p !== "string" || p.length > 300)) {
+        return res.status(400).json({ error: "pieces : liste de 100 intitulés au plus (300 caractères chacun)" });
+      }
+      pieces = b.pieces.map((p) => p.trim()).filter(Boolean);
+    }
+    const ctx = await construireContexte(b.dossier_id, avocat.rows[0]?.nom || "", avocat.rows[0], pieces);
     if (!ctx) return res.status(404).json({ error: "Dossier introuvable" });
 
     let texte, nom, categorie;
@@ -400,6 +414,27 @@ router.get("/:id/pdf", requirePermission("actes.consulter"), async (req, res) =>
       return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
     }
     const trouve = await envoyerActePdf(pool, req.params.id, res);
+    if (!trouve) res.status(404).json({ error: "Acte introuvable" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /api/actes/:id/docx — version Word du texte courant (28/10/2026), jamais
+// persistée, régénérée à chaque téléchargement (voir acteDocx.js). Réservée aux
+// actes texte générés par l'Atelier : une pièce déposée n'a pas de texte à mettre en forme.
+router.get("/:id/docx", requirePermission("actes.consulter"), async (req, res) => {
+  try {
+    const { rows: [doc] } = await pool.query(
+      "SELECT dossier_id, confidentialite, type_mime FROM documents WHERE id = $1",
+      [req.params.id]
+    );
+    if (!doc || doc.type_mime !== "text/plain") return res.status(404).json({ error: "Acte introuvable" });
+    if (!(await verifierAccesDocument(doc.dossier_id, doc.confidentialite, req.user))) {
+      return res.status(403).json({ error: "Accès refusé (document à confidentialité restreinte)" });
+    }
+    const trouve = await envoyerActeDocx(pool, req.params.id, res, enteteContentDisposition);
     if (!trouve) res.status(404).json({ error: "Acte introuvable" });
   } catch (e) {
     console.error(e);

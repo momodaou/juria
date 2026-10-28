@@ -51,6 +51,10 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
             <p class="muted">Aucun modèle ne correspond.</p>
           }
         </div>
+        <label>Pièces à citer <span class="muted">(facultatif — une par ligne)</span></label>
+        <textarea class="in ta" [(ngModel)]="piecesTexte" name="piecesTexte"
+                  placeholder="Ex. Contrat de vente du 29 janvier 2018&#10;Mise en demeure du 10 février 2021"></textarea>
+        <p class="muted">Saisies une seule fois, elles alimentent les balises de pièces du modèle (liste « Pièce n° 1 : … » dans l'exposé, bordereau numéroté en fin d'acte).</p>
         <p class="muted lien-biblio">
           Besoin d'un modèle-fichier à compléter à la main (trame Word, etc.) ?
           <a routerLink="/biblio" class="lien">Consultez la Bibliothèque</a>.
@@ -95,6 +99,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
           }
           <button class="lien" (click)="apercuPdf()">Aperçu PDF</button>
           <button class="lien" (click)="telechargerPdf()">Télécharger PDF</button>
+          <button class="lien" (click)="telechargerWord()" [disabled]="texteEdit !== r.texte"
+                  [title]="texteEdit !== r.texte ? 'Enregistrez d abord les modifications' : 'Version Word du texte enregistré'">Télécharger Word (.docx)</button>
         </div>
         @if (erreurEdition()) { <p class="err">{{ erreurEdition() }}</p> }
       </section>
@@ -197,6 +203,7 @@ export class ActesComponent implements OnInit {
 
   dossierId = '';
   mode: 'modele' | 'ia' = 'modele';
+  piecesTexte = '';
   modeleCode = '';
   modeleRecherche = '';
   instructionsIa = '';
@@ -228,8 +235,11 @@ export class ActesComponent implements OnInit {
     this.erreur.set('');
     this.resultat.set(null);
     const payload: any = { dossier_id: this.dossierId, mode: this.mode };
-    if (this.mode === 'modele') payload.modele_code = this.modeleCode;
-    else payload.instructions_ia = this.instructionsIa;
+    if (this.mode === 'modele') {
+      payload.modele_code = this.modeleCode;
+      const pieces = this.piecesTexte.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (pieces.length) payload.pieces = pieces;
+    } else payload.instructions_ia = this.instructionsIa;
 
     this.api.genererActe(payload).subscribe({
       next: (r) => { this.generation.set(false); this.resultat.set(r); this.texteEdit = r.texte; },
@@ -274,6 +284,23 @@ export class ActesComponent implements OnInit {
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       },
       error: () => this.erreurEdition.set('Téléchargement du PDF impossible.'),
+    });
+  }
+
+  telechargerWord(): void {
+    const r = this.resultat();
+    if (!r) return;
+    this.erreurEdition.set('');
+    this.api.telechargerActeDocx(r.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const lien = document.createElement('a');
+        lien.href = url;
+        lien.download = `${r.nom}.docx`;
+        lien.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => this.erreurEdition.set('Téléchargement du fichier Word impossible.'),
     });
   }
 

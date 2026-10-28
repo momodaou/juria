@@ -817,7 +817,7 @@ export class ApiService {
   modelesActes(): Observable<{ code: string; nom: string; categorie: string }[]> {
     return this.http.get<{ code: string; nom: string; categorie: string }[]>(`${this.base}/api/actes/modeles`);
   }
-  genererActe(payload: { dossier_id: string; mode: 'modele' | 'ia'; modele_code?: string; instructions_ia?: string }): Observable<any> {
+  genererActe(payload: { dossier_id: string; mode: 'modele' | 'ia'; modele_code?: string; instructions_ia?: string; pieces?: string[] }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/actes/generer`, payload);
   }
 
@@ -830,6 +830,10 @@ export class ApiService {
   }
   telechargerActePdf(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/actes/${id}/pdf`, { responseType: 'blob' });
+  }
+  // Version Word du texte enregistré (28/10/2026).
+  telechargerActeDocx(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/actes/${id}/docx`, { responseType: 'blob' });
   }
 
   // Balises disponibles dans les modèles (27/10/2026).

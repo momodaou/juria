@@ -271,6 +271,76 @@ describe("Cycle brouillon → édition → validation → PDF", () => {
   });
 });
 
+describe("Sortie Word (.docx) et pièces à citer (28/10/2026)", () => {
+  const JSZip = require("jszip");
+  const binaire = (res, cb) => { res.setEncoding("binary"); let d = ""; res.on("data", (c) => (d += c)); res.on("end", () => cb(null, Buffer.from(d, "binary"))); };
+
+  async function lireDocx(id) {
+    const res = await request(app).get(`/api/actes/${id}/docx`).set("Authorization", `Bearer ${token}`).buffer(true).parse(binaire);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("wordprocessingml.document");
+    expect(res.headers["content-disposition"]).toContain(".docx");
+    const zip = await JSZip.loadAsync(res.body);
+    const nomHeader = Object.keys(zip.files).find((n) => /^word\/header\d*\.xml$/.test(n));
+    return {
+      corps: await zip.file("word/document.xml").async("string"),
+      entete: nomHeader ? await zip.file(nomHeader).async("string") : "",
+      pied: await zip.file(Object.keys(zip.files).find((n) => /^word\/footer\d*\.xml$/.test(n))).async("string"),
+    };
+  }
+
+  test("le .docx reprend le texte enregistré, avec intitulés centrés, puces, en-tête du cabinet et pied de page", async () => {
+    const dossierId = await creerDossier(await creerClient());
+    const gen = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "autre" });
+    const texte = "REQUETE AUX FINS D'ESSAI\nUn paragraphe ordinaire avec une apostrophe d'usage.\n\n• première demande\n- seconde demande\nPAR CES MOTIFS";
+    const maj = await request(app).put(`/api/actes/${gen.body.id}`).set("Authorization", `Bearer ${token}`).send({ texte });
+    expect(maj.status).toBe(200);
+    const { corps, entete, pied } = await lireDocx(gen.body.id);
+    expect(corps).toContain("REQUETE AUX FINS D");
+    expect(corps).toContain("Un paragraphe ordinaire");
+    expect(corps).toContain("première demande");
+    expect(corps).toContain('w:val="center"');       // intitulé centré
+    expect(corps).toContain("<w:numPr>");             // puces
+    expect(entete).toContain("Barreau du Mali");      // forme du cabinet (paramètres)
+    expect(pied).toContain("Réf. dossier");
+  });
+
+  test("GET /:id/docx : 404 sur un id inconnu et sur un document qui n'est pas un acte texte", async () => {
+    const inconnu = await request(app).get("/api/actes/00000000-0000-0000-0000-000000000000/docx").set("Authorization", `Bearer ${token}`);
+    expect(inconnu.status).toBe(404);
+    const dossierId = await creerDossier(await creerClient());
+    const { rows } = await pool.query(
+      `INSERT INTO documents (dossier_id, nom, categorie, statut, chemin_storage, type_mime, taille_octets, auteur_id)
+       VALUES ($1,'piece.pdf','piece_client','brouillon','file:///x','application/pdf',1,(SELECT id FROM utilisateurs WHERE email = $2))
+       RETURNING id`,
+      [dossierId, require("./setup").EMAIL_TEST]
+    );
+    const pdf = await request(app).get(`/api/actes/${rows[0].id}/docx`).set("Authorization", `Bearer ${token}`);
+    expect(pdf.status).toBe(404);
+  });
+
+  test("pièces : liste saisie une fois, reprise dans l'exposé et le bordereau ; absence = [à compléter]", async () => {
+    const dossierId = await creerDossier(await creerClient());
+    await pool.query(
+      "INSERT INTO modeles_actes (code, nom, corps) VALUES ('test_pieces','Test pièces',$1) ON CONFLICT (code) DO UPDATE SET corps = EXCLUDED.corps",
+      ["{{pieces_liste}}\n---\n{{bordereau_pieces}}\n---\n{{pieces_nombre}}"]
+    );
+    const avec = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "test_pieces", pieces: ["Contrat de vente", "  Mise en demeure  ", ""] });
+    expect(avec.status).toBe(201);
+    expect(avec.body.texte).toContain("Pièce n° 1 : Contrat de vente\nPièce n° 2 : Mise en demeure");
+    expect(avec.body.texte).toContain("BORDEREAU DES PIÈCES\n1. Contrat de vente\n2. Mise en demeure");
+    expect(avec.body.texte.trim().endsWith("2")).toBe(true);
+    const sans = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "test_pieces" });
+    expect(sans.body.texte).toContain("[à compléter]");
+    const trop = await request(app).post("/api/actes/generer").set("Authorization", `Bearer ${token}`)
+      .send({ dossier_id: dossierId, mode: "modele", modele_code: "test_pieces", pieces: "pas une liste" });
+    expect(trop.status).toBe(400);
+  });
+});
+
 // 03/10/2026 — audit Atelier d'actes : GET /:id/pdf, PUT /:id et POST
 // /:id/statut ignoraient documents.confidentialite (mécanisme posé le
 // 28/09/2026 pour /api/documents/:id/download) — n'importe quel titulaire
@@ -308,6 +378,15 @@ describe("Confidentialité des documents appliquée à l'Atelier d'actes (03/10/
     const docId = await creerActeRestreint();
     const res = await request(app).get(`/api/actes/${docId}/pdf`).set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
+  });
+
+  test("GET /:id/docx refusé (403) à un tiers non affecté au dossier, accessible au responsable", async () => {
+    const docId = await creerActeRestreint();
+    const tiers = await creerUtilisateur("juriste");
+    const refus = await request(app).get(`/api/actes/${docId}/docx`).set("Authorization", `Bearer ${tiers.token}`);
+    expect(refus.status).toBe(403);
+    const ok = await request(app).get(`/api/actes/${docId}/docx`).set("Authorization", `Bearer ${token}`);
+    expect(ok.status).toBe(200);
   });
 
   test("PUT /:id refusé (403) à un tiers non affecté au dossier", async () => {

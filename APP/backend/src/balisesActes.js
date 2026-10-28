@@ -64,6 +64,10 @@ const BALISES = [
   { cle: "client_qualite", groupe: "Instance", description: "Qualité du client dans l'instance (demandeur, appelant, intimé…)" },
   { cle: "audience_prochaine_date", groupe: "Instance", description: "Date de la prochaine audience" },
   { cle: "audience_prochaine_juridiction", groupe: "Instance", description: "Juridiction de la prochaine audience" },
+  // Pièces (saisies à la génération)
+  { cle: "pieces_liste", groupe: "Pièces", description: "« Pièce n° 1 : … » une par ligne, pour l'exposé" },
+  { cle: "bordereau_pieces", groupe: "Pièces", description: "Bordereau numéroté « BORDEREAU DES PIÈCES / 1. … »" },
+  { cle: "pieces_nombre", groupe: "Pièces", description: "Nombre de pièces" },
   // Cabinet et rédacteur
   { cle: "date", groupe: "Cabinet", description: "Date du jour" },
   { cle: "avocat", groupe: "Cabinet", description: "Utilisateur qui génère l'acte" },
