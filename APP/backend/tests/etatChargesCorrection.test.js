@@ -93,3 +93,17 @@ describe("Correction d'une ligne approuvée", () => {
     expect((await put(`/api/charges/etats/${c.etat.id}/lignes/${c.ligne.id}/correction`, { libelle: "Z" })).status).toBe(409);
   });
 });
+
+describe("Période couverte rectifiée à la décision", () => {
+  test("la période saisie par l'associé est enregistrée et compose le libellé de la dépense ; dates incohérentes refusées", async () => {
+    const etat = (await post("/api/charges/etats", { mois: "2039-11" })).body;
+    const l = (await post(`/api/charges/etats/${etat.id}/lignes`, { libelle: "Petite caisse", categorie: "fournitures", montant: 80000 })).body;
+    await post(`/api/charges/etats/${etat.id}/soumettre`);
+    const url = `/api/charges/etats/${etat.id}/lignes/${l.id}/decision`;
+    expect((await post(url, { decision: "approuvee", mode_paiement: "virement", compte_id: banque, periode_debut: "2039-12-31", periode_fin: "2039-12-01" })).status).toBe(400);
+    const ok = await post(url, { decision: "approuvee", mode_paiement: "virement", compte_id: banque, periode_debut: "2039-12-01", periode_fin: "2039-12-31" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.periode_debut.slice(0, 10)).toBe("2039-12-01");
+    expect((await depense(ok.body.depense_id)).libelle).toBe("Petite caisse — décembre 2039");
+  });
+});

@@ -775,6 +775,12 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
       compte_id: "compte_id" in b ? b.compte_id : l.compte_id });
     if (regl.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: regl.erreur }); }
     const v = regl.valeurs;
+    // Période couverte rectifiable à la décision (29/10/2026) : elle compose le libellé de la dépense créée.
+    const periodeDebut = "periode_debut" in b ? (b.periode_debut || null) : l.periode_debut;
+    const periodeFin = "periode_fin" in b ? (b.periode_fin || null) : l.periode_fin;
+    for (const dt of [periodeDebut, periodeFin]) if (dt && !DATE_ISO.test(dt)) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Date de période invalide (AAAA-MM-JJ)." }); }
+    if (periodeDebut && periodeFin && periodeFin < periodeDebut) { await client.query("ROLLBACK"); return res.status(400).json({ error: "La fin de période précède son début." }); }
+    l.periode_debut = periodeDebut; l.periode_fin = periodeFin;
     let depenseId = null;
     if (b.decision === "approuvee") {
       if (montant <= 0) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Le montant doit être positif pour approuver." }); }
@@ -782,9 +788,9 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
     }
     const { rows: [maj] } = await client.query(
       `UPDATE etats_charges_lignes SET decision = $1, motif = $2, montant = $3, mode_paiement = $4::mode_paiement, compte_id = $5::uuid,
-         decide_par = $6::uuid, decide_le = now(), depense_id = $7::uuid
+         decide_par = $6::uuid, decide_le = now(), depense_id = $7::uuid, periode_debut = $9::date, periode_fin = $10::date
        WHERE id = $8::uuid RETURNING *`,
-      [b.decision, b.motif ? String(b.motif).trim() : null, montant, v.mode_paiement, v.compte_id, req.user.sub, depenseId, l.id]);
+      [b.decision, b.motif ? String(b.motif).trim() : null, montant, v.mode_paiement, v.compte_id, req.user.sub, depenseId, l.id, periodeDebut, periodeFin]);
     await client.query("COMMIT");
     if (depenseId) await copierPiecesVersDepense(l.id, depenseId, req.user.sub);
     await logAudit({ utilisateurId: req.user.sub, action: `etat_charges_${b.decision}`, entite: "etat_charges_ligne", entiteId: l.id,

@@ -228,14 +228,16 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                         <select class="in" [(ngModel)]="form.type" name="et"><option value="fixe">Fixe</option><option value="ponctuelle">Ponctuelle</option></select></div>
                       <div class="etroit"><label>Arriéré (mois impayés avant ce mois)</label>
                         <input class="in" type="number" min="0" max="36" [ngModel]="form.arriere" (ngModelChange)="appliquerArriere(form, $event, d.mois)" name="ear" /></div>
-                      <div><label>Période — début</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="ed" /></div>
-                      <div><label>Période — fin</label><input class="in" type="date" [(ngModel)]="form.periode_fin" name="ef" /></div>
+                      <div><label>Période couverte — du</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="ed" /></div>
+                      <div><label>Période couverte — au</label><input class="in" type="date" [(ngModel)]="form.periode_fin" name="ef" /></div>
                       <div class="large"><label>Observation (ex. 3 mois d’arriéré)</label><input class="in" [(ngModel)]="form.observation" name="eo" /></div>
                     </div>
                   }
                   <div class="champs">
                     <div class="etroit"><label>Montant (FCFA)</label><input class="in" type="number" min="0" [(ngModel)]="form.montant" name="em" /></div>
-                    @if (d.statut === 'soumis') {
+                    @if (d.statut === 'soumis' && !modeCorrection()) {
+                      <div><label>Période couverte — du</label><input class="in" type="date" [(ngModel)]="form.periode_debut" name="dpd" /></div>
+                      <div><label>Période couverte — au</label><input class="in" type="date" [(ngModel)]="form.periode_fin" name="dpf" /></div>
                       <div class="large"><label>Motif (obligatoire pour rejeter)</label><input class="in" [(ngModel)]="form.motif" name="emo" /></div>
                     }
                   </div>
@@ -733,6 +735,7 @@ export class EtatChargesComponent implements OnInit {
     this.enCours.set(true);
     const f = this.form;
     this.api.decisionLigneCharge(etatId, ligneId, { decision, motif: f.motif || null, montant: Number(f.montant),
+      periode_debut: f.periode_debut || null, periode_fin: f.periode_fin || null,
       mode_paiement: f.mode_paiement || null, compte_id: f.compte_id || null }).subscribe({
       next: () => { this.edition.set(null); this.fini(); }, error: (e) => this.echec(e) });
   }
