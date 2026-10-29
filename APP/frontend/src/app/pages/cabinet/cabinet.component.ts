@@ -789,7 +789,14 @@ export class CabinetComponent implements OnInit {
 
   decider(c: any, statut: 'approuve' | 'refuse'): void {
     this.erreurConge.set('');
-    this.api.decisionConge(c.id, statut).subscribe({
+    // Refus : motif facultatif, repris dans l'e-mail envoyé au demandeur.
+    let motif: string | undefined;
+    if (statut === 'refuse') {
+      const saisi = window.prompt(`Refuser la demande de ${c.membre} ? Motif (facultatif, transmis au demandeur) :`, '');
+      if (saisi === null) return;
+      motif = saisi.trim() || undefined;
+    }
+    this.api.decisionConge(c.id, statut, motif).subscribe({
       next: () => this.chargerConges(),
       error: (e) => this.erreurConge.set(e?.error?.error ?? 'Décision impossible'),
     });

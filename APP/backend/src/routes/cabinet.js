@@ -3,6 +3,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
+const { notifierDemande, notifierDecision, notifierAnnulation } = require("../notificationsConges");
 const router = express.Router();
 
 // GET /api/cabinet/equipe — membres, heures du mois, dossiers actifs, échéance de congé/contrat
@@ -122,6 +123,8 @@ router.post("/conges", requirePermission("cabinet.conge.demander"), async (req, 
       [b.utilisateur_id || null, b.type, b.date_debut, b.date_fin, req.user.sub, b.motif || null]
     );
     res.status(201).json(rows[0]);
+    // E-mail aux personnes habilitées à être averties — après la réponse : jamais bloquant.
+    notifierDemande(rows[0].id, req.user.sub);
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
@@ -172,6 +175,7 @@ router.post("/conges/:id/annuler", requirePermission("cabinet.conge.decision"), 
       });
     }
     res.json(rows[0]);
+    notifierAnnulation(req.params.id, req.user.sub, motif);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -182,12 +186,15 @@ router.post("/conges/:id/annuler", requirePermission("cabinet.conge.decision"), 
 router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"), async (req, res) => {
   const { statut } = req.body || {};
   if (!["approuve", "refuse"].includes(statut)) return res.status(400).json({ error: "Statut invalide" });
+  // Motif de refus facultatif (29/10/2026) : repris dans l'e-mail au demandeur et conservé avec la demande.
+  const motifRefus = statut === "refuse" ? String(req.body?.motif || "").trim().slice(0, 300) : "";
   try {
     // Garde contre une double décision concurrente sur la même demande.
     const { rows } = await pool.query(
-      `UPDATE conges SET statut = $1::statut_conge, approuve_par = $2, approuve_le = now()
+      `UPDATE conges SET statut = $1::statut_conge, approuve_par = $2, approuve_le = now(),
+         motif = CASE WHEN $4::text = '' THEN motif ELSE concat_ws(' — ', motif, 'Refus : ' || $4::text) END
        WHERE id = $3 AND statut = 'demande' RETURNING id, statut`,
-      [statut, req.user.sub, req.params.id]
+      [statut, req.user.sub, req.params.id, motifRefus]
     );
     if (!rows[0]) {
       const existe = await pool.query("SELECT 1 FROM conges WHERE id = $1", [req.params.id]);
@@ -196,6 +203,7 @@ router.post("/conges/:id/decision", requirePermission("cabinet.conge.decision"),
       });
     }
     res.json(rows[0]);
+    notifierDecision(req.params.id, req.user.sub, motifRefus);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

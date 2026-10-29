@@ -1167,8 +1167,8 @@ export class ApiService {
   verifierDoublonConge(dateDebut: string, dateFin: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/cabinet/conges/verifier-doublon?date_debut=${dateDebut}&date_fin=${dateFin}`);
   }
-  decisionConge(id: string, statut: 'approuve' | 'refuse'): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut });
+  decisionConge(id: string, statut: 'approuve' | 'refuse', motif?: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut, motif });
   }
   retirerConge(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/cabinet/conges/${id}`);

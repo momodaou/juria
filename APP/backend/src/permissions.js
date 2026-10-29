@@ -123,6 +123,7 @@ const CATALOGUE = [
   { code: "cabinet.consulter", module: "Administratif & RH", label: "Consulter l'équipe et les échéances RH", restreinte: true },
   { code: "cabinet.conge.demander", module: "Administratif & RH", label: "Demander un congé" },
   { code: "cabinet.conge.decision", module: "Administratif & RH", label: "Valider / rejeter un congé", restreinte: true },
+  { code: "cabinet.conge.notifier", module: "Administratif & RH", label: "Être averti par e-mail des demandes de congé" },
   { code: "cabinet.presence.pointer", module: "Administratif & RH", label: "Pointer (présence)" },
   { code: "cabinet.bulletin.generer", module: "Administratif & RH", label: "Générer un bulletin", restreinte: true },
   { code: "cabinet.bulletins.consulter", module: "Administratif & RH", label: "Consulter les bulletins de paie de tous (au-delà des siens)", restreinte: true },

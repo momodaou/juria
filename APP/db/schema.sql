@@ -5628,3 +5628,14 @@ CREATE INDEX IF NOT EXISTS idx_etats_charges_pieces_ligne ON etats_charges_piece
 
 -- Arriéré déclaré sur une charge habituelle (usage unique, remis à zéro dès qu'il est repris dans un état) — 29/10/2026.
 ALTER TABLE charges_modeles ADD COLUMN IF NOT EXISTS arriere_mois SMALLINT NOT NULL DEFAULT 0;
+
+-- ============================================================
+-- E-MAILS DES DEMANDES DE CONGÉ (29/10/2026)
+-- « Être averti par e-mail des demandes de congé » : associés et administration générale par défaut
+-- (l'administration générale reçoit pour information, sans droit de décision). Réglable dans la Matrice.
+-- ============================================================
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'cabinet.conge.notifier', r IN ('associe','admin_general')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO NOTHING;
