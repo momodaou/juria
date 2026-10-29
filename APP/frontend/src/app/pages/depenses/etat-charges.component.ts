@@ -231,11 +231,13 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                       <div class="large"><label>Motif (obligatoire pour rejeter)</label><input class="in" [(ngModel)]="form.motif" name="emo" /></div>
                     }
                   </div>
-                  @if (d.statut === 'soumis') {
+                  @if (d.statut === 'soumis' || peutOrienter) {
                     <div class="reglement-bloc">
                       <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
                                           [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
                     </div>
+                  }
+                  @if (d.statut === 'soumis') {
                     <div class="btns">
                       <button class="btn sm" (click)="decider(d.id, l.id, 'approuvee')" [disabled]="enCours()">Approuver</button>
                       <button class="btn ghost sm" (click)="decider(d.id, l.id, 'reportee')" [disabled]="enCours()">Reporter au mois suivant</button>
@@ -280,7 +282,14 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             @if (ajout.arriere > 0) { <p class="hint large">Période couverte : {{ libelleMois(ajout.periode_debut.slice(0, 7)) }} → {{ libelleMois(ajout.periode_fin.slice(0, 7)) }}. Le montant est le total dû sur cette période.</p> }
             <div class="large"><label>Observation</label><input class="in" [(ngModel)]="ajout.observation" name="ao" /></div>
           </div>
-          <p class="hint">Le moyen de paiement et le compte sont orientés par les associés au moment de la décision. Les justificatifs s’ajoutent ensuite avec « 📎 Pièces ».</p>
+          @if (peutOrienter) {
+            <div class="reglement-bloc">
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                                  [modele]="ajout" [catalogue]="catalogue()"></app-reglement-form>
+            </div>
+          } @else {
+            <p class="hint">Le moyen de paiement et le compte sont orientés par les associés. Les justificatifs s’ajoutent ensuite avec « 📎 Pièces ».</p>
+          }
           <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle || (ajout.categorie === 'autre' && !ajout.precision_autre?.trim()) || (ajout.nature === 'dossier' && !ajout.dossier_id)">Ajouter à l’état</button>
         }
         @if (d.statut === 'clos') { <p class="hint">État clos. Les charges approuvées sont à décaisser dans « Dépenses &amp; caisse » ; les charges reportées reviennent dans l’état du mois suivant.</p> }
@@ -326,6 +335,13 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             <div class="large"><label>Bénéficiaire habituel (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="modele.beneficiaire" name="mb" placeholder="Fournisseur ou personne payée" /></div>
             <div class="large cases"><label><input type="checkbox" [(ngModel)]="modele.montant_variable" name="mv" /> Le montant change d’un mois à l’autre</label></div>
           </div>
+          @if (peutOrienter) {
+            <div class="reglement-bloc">
+              <p class="hint">Moyen de paiement et compte habituels : proposés dès la création de chaque état, que les associés peuvent changer à la décision.</p>
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                                  [modele]="modele" [catalogue]="catalogue()"></app-reglement-form>
+            </div>
+          }
           <div class="btns">
             <button class="btn" (click)="enregistrerModele()" [disabled]="enCours() || !modele.libelle || (modele.categorie === 'autre' && !modele.precision_autre?.trim())">{{ modeleEnEdition() ? 'Enregistrer' : 'Ajouter au catalogue' }}</button>
             <button class="lien" (click)="nouveauModele()">Annuler</button>
@@ -342,13 +358,13 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
       @if (!modeles().length) { <p class="hint">Aucune charge habituelle pour le moment.</p> }
       @else {
         <table>
-          <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
+          <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th>@if (peutOrienter) { <th>Moyen proposé</th> }<th></th></tr>
           @for (m of modeles(); track m.id) {
             <tr [class.sel]="modeleEnEdition() === m.id">
               <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> } @if (m.arriere_mois > 0) { <span class="tag report">arriéré : {{ m.arriere_mois }} mois à reprendre</span> }</td>
               <td>{{ libellePeriodicite(m) }}</td>
               <td class="num">{{ m.montant_habituel | number }}</td>
-              <td>{{ moyen(m) }}</td>
+              @if (peutOrienter) { <td>{{ moyen(m) }}</td> }
               <td class="actions">
                 @if (auth.peut('depenses.creer')) {
                   <button class="lien" (click)="editerModele(m)">Modifier</button>
@@ -358,7 +374,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             </tr>
             @if (modeleEnEdition() === m.id) {
               <tr class="edit" [id]="'edit-modele-' + m.id">
-                <td colspan="5">
+                <td [attr.colspan]="peutOrienter ? 5 : 4">
                   <h4 class="sous-titre">Modifier la charge</h4>
                   <ng-container [ngTemplateOutlet]="formModele"></ng-container>
                 </td>
@@ -484,9 +500,10 @@ export class EtatChargesComponent implements OnInit {
   }
   readonly estDebours = estDebours;
 
-  // Colonne « Moyen / compte » : réservée aux associés (ceux qui décident), une fois l'état soumis ; l'administration
-  // ne renseigne ni ne voit ce choix pendant la préparation.
-  afficherMoyen(d: any): boolean { return this.auth.peut('depenses.decision') && d.statut !== 'en_preparation'; }
+  // « Moyen / compte » : réservé aux associés (ceux qui décident). Visible et modifiable dès la préparation (ils peuvent
+  // orienter à l'avance, ce qui fait gagner du temps à la décision) et jusqu'à la décision ; l'administration ne le voit pas.
+  afficherMoyen(d: any): boolean { return this.auth.peut('depenses.decision'); }
+  get peutOrienter(): boolean { return this.auth.peut('depenses.decision'); }
   nbColonnes(d: any): number { return this.afficherMoyen(d) ? 6 : 5; }
 
   // Menu « ⋮ » (même présentation que Dépenses & caisse) ; « Décider… » reste un bouton visible.
