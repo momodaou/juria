@@ -5639,3 +5639,9 @@ SELECT r, 'cabinet.conge.notifier', r IN ('associe','admin_general')
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
+
+-- Décaissement des dépenses validées (29/10/2026) : l'administration générale exécute les paiements (numéro et date de chèque,
+-- référence de virement…) ; les associés décident, le comptable enregistre et supplée, l'administrateur informatique n'y a pas accès.
+-- À cocher aussi dans la Matrice de production (Accès & permissions › Décaisser une dépense) ; ce bloc en est le report.
+INSERT INTO permissions_role (role, action_code, autorise) VALUES ('admin_general', 'depenses.decaisser', TRUE)
+ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
