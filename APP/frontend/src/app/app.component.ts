@@ -17,6 +17,8 @@ interface NavItem {
   /** Action de consultation requise (permissions_role) pour voir cette entrée
    * dans le menu — absent = visible par tous, comme avant (18/08/2026). */
   requiert?: string;
+  // Permissions alternatives : l'entrée s'affiche aussi si l'utilisateur en a UNE (ex. pointage / congés personnels).
+  ouvrePar?: string[];
   /** Rôles autorisés à voir cette entrée, pour un module gardé par un
    * requireRole() codé en dur côté serveur (pas une action permissions_role
    * — ex. Accès & permissions) — absent = visible par tous (29/08/2026). */
@@ -110,7 +112,8 @@ export class AppComponent implements OnInit {
   }
 
   estVisible(item: NavItem): boolean {
-    return (!item.requiert || this.auth.peut(item.requiert)) && this.peutVoirRole(item);
+    const permis = !item.requiert || this.auth.peut(item.requiert) || !!item.ouvrePar?.some((c) => this.auth.peut(c));
+    return permis && this.peutVoirRole(item);
   }
 
   // Un en-tête de groupe ne s'affiche que s'il reste au moins une entrée
@@ -245,7 +248,7 @@ export class AppComponent implements OnInit {
     // 29/08/2026 (correction explicite de l'utilisateur : le module entier,
     // pas seulement la matrice interne).
     { path: '/acces', label: 'Accès & permissions', icon: this.icons.acces, rolesAutorises: ['associe', 'admin_it'], groupe: 'Cabinet' },
-    { path: '/cabinet', label: 'Administratif & RH', icon: this.icons.cabinet, requiert: 'cabinet.consulter', groupe: 'Cabinet' },
+    { path: '/cabinet', label: 'Administratif & RH', icon: this.icons.cabinet, requiert: 'cabinet.consulter', ouvrePar: ['cabinet.conge.demander', 'cabinet.presence.pointer', 'cabinet.bulletins.consulter'], groupe: 'Cabinet' },
     { path: '/portail-client', label: 'Portail client', icon: this.icons.portailClient, groupe: 'Cabinet' },
 
     { path: '/mon-compte', label: 'Mon compte', icon: this.icons.monCompte },
