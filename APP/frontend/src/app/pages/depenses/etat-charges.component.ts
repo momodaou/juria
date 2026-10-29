@@ -26,7 +26,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
   template: `
     <header class="page-head">
       <div>
-        <h1>États mensuels des charges</h1>
+        <h1>État mensuel des charges</h1>
         <p>Préparé par l’administration, décidé par les associés : approuver, rejeter ou reporter chaque charge. <a class="lien" routerLink="/depenses">← Dépenses &amp; caisse</a></p>
       </div>
       @if (auth.peut('depenses.creer')) {
