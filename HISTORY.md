@@ -4382,3 +4382,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 30/10/2026 — État des charges : panneau repliable et intitulés
 - Le panneau de l'état affiché peut se replier (« ▾ Replier / ▸ Déplier », une ligne de synthèse : lignes, total, à décider, retards) ; il s'ouvre déplié à l'arrivée et à chaque changement de mois. Un seul état détaillé à la fois (la liste des mois sert de navigation), pas de panneaux superposés.
 - Intitulé : onglet « États mensuels » (le grand titre de la page reste « État mensuel des charges »). Front seul, build OK.
+- Déployé : frontend `juria-web-00264-pt4` (panneau repliable, onglet « États mensuels »), `/` = 200.
