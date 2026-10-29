@@ -4394,3 +4394,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Engagement d'une petite dépense : catégorie (liste unique), bénéficiaire, case « justificatif disponible » et, pour un dossier, case « débours refacturable » (omissions : tout partait en « Autre »).
 - Bénéficiaire saisi une seule fois : celui de la dépense pré-remplit celui du moyen de paiement (engagement, décaissement) et inversement.
 - Question laissée ouverte : un paiement d'état en « Espèces (caisse) » / mobile money ne diminue pas le solde de la petite caisse (flag petite_caisse faux). Tests 791/791, build OK, pas de migration.
+- Déployé : API `juria-00198-hlf`, frontend `juria-web-00266-gzn`, `/health` et `/` = 200.
