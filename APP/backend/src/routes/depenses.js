@@ -654,7 +654,11 @@ function moisNormalise(v) {
 }
 
 async function soldePetiteCaisse(mois) {
-  const dotation = await pool.query("SELECT montant_alloue FROM dotations_petite_caisse WHERE mois = $1", [mois]);
+  // Dotation du mois : tolère une ancienne ligne enregistrée un autre jour du mois (avant la normalisation du 29/10/2026 :
+  // le champ date acceptait n'importe quel jour et le solde cherchait le 1er) ; la ligne datée du 1er prime, sinon la plus récente.
+  const dotation = await pool.query(
+    `SELECT montant_alloue FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', $1::date)
+     ORDER BY (mois = date_trunc('month', $1::date)::date) DESC, cree_le DESC LIMIT 1`, [mois]);
   const depense = await pool.query(
     `SELECT COALESCE(SUM(montant),0) AS total FROM depenses
      WHERE petite_caisse = TRUE AND statut <> 'rejetee' AND date_trunc('month', date_depense) = $1::date`,
@@ -688,14 +692,17 @@ router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"),
   const montant = Number(montant_alloue);
   if (!Number.isInteger(montant) || montant < 0) return res.status(400).json({ error: "Montant de dotation invalide : entier en FCFA, zéro ou plus (0 remet la caisse à zéro)." });
   try {
-    const { rows: [avant] } = await pool.query("SELECT montant_alloue FROM dotations_petite_caisse WHERE mois = $1::date", [mois]);
-    const { rows } = await pool.query(
-      `INSERT INTO dotations_petite_caisse (mois, montant_alloue, administrateur_id)
-       VALUES ($1::date,$2,$3)
-       ON CONFLICT (mois) DO UPDATE SET montant_alloue = EXCLUDED.montant_alloue, administrateur_id = EXCLUDED.administrateur_id
-       RETURNING mois::text AS mois, montant_alloue`,
-      [mois, montant, req.user.sub]
-    );
+    // Une ligne existe-t-elle déjà pour ce mois (même enregistrée un autre jour du mois) ? On la corrige au lieu d'en créer une 2e.
+    const { rows: [avant] } = await pool.query(
+      `SELECT id, montant_alloue, mois FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', $1::date)
+       ORDER BY (mois = $1::date) DESC, cree_le DESC LIMIT 1`, [mois]);
+    const { rows } = avant
+      ? await pool.query(
+        `UPDATE dotations_petite_caisse SET mois = $1::date, montant_alloue = $2, administrateur_id = $3 WHERE id = $4
+         RETURNING mois::text AS mois, montant_alloue`, [mois, montant, req.user.sub, avant.id])
+      : await pool.query(
+        `INSERT INTO dotations_petite_caisse (mois, montant_alloue, administrateur_id) VALUES ($1::date,$2,$3)
+         RETURNING mois::text AS mois, montant_alloue`, [mois, montant, req.user.sub]);
     await logAudit({ utilisateurId: req.user.sub, action: avant ? "corriger_dotation_petite_caisse" : "doter_petite_caisse", entite: "dotations_petite_caisse",
       details: { mois, avant: avant ? Number(avant.montant_alloue) : null, apres: montant }, ip: req.ip });
     res.status(201).json(rows[0]);

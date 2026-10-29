@@ -87,3 +87,18 @@ describe("Décaissement : bénéficiaire pré-rempli depuis la dépense", () => 
     expect(l.references_paiement).toMatchObject({ numero_cheque: "0042", beneficiaire: "Librairie Lot" });
   });
 });
+
+describe("Ancienne dotation enregistrée un autre jour du mois", () => {
+  test("le solde la retrouve ; corriger le mois met à jour la même ligne (pas de doublon) et la ramène au 1er", async () => {
+    const m = "2038-07";
+    await pool.query("DELETE FROM dotations_petite_caisse WHERE mois >= '2038-07-01' AND mois < '2038-08-01'");
+    await pool.query("INSERT INTO dotations_petite_caisse (mois, montant_alloue) VALUES ('2038-07-15', 90000)");
+    const s = (await get(`/api/depenses/petite-caisse?mois=${m}-01`)).body;
+    expect(s.dotation).toBe(90000);
+    expect(s.solde).toBe(90000);
+    expect((await post("/api/depenses/petite-caisse", { mois: m, montant_alloue: 120000 })).status).toBe(201);
+    const lignes = await pool.query("SELECT mois::text AS mois, montant_alloue FROM dotations_petite_caisse WHERE mois >= '2038-07-01' AND mois < '2038-08-01'");
+    expect(lignes.rows).toEqual([{ mois: "2038-07-01", montant_alloue: "120000" }]);
+    expect((await get(`/api/depenses/petite-caisse?mois=${m}-01`)).body.dotation).toBe(120000);
+  });
+});
