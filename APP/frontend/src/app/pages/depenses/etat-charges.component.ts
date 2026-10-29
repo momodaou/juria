@@ -534,6 +534,11 @@ export class EtatChargesComponent implements OnInit {
     if (d.statut !== 'clos' && l.decision === 'approuvee' && l.depense_statut === 'validee' && this.auth.peut('depenses.decision')) {
       items.push({ label: 'Modifier (après approbation)', action: () => this.corriger(l) });
     }
+    // Annuler la décision : état soumis (non clos) ; pour une approbation, tant que la dépense n'est pas décaissée.
+    if (d.statut === 'soumis' && this.auth.peut('depenses.decision')
+        && (l.decision === 'rejetee' || l.decision === 'reportee' || (l.decision === 'approuvee' && l.depense_statut === 'validee'))) {
+      items.push({ label: 'Annuler la décision', action: () => this.annulerDecision(d, l) });
+    }
     if (d.statut === 'en_preparation' && this.auth.peut('depenses.creer')) {
       items.push({ label: 'Modifier', action: () => this.editer(l) });
       if (!l.report_de) items.push({ label: 'Retirer', danger: true, action: () => this.supprimer(d.id, l.id) });
@@ -688,6 +693,14 @@ export class EtatChargesComponent implements OnInit {
     this.api.actionEtatCharges(id, a).subscribe({ next: () => this.fini(), error: (e) => this.echec(e) });
   }
 
+  annulerDecision(d: any, l: any): void {
+    const effet = l.decision === 'approuvee' ? 'La dépense « à décaisser » créée sera annulée et la ligne repassera en attente.' : 'La ligne repassera en attente.';
+    const motif = window.prompt(`Annuler la décision sur « ${l.libelle} » ?\n${effet}\nMotif (obligatoire) :`, '');
+    if (motif === null) return;
+    if (!motif.trim()) { this.erreur.set('Un motif est requis pour annuler une décision.'); return; }
+    this.enCours.set(true);
+    this.api.annulerDecisionLigneCharge(d.id, l.id, motif.trim()).subscribe({ next: () => this.fini(), error: (e) => this.echec(e) });
+  }
   readonly modeCorrection = signal(false);
   corriger(l: any): void { this.editer(l); this.modeCorrection.set(true); }
   enregistrerCorrection(d: any, l: any): void {

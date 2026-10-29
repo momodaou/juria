@@ -707,6 +707,51 @@ router.put("/etats/:id/lignes/:ligneId/correction", requirePermission("depenses.
   } finally { client.release(); }
 });
 
+// Annuler une DÉCISION (29/10/2026) — réservé à qui décide : la ligne repasse « en attente » pour être décidée autrement.
+//  - approuvée : la dépense créée (« validée, à décaisser », ni décaissée ni facturée) est ANNULÉE avec le motif ;
+//  - rejetée : retour direct en attente ;
+//  - reportée : retour en attente tant que le report n'a pas été repris dans l'état du mois suivant.
+// État soumis (non clos) uniquement ; motif obligatoire ; tracé au journal d'audit.
+router.post("/etats/:id/lignes/:ligneId/annuler-decision", requirePermission("depenses.decision"), async (req, res) => {
+  const motif = String(req.body?.motif || "").trim().slice(0, 300);
+  if (!motif) return res.status(400).json({ error: "Un motif est requis pour annuler une décision." });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [l] } = await client.query(
+      `SELECT l.*, e.statut AS etat_statut FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id
+       WHERE l.id = $1::uuid AND l.etat_id = $2::uuid FOR UPDATE OF l`, [req.params.ligneId, req.params.id]);
+    if (!l) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Ligne introuvable." }); }
+    if (l.etat_statut !== "soumis") { await client.query("ROLLBACK"); return res.status(409).json({ error: "L'état doit être soumis aux associés (et non clos) pour annuler une décision." }); }
+    if (!["approuvee", "rejetee", "reportee"].includes(l.decision)) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Cette ligne n'a pas de décision à annuler." }); }
+    if (l.decision === "approuvee") {
+      const { rows: [dep] } = l.depense_id ? await client.query("SELECT statut, facture_id, annulee_le FROM depenses WHERE id = $1::uuid FOR UPDATE", [l.depense_id]) : { rows: [] };
+      if (!dep || dep.statut !== "validee" || dep.annulee_le || dep.facture_id) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "La dépense liée n'est plus « validée, à décaisser » (décaissée, annulée ou facturée) : annulez-la depuis Dépenses & caisse." });
+      }
+      await client.query(
+        `UPDATE depenses SET statut_avant_annulation = statut, statut = 'rejetee'::statut_depense,
+                annulee_le = now(), annulee_par = $1::uuid, annulation_motif = $2, motif_rejet = $2
+         WHERE id = $3::uuid`, [req.user.sub, `Décision annulée : ${motif}`, l.depense_id]);
+    } else if (l.decision === "reportee") {
+      const { rows: [suite] } = await client.query("SELECT 1 FROM etats_charges_lignes WHERE report_de = $1::uuid LIMIT 1", [l.id]);
+      if (suite) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Ce report a déjà été repris dans l'état du mois suivant : impossible d'annuler la décision." }); }
+    }
+    const { rows: [maj] } = await client.query(
+      `UPDATE etats_charges_lignes SET decision = 'en_attente', motif = NULL, decide_par = NULL, decide_le = NULL, depense_id = NULL
+       WHERE id = $1::uuid RETURNING *`, [l.id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_decision_annulee", entite: "etat_charges_ligne", entiteId: l.id,
+      details: { ancienne_decision: l.decision, motif, depense_id: l.depense_id || null, libelle: l.libelle, montant: Number(l.montant) }, ip: req.ip });
+    res.json(maj);
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally { client.release(); }
+});
+
 // Décision des associés sur une ligne : approuvee (crée la dépense validée),
 // rejetee (motif obligatoire) ou reportee (revient le mois suivant).
 // Le moyen / compte / montant peuvent être orientés dans la même requête.
