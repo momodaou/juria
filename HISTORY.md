@@ -4378,3 +4378,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Précision (29/10/2026) : pour les associés (`depenses.decision`), « Moyen / compte » est visible ET modifiable dès la préparation (orientation à l'avance), à la décision et dans la décision groupée (une ligne déjà orientée garde son moyen) ; le catalogue des charges habituelles permet aussi de fixer le moyen/compte habituel (proposé à chaque nouvel état), réservé aux associés. L'administration ne voit ni la colonne ni les blocs. Front seul, build OK.
 - Correctif (29/10/2026) : l'administration retrouve la colonne « Moyen / compte » dès que l'état est soumis ou clos (lecture seule) — elle engage et décaisse selon le choix des associés ; elle reste masquée pendant la préparation. Front seul.
 - Déployé : frontend `juria-web-552099340909` (onglets, modification en ligne du catalogue, lignes regroupées, menu ⋮, moyen/compte), `/` = 200.
+
+## 30/10/2026 — État des charges : panneau repliable et intitulés
+- Le panneau de l'état affiché peut se replier (« ▾ Replier / ▸ Déplier », une ligne de synthèse : lignes, total, à décider, retards) ; il s'ouvre déplié à l'arrivée et à chaque changement de mois. Un seul état détaillé à la fois (la liste des mois sert de navigation), pas de panneaux superposés.
+- Intitulés : page « États mensuels des charges », onglet « États mensuels ». Front seul, build OK.

@@ -26,7 +26,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
   template: `
     <header class="page-head">
       <div>
-        <h1>État mensuel des charges</h1>
+        <h1>États mensuels des charges</h1>
         <p>Préparé par l’administration, décidé par les associés : approuver, rejeter ou reporter chaque charge. <a class="lien" routerLink="/depenses">← Dépenses &amp; caisse</a></p>
       </div>
       @if (auth.peut('depenses.creer')) {
@@ -44,7 +44,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
     @if (erreur()) { <p class="err">{{ erreur() }}</p> }
 
     <nav class="onglets">
-      <button class="onglet" [class.actif]="onglet() === 'etats'" (click)="onglet.set('etats')">État du mois <span class="nb">{{ etats().length }}</span></button>
+      <button class="onglet" [class.actif]="onglet() === 'etats'" (click)="onglet.set('etats')">États mensuels <span class="nb">{{ etats().length }}</span></button>
       <button class="onglet" [class.actif]="onglet() === 'catalogue'" (click)="onglet.set('catalogue')">Charges habituelles <span class="nb">{{ modeles().length }}</span></button>
     </nav>
 
@@ -73,7 +73,12 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 
     @if (detail(); as d) {
       <section class="panel" id="detail-etat">
-        <h3>{{ libelleMois(d.mois) }} — {{ libelleStatut(d.statut) }}</h3>
+        <h3>{{ libelleMois(d.mois) }} — {{ libelleStatut(d.statut) }}
+          <button class="lien" style="margin-left:12px" (click)="detailReplie.set(!detailReplie())">{{ detailReplie() ? '▸ Déplier' : '▾ Replier' }}</button>
+        </h3>
+        @if (detailReplie()) {
+          <p class="hint">{{ d.lignes.length }} ligne(s) · total hors rejetées : {{ d.totaux.total | number }} FCFA · {{ d.totaux.a_decider | number }} FCFA à décider@if (d.en_retard) { · ⚠ {{ d.en_retard }} en retard }</p>
+        } @else {
         @if (d.en_retard) {
           <p class="alerte">⚠ {{ d.en_retard }} charge(s) reportée(s) depuis {{ seuil }} mois ou plus : à traiter en priorité.</p>
         }
@@ -293,6 +298,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           <button class="btn" (click)="ajouterLigne(d.id)" [disabled]="enCours() || !ajout.libelle || (ajout.categorie === 'autre' && !ajout.precision_autre?.trim()) || (ajout.nature === 'dossier' && !ajout.dossier_id)">Ajouter à l’état</button>
         }
         @if (d.statut === 'clos') { <p class="hint">État clos. Les charges approuvées sont à décaisser dans « Dépenses &amp; caisse » ; les charges reportées reviennent dans l’état du mois suivant.</p> }
+      }
       </section>
     }
     }
@@ -454,6 +460,7 @@ export class EtatChargesComponent implements OnInit {
   readonly annees = [0, 1, 2].map((i) => new Date().getFullYear() - 1 + i);
   readonly edition = signal<any | null>(null);
   readonly onglet = signal<'etats' | 'catalogue'>('etats');
+  readonly detailReplie = signal(false);
   readonly ajoutModeleOuvert = signal(false);
   private premierChargement = true;
   readonly modeleEnEdition = signal<string | null>(null);
@@ -629,6 +636,7 @@ export class EtatChargesComponent implements OnInit {
 
   ouvrir(id: string, defiler = false): void {
     this.edition.set(null);
+    this.detailReplie.set(false);
     this.api.etatCharges(id).subscribe({
       next: (e) => { this.detail.set(e); if (defiler) this.defiler('detail-etat'); },
       error: () => this.erreur.set('Impossible d’ouvrir cet état.'),
