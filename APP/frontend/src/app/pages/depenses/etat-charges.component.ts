@@ -500,9 +500,10 @@ export class EtatChargesComponent implements OnInit {
   }
   readonly estDebours = estDebours;
 
-  // « Moyen / compte » : réservé aux associés (ceux qui décident). Visible et modifiable dès la préparation (ils peuvent
-  // orienter à l'avance, ce qui fait gagner du temps à la décision) et jusqu'à la décision ; l'administration ne le voit pas.
-  afficherMoyen(d: any): boolean { return this.auth.peut('depenses.decision'); }
+  // « Moyen / compte » : les associés (ceux qui décident) le voient et le modifient dès la préparation (orientation à
+  // l'avance) et jusqu'à la décision. L'administration ne le voit pas pendant la préparation, mais le retrouve dès que
+  // l'état est soumis / clos : c'est elle qui engage et décaisse les paiements selon ce que les associés ont retenu.
+  afficherMoyen(d: any): boolean { return this.auth.peut('depenses.decision') || d.statut !== 'en_preparation'; }
   get peutOrienter(): boolean { return this.auth.peut('depenses.decision'); }
   nbColonnes(d: any): number { return this.afficherMoyen(d) ? 6 : 5; }
 
