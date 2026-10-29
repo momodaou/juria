@@ -157,16 +157,19 @@ async function ecrireModele(req, res, id) {
   if (prec.erreur) return res.status(400).json({ error: prec.erreur });
   const benef = preciserBeneficiaire(b.beneficiaire);
   if (benef.erreur) return res.status(400).json({ error: benef.erreur });
+  const arriere = entier(b.arriere_mois ?? 0);
+  if (!Number.isInteger(arriere) || arriere < 0 || arriere > 36) return res.status(400).json({ error: "Arriéré : nombre de mois entre 0 et 36." });
+  if (arriere > 0 && periodicite !== "mensuelle") return res.status(400).json({ error: "L'arriéré ne se déclare que pour une charge mensuelle (pour les autres, utilisez « Modifier » dans l'état du mois)." });
   const v = [String(b.libelle).trim(), b.categorie || "autre", b.type || "fixe", montant, !!b.montant_variable,
-    periodicite, periodicite === "mensuelle" ? null : moisEch, regl.valeurs.mode_paiement, regl.valeurs.compte_id, prec.valeur, benef.valeur];
+    periodicite, periodicite === "mensuelle" ? null : moisEch, regl.valeurs.mode_paiement, regl.valeurs.compte_id, prec.valeur, benef.valeur, arriere];
   try {
     const sql = id
       ? `UPDATE charges_modeles SET libelle=$1, categorie=$2::categorie_depense, type=$3::type_depense, montant_habituel=$4,
            montant_variable=$5, periodicite=$6, mois_echeance=$7, mode_paiement=$8::mode_paiement, compte_id=$9::uuid,
-           precision_autre=$10, beneficiaire=$11, actif = COALESCE($13::boolean, actif)
-         WHERE id=$12::uuid RETURNING *`
-      : `INSERT INTO charges_modeles (libelle,categorie,type,montant_habituel,montant_variable,periodicite,mois_echeance,mode_paiement,compte_id,precision_autre,beneficiaire,cree_par)
-         VALUES ($1,$2::categorie_depense,$3::type_depense,$4,$5,$6,$7,$8::mode_paiement,$9::uuid,$10,$11,$12::uuid) RETURNING *`;
+           precision_autre=$10, beneficiaire=$11, arriere_mois=$12, actif = COALESCE($14::boolean, actif)
+         WHERE id=$13::uuid RETURNING *`
+      : `INSERT INTO charges_modeles (libelle,categorie,type,montant_habituel,montant_variable,periodicite,mois_echeance,mode_paiement,compte_id,precision_autre,beneficiaire,arriere_mois,cree_par)
+         VALUES ($1,$2::categorie_depense,$3::type_depense,$4,$5,$6,$7,$8::mode_paiement,$9::uuid,$10,$11,$12,$13::uuid) RETURNING *`;
     const params = id ? [...v, id, typeof b.actif === "boolean" ? b.actif : null] : [...v, req.user.sub];
     const { rows } = await pool.query(sql, params);
     if (!rows[0]) return res.status(404).json({ error: "Charge introuvable." });
@@ -234,18 +237,21 @@ router.post("/etats", requirePermission("depenses.creer"), async (req, res) => {
          AND NOT EXISTS (SELECT 1 FROM etats_charges_lignes s WHERE s.report_de = l.id)
        ORDER BY e.mois, l.ordre, l.cree_le`, [etat.id, mois]);
     // Charges habituelles du mois (mensuelles ; trimestrielles/annuelles à leur échéance).
-    await client.query(
+    const catalogue = await client.query(
       `INSERT INTO etats_charges_lignes
-         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, mode_paiement, compte_id, beneficiaire, ordre)
-       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel, $2::date,
+         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, observation, mode_paiement, compte_id, beneficiaire, ordre)
+       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel * (m.arriere_mois + 1), ($2::date - m.arriere_mois * interval '1 month')::date,
               ($2::date + CASE m.periodicite WHEN 'mensuelle' THEN interval '1 month' WHEN 'trimestrielle' THEN interval '3 months' ELSE interval '12 months' END
                - interval '1 day')::date,
+              CASE WHEN m.arriere_mois > 0 THEN 'dont ' || m.arriere_mois || ' mois d''arriéré' END,
               m.mode_paiement, m.compte_id, m.beneficiaire, 10
        FROM charges_modeles m
        WHERE m.actif AND (m.periodicite = 'mensuelle'
           OR (m.periodicite = 'annuelle' AND m.mois_echeance = EXTRACT(MONTH FROM $2::date))
           OR (m.periodicite = 'trimestrielle' AND MOD(EXTRACT(MONTH FROM $2::date)::int - m.mois_echeance + 12, 3) = 0))
-       ORDER BY m.libelle`, [etat.id, mois]);
+       ORDER BY m.libelle
+       RETURNING modele_id`, [etat.id, mois]);
+    await consommerArrieresCatalogue(client, catalogue.rows.map((r) => r.modele_id));
     await client.query("COMMIT");
     await copierPiecesDesReports(etat.id);
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_cree", entite: "etat_charges", entiteId: etat.id, details: { mois } });
@@ -257,6 +263,14 @@ router.post("/etats", requirePermission("depenses.creer"), async (req, res) => {
   } finally { client.release(); }
 });
 
+// Arriéré d'une charge habituelle (29/10/2026) : « mois d'arriéré » déclarés dans le catalogue, à usage unique.
+// La ligne créée couvre ces mois en plus du mois courant (montant = montant habituel x (mois + 1), modifiable dans
+// l'état) ; le compteur repasse ensuite à zéro pour ne pas se répéter les mois suivants.
+async function consommerArrieresCatalogue(executeur, modeleIds) {
+  if (!modeleIds.length) return;
+  await executeur.query("UPDATE charges_modeles SET arriere_mois = 0 WHERE id = ANY($1::uuid[]) AND arriere_mois > 0", [modeleIds]);
+}
+
 // Compléter un état en préparation avec les charges habituelles dues ce mois-ci et pas encore présentes
 // (28/10/2026) : le catalogue n'est recopié qu'à la création de l'état ; une charge habituelle ajoutée
 // ensuite n'y figurait pas. Idempotent : une charge déjà dans l'état (même modèle) n'est jamais doublée.
@@ -267,10 +281,11 @@ router.post("/etats/:id/completer", requirePermission("depenses.creer"), async (
     if (etat.statut !== "en_preparation") return res.status(409).json({ error: "L'état est déjà soumis : rouvrez-le pour le compléter." });
     const ajout = await pool.query(
       `INSERT INTO etats_charges_lignes
-         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, mode_paiement, compte_id, beneficiaire, ordre)
-       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel, $2::date,
+         (etat_id, modele_id, libelle, categorie, precision_autre, type, montant, periode_debut, periode_fin, observation, mode_paiement, compte_id, beneficiaire, ordre)
+       SELECT $1::uuid, m.id, m.libelle, m.categorie, m.precision_autre, m.type, m.montant_habituel * (m.arriere_mois + 1), ($2::date - m.arriere_mois * interval '1 month')::date,
               ($2::date + CASE m.periodicite WHEN 'mensuelle' THEN interval '1 month' WHEN 'trimestrielle' THEN interval '3 months' ELSE interval '12 months' END
                - interval '1 day')::date,
+              CASE WHEN m.arriere_mois > 0 THEN 'dont ' || m.arriere_mois || ' mois d''arriéré' END,
               m.mode_paiement, m.compte_id, m.beneficiaire, 10
        FROM charges_modeles m
        WHERE m.actif AND (m.periodicite = 'mensuelle'
@@ -278,7 +293,8 @@ router.post("/etats/:id/completer", requirePermission("depenses.creer"), async (
           OR (m.periodicite = 'trimestrielle' AND MOD(EXTRACT(MONTH FROM $2::date)::int - m.mois_echeance + 12, 3) = 0))
          AND NOT EXISTS (SELECT 1 FROM etats_charges_lignes x WHERE x.etat_id = $1::uuid AND x.modele_id = m.id)
        ORDER BY m.libelle
-       RETURNING id`, [etat.id, etat.mois]);
+       RETURNING id, modele_id`, [etat.id, etat.mois]);
+    await consommerArrieresCatalogue(pool, ajout.rows.map((r) => r.modele_id));
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_complete", entite: "etat_charges", entiteId: etat.id, details: { ajoutees: ajout.rowCount } });
     const complet = await chargerEtat(etat.id);
     complet.ajoutees = ajout.rowCount;

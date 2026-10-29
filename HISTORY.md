@@ -4362,3 +4362,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Omissions de mon bloc corrigées : le PDF des associés affiche maintenant précision « Autre », dossier (refacturable), bénéficiaire, « Arriéré », nombre de justificatifs et montant du mois précédent ; le bénéficiaire d'une dépense soumise est modifiable (PUT /depenses/:id, absent = inchangé, vide = effacé).
 - Tests 783/783, build OK, pas de migration.
 - Déployé : API `juria-00196-4sw`, frontend `juria-web-00261-9rz`, `/health` et `/` = 200.
+
+## 29/10/2026 — Charges habituelles : arriéré à usage unique
+- Malentendu corrigé : l'utilisateur attendait l'option « arriéré » dans la tuile Charges habituelles (charges fixes) ; elle n'existait que dans l'état du mois (« Modifier » / « Ajouter »).
+- `charges_modeles.arriere_mois` (SMALLINT, 0–36, charges MENSUELLES seulement). À la création d'un état ou au complément (« + Charges habituelles manquantes »), la ligne reprend ces mois : période allongée, montant = montant habituel × (mois + 1) (modifiable dans l'état), observation « dont N mois d'arriéré » ; le compteur repasse à 0 dès que la ligne est créée (usage unique). Formule retenue (recommandée) : multiplication du montant habituel ; pour une charge trimestrielle/annuelle l'arriéré se saisit dans l'état.
+- Catalogue : champ « Arriéré à régler (mois) » avec aperçu du total, étiquette « arriéré : N mois à reprendre ». Migration `migration-arriere-catalogue.sql` (1 colonne). Tests 785/785, build OK.

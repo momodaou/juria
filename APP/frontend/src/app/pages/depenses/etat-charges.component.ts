@@ -290,7 +290,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
           @for (m of modeles(); track m.id) {
             <tr>
-              <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> }</td>
+              <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> } @if (m.arriere_mois > 0) { <span class="tag report">arriéré : {{ m.arriere_mois }} mois à reprendre</span> }</td>
               <td>{{ libellePeriodicite(m) }}</td>
               <td class="num">{{ m.montant_habituel | number }}</td>
               <td>{{ moyen(m) }}</td>
@@ -322,6 +322,13 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             @if (modele.periodicite !== 'mensuelle') {
               <div><label>{{ modele.periodicite === 'annuelle' ? 'Mois d’échéance' : '1er mois du cycle' }}</label>
                 <select class="in" [(ngModel)]="modele.mois_echeance" name="me">@for (n of mois12; track n) { <option [ngValue]="n">{{ moisNom(n) }}</option> }</select></div>
+            }
+            @if (modele.periodicite === 'mensuelle') {
+              <div class="etroit"><label>Arriéré à régler (mois)</label>
+                <input class="in" type="number" min="0" max="36" [(ngModel)]="modele.arriere_mois" name="mar" /></div>
+              @if (modele.arriere_mois > 0) {
+                <p class="hint large">À usage unique : au prochain état (ou en le complétant), cette charge sera reprise sur {{ modele.arriere_mois + 1 }} mois, pour {{ (modele.montant_habituel || 0) * (modele.arriere_mois + 1) | number }} FCFA (modifiable dans l’état). Le compteur repassera ensuite à zéro.</p>
+              }
             }
             <div class="large"><label>Bénéficiaire habituel (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="modele.beneficiaire" name="mb" placeholder="Fournisseur ou personne payée" /></div>
             <div class="large cases"><label><input type="checkbox" [(ngModel)]="modele.montant_variable" name="mv" /> Le montant change d’un mois à l’autre</label></div>
@@ -411,7 +418,7 @@ export class EtatChargesComponent implements OnInit {
 
   private ligneVide(): any { return { libelle: '', categorie: 'autre', precision_autre: '', nature: 'cabinet', dossier_id: null, refacturable_client: false, beneficiaire: '', arriere: 0, periode_debut: '', periode_fin: '', montant: null, observation: '', mode_paiement: '', compte_id: '', references: {} }; }
   private modeleVide(): any {
-    return { libelle: '', categorie: 'autre', precision_autre: '', beneficiaire: '', type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
+    return { libelle: '', categorie: 'autre', precision_autre: '', beneficiaire: '', arriere_mois: 0, type: 'fixe', montant_habituel: null, montant_variable: false, periodicite: 'mensuelle', mois_echeance: 1, mode_paiement: '', compte_id: '', references: {} };
   }
 
   libelleMois(m: string): string { const [a, n] = (m || '').split('-'); return `${MOIS[+n - 1] ?? ''} ${a}`; }
@@ -586,14 +593,14 @@ export class EtatChargesComponent implements OnInit {
 
   nouveauModele(): void { this.modele = this.modeleVide(); this.modeleEnEdition.set(null); }
   editerModele(m: any): void {
-    this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', beneficiaire: m.beneficiaire ?? '', type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
+    this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', beneficiaire: m.beneficiaire ?? '', arriere_mois: m.arriere_mois ?? 0, type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
       periodicite: m.periodicite, mois_echeance: m.mois_echeance ?? 1, mode_paiement: m.mode_paiement ?? '', compte_id: m.compte_id ?? '', references: {} };
     this.modeleEnEdition.set(m.id);
   }
   enregistrerModele(): void {
     const m = this.modele;
     this.enCours.set(true);
-    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, precision_autre: m.categorie === 'autre' ? m.precision_autre : null, beneficiaire: m.beneficiaire || null, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
+    this.api.enregistrerModeleCharge({ libelle: m.libelle, categorie: m.categorie, precision_autre: m.categorie === 'autre' ? m.precision_autre : null, beneficiaire: m.beneficiaire || null, arriere_mois: m.periodicite === 'mensuelle' ? Number(m.arriere_mois || 0) : 0, type: m.type, montant_habituel: Number(m.montant_habituel || 0),
       montant_variable: !!m.montant_variable, periodicite: m.periodicite, mois_echeance: m.periodicite === 'mensuelle' ? null : Number(m.mois_echeance),
       mode_paiement: m.mode_paiement || null, compte_id: m.compte_id || null }, this.modeleEnEdition() ?? undefined).subscribe({
       next: () => { this.nouveauModele(); this.erreur.set(''); this.enCours.set(false); this.chargerModeles(); }, error: (e) => this.echec(e) });

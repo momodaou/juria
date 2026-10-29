@@ -5625,3 +5625,6 @@ CREATE TABLE IF NOT EXISTS etats_charges_pieces (
     ajoute_le      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_etats_charges_pieces_ligne ON etats_charges_pieces(ligne_id);
+
+-- Arriéré déclaré sur une charge habituelle (usage unique, remis à zéro dès qu'il est repris dans un état) — 29/10/2026.
+ALTER TABLE charges_modeles ADD COLUMN IF NOT EXISTS arriere_mois SMALLINT NOT NULL DEFAULT 0;

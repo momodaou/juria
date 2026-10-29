@@ -196,3 +196,34 @@ describe("Arriéré, PDF enrichi, bénéficiaire modifiable (28/10/2026)", () =>
     expect((await lire()).beneficiaire).toBeNull();
   });
 });
+
+describe("Arriéré déclaré sur une charge habituelle (usage unique)", () => {
+  test("repris à la création de l'état (période allongée, montant x (mois+1)), puis remis à zéro", async () => {
+    const m = await post("/api/charges/modeles", { libelle: "Bloc loyer arriéré", categorie: "loyer", montant_habituel: 100000, arriere_mois: 3 });
+    expect(m.status).toBe(201);
+    expect(m.body.arriere_mois).toBe(3);
+    const e1 = (await post("/api/charges/etats", { mois: "2034-03" })).body;
+    const l = ligne(e1, "Bloc loyer arriéré");
+    expect(Number(l.montant)).toBe(400000);
+    expect(l.periode_debut.slice(0, 10)).toBe("2033-12-01");
+    expect(l.periode_fin.slice(0, 10)).toBe("2034-03-31");
+    expect(l.observation).toBe("dont 3 mois d'arriéré");
+    const apres = (await get("/api/charges/modeles")).body.find((x) => x.id === m.body.id);
+    expect(apres.arriere_mois).toBe(0);
+    const e2 = (await post("/api/charges/etats", { mois: "2034-04" })).body;
+    const l2 = ligne(e2, "Bloc loyer arriéré");
+    expect(Number(l2.montant)).toBe(100000);
+    expect(l2.periode_debut.slice(0, 10)).toBe("2034-04-01");
+  });
+
+  test("repris aussi en complétant un état ; refusé hors mensuelle ou hors 0–36", async () => {
+    const e = (await post("/api/charges/etats", { mois: "2034-06" })).body;
+    const m = await post("/api/charges/modeles", { libelle: "Bloc abonnement arriéré", categorie: "abonnements", montant_habituel: 20000, arriere_mois: 2 });
+    const c = await post(`/api/charges/etats/${e.id}/completer`);
+    expect(c.status).toBe(200);
+    expect(Number(ligne(c.body, "Bloc abonnement arriéré").montant)).toBe(60000);
+    expect((await get("/api/charges/modeles")).body.find((x) => x.id === m.body.id).arriere_mois).toBe(0);
+    expect((await post("/api/charges/modeles", { libelle: "Bloc trim arriéré", categorie: "assurance", montant_habituel: 1, periodicite: "trimestrielle", mois_echeance: 1, arriere_mois: 1 })).status).toBe(400);
+    expect((await post("/api/charges/modeles", { libelle: "Bloc excès", categorie: "eau", montant_habituel: 1, arriere_mois: 37 })).status).toBe(400);
+  });
+});
