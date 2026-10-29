@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, estDebours } from '../../core/categories-depense';
 import { ReglementFormComponent } from '../../core/reglement-form.component';
@@ -21,7 +22,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 @Component({
   selector: 'app-etat-charges',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, RouterLink, ReglementFormComponent, DossierPickerComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, MenuActionsComponent, RouterLink, ReglementFormComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -118,9 +119,9 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
         }
 
         <table>
-          <tr><th>Charge</th><th>Période couverte</th><th class="num">Montant (FCFA)</th><th>Moyen / compte</th><th>Décision</th><th></th></tr>
+          <tr><th>Charge</th><th>Période couverte</th><th class="num">Montant (FCFA)</th>@if (afficherMoyen(d)) { <th>Moyen / compte</th> }<th>Décision</th><th></th></tr>
           @for (g of groupes(d); track g.cle) {
-          <tr class="groupe-titre"><td colspan="6"><b>{{ g.titre }}</b> · {{ g.lignes.length }} ligne(s) · {{ g.total | number }} FCFA</td></tr>
+          <tr class="groupe-titre"><td [attr.colspan]="nbColonnes(d)"><b>{{ g.titre }}</b> · {{ g.lignes.length }} ligne(s) · {{ g.total | number }} FCFA</td></tr>
           @for (l of g.lignes; track l.id) {
             <tr [class.retard-ligne]="l.retard_mois >= seuil && l.decision === 'en_attente'">
               <td>
@@ -128,6 +129,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                 @if (l.categorie === 'autre' && l.precision_autre) { <span class="tag">Autre : {{ l.precision_autre }}</span> }
                 @if (l.type !== 'fixe') { <span class="tag">ponctuelle</span> }
                 @if (estArriere(l, d.mois)) { <span class="tag report">arriéré depuis {{ libelleMois(l.periode_debut.slice(0, 7)) }}</span> }
+                @if (l.nb_pieces) { <span class="tag">📎 {{ l.nb_pieces }}</span> }
                 @if (l.nature === 'dossier') { <span class="tag">Dossier {{ l.dossier_numero }}@if (l.refacturable_client) { · refacturable }</span> }
                 @if (l.beneficiaire) { <div class="obs">Bénéficiaire : {{ l.beneficiaire }}</div> }
                 @if (l.report_de) { <span class="tag report">reportée · retard {{ l.retard_mois }} mois</span> }
@@ -135,7 +137,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               </td>
               <td>{{ periode(l) }}</td>
               <td class="num">{{ l.montant | number }}@if (l.montant_precedent !== null && l.montant_precedent !== undefined) { <div class="obs">mois préc. : {{ l.montant_precedent | number }}{{ ecart(l) }}</div> }</td>
-              <td>{{ moyen(l) }}</td>
+              @if (afficherMoyen(d)) { <td>{{ moyen(l) }}</td> }
               <td>
                 @switch (l.decision) {
                   @case ('approuvee') {
@@ -149,21 +151,15 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                 }
               </td>
               <td class="actions">
-                @if (d.statut !== 'clos' || l.nb_pieces) {
-                  <button class="lien" (click)="ouvrirPieces(d, l)">📎 Pièces@if (l.nb_pieces) { ({{ l.nb_pieces }}) }</button>
-                }
-                @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
-                  <button class="lien" (click)="editer(l)">Modifier</button>
-                  @if (!l.report_de) { <button class="lien" (click)="supprimer(d.id, l.id)">Retirer</button> }
-                }
                 @if (d.statut === 'soumis' && l.decision === 'en_attente' && auth.peut('depenses.decision')) {
-                  <button class="lien" (click)="editer(l)">Décider…</button>
+                  <button class="btn ghost sm" (click)="editer(l)">Décider…</button>
                 }
+                @if (actionsPourLigne(d, l).length) { <app-menu-actions [actions]="actionsPourLigne(d, l)" /> }
               </td>
             </tr>
             @if (piecesLigneId() === l.id) {
               <tr class="edit" [id]="'pieces-ligne-' + l.id">
-                <td colspan="6">
+                <td [attr.colspan]="nbColonnes(d)">
                   <b>Justificatifs de la charge</b> — devis, facture, preuve de paiement. Ils suivent la dépense à l’approbation.
                   @if (listePieces().length) {
                     <table>
@@ -201,7 +197,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             }
             @if (edition()?.id === l.id) {
               <tr class="edit" [id]="'edit-ligne-' + l.id">
-                <td colspan="6">
+                <td [attr.colspan]="nbColonnes(d)">
                   @if (d.statut === 'en_preparation') {
                     <div class="champs">
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
@@ -487,6 +483,24 @@ export class EtatChargesComponent implements OnInit {
     return pct === 0 ? ' (stable)' : ` (${pct > 0 ? '+' : ''}${pct} %)`;
   }
   readonly estDebours = estDebours;
+
+  // Colonne « Moyen / compte » : réservée aux associés (ceux qui décident), une fois l'état soumis ; l'administration
+  // ne renseigne ni ne voit ce choix pendant la préparation.
+  afficherMoyen(d: any): boolean { return this.auth.peut('depenses.decision') && d.statut !== 'en_preparation'; }
+  nbColonnes(d: any): number { return this.afficherMoyen(d) ? 6 : 5; }
+
+  // Menu « ⋮ » (même présentation que Dépenses & caisse) ; « Décider… » reste un bouton visible.
+  actionsPourLigne(d: any, l: any): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (d.statut !== 'clos' || l.nb_pieces) {
+      items.push({ label: l.nb_pieces ? `Pièces (${l.nb_pieces})` : 'Pièces / justificatifs', action: () => this.ouvrirPieces(d, l) });
+    }
+    if (d.statut === 'en_preparation' && this.auth.peut('depenses.creer')) {
+      items.push({ label: 'Modifier', action: () => this.editer(l) });
+      if (!l.report_de) items.push({ label: 'Retirer', danger: true, action: () => this.supprimer(d.id, l.id) });
+    }
+    return items;
+  }
 
   // Arriéré (28/10/2026) : nombre de mois impayés avant le mois de l'état ; la période couverte va alors du
   // premier jour du plus ancien mois impayé à la fin du mois de l'état (le montant saisi est le total dû).
