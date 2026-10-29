@@ -4460,3 +4460,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 29/10/2026 — Décaissement : qui décaisse
 - Décision de l'utilisateur (recommandation validée) : séparation des fonctions — associés autorisent (décision), **administration générale exécute** (saisie du n° / de la date de chèque, des références au décaissement), comptable enregistre et supplée, administrateur informatique sans accès. Matrice de production : cocher « Décaisser une dépense » pour l'administration générale (associés et comptable déjà cochés) ; report dans le bloc final de `schema.sql`. Réglage d'origine : associé, administration générale, administrateur informatique, comptable ; aligné sur la production au 25/09 : associé + comptable. Tests 808/808.
+- Déployé : frontend `juria-web-552099340909` (références du moyen masquées avant le paiement), `/` = 200.
