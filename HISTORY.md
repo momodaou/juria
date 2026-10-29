@@ -4409,3 +4409,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 - Dépenses (29/10/2026) : en-tête corrigé — la phrase d'aide allongée écrasait le bloc de droite et faisait passer « + Nouvelle dépense » sous « État mensuel des charges » ; bloc de texte flexible (min-width:0), boutons non compressibles sur une ligne. Front seul.
 - Déployé : frontend `juria-web-00269-vkp` (en-tête de Dépenses & caisse), `/` = 200.
+
+## 29/10/2026 — Touche Entrée / Échap : pilote (Dépenses & caisse, État des charges)
+- Constat : Entrée ne validait que la connexion, la réinitialisation du mot de passe, la messagerie et le renommage d'une pièce GED. Directive commune `core/raccourcis-clavier.directive.ts` (`appRaccourcis`, sorties `entree` / `echap`, entrée `entreeActive`) : Entrée n'agit que si le bouton serait actif ; ignorée dans une zone de texte, une liste déroulante, un bouton, un lien, un champ fichier, le sélecteur de dossier et pendant une composition de caractère ; Échap annule les formulaires ouverts sous une ligne.
+- Branchée sur : nouvelle dépense, dotation de la petite caisse, engagement d'une petite dépense, achat de vignettes, rapprochement, recherche de la liste (Entrée = immédiat), ajout d'une charge ponctuelle, modification d'une ligne en préparation (Entrée = Enregistrer ; jamais pour une décision), formulaire du catalogue (Entrée = Enregistrer, Échap = Annuler).
+- Volontairement exclus : décisions des associés (approuver / rejeter / reporter), décision groupée, décaissement, annulations, retraits, suppressions, zones de texte. Front seul, build OK ; à étendre aux autres modules selon les retours.

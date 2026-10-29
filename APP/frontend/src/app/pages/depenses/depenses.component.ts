@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
+import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, libelleCategorieDepense } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
@@ -13,7 +14,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 @Component({
   selector: 'app-depenses',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, DossierPickerComponent, ReglementFormComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, RaccourcisClavierDirective, MenuActionsComponent, DossierPickerComponent, ReglementFormComponent],
   template: `
     <header class="page-head" style="gap:24px">
       <div style="flex:1;min-width:0">
@@ -60,7 +61,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     @if (afficherForm()) {
       <section class="panel">
         <h3>Nouvelle dépense</h3>
-        <div class="grid2">
+        <div class="grid2" appRaccourcis (entree)="creer()" (echap)="afficherForm.set(false)"
+             [entreeActive]="!!form.libelle && !!form.montant && !(form.nature === 'dossier' && !form.dossier_id) && !creationEnCours()">
           <div>
             <label>Type</label>
             <select class="in" [(ngModel)]="form.type" name="type">
@@ -146,7 +148,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </select>
         <label class="filtre-date">Du <input class="in" type="date" [(ngModel)]="filtreDu" (ngModelChange)="charger()" /></label>
         <label class="filtre-date">au <input class="in" type="date" [(ngModel)]="filtreAu" (ngModelChange)="charger()" /></label>
-        <input class="in filtre" style="min-width:210px" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" />
+        <input class="in filtre" style="min-width:210px" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" (keydown.enter)="rechercherMaintenant()" />
         <label class="filtre-cases"><input type="checkbox" [(ngModel)]="masquerAnnulees" (ngModelChange)="charger()" /> Masquer les annulées</label>
         @if (filtresActifs()) { <button class="lien" (click)="reinitialiserFiltres()">Effacer les filtres</button> }
       </div>
@@ -285,7 +287,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <h3>Petite caisse — dotation mensuelle</h3>
         <p class="muted">Mois en cours ({{ moisCourant.slice(0, 7) }}) : dotation <b>{{ caisse()?.dotation ?? 0 | number }}</b> FCFA · dépensé <b>{{ caisse()?.depense ?? 0 | number }}</b> FCFA · solde <b>{{ caisse()?.solde ?? 0 | number }}</b> FCFA.
           Chaque mois est indépendant : le solde non dépensé n'est pas reporté sur le mois suivant.</p>
-        <div class="upload" id="formDotation">
+        <div class="upload" id="formDotation" appRaccourcis (entree)="definirDotation()"
+             [entreeActive]="dotationMontant !== null && dotationMontant !== undefined && !dotationEnCours()">
           <input class="sel" type="month" [(ngModel)]="dotationMois" name="dotationMois" />
           <input class="sel" id="champDotation" type="number" min="0" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA) — 0 pour remettre à zéro" style="min-width:270px" />
           <button class="btn sm" (click)="definirDotation()" [disabled]="dotationMontant === null || dotationMontant === undefined || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
@@ -312,7 +315,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
           Plafond par dépense : <b>{{ caisse()?.plafond_depense != null ? (caisse()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
           solde du mois : <b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).</p>
-        <div class="grid2">
+        <div class="grid2" appRaccourcis (entree)="engager()"
+             [entreeActive]="!!engagement.libelle && !!engagement.montant && !(engagement.nature === 'dossier' && !engagement.dossier_id) && !engagementEnCours() && engagementValide()">
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="engagement.montant" name="engMontant" /></div>
           <div>
@@ -348,7 +352,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <section class="panel">
         <h3>Petite caisse — rapprochement mensuel</h3>
         <p class="muted">Comparez le solde calculé par JURIA (<b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>) au solde réel du porte-monnaie mobile money (relevé de l'opérateur) ou au comptage des espèces.</p>
-        <div class="upload">
+        <div class="upload" appRaccourcis (entree)="rapprocher()" [entreeActive]="rapSoldeReel !== null && !rapEnCours()">
           <input class="sel" type="number" [(ngModel)]="rapSoldeReel" name="rapSoldeReel" placeholder="Solde réel constaté (FCFA)" style="min-width:220px" />
           <input class="sel" [(ngModel)]="rapNote" name="rapNote" placeholder="Note (facultatif)" style="min-width:240px" />
           <button class="btn sm" (click)="rapprocher()" [disabled]="rapSoldeReel === null || rapEnCours()">{{ rapEnCours() ? 'Enregistrement…' : 'Enregistrer le rapprochement' }}</button>
@@ -373,7 +377,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <h3>Vignettes de plaidoirie</h3>
       <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>
       @if (auth.peut('depenses.vignettes.mouvement')) {
-        <div class="upload">
+        <div class="upload" appRaccourcis (entree)="approvisionnerVignette()"
+             [entreeActive]="(!!vignetteQuantite || !!vignetteNumeros.trim()) && !vignetteEnCours()">
           <input class="sel" type="number" [(ngModel)]="vignetteQuantite" name="vqte" placeholder="Quantité" style="max-width:120px" />
           <input class="sel" [(ngModel)]="vignetteNumeros" name="vnums" placeholder="N° à 7 chiffres : 1000200-1000204, 1000300 (facultatif)" style="min-width:380px" />
           <button class="btn sm" (click)="approvisionnerVignette()" [disabled]="(!vignetteQuantite && !vignetteNumeros.trim()) || vignetteEnCours()">{{ vignetteEnCours() ? 'Enregistrement…' : "Enregistrer l'achat" }}</button>
@@ -524,6 +529,7 @@ export class DepensesComponent implements OnInit {
     clearTimeout(this.minuteurRecherche);
     this.minuteurRecherche = setTimeout(() => this.charger(), 300);
   }
+  rechercherMaintenant(): void { clearTimeout(this.minuteurRecherche); this.charger(); }
   filtresActifs(): boolean {
     return !!(this.filtreStatut || this.filtreType || this.filtreCategorie || this.filtreNature || this.filtreCaisse || this.filtreDu || this.filtreAu || this.filtreRecherche.trim() || this.masquerAnnulees);
   }

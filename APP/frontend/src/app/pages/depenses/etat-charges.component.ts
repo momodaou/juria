@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, estDebours } from '../../core/categories-depense';
@@ -22,7 +23,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 @Component({
   selector: 'app-etat-charges',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, MenuActionsComponent, RouterLink, ReglementFormComponent, DossierPickerComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, RaccourcisClavierDirective, MenuActionsComponent, RouterLink, ReglementFormComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -202,7 +203,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             }
             @if (edition()?.id === l.id) {
               <tr class="edit" [id]="'edit-ligne-' + l.id">
-                <td [attr.colspan]="nbColonnes(d)">
+                <td [attr.colspan]="nbColonnes(d)" appRaccourcis (echap)="edition.set(null)" (entree)="enregistrerLigne(d.id, l.id)"
+                    [entreeActive]="d.statut === 'en_preparation' && !enCours() && !!form.libelle && !(form.categorie === 'autre' && !form.precision_autre?.trim()) && !(form.nature === 'dossier' && !form.dossier_id)">
                   @if (d.statut === 'en_preparation') {
                     <div class="champs">
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
@@ -264,7 +266,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 
         @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
           <h4 class="sous-titre">Ajouter une charge ponctuelle</h4>
-          <div class="champs">
+          <div class="champs" appRaccourcis (entree)="ajouterLigne(d.id)"
+               [entreeActive]="!enCours() && !!ajout.libelle && !(ajout.categorie === 'autre' && !ajout.precision_autre?.trim()) && !(ajout.nature === 'dossier' && !ajout.dossier_id)">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="ajout.libelle" name="al" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="ajout.categorie" name="ac"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
@@ -313,7 +316,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
       <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état (pour un état déjà créé, utilisez « + Intégrer les charges habituelles ») : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
 
       <ng-template #formModele>
-          <div class="champs">
+          <div class="champs" appRaccourcis (entree)="enregistrerModele()" (echap)="nouveauModele()"
+               [entreeActive]="!enCours() && !!modele.libelle && !(modele.categorie === 'autre' && !modele.precision_autre?.trim())">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
               <select class="in" [(ngModel)]="modele.categorie" name="mc"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
