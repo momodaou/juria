@@ -4442,3 +4442,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 29/10/2026 — Petite caisse : dotation retrouvée quel que soit le jour d'enregistrement
 - Constat (utilisateur : « la petite caisse est à zéro ») : avant la normalisation du 29/10, le champ date de la dotation acceptait n'importe quel jour du mois alors que le solde cherchait exactement le 1er : une dotation enregistrée un autre jour n'était jamais retrouvée (solde 0, « non dotée »). La normalisation à l'écriture ne réparait pas les lignes déjà enregistrées.
 - Correctif : le solde retrouve la dotation du mois quel que soit le jour enregistré (ligne du 1er prioritaire, sinon la plus récente) ; corriger la dotation d'un mois met à jour la ligne existante (pas de doublon) et la ramène au 1er. Pas de migration. Tests 801/801.
+- Déployé : API `juria-00202-4k6` (dotation retrouvée quel que soit le jour), `/health` = 200.
