@@ -1170,6 +1170,9 @@ export class ApiService {
   decisionConge(id: string, statut: 'approuve' | 'refuse', motif?: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/cabinet/conges/${id}/decision`, { statut, motif });
   }
+  relancerConge(id: string): Observable<{ destinataires: number; echecs: number }> {
+    return this.http.post<{ destinataires: number; echecs: number }>(`${this.base}/api/cabinet/conges/${id}/relancer`, {});
+  }
   retirerConge(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/cabinet/conges/${id}`);
   }

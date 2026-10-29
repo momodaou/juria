@@ -72,7 +72,7 @@ async function tracer(type, congeId, acteurId, total, echecs) {
   await logAudit({ utilisateurId: acteurId || null, action: "email_conge", entite: "conges", entiteId: congeId, details: { type, destinataires: total, echecs } });
 }
 
-// Envoie à une liste ; ne lève jamais.
+// Envoie à une liste ; ne lève jamais. Renvoie { destinataires, echecs }.
 async function diffuser(liste, construire, type, congeId, acteurId) {
   let echecs = 0;
   for (const d of liste) {
@@ -82,6 +82,7 @@ async function diffuser(liste, construire, type, congeId, acteurId) {
     } catch (e) { echecs += 1; console.error("E-mail congé non envoyé :", e.message); }
   }
   try { await tracer(type, congeId, acteurId, liste.length, echecs); } catch (e) { /* trace facultative */ }
+  return { destinataires: liste.length, echecs };
 }
 
 function detailsPeriode(c) {
@@ -92,27 +93,29 @@ function motifVisible(c) {
   return c.type !== "maladie" && c.motif ? String(c.motif).split(" — ")[0] : "";
 }
 
-async function notifierDemande(congeId, acteurId) {
+// `relance` : nouvel envoi pour une demande restée sans réponse (action « Relancer les personnes habilitées »).
+async function notifierDemande(congeId, acteurId, { relance = false } = {}) {
+  const vide = { destinataires: 0, echecs: 0 };
   try {
     const c = await charger(congeId);
-    if (!c) return;
+    if (!c) return vide;
     const liste = await destinataires([c.utilisateur_id, acteurId]);
-    if (!liste.length) return;
+    if (!liste.length) return vide;
     const chev = await chevauchements(c);
     const nom = `${c.prenom} ${c.nom}`;
     const periode = detailsPeriode(c);
     const motif = motifVisible(c);
     const lignesChev = chev.map((x) => `${echapper(x.membre)} — ${jour(x.date_debut)} au ${jour(x.date_fin)} (${x.statut === "approuve" ? "approuvé" : "en attente"})`);
-    await diffuser(liste, () => ({
-      sujet: `Demande de ${TYPES[c.type] || "congé"} — ${nom}`,
-      html: cadre(`Demande de ${TYPES[c.type] || "congé"}`,
+    return await diffuser(liste, () => ({
+      sujet: `${relance ? "Rappel — " : ""}Demande de ${TYPES[c.type] || "congé"} — ${nom}`,
+      html: cadre(`${relance ? "Rappel : demande" : "Demande"} de ${TYPES[c.type] || "congé"} en attente`,
         `<p><b>${echapper(nom)}</b> demande un ${echapper(TYPES[c.type] || "congé")} du <b>${echapper(periode)}</b>.</p>`
         + (motif ? `<p>Motif : ${echapper(motif)}</p>` : "")
         + (lignesChev.length ? `<p style="color:#b45309"><b>À noter :</b> ${lignesChev.length} autre(s) membre(s) déjà absent(s) sur tout ou partie de ces dates :</p><ul>${lignesChev.map((l) => `<li>${l}</li>`).join("")}</ul>` : "<p>Aucun autre membre n'est absent sur ces dates.</p>")
         + `<p>La décision se prend dans JURIA (menu Administratif &amp; RH, section Congés), par une personne habilitée.</p>`, `${base()}/cabinet`),
       texte: `${nom} demande un ${TYPES[c.type] || "congé"} du ${periode}.${motif ? ` Motif : ${motif}.` : ""}${chev.length ? ` Autres absences sur ces dates : ${chev.map((x) => x.membre).join(", ")}.` : ""} Décision dans JURIA (Administratif & RH › Congés).`,
-    }), "demande", congeId, acteurId);
-  } catch (e) { console.error("notifierDemande :", e.message); }
+    }), relance ? "relance" : "demande", congeId, acteurId);
+  } catch (e) { console.error("notifierDemande :", e.message); return vide; }
 }
 
 async function notifierDecision(congeId, acteurId, motifRefus) {

@@ -114,3 +114,27 @@ describe("Décision et annulation", () => {
     expect(vers(associe.email).length).toBe(0); // l'auteur de l'annulation n'est pas averti de sa propre action
   });
 });
+
+describe("Relance d'une demande restée sans réponse", () => {
+  test("demandeur ou décideur, demande en attente seulement, une fois par 30 minutes ; mail « Rappel »", async () => {
+    const id = (await demande(collab, { date_debut: "2038-09-07", date_fin: "2038-09-08" })).body.id;
+    await attendre(() => vers(adminGen.email).length >= 1);
+    // la notification initiale vient de partir : une relance immédiate est refusée (anti-répétition)
+    const trop = await request(app).post(`/api/cabinet/conges/${id}/relancer`).set(auth(collab)).send({});
+    expect(trop.status).toBe(429);
+    // simule une notification plus ancienne que 30 minutes
+    await pool.query("UPDATE journal_audit SET horodatage = now() - interval '2 hours' WHERE action = 'email_conge' AND entite_id = $1", [id]);
+    spy.mockClear();
+    expect((await request(app).post(`/api/cabinet/conges/${id}/relancer`).set(auth(collab2)).send({})).status).toBe(403);
+    const ok = await request(app).post(`/api/cabinet/conges/${id}/relancer`).set(auth(collab)).send({});
+    expect(ok.status).toBe(200);
+    expect(ok.body.destinataires).toBeGreaterThanOrEqual(2);
+    await attendre(() => vers(adminGen.email).length >= 1);
+    expect(vers(adminGen.email)[0].subject).toMatch(/^Rappel — Demande de congé annuel — Collab Congé/);
+    expect(vers(collab.email).length).toBe(0);
+    // demande traitée : plus de relance
+    await request(app).post(`/api/cabinet/conges/${id}/decision`).set(auth(associe)).send({ statut: "approuve" });
+    await pool.query("UPDATE journal_audit SET horodatage = now() - interval '2 hours' WHERE action = 'email_conge' AND entite_id = $1", [id]);
+    expect((await request(app).post(`/api/cabinet/conges/${id}/relancer`).set(auth(associe)).send({})).status).toBe(409);
+  });
+});

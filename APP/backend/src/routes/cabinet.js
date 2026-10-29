@@ -154,6 +154,31 @@ router.delete("/conges/:id", requirePermission("cabinet.conge.demander"), async 
   }
 });
 
+// POST /api/cabinet/conges/:id/relancer — renvoie l'e-mail aux personnes habilitées pour une demande restée sans réponse
+// (29/10/2026 : demandes faites avant la mise en service des e-mails, ou oubliées). Réservé au demandeur et à qui peut
+// décider ; demande encore « en attente » uniquement ; au plus un envoi toutes les 30 minutes par demande.
+router.post("/conges/:id/relancer", requirePermission("cabinet.conge.demander"), async (req, res) => {
+  try {
+    const { rows: [c] } = await pool.query("SELECT utilisateur_id, statut FROM conges WHERE id = $1", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Demande introuvable" });
+    const peutDecider = await estAutorise(req.user.role, "cabinet.conge.decision", req.user.sub);
+    if (c.utilisateur_id !== req.user.sub && !peutDecider) {
+      return res.status(403).json({ error: "Seul le demandeur ou une personne habilitée à décider peut relancer cette demande." });
+    }
+    if (c.statut !== "demande") return res.status(409).json({ error: "Cette demande a déjà été traitée." });
+    const { rows: [recent] } = await pool.query(
+      `SELECT 1 FROM journal_audit WHERE action = 'email_conge' AND entite_id = $1::uuid AND details->>'type' IN ('demande','relance')
+         AND horodatage > now() - interval '30 minutes' LIMIT 1`, [req.params.id]);
+    if (recent) return res.status(429).json({ error: "Les personnes habilitées ont déjà été averties il y a moins de 30 minutes." });
+    const r = await notifierDemande(req.params.id, req.user.sub, { relance: true });
+    if (!r.destinataires) return res.status(409).json({ error: "Aucune personne habilitée à recevoir cet e-mail (voir la permission « Être averti par e-mail des demandes de congé » dans la Matrice)." });
+    res.json(r);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
 // POST /api/cabinet/conges/:id/annuler  { motif? } — annuler un congé déjà
 // APPROUVÉ (25/09/2026 : la personne renonce, ou erreur de décision).
 // Réservé à qui peut décider (cabinet.conge.decision) : un congé approuvé

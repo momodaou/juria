@@ -145,6 +145,7 @@ import { libelleRole } from '../../core/roles';
           }
         </table>
       } @else { <p class="muted">Aucune demande.</p> }
+      @if (infoConge()) { <p class="ok-msg">{{ infoConge() }}</p> }
       @if (erreurConge()) { <p class="err">{{ erreurConge() }}</p> }
     </section>
 
@@ -327,6 +328,7 @@ import { libelleRole } from '../../core/roles';
     </section>
   `,
   styles: [`
+    .ok-msg{color:var(--green);font-size:var(--fs-base);margin:8px 0 0}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-bottom:14px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
@@ -812,6 +814,9 @@ export class CabinetComponent implements OnInit {
     if (c.statut === 'demande' && (c.utilisateur_id === this.auth.utilisateur()?.id || this.auth.peut('cabinet.conge.decision'))) {
       items.push({ label: 'Retirer', action: () => this.retirerConge(c.id), danger: true });
     }
+    if (c.statut === 'demande' && (c.utilisateur_id === this.auth.utilisateur()?.id || this.auth.peut('cabinet.conge.decision'))) {
+      items.unshift({ label: 'Relancer les personnes habilitées', action: () => this.relancerConge(c) });
+    }
     // Congé déjà approuvé : annulation réservée à qui peut décider (25/09/2026).
     if (c.statut === 'approuve' && this.auth.peut('cabinet.conge.decision')) {
       items.push({ label: 'Annuler le congé', action: () => this.annulerConge(c), danger: true });
@@ -826,6 +831,15 @@ export class CabinetComponent implements OnInit {
     this.api.annulerConge(c.id, motif || undefined).subscribe({
       next: () => this.chargerConges(),
       error: (e) => this.erreurConge.set(e?.error?.error ?? 'Annulation impossible'),
+    });
+  }
+
+  readonly infoConge = signal('');
+  relancerConge(c: any): void {
+    this.erreurConge.set(''); this.infoConge.set('');
+    this.api.relancerConge(c.id).subscribe({
+      next: (r) => this.infoConge.set(`E-mail envoyé à ${r.destinataires} personne(s) habilitée(s)${r.echecs ? ` (${r.echecs} échec(s) d’envoi)` : ''}.`),
+      error: (e) => this.erreurConge.set(e?.error?.error ?? 'Relance impossible'),
     });
   }
 
