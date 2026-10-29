@@ -38,11 +38,20 @@ function resoudreNature(b, existant) {
 // une autre forme (avance_pour_client/refacture) mais jamais câblé, cf.
 // HISTORY.md).
 router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
-  const { type, statut, dossier_id, petite_caisse, a_refacturer, nature } = req.query;
+  const { type, statut, dossier_id, petite_caisse, a_refacturer, nature, categorie, q, du, au, masquer_annulees } = req.query;
   const params = [];
   const clauses = [];
   if (type) { params.push(type); clauses.push(`d.type = $${params.length}::type_depense`); }
-  if (statut) { params.push(statut); clauses.push(`d.statut = $${params.length}::statut_depense`); }
+  // « annulee » : dépenses annulées après validation / décaissement ; « rejetee » : refusées avant paiement (sans les annulées,
+  // qui passent aussi par le statut « rejetee » en base).
+  if (statut === "annulee") clauses.push("d.annulee_le IS NOT NULL");
+  else if (statut === "rejetee") clauses.push("d.statut = 'rejetee'::statut_depense", "d.annulee_le IS NULL");
+  else if (statut) { params.push(statut); clauses.push(`d.statut = $${params.length}::statut_depense`); }
+  if (masquer_annulees === "true") clauses.push("d.annulee_le IS NULL");
+  if (categorie) { params.push(categorie); clauses.push(`d.categorie = $${params.length}::categorie_depense`); }
+  if (q && String(q).trim()) { params.push(`%${String(q).trim()}%`); clauses.push(`(d.libelle ILIKE $${params.length} OR d.beneficiaire ILIKE $${params.length})`); }
+  if (du && /^\d{4}-\d{2}-\d{2}$/.test(du)) { params.push(du); clauses.push(`d.date_depense >= $${params.length}::date`); }
+  if (au && /^\d{4}-\d{2}-\d{2}$/.test(au)) { params.push(au); clauses.push(`d.date_depense <= $${params.length}::date`); }
   if (dossier_id) { params.push(dossier_id); clauses.push(`d.dossier_id = $${params.length}`); }
   if (nature) { params.push(nature); clauses.push(`d.nature = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
@@ -60,8 +69,11 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
               EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
               d.soumis_par AS soumis_par_id, u.prenom || ' ' || u.nom AS soumis_par,
               d.engagee_par AS engagee_par_id, d.apres_coup_statut, d.apres_coup_motif,
-              d.annulee_le, d.annulation_motif, d.statut_avant_annulation
+              d.annulee_le, d.annulation_motif, d.statut_avant_annulation, d.motif_rejet,
+              ua.prenom || ' ' || ua.nom AS annulee_par_nom,
+              (SELECT e.mois::text FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id WHERE l.depense_id = d.id LIMIT 1) AS etat_mois
        FROM depenses d
+       LEFT JOIN utilisateurs ua ON ua.id = d.annulee_par
        LEFT JOIN comptes_bancaires c ON c.id = d.compte_id
        LEFT JOIN dossiers dos ON dos.id = d.dossier_id
        LEFT JOIN utilisateurs u ON u.id = d.soumis_par

@@ -911,7 +911,7 @@ export class ApiService {
   }
 
   // Dépenses & caisse
-  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean } = {}): Observable<any[]> {
+  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean; categorie?: string; nature?: string; petite_caisse?: string; q?: string; du?: string; au?: string; masquer_annulees?: boolean } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     const q = params.toString() ? `?${params.toString()}` : '';

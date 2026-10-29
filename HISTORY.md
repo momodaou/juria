@@ -4395,3 +4395,10 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Bénéficiaire saisi une seule fois : celui de la dépense pré-remplit celui du moyen de paiement (engagement, décaissement) et inversement.
 - Question laissée ouverte : un paiement d'état en « Espèces (caisse) » / mobile money ne diminue pas le solde de la petite caisse (flag petite_caisse faux). Tests 791/791, build OK, pas de migration.
 - Déployé : API `juria-00198-hlf`, frontend `juria-web-00266-gzn`, `/health` et `/` = 200.
+
+## 30/10/2026 — Dépenses : audit de la liste (lot)
+- Dépenses annulées : plus de trait barré (jugé peu esthétique) → ligne grisée, étiquette « Annulée » et mention visible « Annulée le … par … — motif » sous le libellé ; motif de rejet affiché pour les dépenses rejetées ; case « Masquer les annulées » (décochée par défaut). Une annulation passait par le statut « rejetee » : le filtre « Rejetée » exclut désormais les annulées et un filtre « Annulée » distinct existe (API : `statut=annulee|rejetee`, `masquer_annulees`).
+- Filtres de la liste : catégorie (liste unique), nature, petite caisse / hors petite caisse, période du/au, recherche libellé ou bénéficiaire, « Effacer les filtres ». Total sous le tableau (annulées et rejetées exclues).
+- Étiquette « État MM/AAAA » sur les dépenses issues d'un état des charges (`etat_mois`) ; tuile cliquable « À décaisser » (nombre et total des dépenses validées) ; libellés unifiés (« Validée — à décaisser », « Petite caisse dépensée ce mois », « Solde petite caisse »).
+- Case « Justificatif disponible » retirée des trois formulaires (création, modification, engagement) : seules les pièces jointes comptent (la colonne reste en base pour l'historique).
+- Tests 794/794, build OK, pas de migration.

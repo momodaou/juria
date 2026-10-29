@@ -41,11 +41,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </div>
       <div class="kpi amber">
         <div class="n">{{ caisse()?.depense ?? 0 | number }}</div>
-        <div class="l">Dépensé ce mois</div>
+        <div class="l">Petite caisse dépensée ce mois</div>
       </div>
       <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0" [class.green]="(caisse()?.solde ?? 0) >= 0">
         <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
-        <div class="l">Solde caisse</div>
+        <div class="l">Solde petite caisse</div>
+      </div>
+      <div class="kpi amber" style="cursor:pointer" (click)="voirADecaisser()" title="Afficher les dépenses validées en attente de décaissement">
+        <div class="n">{{ aDecaisser().total | number }}</div>
+        <div class="l">À décaisser — {{ aDecaisser().nb }} dépense(s)</div>
       </div>
       <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
         <div class="n">{{ stockVignettes() }}</div>
@@ -92,7 +96,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           }
           <div class="col2 checks">
             <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse</label>
-            <label><input type="checkbox" [(ngModel)]="form.justificatif" name="just" /> Justificatif disponible</label>
             @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label> }
           </div>
         </div>
@@ -116,15 +119,36 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <select class="in filtre" [(ngModel)]="filtreStatut" (ngModelChange)="charger()">
           <option value="">Tous statuts</option>
           <option value="soumise">Soumise</option>
-          <option value="validee">Validée</option>
-          <option value="rejetee">Rejetée</option>
+          <option value="validee">Validée — à décaisser</option>
           <option value="decaissee">Décaissée</option>
+          <option value="rejetee">Rejetée</option>
+          <option value="annulee">Annulée</option>
         </select>
         <select class="in filtre" [(ngModel)]="filtreType" (ngModelChange)="charger()">
           <option value="">Tous types</option>
           <option value="fixe">Fixe</option>
           <option value="ponctuelle">Ponctuelle</option>
         </select>
+        <select class="in filtre" [(ngModel)]="filtreCategorie" (ngModelChange)="charger()">
+          <option value="">Toutes catégories</option>
+          <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+          <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+        </select>
+        <select class="in filtre" [(ngModel)]="filtreNature" (ngModelChange)="charger()">
+          <option value="">Cabinet et dossiers</option>
+          <option value="cabinet">Charges du cabinet</option>
+          <option value="dossier">Liées à un dossier</option>
+        </select>
+        <select class="in filtre" [(ngModel)]="filtreCaisse" (ngModelChange)="charger()">
+          <option value="">Toutes sources</option>
+          <option value="true">Petite caisse</option>
+          <option value="false">Hors petite caisse</option>
+        </select>
+        <label class="filtre-date">Du <input class="in" type="date" [(ngModel)]="filtreDu" (ngModelChange)="charger()" /></label>
+        <label class="filtre-date">au <input class="in" type="date" [(ngModel)]="filtreAu" (ngModelChange)="charger()" /></label>
+        <input class="in filtre" style="min-width:210px" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" />
+        <label class="filtre-cases"><input type="checkbox" [(ngModel)]="masquerAnnulees" (ngModelChange)="charger()" /> Masquer les annulées</label>
+        @if (filtresActifs()) { <button class="lien" (click)="reinitialiserFiltres()">Effacer les filtres</button> }
       </div>
       <!-- Erreurs des actions de la liste (décision, décaissement, retrait) :
            jusqu'ici affichées seulement dans le formulaire de création,
@@ -136,7 +160,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @for (d of depenses(); track d.id) {
             <tr [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
-              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }</td>
+              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }
+                @if (d.etat_mois) { <span class="tag">État {{ d.etat_mois | date:'MM/yyyy' }}</span> }
+                @if (d.annulee_le) { <div class="obs">Annulée le {{ d.annulee_le | date:'dd/MM/yyyy' }}@if (d.annulee_par_nom) { par {{ d.annulee_par_nom }} }@if (d.annulation_motif) { — {{ d.annulation_motif }} }</div> }
+                @else if (d.statut === 'rejetee' && d.motif_rejet) { <div class="obs">Rejetée : {{ d.motif_rejet }}</div> }
+              </td>
               <td>{{ libelleCategorie(d.categorie) }}</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
@@ -200,7 +228,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     }
                     <div class="col2 checks">
                       <label><input type="checkbox" [(ngModel)]="editForm.petite_caisse" name="edPc" /> Sur petite caisse</label>
-                      <label><input type="checkbox" [(ngModel)]="editForm.justificatif" name="edJust" /> Justificatif disponible</label>
                       <label><input type="checkbox" [(ngModel)]="editForm.refacturable_client" name="edRefact" /> Débours refacturable au client</label>
                     </div>
                   </div>
@@ -247,6 +274,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             }
           }
         </table>
+        <p class="total-liste">
+          <b>{{ totalAffiche() | number }} FCFA</b> · {{ nbCompte() }} dépense(s) comptée(s) <span class="muted">(annulées et rejetées exclues)</span>@if (depenses().length >= 300) { <span class="muted"> — 300 plus récentes affichées : affinez les filtres</span> }
+        </p>
       } @else { <p class="muted">Aucune dépense.</p> }
     </section>
 
@@ -307,7 +337,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
             <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.refacturable_client" name="engRefact" /> Débours refacturable au client</label></div>
           }
-          <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.justificatif" name="engJust" /> Justificatif disponible</label></div>
         </div>
         <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
         @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
@@ -385,7 +414,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
   styles: [`
     .btns-ligne{display:flex;gap:12px;align-items:center;margin-top:12px}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin:8px 0 0}
-    tr.annulee td{color:var(--grey)} tr.annulee td:not(:last-child):not(:nth-last-child(2)){text-decoration:line-through}
+    tr.annulee td{color:var(--grey);opacity:.62} tr.annulee td:last-child{opacity:1}
+    .obs{font-size:var(--fs-2xs);color:var(--grey);font-style:italic;margin-top:2px}
+    .filtre-date{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-base);color:var(--grey)}
+    .filtre-cases{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-base)}
+    .total-liste{margin:10px 2px 0;text-align:right;font-size:var(--fs-md)}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-top:10px;max-width:680px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
@@ -439,6 +472,15 @@ export class DepensesComponent implements OnInit {
 
   filtreStatut = '';
   filtreType = '';
+  filtreCategorie = '';
+  filtreNature = '';
+  filtreCaisse = '';
+  filtreDu = '';
+  filtreAu = '';
+  filtreRecherche = '';
+  masquerAnnulees = false;
+  readonly aDecaisser = signal<{ nb: number; total: number }>({ nb: 0, total: 0 });
+  private minuteurRecherche: any = null;
   form: any = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
   dotationMois = this.moisCourant.slice(0, 7);
@@ -470,8 +512,38 @@ export class DepensesComponent implements OnInit {
 
   charger(): void {
     const dossierId = this.filtreDossierId();
-    this.api.depenses({ statut: this.filtreStatut, type: this.filtreType, ...(dossierId ? { dossier_id: dossierId } : {}) }).subscribe({ next: (d) => this.depenses.set(d) });
+    this.api.depenses({
+      statut: this.filtreStatut, type: this.filtreType, categorie: this.filtreCategorie, nature: this.filtreNature,
+      petite_caisse: this.filtreCaisse, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
+      masquer_annulees: this.masquerAnnulees, ...(dossierId ? { dossier_id: dossierId } : {}),
+    }).subscribe({ next: (d) => this.depenses.set(d) });
+    this.chargerADecaisser();
   }
+  // Recherche texte : on attend la fin de la frappe avant d'interroger le serveur.
+  chargerRecherche(): void {
+    clearTimeout(this.minuteurRecherche);
+    this.minuteurRecherche = setTimeout(() => this.charger(), 300);
+  }
+  filtresActifs(): boolean {
+    return !!(this.filtreStatut || this.filtreType || this.filtreCategorie || this.filtreNature || this.filtreCaisse || this.filtreDu || this.filtreAu || this.filtreRecherche.trim() || this.masquerAnnulees);
+  }
+  reinitialiserFiltres(): void {
+    this.filtreStatut = this.filtreType = this.filtreCategorie = this.filtreNature = this.filtreCaisse = this.filtreDu = this.filtreAu = this.filtreRecherche = '';
+    this.masquerAnnulees = false;
+    this.charger();
+  }
+  // Total de la liste affichée : les dépenses annulées ou rejetées ne comptent pas.
+  private comptees(): any[] { return this.depenses().filter((d) => !d.annulee_le && d.statut !== 'rejetee'); }
+  totalAffiche(): number { return this.comptees().reduce((s, d) => s + Number(d.montant), 0); }
+  nbCompte(): number { return this.comptees().length; }
+  // Tuile « à décaisser » : dépenses validées (états approuvés compris) qui attendent leur paiement.
+  chargerADecaisser(): void {
+    this.api.depenses({ statut: 'validee' }).subscribe({
+      next: (l) => this.aDecaisser.set({ nb: l.length, total: l.reduce((s, d) => s + Number(d.montant), 0) }),
+      error: () => {},
+    });
+  }
+  voirADecaisser(): void { this.reinitialiserFiltres(); this.filtreStatut = 'validee'; this.charger(); }
 
   chargerCaisse(): void {
     this.api.petiteCaisse(this.moisCourant).subscribe({ next: (c) => this.caisse.set(c) });
@@ -483,7 +555,7 @@ export class DepensesComponent implements OnInit {
   readonly categoriesDebours = CATEGORIES_DEBOURS;
   libelleCategorie(c: string): string { return libelleCategorieDepense(c); }
   private readonly libellesStatut: Record<string, string> = {
-    soumise: 'Soumise', validee: 'Validée', rejetee: 'Rejetée', decaissee: 'Décaissée',
+    soumise: 'Soumise', validee: 'Validée — à décaisser', rejetee: 'Rejetée', decaissee: 'Décaissée',
   };
   libelleStatut(s: string): string { return this.libellesStatut[s] ?? s; }
 
