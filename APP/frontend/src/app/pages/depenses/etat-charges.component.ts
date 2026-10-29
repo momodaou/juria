@@ -114,7 +114,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
             <b>Approuver {{ aApprouver(d).length }} ligne(s) en attente — {{ totalAApprouver(d) | number }} FCFA</b>
             <p class="hint">Les lignes déjà rejetées, reportées ou approuvées ne sont pas touchées ; celles à montant nul restent à traiter à la main. Une ligne qui a déjà un moyen de paiement le garde ; le moyen ci-dessous ne sert qu’aux autres (il pourra être précisé ou corrigé au décaissement).</p>
             <div class="reglement-bloc">
-              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                                   [modele]="groupe" [catalogue]="catalogue()"></app-reglement-form>
             </div>
             <div class="btns">
@@ -241,7 +241,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                   </div>
                   @if (d.statut === 'soumis' || peutOrienter) {
                     <div class="reglement-bloc">
-                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                                           [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
                     </div>
                   }
@@ -298,7 +298,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           </div>
           @if (peutOrienter) {
             <div class="reglement-bloc">
-              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                                   [modele]="ajout" [catalogue]="catalogue()"></app-reglement-form>
             </div>
           } @else {
@@ -354,7 +354,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           @if (peutOrienter) {
             <div class="reglement-bloc">
               <p class="hint">Moyen de paiement et compte habituels : proposés dès la création de chaque état, que les associés peuvent changer à la décision.</p>
-              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+              <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                                   [modele]="modele" [catalogue]="catalogue()"></app-reglement-form>
             </div>
           }

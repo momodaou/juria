@@ -21,10 +21,12 @@ import { ApiService, MoyenPaiement } from './api.service';
         </select>
       </label>
       @if (moyen(); as m) {
-        @for (c of m.champs; track c.cle) {
-          <label><span>{{ c.libelle }}@if (c.requis && exigerReferences) { <span class="req"> *</span> }</span>
-            <input [type]="c.type === 'date' ? 'date' : 'text'" [(ngModel)]="modele.references[c.cle]" [name]="'rg_' + c.cle" (ngModelChange)="emettre()" />
-          </label>
+        @if (!masquerReferences) {
+          @for (c of m.champs; track c.cle) {
+            <label><span>{{ c.libelle }}@if (c.requis && exigerReferences) { <span class="req"> *</span> }</span>
+              <input [type]="c.type === 'date' ? 'date' : 'text'" [(ngModel)]="modele.references[c.cle]" [name]="'rg_' + c.cle" (ngModelChange)="emettre()" />
+            </label>
+          }
         }
         @if (m.frais) {
           <label>Frais retenus (facultatif)
@@ -82,6 +84,9 @@ export class ReglementFormComponent implements OnChanges {
   @Input() cleMode = 'mode';
   // Références requises du moyen : faux tant que l'argent n'est pas sorti (dépense soumise).
   @Input() exigerReferences = true;
+  // Références du moyen (n° et date du chèque, identifiant de transaction…) : masquées avant le paiement (validation par les
+  // associés, saisie d'une dépense) ; elles se renseignent au décaissement par la personne qui paie.
+  @Input() masquerReferences = false;
   // Faux : le moyen peut rester « à préciser » (dépense soumise avant son paiement).
   @Input() exigerMoyen = true;
   // Qui supporte les frais retenus quand rien n'est choisi (d'après la mention de la facture).

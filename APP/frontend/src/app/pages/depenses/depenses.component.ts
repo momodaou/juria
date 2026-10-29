@@ -81,7 +81,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="beneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="form.montant" name="montant" /></div>
           <div><label>Date</label><input class="in" type="date" [(ngModel)]="form.date_depense" name="date" /></div>
-          <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+          <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                               [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
           <div class="col2">
             <label>Nature de la charge</label>
@@ -215,7 +215,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="editForm.beneficiaire" name="edBeneficiaire" /></div>
                     <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
-                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [exigerMoyen]="false"
+                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
                                         [modele]="editForm" [catalogue]="catalogue()"></app-reglement-form>
                     <div class="col2">
                       <label>Nature de la charge</label>
