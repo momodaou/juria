@@ -94,7 +94,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
         <div class="barre">
           <button class="btn ghost sm" (click)="apercu(d)">👁 Aperçu / PDF</button>
           @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
-            <button class="btn ghost sm" (click)="completer(d.id)" [disabled]="enCours()" title="Ajoute à cet état les charges habituelles du catalogue dues ce mois-ci et qui n’y figurent pas encore">+ Charges habituelles manquantes</button>
+            <button class="btn ghost sm" (click)="completer(d.id)" [disabled]="enCours()" title="Ajoute à cet état les charges habituelles dues ce mois-ci qui n’y figurent pas encore. Aucun doublon.">+ Intégrer les charges habituelles</button>
             <button class="btn sm" (click)="action(d.id, 'soumettre')" [disabled]="enCours() || !d.lignes.length">Soumettre aux associés</button>
           }
           @if (d.statut === 'soumis' && auth.peut('depenses.creer') && !decisionsPrises(d)) {
@@ -310,7 +310,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           <button class="btn sm" style="margin-left:12px" (click)="ouvrirAjoutModele()">+ Ajouter une charge habituelle</button>
         }
       </h3>
-      <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état (pour un état déjà créé, utilisez « + Charges habituelles manquantes ») : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
+      <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état (pour un état déjà créé, utilisez « + Intégrer les charges habituelles ») : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
 
       <ng-template #formModele>
           <div class="champs">
@@ -662,7 +662,7 @@ export class EtatChargesComponent implements OnInit {
     this.messageCompletion.set('');
     this.api.completerEtatCharges(id).subscribe({
       next: (r) => {
-        this.messageCompletion.set(r.ajoutees ? `${r.ajoutees} charge(s) habituelle(s) ajoutée(s) à l’état.` : 'Aucune charge habituelle manquante : l’état est complet.');
+        this.messageCompletion.set(r.ajoutees ? `${r.ajoutees} charge(s) habituelle(s) intégrée(s) à l’état.` : 'Toutes les charges habituelles du mois figurent déjà dans l’état.');
         this.fini();
       },
       error: (e) => this.echec(e),
