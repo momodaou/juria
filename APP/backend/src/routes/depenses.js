@@ -147,8 +147,12 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
   if (!b.mode_paiement) return res.status(400).json({ error: "Moyen de paiement requis (mobile money recommandé)." });
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
+  // Bénéficiaire saisi une seule fois (29/10/2026) : repris dans les références du moyen, et inversement.
+  const refs = b.references && typeof b.references === "object" ? { ...b.references } : {};
+  const beneficiaire = String(b.beneficiaire || refs.beneficiaire || "").trim().slice(0, 160) || null;
+  if (beneficiaire && !refs.beneficiaire) refs.beneficiaire = beneficiaire;
   // L'argent sort tout de suite : les références du moyen sont exigées.
-  const regl = await preparerDecaissement(pool, b, { exigerReferences: true });
+  const regl = await preparerDecaissement(pool, { ...b, references: refs }, { exigerReferences: true });
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
   try {
     const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
@@ -171,13 +175,13 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id,
-          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement)
+          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement, beneficiaire)
        VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
                TRUE,COALESCE($8,false),$9,$10,
-               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb)
+               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb,$13)
        RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
       [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
-       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub, JSON.stringify(regl.valeurs.references)]
+       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub, JSON.stringify(regl.valeurs.references), beneficiaire]
     );
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
       details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde }, ip: req.ip });
@@ -220,7 +224,7 @@ router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_c
   const b = req.body || {};
   if (b.solde_reel == null || isNaN(Number(b.solde_reel))) return res.status(400).json({ error: "solde_reel requis" });
   try {
-    const mois = b.mois || premierDuMois();
+    const mois = (b.mois && moisNormalise(b.mois)) || premierDuMois();
     const { solde } = await soldePetiteCaisse(mois);
     const reel = Math.round(Number(b.solde_reel));
     const { rows } = await pool.query(
@@ -567,7 +571,7 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
   const b = req.body || {};
   try {
     const { rows: [d] } = await pool.query(
-      "SELECT statut, montant, mode_paiement, compte_id, references_paiement FROM depenses WHERE id = $1", [req.params.id]);
+      "SELECT statut, montant, mode_paiement, compte_id, references_paiement, beneficiaire FROM depenses WHERE id = $1", [req.params.id]);
     if (!d || d.statut !== "validee") return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
     // Justificatif exigé au-delà d'un seuil (réglage facultatif, 0 = désactivé) : au moins une facture ou une pièce « autre ».
     const { rows: [par] } = await pool.query("SELECT seuil_justificatif_decaissement AS seuil FROM parametres_cabinet WHERE id = 1");
@@ -578,20 +582,24 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
         return res.status(409).json({ error: `Un justificatif (facture ou autre pièce) est exigé avant de décaisser une dépense de ${seuil.toLocaleString("fr-FR")} FCFA ou plus : ajoutez-le dans « Pièces / devis ».` });
       }
     }
+    // Bénéficiaire saisi une seule fois : celui de la dépense pré-remplit celui du moyen de paiement (et inversement).
+    const refsDecaissement = { ...((b.references !== undefined ? b.references : d.references_paiement) || {}) };
+    if (!refsDecaissement.beneficiaire && d.beneficiaire) refsDecaissement.beneficiaire = d.beneficiaire;
     // Le moyen, le compte et les références peuvent être précisés ou corrigés au
     // décaissement ; les références du moyen sont alors exigées (l'argent sort).
     const regl = await preparerDecaissement(pool, {
       mode_paiement: b.mode_paiement || d.mode_paiement,
       compte_id: b.compte_id !== undefined ? b.compte_id : d.compte_id,
-      references: b.references !== undefined ? b.references : d.references_paiement,
+      references: refsDecaissement,
     }, { exigerReferences: true });
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
     const v = regl.valeurs;
     const { rows } = await pool.query(
       `UPDATE depenses SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now(),
-              mode_paiement = $3::mode_paiement, compte_id = $4::uuid, references_paiement = $5::jsonb
+              mode_paiement = $3::mode_paiement, compte_id = $4::uuid, references_paiement = $5::jsonb,
+              beneficiaire = COALESCE(beneficiaire, $6)
        WHERE id = $2 AND statut = 'validee' RETURNING id, statut`,
-      [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references)]
+      [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references), String(v.references.beneficiaire || "").trim().slice(0, 160) || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
     res.json(rows[0]);
@@ -626,6 +634,13 @@ router.get("/comptes", async (req, res) => {
 });
 
 // Solde de la petite caisse d'un mois : dotation − dépenses (hors rejetées).
+// Mois d'une dotation / d'un solde (29/10/2026) : toute date ou « AAAA-MM » est ramenée au 1er du mois ; null si invalide.
+function moisNormalise(v) {
+  const m = /^(\d{4})-(\d{2})(?:-\d{2})?/.exec(String(v || ""));
+  if (!m || +m[2] < 1 || +m[2] > 12) return null;
+  return `${m[1]}-${m[2]}-01`;
+}
+
 async function soldePetiteCaisse(mois) {
   const dotation = await pool.query("SELECT montant_alloue FROM dotations_petite_caisse WHERE mois = $1", [mois]);
   const depense = await pool.query(
@@ -641,7 +656,7 @@ const premierDuMois = (d = new Date()) => d.toISOString().slice(0, 8) + "01";
 
 // GET /api/depenses/petite-caisse?mois=YYYY-MM-01
 router.get("/petite-caisse", async (req, res) => {
-  const mois = req.query.mois || premierDuMois();
+  const mois = (req.query.mois && moisNormalise(req.query.mois)) || premierDuMois();
   try {
     const { dotation, depense, solde } = await soldePetiteCaisse(mois);
     const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
@@ -654,16 +669,23 @@ router.get("/petite-caisse", async (req, res) => {
 
 // POST /api/depenses/petite-caisse  { mois, montant_alloue }  (administrateur)
 router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
-  const { mois, montant_alloue } = req.body || {};
-  if (!mois || montant_alloue == null) return res.status(400).json({ error: "mois et montant_alloue requis" });
+  const { mois: moisBrut, montant_alloue } = req.body || {};
+  if (!moisBrut || montant_alloue == null || montant_alloue === "") return res.status(400).json({ error: "mois et montant_alloue requis" });
+  const mois = moisNormalise(moisBrut);
+  if (!mois) return res.status(400).json({ error: "Mois invalide (AAAA-MM)." });
+  const montant = Number(montant_alloue);
+  if (!Number.isInteger(montant) || montant < 0) return res.status(400).json({ error: "Montant de dotation invalide : entier en FCFA, zéro ou plus (0 remet la caisse à zéro)." });
   try {
+    const { rows: [avant] } = await pool.query("SELECT montant_alloue FROM dotations_petite_caisse WHERE mois = $1::date", [mois]);
     const { rows } = await pool.query(
       `INSERT INTO dotations_petite_caisse (mois, montant_alloue, administrateur_id)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (mois) DO UPDATE SET montant_alloue = EXCLUDED.montant_alloue
-       RETURNING mois, montant_alloue`,
-      [mois, montant_alloue, req.user.sub]
+       VALUES ($1::date,$2,$3)
+       ON CONFLICT (mois) DO UPDATE SET montant_alloue = EXCLUDED.montant_alloue, administrateur_id = EXCLUDED.administrateur_id
+       RETURNING mois::text AS mois, montant_alloue`,
+      [mois, montant, req.user.sub]
     );
+    await logAudit({ utilisateurId: req.user.sub, action: avant ? "corriger_dotation_petite_caisse" : "doter_petite_caisse", entite: "dotations_petite_caisse",
+      details: { mois, avant: avant ? Number(avant.montant_alloue) : null, apres: montant }, ip: req.ip });
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);

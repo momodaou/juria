@@ -253,10 +253,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     @if (auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
         <h3>Petite caisse — dotation mensuelle</h3>
+        <p class="muted">Mois en cours ({{ moisCourant.slice(0, 7) }}) : dotation <b>{{ caisse()?.dotation ?? 0 | number }}</b> FCFA · dépensé <b>{{ caisse()?.depense ?? 0 | number }}</b> FCFA · solde <b>{{ caisse()?.solde ?? 0 | number }}</b> FCFA.
+          Chaque mois est indépendant : le solde non dépensé n'est pas reporté sur le mois suivant.</p>
         <div class="upload" id="formDotation">
-          <input class="sel" type="date" [(ngModel)]="dotationMois" name="dotationMois" />
-          <input class="sel" id="champDotation" type="number" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA)" />
-          <button class="btn sm" (click)="definirDotation()" [disabled]="!dotationMontant || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+          <input class="sel" type="month" [(ngModel)]="dotationMois" name="dotationMois" />
+          <input class="sel" id="champDotation" type="number" min="0" [(ngModel)]="dotationMontant" name="dotationMontant" placeholder="Montant (FCFA) — 0 pour remettre à zéro" style="min-width:270px" />
+          <button class="btn sm" (click)="definirDotation()" [disabled]="dotationMontant === null || dotationMontant === undefined || dotationEnCours()">{{ dotationEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
         </div>
         @if (dotationCorrection()) { <p class="ok-msg">{{ dotationCorrection() }}</p> }
         <p class="muted" style="margin-top:6px">Réenregistrer un mois déjà doté remplace son montant (correction).</p>
@@ -283,6 +285,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <div class="grid2">
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="engagement.montant" name="engMontant" /></div>
+          <div>
+            <label>Catégorie</label>
+            <select class="in" [(ngModel)]="engagement.categorie" name="engCategorie">
+              <option value="">— À choisir —</option>
+              <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+            </select>
+          </div>
+          <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="engagement.beneficiaire" name="engBeneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="engagement" [catalogue]="catalogue()" (validite)="engagementValide.set($event)"></app-reglement-form>
           <div>
             <label>Nature</label>
@@ -294,7 +305,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @if (engagement.nature === 'dossier') {
             <div><label>Dossier concerné</label>
               <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
+            <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.refacturable_client" name="engRefact" /> Débours refacturable au client</label></div>
           }
+          <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.justificatif" name="engJust" /> Justificatif disponible</label></div>
         </div>
         <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
         @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
@@ -428,7 +441,7 @@ export class DepensesComponent implements OnInit {
   filtreType = '';
   form: any = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
-  dotationMois = this.moisCourant;
+  dotationMois = this.moisCourant.slice(0, 7);
   dotationMontant: number | null = null;
   vignetteQuantite: number | null = null;
   // Numéros à 7 chiffres : plages et/ou numéros isolés (16/10/2026) — un lot
@@ -542,7 +555,7 @@ export class DepensesComponent implements OnInit {
   chargerDotations(): void { this.api.dotationsPetiteCaisse().subscribe({ next: (r) => this.dotations.set(r), error: () => {} }); }
   readonly dotationCorrection = signal('');
   corrigerDotation(dt: any): void {
-    this.dotationMois = String(dt.mois).slice(0, 10);
+    this.dotationMois = String(dt.mois).slice(0, 7);
     this.dotationMontant = Number(dt.montant_alloue);
     this.dotationCorrection.set(`Correction de la dotation ${String(dt.mois).slice(5, 7)}/${String(dt.mois).slice(0, 4)} : modifiez le montant ci-dessus puis cliquez sur « Enregistrer ».`);
     // Amène le formulaire (et non le haut de la page) à l'écran et place le curseur dans le montant.
@@ -706,7 +719,7 @@ export class DepensesComponent implements OnInit {
   decModele: any = {};
   ouvrirDecaissement(d: any): void {
     this.erreur.set('');
-    this.decModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: { ...(d.references_paiement ?? {}) } };
+    this.decModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: { ...(d.beneficiaire ? { beneficiaire: d.beneficiaire } : {}), ...(d.references_paiement ?? {}) } };
     this.decaissementId.set(d.id);
   }
   confirmerDecaissement(d: any): void {
@@ -759,7 +772,7 @@ export class DepensesComponent implements OnInit {
   // les a reçues le 26/09/2026 dans ce même fichier.
   readonly dotationEnCours = signal(false);
   definirDotation(): void {
-    if (!this.dotationMontant || this.dotationEnCours()) return;
+    if (this.dotationMontant === null || this.dotationMontant === undefined || (this.dotationMontant as any) === '' || this.dotationEnCours()) return;
     this.erreur.set('');
     this.dotationEnCours.set(true);
     this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant).subscribe({

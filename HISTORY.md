@@ -4387,3 +4387,10 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 30/10/2026 — Intitulé du bouton de complément de l'état
 - « + Charges habituelles manquantes » devient « + Intégrer les charges habituelles » (info-bulle : « Ajoute à cet état les charges habituelles dues ce mois-ci qui n'y figurent pas encore. Aucun doublon. ») ; messages : « N charge(s) habituelle(s) intégrée(s) à l'état » / « Toutes les charges habituelles du mois figurent déjà dans l'état » ; introduction du catalogue alignée. Front seul.
 - Déployé : frontend `juria-web-00265-pc2`, `/` = 200.
+
+## 30/10/2026 — Petite caisse : audit de la tuile « dotation mensuelle » (lot)
+- Dotation : le mois est ramené au 1er (une date en milieu de mois créait une ligne que le solde ne retrouvait pas → « caisse non dotée ») ; sélecteur de mois ; montant entier ≥ 0 (0 = remise à zéro de la caisse du mois, jusqu'ici impossible depuis l'écran) ; création / correction tracées au journal d'audit (avant/après). Le rapprochement et la lecture du solde normalisent aussi le mois.
+- Tuile : récapitulatif du mois (dotation, dépensé, solde) et rappel que chaque mois est indépendant (pas de report du non-dépensé).
+- Engagement d'une petite dépense : catégorie (liste unique), bénéficiaire, case « justificatif disponible » et, pour un dossier, case « débours refacturable » (omissions : tout partait en « Autre »).
+- Bénéficiaire saisi une seule fois : celui de la dépense pré-remplit celui du moyen de paiement (engagement, décaissement) et inversement.
+- Question laissée ouverte : un paiement d'état en « Espèces (caisse) » / mobile money ne diminue pas le solde de la petite caisse (flag petite_caisse faux). Tests 791/791, build OK, pas de migration.
