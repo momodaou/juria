@@ -4403,3 +4403,5 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Case « Justificatif disponible » retirée des trois formulaires (création, modification, engagement) : seules les pièces jointes comptent (la colonne reste en base pour l'historique).
 - Tests 794/794, build OK, pas de migration.
 - Déployé : API `juria-00199-r7r`, frontend `juria-web-00267-94m`, `/health` et `/` = 200.
+
+- Dépenses (30/10/2026) : phrase d'aide sous le titre — une charge d'un état mensuel n'apparaît dans la liste qu'une fois approuvée. Compteur de lignes en attente écarté (doublon avec l'état des charges). Front seul.
