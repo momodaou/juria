@@ -4406,3 +4406,5 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 - Dépenses (30/10/2026) : phrase d'aide sous le titre — une charge d'un état mensuel n'apparaît dans la liste qu'une fois approuvée. Compteur de lignes en attente écarté (doublon avec l'état des charges). Front seul.
 - Déployé : frontend `juria-web-00268-f9d`, `/` = 200.
+
+- Dépenses (29/10/2026) : en-tête corrigé — la phrase d'aide allongée écrasait le bloc de droite et faisait passer « + Nouvelle dépense » sous « État mensuel des charges » ; bloc de texte flexible (min-width:0), boutons non compressibles sur une ligne. Front seul.
