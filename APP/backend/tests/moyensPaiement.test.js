@@ -192,3 +192,27 @@ describe("Correction du moyen d'un paiement enregistré et du moyen de règlemen
     expect((await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode_reglement: "troc" })).status).toBe(400);
   });
 });
+
+describe("Journal d'audit des factures (29/10/2026)", () => {
+  test("émission, paiement, modification (avant / après) et annulation sont tracés", async () => {
+    const f = await facture(60000);
+    const trace = async (action) => (await pool.query("SELECT details FROM journal_audit WHERE action = $1 AND entite_id = $2 ORDER BY id", [action, f.id])).rows;
+    expect((await trace("creer_facture")).length).toBe(1);
+    expect((await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ objet: "Objet corrigé", montant_ht: 65000 })).status).toBe(200);
+    const mod = await trace("modifier_facture");
+    expect(mod.length).toBe(1);
+    expect(mod[0].details.changements.montant_ht).toEqual({ avant: "60000", apres: "65000" });
+    expect(mod[0].details.changements.objet.apres).toBe("Objet corrigé");
+    // une modification sans effet ne laisse aucune trace
+    await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ objet: "Objet corrigé" });
+    expect((await trace("modifier_facture")).length).toBe(1);
+    expect((await request(app).post(`/api/factures/${f.id}/annuler`).set(auth()).send({})).status).toBe(200);
+    expect((await trace("annuler_facture")).length).toBe(1);
+
+    const g = await facture(20000);
+    await payer(g.id, { montant: 5000, mode: "virement", compte_id: banque });
+    const t = await pool.query("SELECT details FROM journal_audit WHERE action = 'ajouter_paiement' AND entite_id = $1", [g.id]);
+    expect(t.rows.length).toBe(1);
+    expect(t.rows[0].details.montant).toBe(5000);
+  });
+});

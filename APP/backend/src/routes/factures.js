@@ -3,7 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
-const { logAudit } = require("../audit");
+const { logAudit, diffChamps } = require("../audit");
 const { MOYENS, comptesEligibles, preparerReglement, referenceCourte, PAR_CODE } = require("../moyensPaiement");
 const router = express.Router();
 
@@ -470,6 +470,8 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
     }
 
     await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "creer_facture", entite: "factures", entiteId: rows[0].id,
+      details: { numero: rows[0].numero, montant_ttc: Number(rows[0].montant_ttc), devise: rows[0].devise, acompte: acompteEnregistre || null }, ip: req.ip });
     const statutFinal = acompteEnregistre ? await majStatut(rows[0].id) : rows[0].statut;
     res.status(201).json({
       ...rows[0],
@@ -517,6 +519,7 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
     await client.query("UPDATE temps SET facture_id = NULL WHERE facture_id = $1", [req.params.id]);
     await client.query("UPDATE depenses SET facture_id = NULL WHERE facture_id = $1", [req.params.id]);
     await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "annuler_facture", entite: "factures", entiteId: req.params.id, details: { numero: maj.rows[0].numero }, ip: req.ip });
     res.json(maj.rows[0]);
   } catch (e) {
     await client.query("ROLLBACK");
@@ -550,7 +553,8 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
   const b = req.body || {};
   try {
     const cur = await pool.query(
-      "SELECT statut, montant_ht, taux_tva, montant_frais, montant_debours, taux_applique FROM factures WHERE id = $1",
+      `SELECT statut, montant_ht, taux_tva, montant_frais, montant_debours, taux_applique, montant_ttc, objet,
+              date_echeance::text AS date_echeance, mode_reglement, compte_reglement_id, mention FROM factures WHERE id = $1`,
       [req.params.id]
     );
     if (!cur.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
@@ -585,11 +589,18 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
          date_echeance = COALESCE($8, date_echeance), mode_reglement = COALESCE($9::mode_paiement, mode_reglement),
          compte_reglement_id = COALESCE($10::uuid, compte_reglement_id), mention = COALESCE($11, mention)
        WHERE id = $12
-       RETURNING id, numero, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut`,
+       RETURNING id, numero, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut, date_echeance::text AS date_echeance,
+                 mode_reglement, compte_reglement_id, mention, taux_tva`,
       [b.objet ?? null, ht, tauxTva, tva, frais, ttc, ttcXof,
        b.date_echeance || null, b.mode_reglement || null, b.compte_reglement_id || null, b.mention ?? null,
        req.params.id]
     );
+    // Trace (avant / après) d'une correction de facture émise ou payée (29/10/2026).
+    const changements = diffChamps(cur.rows[0], rows[0], ["objet", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
+    if (Object.keys(changements).length) {
+      await logAudit({ utilisateurId: req.user.sub, action: "modifier_facture", entite: "factures", entiteId: req.params.id,
+        details: { numero: rows[0].numero, statut: rows[0].statut, changements }, ip: req.ip });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -637,6 +648,8 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
        f.rows[0].devise, f.rows[0].taux_applique, montantXof, v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot, montant, charge]
     );
     const statut = await majStatut(req.params.id);
+    await logAudit({ utilisateurId: req.user.sub, action: "ajouter_paiement", entite: "factures", entiteId: req.params.id,
+      details: { montant: impute, mode: b.mode, date_paiement: b.date_paiement || null, statut }, ip: req.ip });
     res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - impute });
   } catch (e) {
     console.error(e);
