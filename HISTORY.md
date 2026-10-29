@@ -4431,3 +4431,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 29/10/2026 — Congés : relance des personnes habilitées
 - Demande faite avant la mise en service des e-mails (aucune notification partie) : nouvelle action `POST /api/cabinet/conges/:id/relancer` + entrée de menu « Relancer les personnes habilitées » (⋮) sur une demande en attente. Réservée au demandeur et à qui peut décider ; une seule relance par 30 minutes et par demande (contrôle sur le journal d'audit) ; sujet « Rappel — Demande de … » ; réponse = nombre de destinataires et d'échecs affichés à l'écran ; refus clair si personne n'a la permission « Être averti… ». Tests 800/800, build OK, pas de migration.
+- Déployé : API `juria-00201-krb`, frontend `juria-web-00273-xbt`, `/health` et `/` = 200.
