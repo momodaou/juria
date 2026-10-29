@@ -723,6 +723,7 @@ export class ApiService {
   creerEtatCharges(mois: string): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats`, { mois }); }
   ajouterLigneCharge(etatId: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/charges/etats/${etatId}/lignes`, payload); }
   modifierLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`, payload); }
+  corrigerLigneCharge(etatId: string, ligneId: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/correction`, payload); }
   supprimerLigneCharge(etatId: string, ligneId: string): Observable<any> { return this.http.delete(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}`); }
   // Justificatifs d'une ligne de l'état (28/10/2026) et décision groupée.
   piecesLigneCharge(etatId: string, ligneId: string): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/charges/etats/${etatId}/lignes/${ligneId}/pieces`); }

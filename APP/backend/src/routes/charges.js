@@ -12,7 +12,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
-const { logAudit } = require("../audit");
+const { logAudit, diffChamps } = require("../audit");
 const { preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const { genererEtatChargesPdf } = require("../etatChargesPdf");
@@ -619,6 +619,87 @@ router.post("/etats/:id/approuver-tout", requirePermission("depenses.decision"),
     const complet = await chargerEtat(req.params.id);
     complet.approuvees = creees.length; complet.ignorees = ignorees; complet.total_approuve = total;
     res.json(complet);
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally { client.release(); }
+});
+
+// Correction d'une ligne DÉJÀ APPROUVÉE (29/10/2026) — « Modifier » après approbation, réservé à qui décide (depenses.decision).
+// Tant que la dépense créée est « validée, à décaisser » (ni décaissée, ni annulée, ni facturée) et que l'état n'est pas clos,
+// les associés peuvent rectifier période couverte, libellé, catégorie, montant, bénéficiaire, moyen / compte, rattachement :
+// la ligne ET la dépense sont mises à jour ensemble ; tout est tracé (avant / après) au journal d'audit.
+const CHAMPS_CORRIGES = ["libelle", "categorie", "precision_autre", "type", "montant", "periode_debut", "periode_fin", "observation",
+  "mode_paiement", "compte_id", "nature", "dossier_id", "refacturable_client", "beneficiaire"];
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+router.put("/etats/:id/lignes/:ligneId/correction", requirePermission("depenses.decision"), async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [l] } = await client.query(
+      `SELECT l.*, l.periode_debut::text AS periode_debut, l.periode_fin::text AS periode_fin, e.statut AS etat_statut, e.mois::text AS mois
+       FROM etats_charges_lignes l JOIN etats_charges e ON e.id = l.etat_id
+       WHERE l.id = $1::uuid AND l.etat_id = $2::uuid FOR UPDATE OF l`, [req.params.ligneId, req.params.id]);
+    if (!l) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Ligne introuvable." }); }
+    if (l.etat_statut === "clos") { await client.query("ROLLBACK"); return res.status(409).json({ error: "L'état est clos : modification impossible." }); }
+    if (l.decision !== "approuvee" || !l.depense_id) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Seule une ligne approuvée peut être corrigée ainsi." }); }
+    const { rows: [dep] } = await client.query("SELECT id, statut, facture_id, annulee_le, references_paiement, mode_paiement FROM depenses WHERE id = $1::uuid FOR UPDATE", [l.depense_id]);
+    if (!dep || dep.statut !== "validee" || dep.annulee_le || dep.facture_id) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "La dépense liée n'est plus « validée, à décaisser » (déjà décaissée, annulée ou facturée) : modification impossible ici." });
+    }
+    const libelle = b.libelle !== undefined ? String(b.libelle).trim() : l.libelle;
+    if (!libelle) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Le libellé est requis." }); }
+    if (libelleTropLong(libelle)) { await client.query("ROLLBACK"); return res.status(400).json({ error: MESSAGE_LIBELLE }); }
+    const montant = b.montant === undefined ? Number(l.montant) : entier(b.montant);
+    if (!montantValide(montant) || montant <= 0) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Le montant doit être un entier positif (FCFA)." }); }
+    const categorie = b.categorie || l.categorie;
+    const prec = preciserAutre(categorie, "precision_autre" in b ? b.precision_autre : l.precision_autre);
+    if (prec.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: prec.erreur }); }
+    const benef = "beneficiaire" in b ? preciserBeneficiaire(b.beneficiaire) : { valeur: l.beneficiaire };
+    if (benef.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: benef.erreur }); }
+    const nat = await resoudreNatureLigne(b, l);
+    if (nat.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: nat.erreur }); }
+    const periodeDebut = "periode_debut" in b ? (b.periode_debut || null) : l.periode_debut;
+    const periodeFin = "periode_fin" in b ? (b.periode_fin || null) : l.periode_fin;
+    for (const d of [periodeDebut, periodeFin]) if (d && !DATE_ISO.test(d)) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Date de période invalide (AAAA-MM-JJ)." }); }
+    if (periodeDebut && periodeFin && periodeFin < periodeDebut) { await client.query("ROLLBACK"); return res.status(400).json({ error: "La fin de période précède son début." }); }
+    const regl = ("mode_paiement" in b || "compte_id" in b)
+      ? await reglement({ mode_paiement: "mode_paiement" in b ? b.mode_paiement : l.mode_paiement, compte_id: "compte_id" in b ? b.compte_id : l.compte_id })
+      : { valeurs: { mode_paiement: l.mode_paiement, compte_id: l.compte_id } };
+    if (regl.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: regl.erreur }); }
+    const type = ["fixe", "ponctuelle"].includes(b.type) ? b.type : l.type;
+    const observation = "observation" in b ? (String(b.observation || "").trim() || null) : l.observation;
+
+    const apres = { libelle, categorie, precision_autre: prec.valeur, type, montant, periode_debut: periodeDebut, periode_fin: periodeFin, observation,
+      mode_paiement: regl.valeurs.mode_paiement, compte_id: regl.valeurs.compte_id, nature: nat.nature, dossier_id: nat.dossierId,
+      refacturable_client: nat.refacturable, beneficiaire: benef.valeur };
+    const changements = diffChamps({ ...l, montant: Number(l.montant) }, apres, CHAMPS_CORRIGES);
+    if (!Object.keys(changements).length) { await client.query("ROLLBACK"); return res.json(l); }
+
+    const { rows: [maj] } = await client.query(
+      `UPDATE etats_charges_lignes SET libelle=$1, categorie=$2::categorie_depense, precision_autre=$3, type=$4::type_depense, montant=$5,
+         periode_debut=$6::date, periode_fin=$7::date, observation=$8, mode_paiement=$9::mode_paiement, compte_id=$10::uuid,
+         nature=$11, dossier_id=$12::uuid, refacturable_client=$13, beneficiaire=$14
+       WHERE id=$15::uuid RETURNING *`,
+      [libelle, categorie, prec.valeur, type, montant, periodeDebut, periodeFin, observation, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
+       nat.nature, nat.dossierId, nat.refacturable, benef.valeur, l.id]);
+    // La dépense suit : libellé recomposé avec la nouvelle période ; références du moyen remises à zéro si le moyen change.
+    const moyenChange = regl.valeurs.mode_paiement !== dep.mode_paiement;
+    await client.query(
+      `UPDATE depenses SET libelle=$1, categorie=$2::categorie_depense, type=$3::type_depense, montant=$4, mode_paiement=$5::mode_paiement,
+         compte_id=$6::uuid, nature=$7, dossier_id=$8::uuid, refacturable_client=$9, beneficiaire=$10,
+         references_paiement = CASE WHEN $11::boolean THEN '{}'::jsonb ELSE references_paiement END
+       WHERE id=$12::uuid`,
+      [libelleDepense(libelle, libellePeriode(periodeDebut, periodeFin) || libellePeriode(l.mois)), categorie, type, montant, regl.valeurs.mode_paiement,
+       regl.valeurs.compte_id, nat.nature, nat.nature === "dossier" ? nat.dossierId : null, nat.nature === "dossier" ? nat.refacturable : false, benef.valeur, moyenChange, dep.id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_ligne_corrigee", entite: "etat_charges_ligne", entiteId: l.id,
+      details: { depense_id: dep.id, changements }, ip: req.ip });
+    res.json(maj);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     console.error(e);

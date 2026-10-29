@@ -205,7 +205,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               <tr class="edit" [id]="'edit-ligne-' + l.id">
                 <td [attr.colspan]="nbColonnes(d)" appRaccourcis (echap)="edition.set(null)" (entree)="enregistrerLigne(d.id, l.id)"
                     [entreeActive]="d.statut === 'en_preparation' && !enCours() && !!form.libelle && !(form.categorie === 'autre' && !form.precision_autre?.trim()) && !(form.nature === 'dossier' && !form.dossier_id)">
-                  @if (d.statut === 'en_preparation') {
+                  @if (modeCorrection()) { <p class="hint">Correction d’une charge déjà approuvée : la dépense « à décaisser » correspondante est mise à jour avec elle (libellé, période, montant, moyen…). La correction est tracée.</p> }
+                  @if (d.statut === 'en_preparation' || modeCorrection()) {
                     <div class="champs">
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
                       <div><label>Catégorie</label>
@@ -244,7 +245,12 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                                           [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
                     </div>
                   }
-                  @if (d.statut === 'soumis') {
+                  @if (modeCorrection()) {
+                    <div class="btns">
+                      <button class="btn sm" (click)="enregistrerCorrection(d, l)" [disabled]="enCours() || !form.libelle || !(form.montant > 0) || (form.categorie === 'autre' && !form.precision_autre?.trim()) || (form.nature === 'dossier' && !form.dossier_id)">Enregistrer la correction</button>
+                      <button class="lien" (click)="edition.set(null)">Annuler</button>
+                    </div>
+                  } @else if (d.statut === 'soumis') {
                     <div class="btns">
                       <button class="btn sm" (click)="decider(d.id, l.id, 'approuvee')" [disabled]="enCours()">Approuver</button>
                       <button class="btn ghost sm" (click)="decider(d.id, l.id, 'reportee')" [disabled]="enCours()">Reporter au mois suivant</button>
@@ -524,6 +530,10 @@ export class EtatChargesComponent implements OnInit {
     if (d.statut !== 'clos' || l.nb_pieces) {
       items.push({ label: l.nb_pieces ? `Pièces (${l.nb_pieces})` : 'Pièces / justificatifs', action: () => this.ouvrirPieces(d, l) });
     }
+    // Correction après approbation : tant que la dépense est « validée, à décaisser » et l'état non clos.
+    if (d.statut !== 'clos' && l.decision === 'approuvee' && l.depense_statut === 'validee' && this.auth.peut('depenses.decision')) {
+      items.push({ label: 'Modifier (après approbation)', action: () => this.corriger(l) });
+    }
     if (d.statut === 'en_preparation' && this.auth.peut('depenses.creer')) {
       items.push({ label: 'Modifier', action: () => this.editer(l) });
       if (!l.report_de) items.push({ label: 'Retirer', danger: true, action: () => this.supprimer(d.id, l.id) });
@@ -678,7 +688,20 @@ export class EtatChargesComponent implements OnInit {
     this.api.actionEtatCharges(id, a).subscribe({ next: () => this.fini(), error: (e) => this.echec(e) });
   }
 
+  readonly modeCorrection = signal(false);
+  corriger(l: any): void { this.editer(l); this.modeCorrection.set(true); }
+  enregistrerCorrection(d: any, l: any): void {
+    const f = this.form;
+    if (Number(f.montant) !== Number(l.montant) &&
+        !confirm(`Vous modifiez un montant déjà approuvé : ${Number(l.montant).toLocaleString('fr-FR')} → ${Number(f.montant).toLocaleString('fr-FR')} FCFA. Confirmer ?`)) return;
+    this.enCours.set(true);
+    this.api.corrigerLigneCharge(d.id, l.id, { ...this.charge(), montant: Number(f.montant) }).subscribe({
+      next: () => { this.edition.set(null); this.modeCorrection.set(false); this.fini(); },
+      error: (e) => this.echec(e),
+    });
+  }
   editer(l: any): void {
+    this.modeCorrection.set(false);
     this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', nature: l.nature ?? 'cabinet', dossier_id: l.dossier_id ?? null, dossier_numero: l.dossier_numero ?? null, refacturable_client: !!l.refacturable_client, beneficiaire: l.beneficiaire ?? '', arriere: this.arriereDe(l, this.detail()?.mois), type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
       periode_debut: l.periode_debut ?? '', periode_fin: l.periode_fin ?? '', mode_paiement: l.mode_paiement ?? '', compte_id: l.compte_id ?? '', references: {}, motif: '' };
     this.edition.set(l);
