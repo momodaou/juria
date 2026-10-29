@@ -4368,3 +4368,9 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - `charges_modeles.arriere_mois` (SMALLINT, 0–36, charges MENSUELLES seulement). À la création d'un état ou au complément (« + Charges habituelles manquantes »), la ligne reprend ces mois : période allongée, montant = montant habituel × (mois + 1) (modifiable dans l'état), observation « dont N mois d'arriéré » ; le compteur repasse à 0 dès que la ligne est créée (usage unique). Formule retenue (recommandée) : multiplication du montant habituel ; pour une charge trimestrielle/annuelle l'arriéré se saisit dans l'état.
 - Catalogue : champ « Arriéré à régler (mois) » avec aperçu du total, étiquette « arriéré : N mois à reprendre ». Migration `migration-arriere-catalogue.sql` (1 colonne). Tests 785/785, build OK.
 - Déployé : migration importée (`arriere_mois`), API `juria-00197-6w2`, frontend `juria-web-00262-glh`, `/health` et `/` = 200 ; fichier de migration supprimé.
+
+## 29/10/2026 — État des charges : présentation (retours de l'utilisateur)
+- Deux onglets « État du mois » / « Charges habituelles » (avec compteurs) au lieu du bouton Afficher/Masquer ; l'état utile s'ouvre tout seul à l'arrivée (mois en cours, sinon le plus récent non clos, sinon le plus récent) ; « Ouvrir » et « Nouvel état » font défiler jusqu'au détail.
+- Catalogue : « Modifier » ouvre le formulaire directement sous la ligne concernée (comme les lignes de l'état), avec défilement automatique ; « + Ajouter une charge habituelle » ouvre le formulaire en haut de l'onglet (même formulaire, via ng-template). « Modifier » et « Pièces » d'une ligne de l'état défilent aussi jusqu'au formulaire.
+- Lignes de l'état regroupées avec sous-totaux : charges reportées / charges habituelles du mois / charges ponctuelles ajoutées.
+- Front seul, pas de migration ; build OK (non vérifié visuellement dans un navigateur).

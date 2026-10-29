@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
@@ -21,7 +21,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 @Component({
   selector: 'app-etat-charges',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, RouterLink, ReglementFormComponent, DossierPickerComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, RouterLink, ReglementFormComponent, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -42,6 +42,12 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
     </header>
     @if (erreur()) { <p class="err">{{ erreur() }}</p> }
 
+    <nav class="onglets">
+      <button class="onglet" [class.actif]="onglet() === 'etats'" (click)="onglet.set('etats')">État du mois <span class="nb">{{ etats().length }}</span></button>
+      <button class="onglet" [class.actif]="onglet() === 'catalogue'" (click)="onglet.set('catalogue')">Charges habituelles <span class="nb">{{ modeles().length }}</span></button>
+    </nav>
+
+    @if (onglet() === 'etats') {
     <section class="panel">
       <h3>États</h3>
       @if (!etats().length) { <p class="hint">Aucun état pour le moment. Choisissez un mois puis « Nouvel état » : il se remplit avec vos charges habituelles et les charges reportées.</p> }
@@ -57,7 +63,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               <td>{{ e.nb_a_decider }}</td>
               <td>{{ e.nb_reportees }}</td>
               <td>@if (e.nb_en_retard) { <span class="retard">{{ e.nb_en_retard }}</span> }</td>
-              <td class="actions"><button class="lien" (click)="ouvrir(e.id)">{{ detail()?.id === e.id ? 'Affiché' : 'Ouvrir' }}</button></td>
+              <td class="actions"><button class="lien" (click)="ouvrir(e.id, true)">{{ detail()?.id === e.id ? 'Affiché' : 'Ouvrir' }}</button></td>
             </tr>
           }
         </table>
@@ -65,7 +71,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
     </section>
 
     @if (detail(); as d) {
-      <section class="panel">
+      <section class="panel" id="detail-etat">
         <h3>{{ libelleMois(d.mois) }} — {{ libelleStatut(d.statut) }}</h3>
         @if (d.en_retard) {
           <p class="alerte">⚠ {{ d.en_retard }} charge(s) reportée(s) depuis {{ seuil }} mois ou plus : à traiter en priorité.</p>
@@ -113,7 +119,9 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 
         <table>
           <tr><th>Charge</th><th>Période couverte</th><th class="num">Montant (FCFA)</th><th>Moyen / compte</th><th>Décision</th><th></th></tr>
-          @for (l of d.lignes; track l.id) {
+          @for (g of groupes(d); track g.cle) {
+          <tr class="groupe-titre"><td colspan="6"><b>{{ g.titre }}</b> · {{ g.lignes.length }} ligne(s) · {{ g.total | number }} FCFA</td></tr>
+          @for (l of g.lignes; track l.id) {
             <tr [class.retard-ligne]="l.retard_mois >= seuil && l.decision === 'en_attente'">
               <td>
                 <b>{{ l.libelle }}</b>
@@ -154,7 +162,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               </td>
             </tr>
             @if (piecesLigneId() === l.id) {
-              <tr class="edit">
+              <tr class="edit" [id]="'pieces-ligne-' + l.id">
                 <td colspan="6">
                   <b>Justificatifs de la charge</b> — devis, facture, preuve de paiement. Ils suivent la dépense à l’approbation.
                   @if (listePieces().length) {
@@ -192,7 +200,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               </tr>
             }
             @if (edition()?.id === l.id) {
-              <tr class="edit">
+              <tr class="edit" [id]="'edit-ligne-' + l.id">
                 <td colspan="6">
                   @if (d.statut === 'en_preparation') {
                     <div class="champs">
@@ -248,6 +256,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
               </tr>
             }
           }
+          }
         </table>
 
         @if (d.statut === 'en_preparation' && auth.peut('depenses.creer')) {
@@ -281,30 +290,18 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
         @if (d.statut === 'clos') { <p class="hint">État clos. Les charges approuvées sont à décaisser dans « Dépenses &amp; caisse » ; les charges reportées reviennent dans l’état du mois suivant.</p> }
       </section>
     }
+    }
 
+    @if (onglet() === 'catalogue') {
     <section class="panel">
-      <h3>Charges habituelles <button class="lien" (click)="catalogueOuvert.set(!catalogueOuvert())">{{ catalogueOuvert() ? 'Masquer' : 'Afficher' }}</button></h3>
+      <h3>Charges habituelles
+        @if (auth.peut('depenses.creer') && !modeleEnEdition()) {
+          <button class="btn sm" style="margin-left:12px" (click)="ouvrirAjoutModele()">+ Ajouter une charge habituelle</button>
+        }
+      </h3>
       <p class="intro">Ce catalogue sert uniquement à pré-remplir chaque nouvel état (pour un état déjà créé, utilisez « + Charges habituelles manquantes ») : il ne déclenche jamais de paiement. Les salaires restent dans le module RH.</p>
-      @if (catalogueOuvert()) {
-        <table>
-          <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
-          @for (m of modeles(); track m.id) {
-            <tr>
-              <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> } @if (m.arriere_mois > 0) { <span class="tag report">arriéré : {{ m.arriere_mois }} mois à reprendre</span> }</td>
-              <td>{{ libellePeriodicite(m) }}</td>
-              <td class="num">{{ m.montant_habituel | number }}</td>
-              <td>{{ moyen(m) }}</td>
-              <td class="actions">
-                @if (auth.peut('depenses.creer')) {
-                  <button class="lien" (click)="editerModele(m)">Modifier</button>
-                  <button class="lien" (click)="retirerModele(m.id)">Retirer</button>
-                }
-              </td>
-            </tr>
-          }
-        </table>
-        @if (auth.peut('depenses.creer')) {
-          <h4 class="sous-titre">{{ modeleEnEdition() ? 'Modifier la charge' : 'Ajouter une charge habituelle' }}</h4>
+
+      <ng-template #formModele>
           <div class="champs">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
@@ -335,15 +332,56 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
           </div>
           <div class="btns">
             <button class="btn" (click)="enregistrerModele()" [disabled]="enCours() || !modele.libelle || (modele.categorie === 'autre' && !modele.precision_autre?.trim())">{{ modeleEnEdition() ? 'Enregistrer' : 'Ajouter au catalogue' }}</button>
-            @if (modeleEnEdition()) { <button class="lien" (click)="nouveauModele()">Annuler</button> }
+            <button class="lien" (click)="nouveauModele()">Annuler</button>
           </div>
-        }
+      </ng-template>
+
+      @if (ajoutModeleOuvert() && !modeleEnEdition() && auth.peut('depenses.creer')) {
+        <div class="groupe" id="form-ajout-modele">
+          <h4 class="sous-titre">Ajouter une charge habituelle</h4>
+          <ng-container [ngTemplateOutlet]="formModele"></ng-container>
+        </div>
+      }
+
+      @if (!modeles().length) { <p class="hint">Aucune charge habituelle pour le moment.</p> }
+      @else {
+        <table>
+          <tr><th>Charge</th><th>Périodicité</th><th class="num">Montant habituel</th><th>Moyen proposé</th><th></th></tr>
+          @for (m of modeles(); track m.id) {
+            <tr [class.sel]="modeleEnEdition() === m.id">
+              <td><b>{{ m.libelle }}</b> @if (m.categorie === 'autre' && m.precision_autre) { <span class="tag">Autre : {{ m.precision_autre }}</span> } @if (m.montant_variable) { <span class="tag">montant variable</span> } @if (m.arriere_mois > 0) { <span class="tag report">arriéré : {{ m.arriere_mois }} mois à reprendre</span> }</td>
+              <td>{{ libellePeriodicite(m) }}</td>
+              <td class="num">{{ m.montant_habituel | number }}</td>
+              <td>{{ moyen(m) }}</td>
+              <td class="actions">
+                @if (auth.peut('depenses.creer')) {
+                  <button class="lien" (click)="editerModele(m)">Modifier</button>
+                  <button class="lien" (click)="retirerModele(m.id)">Retirer</button>
+                }
+              </td>
+            </tr>
+            @if (modeleEnEdition() === m.id) {
+              <tr class="edit" [id]="'edit-modele-' + m.id">
+                <td colspan="5">
+                  <h4 class="sous-titre">Modifier la charge</h4>
+                  <ng-container [ngTemplateOutlet]="formModele"></ng-container>
+                </td>
+              </tr>
+            }
+          }
+        </table>
       }
     </section>
+    }
   `,
   styles: [`
     :host{display:block;padding-bottom:90px}
     .creation{display:flex;gap:8px;align-items:center}
+    .onglets{display:flex;gap:4px;margin:0 0 14px;border-bottom:1px solid var(--line)}
+    .onglet{background:none;border:none;border-bottom:3px solid transparent;padding:9px 16px;cursor:pointer;font-weight:600;color:var(--grey);font-size:var(--fs-md)}
+    .onglet.actif{color:var(--navy);border-bottom-color:var(--gold)}
+    .onglet .nb{background:var(--light);border-radius:10px;padding:1px 8px;font-size:var(--fs-2xs);margin-left:4px}
+    tr.groupe-titre td{background:var(--light);color:var(--navy);padding:7px 10px;font-size:var(--fs-base)}
     .groupe{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:#fffdf5}
     .sel,.in{font-family:inherit;border:1px solid var(--line);border-radius:8px;background:#fff;color:#22303f}
     .sel{padding:8px 10px;font-size:var(--fs-base)}
@@ -403,7 +441,9 @@ export class EtatChargesComponent implements OnInit {
   readonly anneeChoisie = signal(new Date().getFullYear());
   readonly annees = [0, 1, 2].map((i) => new Date().getFullYear() - 1 + i);
   readonly edition = signal<any | null>(null);
-  readonly catalogueOuvert = signal(false);
+  readonly onglet = signal<'etats' | 'catalogue'>('etats');
+  readonly ajoutModeleOuvert = signal(false);
+  private premierChargement = true;
   readonly modeleEnEdition = signal<string | null>(null);
 
   form: any = {};
@@ -479,6 +519,7 @@ export class EtatChargesComponent implements OnInit {
     this.erreur.set(''); this.pieceFichier = null; this.pieceType = 'facture';
     this.piecesLigneId.set(l.id);
     this.chargerPieces(d.id, l.id);
+    this.defiler('pieces-ligne-' + l.id);
   }
   private chargerPieces(etatId: string, ligneId: string): void {
     this.api.piecesLigneCharge(etatId, ligneId).subscribe({ next: (p) => this.listePieces.set(p), error: () => this.listePieces.set([]) });
@@ -519,12 +560,47 @@ export class EtatChargesComponent implements OnInit {
   decisionsPrises(d: any): boolean { return d.lignes.some((l: any) => l.decision !== 'en_attente'); }
   aDecider(d: any): boolean { return d.lignes.some((l: any) => l.decision === 'en_attente'); }
 
-  charger(): void { this.api.etatsCharges().subscribe({ next: (l) => this.etats.set(l), error: () => this.erreur.set('Impossible de charger les états.') }); }
+  charger(): void {
+    this.api.etatsCharges().subscribe({
+      next: (l) => {
+        this.etats.set(l);
+        if (this.premierChargement) { this.premierChargement = false; this.ouvrirParDefaut(l); }
+      },
+      error: () => this.erreur.set('Impossible de charger les états.'),
+    });
+  }
+  // À l'arrivée, l'état utile s'ouvre tout seul : celui du mois en cours, sinon le plus récent encore ouvert, sinon le plus récent.
+  private ouvrirParDefaut(l: any[]): void {
+    if (this.detail() || !l.length) return;
+    const courant = new Date().toISOString().slice(0, 7);
+    const choix = l.find((e) => String(e.mois).slice(0, 7) === courant) ?? l.find((e) => e.statut !== 'clos') ?? l[0];
+    this.ouvrir(choix.id);
+  }
+  private defiler(id: string): void {
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  }
+  // Lignes de l'état regroupées pour la lecture : reportées, charges habituelles du mois, charges ponctuelles ajoutées.
+  groupes(d: any): { cle: string; titre: string; lignes: any[]; total: number }[] {
+    const def = [
+      { cle: 'reportees', titre: 'Charges reportées des mois précédents', test: (l: any) => !!l.report_de },
+      { cle: 'habituelles', titre: 'Charges habituelles du mois', test: (l: any) => !l.report_de && !!l.modele_id },
+      { cle: 'ponctuelles', titre: 'Charges ponctuelles ajoutées', test: (l: any) => !l.report_de && !l.modele_id },
+    ];
+    return def
+      .map((g) => {
+        const lignes = d.lignes.filter(g.test);
+        return { cle: g.cle, titre: g.titre, lignes, total: lignes.filter((l: any) => l.decision !== 'rejetee').reduce((s: number, l: any) => s + Number(l.montant), 0) };
+      })
+      .filter((g) => g.lignes.length);
+  }
   chargerModeles(): void { this.api.modelesCharges().subscribe({ next: (l) => this.modeles.set(l), error: () => {} }); }
 
-  ouvrir(id: string): void {
+  ouvrir(id: string, defiler = false): void {
     this.edition.set(null);
-    this.api.etatCharges(id).subscribe({ next: (e) => this.detail.set(e), error: () => this.erreur.set('Impossible d’ouvrir cet état.') });
+    this.api.etatCharges(id).subscribe({
+      next: (e) => { this.detail.set(e); if (defiler) this.defiler('detail-etat'); },
+      error: () => this.erreur.set('Impossible d’ouvrir cet état.'),
+    });
   }
   private rafraichir(): void { const id = this.detail()?.id; this.charger(); if (id) this.ouvrir(id); }
   private echec(e: any): void { this.erreur.set(e?.error?.error ?? 'Opération impossible.'); this.enCours.set(false); }
@@ -533,7 +609,7 @@ export class EtatChargesComponent implements OnInit {
   creerEtat(): void {
     this.enCours.set(true);
     this.api.creerEtatCharges(`${this.anneeChoisie()}-${String(this.moisChoisi()).padStart(2, '0')}`).subscribe({
-      next: (e) => { this.erreur.set(''); this.enCours.set(false); this.charger(); this.detail.set(e); this.edition.set(null); },
+      next: (e) => { this.erreur.set(''); this.enCours.set(false); this.charger(); this.detail.set(e); this.edition.set(null); this.onglet.set('etats'); this.defiler('detail-etat'); },
       error: (e) => this.echec(e),
     });
   }
@@ -562,6 +638,7 @@ export class EtatChargesComponent implements OnInit {
     this.form = { libelle: l.libelle, categorie: l.categorie, precision_autre: l.precision_autre ?? '', nature: l.nature ?? 'cabinet', dossier_id: l.dossier_id ?? null, dossier_numero: l.dossier_numero ?? null, refacturable_client: !!l.refacturable_client, beneficiaire: l.beneficiaire ?? '', arriere: this.arriereDe(l, this.detail()?.mois), type: l.type, montant: Number(l.montant), observation: l.observation ?? '',
       periode_debut: l.periode_debut ?? '', periode_fin: l.periode_fin ?? '', mode_paiement: l.mode_paiement ?? '', compte_id: l.compte_id ?? '', references: {}, motif: '' };
     this.edition.set(l);
+    this.defiler('edit-ligne-' + l.id);
   }
   private charge(): any {
     const f = this.form;
@@ -591,11 +668,18 @@ export class EtatChargesComponent implements OnInit {
       next: () => { this.ajout = this.ligneVide(); this.fini(); }, error: (e) => this.echec(e) });
   }
 
-  nouveauModele(): void { this.modele = this.modeleVide(); this.modeleEnEdition.set(null); }
+  nouveauModele(): void { this.modele = this.modeleVide(); this.modeleEnEdition.set(null); this.ajoutModeleOuvert.set(false); }
+  ouvrirAjoutModele(): void {
+    this.modele = this.modeleVide(); this.modeleEnEdition.set(null);
+    this.ajoutModeleOuvert.set(true);
+    this.defiler('form-ajout-modele');
+  }
   editerModele(m: any): void {
     this.modele = { libelle: m.libelle, categorie: m.categorie, precision_autre: m.precision_autre ?? '', beneficiaire: m.beneficiaire ?? '', arriere_mois: m.arriere_mois ?? 0, type: m.type, montant_habituel: Number(m.montant_habituel), montant_variable: m.montant_variable,
       periodicite: m.periodicite, mois_echeance: m.mois_echeance ?? 1, mode_paiement: m.mode_paiement ?? '', compte_id: m.compte_id ?? '', references: {} };
+    this.ajoutModeleOuvert.set(false);
     this.modeleEnEdition.set(m.id);
+    this.defiler('edit-modele-' + m.id);
   }
   enregistrerModele(): void {
     const m = this.modele;
