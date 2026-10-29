@@ -557,6 +557,7 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
     if (cur.rows[0].statut === "annulee") {
       return res.status(409).json({ error: "Facture annulée — non modifiable. Recréez-la si nécessaire." });
     }
+    if (b.mode_reglement && !PAR_CODE[b.mode_reglement]) return res.status(400).json({ error: "Moyen de règlement invalide : choisissez dans la liste." });
     const financeTouchee = b.montant_ht !== undefined || b.taux_tva !== undefined || b.montant_frais !== undefined;
     if (financeTouchee && cur.rows[0].statut !== "emise") {
       return res.status(409).json({
@@ -637,6 +638,55 @@ router.post("/:id/paiements", requirePermission("factures.paiement.ajouter"), as
     );
     const statut = await majStatut(req.params.id);
     res.status(201).json({ facture_id: req.params.id, statut, reliquat: reliquat - impute });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PUT /api/factures/:id/paiements/:paiementId  { mode?, compte_id?, references?, date_paiement?, date_depot? }
+// (29/10/2026) Corrige le MOYEN d'un paiement déjà enregistré (moyen, compte, références, date) sans le supprimer : jusqu'ici,
+// une erreur de moyen ou de n° de chèque obligeait à supprimer le paiement (statut de la facture rouvert) et à le ressaisir.
+// Le MONTANT, les frais retenus et l'équivalence FCFA ne changent pas ici (supprimer / ressaisir). Même palier que la
+// suppression (factures.annuler) ; tracé avant / après au journal d'audit.
+router.put("/:id/paiements/:paiementId", requirePermission("factures.annuler"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows: [p] } = await pool.query(
+      `SELECT id, montant, montant_verse, mode, date_paiement::text AS date_paiement, reference, compte_id, references_paiement,
+              frais_retenus, depot_statut, date_depot::text AS date_depot FROM paiements WHERE id = $1 AND facture_id = $2`,
+      [req.params.paiementId, req.params.id]);
+    if (!p) return res.status(404).json({ error: "Paiement introuvable" });
+    const { rows: [fac] } = await pool.query("SELECT statut FROM factures WHERE id = $1", [req.params.id]);
+    if (!fac || fac.statut === "annulee") return res.status(409).json({ error: "Facture annulée : paiement non modifiable." });
+    const { rows: [issuDeFonds] } = await pool.query("SELECT 1 FROM fonds_tiers_mouvements WHERE paiement_id = $1 AND statut = 'valide' LIMIT 1", [p.id]);
+    if (issuDeFonds) return res.status(409).json({ error: "Ce paiement provient d'une imputation sur les fonds de tiers (CARPA) : corrigez-le dans « Fonds de tiers »." });
+    const date = b.date_paiement || p.date_paiement;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ error: "Date de paiement invalide (AAAA-MM-JJ)." });
+    if (new Date(date) > new Date()) return res.status(400).json({ error: "La date du paiement ne peut pas être dans le futur." });
+    const mode = b.mode || p.mode;
+    const memeMoyen = mode === p.mode;
+    const regl = await preparerReglement(pool, {
+      mode,
+      compte_id: "compte_id" in b ? (b.compte_id || null) : (memeMoyen ? p.compte_id : null),
+      references: b.references !== undefined ? b.references : (memeMoyen ? p.references_paiement : {}),
+      frais_retenus: p.frais_retenus,
+      date_depot: b.date_depot || (memeMoyen && p.date_depot ? p.date_depot : undefined),
+      date_paiement: date,
+    }, { montant: Number(p.montant_verse ?? p.montant) });
+    if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+    const v = regl.valeurs;
+    await pool.query(
+      `UPDATE paiements SET mode = $1::mode_paiement, date_paiement = $2::date, reference = $3, compte_id = $4::uuid,
+              references_paiement = $5::jsonb, depot_statut = $6, date_depot = $7::date WHERE id = $8`,
+      [mode, date, referenceCourte(v.references) || null, v.compte_id, JSON.stringify(v.references), v.depot_statut, v.date_depot, p.id]);
+    await logAudit({
+      utilisateurId: req.user.sub, action: "corriger_paiement", entite: "factures", entiteId: req.params.id,
+      details: { paiement_id: p.id, avant: { mode: p.mode, compte_id: p.compte_id, date_paiement: p.date_paiement, references: p.references_paiement },
+                 apres: { mode, compte_id: v.compte_id, date_paiement: date, references: v.references } },
+      ip: req.ip,
+    });
+    res.json({ id: p.id, mode, compte_id: v.compte_id, date_paiement: date, references: v.references, depot_statut: v.depot_statut });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });

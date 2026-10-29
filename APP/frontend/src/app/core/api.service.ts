@@ -581,6 +581,10 @@ export class ApiService {
   deposerEspeces(paiementId: string, body: { compte_id: string; date_depot?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/factures/paiements/${paiementId}/depot`, body);
   }
+  // Correction du moyen (moyen, compte, références, date) d'un paiement déjà enregistré — le montant ne change pas.
+  modifierPaiement(factureId: string, paiementId: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/factures/${factureId}/paiements/${paiementId}`, payload);
+  }
   supprimerPaiement(factureId: string, paiementId: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/factures/${factureId}/paiements/${paiementId}`);
   }

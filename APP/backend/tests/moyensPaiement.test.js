@@ -147,3 +147,48 @@ describe("Moyens d'encaissement", () => {
     expect((await historique(ok.body.id))[0].compte_id).toBe(banque);
   });
 });
+
+describe("Correction du moyen d'un paiement enregistré et du moyen de règlement d'une facture (29/10/2026)", () => {
+  test("moyen, références et compte d'un paiement corrigés sans toucher au montant ni au statut ; trace avant / après", async () => {
+    const f = await facture(50000);
+    expect((await payer(f.id, { montant: 20000, mode: "virement", compte_id: banque, references: { numero_operation: "V-ERREUR" } })).status).toBe(201);
+    const p = (await historique(f.id))[0];
+    const url = `/api/factures/${f.id}/paiements/${p.id}`;
+    const ok = await request(app).put(url).set(auth()).send({ mode: "cheque", compte_id: banque, references: { numero_cheque: "0004321", banque_emettrice: "Ecobank" } });
+    expect(ok.status).toBe(200);
+    const apres = (await historique(f.id))[0];
+    expect(apres.mode).toBe("cheque");
+    expect(apres.references_paiement.numero_cheque).toBe("0004321");
+    expect(Number(apres.montant)).toBe(20000);
+    expect((await request(app).get("/api/factures").set(auth())).body.find((x) => x.id === f.id).statut).toBe("partielle");
+    const audit = await pool.query("SELECT details FROM journal_audit WHERE action = 'corriger_paiement' AND entite_id = $1", [f.id]);
+    expect(audit.rows[0].details.avant.mode).toBe("virement");
+    expect(audit.rows[0].details.apres.mode).toBe("cheque");
+  });
+
+  test("refus : références manquantes, compte incompatible, date future, paiement inconnu, facture annulée", async () => {
+    const f = await facture(30000);
+    await payer(f.id, { montant: 10000, mode: "virement", compte_id: banque });
+    const p = (await historique(f.id))[0];
+    const url = `/api/factures/${f.id}/paiements/${p.id}`;
+    const put = (corps) => request(app).put(url).set(auth()).send(corps);
+    expect((await put({ mode: "cheque", compte_id: banque })).status).toBe(400); // n° de chèque requis
+    expect((await put({ mode: "orange_money", compte_id: banque, references: { id_transaction: "X1" } })).status).toBe(400); // compte incompatible
+    expect((await put({ date_paiement: "2999-01-01" })).status).toBe(400);
+    expect((await request(app).put(`/api/factures/${f.id}/paiements/00000000-0000-0000-0000-000000000000`).set(auth()).send({ mode: "virement" })).status).toBe(404);
+    await request(app).delete(url).set(auth());
+    const g = await facture(30000);
+    expect((await request(app).post(`/api/factures/${g.id}/annuler`).set(auth()).send({})).status).toBe(200);
+  });
+
+  test("moyen de règlement de la facture : corrigeable sur une facture payée, valeur inconnue refusée", async () => {
+    const f = await facture(40000);
+    await payer(f.id, { montant: 40000, mode: "virement", compte_id: banque });
+    const maj = await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode_reglement: "cheque", compte_reglement_id: banque, mention: "Règlement par chèque" });
+    expect(maj.status).toBe(200);
+    const ligne = (await request(app).get("/api/factures").set(auth())).body.find((x) => x.id === f.id);
+    expect(ligne.mode_reglement).toBe("cheque");
+    expect(ligne.statut).toBe("payee");
+    expect((await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode_reglement: "troc" })).status).toBe(400);
+  });
+});

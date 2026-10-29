@@ -365,6 +365,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     <label>Échéance
                       <input type="date" [(ngModel)]="edit.date_echeance" [name]="'edEch' + f.id" />
                     </label>
+                    <label>Moyen de règlement
+                      <select [(ngModel)]="edit.mode_reglement" [name]="'edMoyen' + f.id">
+                        <option value="">— non précisé —</option>
+                        @for (m of catalogue(); track m.code) { <option [value]="m.code">{{ m.libelle }}</option> }
+                      </select>
+                    </label>
                     <label>Compte à créditer
                       <select [(ngModel)]="edit.compte_reglement_id" [name]="'edCompte' + f.id">
                         <option value="">— non précisé —</option>
@@ -408,8 +414,21 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                               }
                             } @else if (p.depot_statut === 'depose') { <br /><span class="muted">déposé le {{ p.date_depot | date:'dd/MM/yyyy' }}</span> }
                           </td>
-                          <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
+                          <td>@if (auth.peut('factures.annuler')) { <button class="lien" (click)="commencerEditionPaiement(p)">Modifier le moyen</button> <button class="lien" (click)="supprimerPaiement(f, p)">Supprimer</button> }</td>
                         </tr>
+                        @if (paiementEditId() === p.id) {
+                          <tr>
+                            <td colspan="6">
+                              <div class="form">
+                                <label>Date du paiement <input type="date" [(ngModel)]="pEdit.date_paiement" [name]="'pEdDate' + p.id" /></label>
+                                <app-reglement-form [modele]="pEdit" [catalogue]="catalogue()" (validite)="pEditValide.set($event)"></app-reglement-form>
+                              </div>
+                              <p class="hint">Corrige le moyen, le compte, les références et la date. Le montant et les frais retenus ne se modifient pas ici : supprimez le paiement et ressaisissez-le si besoin. Action tracée dans le journal d'audit.</p>
+                              <button class="btn" (click)="enregistrerEditionPaiement(f, p)" [disabled]="!pEditValide()">Enregistrer la correction</button>
+                              <button class="lien" (click)="paiementEditId.set(null)">Annuler</button>
+                            </td>
+                          </tr>
+                        }
                       }
                     </table>
                     <p class="hint">Supprimer un paiement saisi par erreur recalcule le statut de la facture. Action tracée dans le journal d'audit.</p>
@@ -741,6 +760,27 @@ export class FacturationComponent implements OnInit {
     this.api.paiementsFacture(f.id).subscribe({ next: (p) => this.paiements.set(p), error: () => {} });
   }
 
+  // Correction du moyen d'un paiement déjà enregistré (29/10/2026).
+  readonly paiementEditId = signal<string | null>(null);
+  pEdit: any = {};
+  readonly pEditValide = signal(true);
+  commencerEditionPaiement(p: any): void {
+    this.erreur.set('');
+    this.pEdit = { mode: p.mode, references: { ...(p.references_paiement ?? {}) }, compte_id: p.compte_id ?? '', frais_retenus: null,
+      date_paiement: String(p.date_paiement).slice(0, 10) };
+    this.paiementEditId.set(p.id);
+  }
+  enregistrerEditionPaiement(f: any, p: any): void {
+    this.erreur.set('');
+    this.api.modifierPaiement(f.id, p.id, {
+      mode: this.pEdit.mode, references: this.pEdit.references, compte_id: this.pEdit.compte_id || null,
+      date_paiement: this.pEdit.date_paiement || undefined,
+    }).subscribe({
+      next: () => { this.paiementEditId.set(null); this.ouvrirPaiements(f); this.rafraichir(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Correction impossible'),
+    });
+  }
+
   supprimerPaiement(f: any, p: any): void {
     if (!confirm(`Supprimer le paiement de ${Number(p.montant).toLocaleString('fr-FR')} ${p.devise} sur la facture ${f.numero} ?`)) return;
     this.erreur.set('');
@@ -917,6 +957,7 @@ export class FacturationComponent implements OnInit {
       montant_frais: f.montant_frais,
       date_echeance: f.date_echeance ? String(f.date_echeance).slice(0, 10) : '',
       compte_reglement_id: f.compte_reglement_id || '',
+      mode_reglement: f.mode_reglement || '',
       mention: f.mention || '',
     };
   }
@@ -937,9 +978,12 @@ export class FacturationComponent implements OnInit {
       date_echeance: this.edit.date_echeance || null,
       mention: this.edit.mention,
     };
+    // Moyen de règlement choisi explicitement (29/10/2026) ; à défaut, « virement » seulement si un compte est indiqué
+    // et qu'aucun moyen n'était encore enregistré (comportement historique).
+    if (this.edit.mode_reglement) payload.mode_reglement = this.edit.mode_reglement;
     if (this.edit.compte_reglement_id) {
       payload.compte_reglement_id = this.edit.compte_reglement_id;
-      payload.mode_reglement = 'virement';
+      if (!payload.mode_reglement && !f.mode_reglement) payload.mode_reglement = 'virement';
     }
     if (f.statut === 'emise') {
       payload.montant_ht = this.edit.montant_ht;
