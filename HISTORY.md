@@ -4465,3 +4465,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 29/10/2026 — Période couverte rectifiable à la décision
 - Omission signalée : à « Décider… », l'associé pouvait ajuster montant et moyen mais pas la période couverte (d'où une « Petite caisse — octobre » à corriger après coup). `POST …/decision` accepte `periode_debut` / `periode_fin` (dates AAAA-MM-JJ, fin ≥ début), enregistrées sur la ligne et utilisées pour le libellé de la dépense créée ; l'écran affiche « Période couverte — du / au » dans le formulaire de décision. Libellés clarifiés (« Période couverte — du / au ») dans le formulaire de préparation. Tests 809/809, build OK, pas de migration.
 - Note : « Période couverte » = période de service / consommation, pas l'échéance de paiement (champ « Échéance de paiement » proposé, non décidé).
+- Déployé : API `juria-00204-66s`, frontend `juria-web-00276-hwf` (période couverte rectifiable à la décision), `/health` et `/` = 200.
