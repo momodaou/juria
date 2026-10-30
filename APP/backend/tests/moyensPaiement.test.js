@@ -216,3 +216,20 @@ describe("Journal d'audit des factures (29/10/2026)", () => {
     expect(t.rows[0].details.montant).toBe(5000);
   });
 });
+
+describe("Mode d'honoraires d'une facture modifiable (30/10/2026)", () => {
+  test("corrigeable sur une facture réglée, valeur inconnue refusée, tracé, libellé du PDF", async () => {
+    const f = await facture(25000);
+    await payer(f.id, { montant: 25000, mode: "virement", compte_id: banque });
+    const maj = await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode: "temps_passe" });
+    expect(maj.status).toBe(200);
+    const ligne = (await request(app).get("/api/factures").set(auth())).body.find((x) => x.id === f.id);
+    expect(ligne.mode).toBe("temps_passe");
+    expect(ligne.statut).toBe("payee");
+    expect((await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode: "gratuit" })).status).toBe(400);
+    expect((await request(app).put(`/api/factures/${f.id}`).set(auth()).send({ mode: "autre" })).status).toBe(200);
+    const trace = await pool.query("SELECT details FROM journal_audit WHERE action = 'modifier_facture' AND entite_id = $1 ORDER BY id", [f.id]);
+    expect(trace.rows[0].details.changements.mode).toEqual({ avant: "forfait", apres: "temps_passe" });
+    expect((await request(app).get(`/api/factures/${f.id}/pdf`).set(auth())).status).toBe(200);
+  });
+});

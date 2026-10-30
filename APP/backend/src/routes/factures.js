@@ -530,7 +530,7 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
   }
 });
 
-// PUT /api/factures/:id  { objet?, montant_ht?, taux_tva?, montant_frais?,
+// PUT /api/factures/:id  { objet?, mode? (mode d'honoraires), montant_ht?, taux_tva?, montant_frais?,
 //   date_echeance?, mode_reglement?, compte_reglement_id?, mention? }
 // Corrige une facture émise. Réutilise le taux de change et le montant de
 // débours déjà figés à l'émission (ni l'un ni l'autre ne se corrigent ici —
@@ -554,13 +554,15 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
   try {
     const cur = await pool.query(
       `SELECT statut, montant_ht, taux_tva, montant_frais, montant_debours, taux_applique, montant_ttc, objet,
-              date_echeance::text AS date_echeance, mode_reglement, compte_reglement_id, mention FROM factures WHERE id = $1`,
+              date_echeance::text AS date_echeance, mode_reglement, compte_reglement_id, mention, mode FROM factures WHERE id = $1`,
       [req.params.id]
     );
     if (!cur.rows[0]) return res.status(404).json({ error: "Facture introuvable" });
     if (cur.rows[0].statut === "annulee") {
       return res.status(409).json({ error: "Facture annulée — non modifiable. Recréez-la si nécessaire." });
     }
+    const MODES_HONORAIRES = ["forfait", "temps_passe", "success_fee", "abonnement", "consultation", "autre"];
+    if (b.mode && !MODES_HONORAIRES.includes(b.mode)) return res.status(400).json({ error: "Mode d'honoraires invalide." });
     if (b.mode_reglement && !PAR_CODE[b.mode_reglement]) return res.status(400).json({ error: "Moyen de règlement invalide : choisissez dans la liste." });
     const financeTouchee = b.montant_ht !== undefined || b.taux_tva !== undefined || b.montant_frais !== undefined;
     if (financeTouchee && cur.rows[0].statut !== "emise") {
@@ -587,16 +589,17 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
          objet = COALESCE($1, objet), montant_ht = $2, taux_tva = $3, montant_tva = $4,
          montant_frais = $5, montant_ttc = $6, montant_ttc_xof = $7,
          date_echeance = COALESCE($8, date_echeance), mode_reglement = COALESCE($9::mode_paiement, mode_reglement),
-         compte_reglement_id = COALESCE($10::uuid, compte_reglement_id), mention = COALESCE($11, mention)
+         compte_reglement_id = COALESCE($10::uuid, compte_reglement_id), mention = COALESCE($11, mention),
+         mode = COALESCE($13::mode_honoraires, mode)
        WHERE id = $12
        RETURNING id, numero, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut, date_echeance::text AS date_echeance,
-                 mode_reglement, compte_reglement_id, mention, taux_tva`,
+                 mode_reglement, compte_reglement_id, mention, taux_tva, mode`,
       [b.objet ?? null, ht, tauxTva, tva, frais, ttc, ttcXof,
        b.date_echeance || null, b.mode_reglement || null, b.compte_reglement_id || null, b.mention ?? null,
-       req.params.id]
+       req.params.id, b.mode || null]
     );
     // Trace (avant / après) d'une correction de facture émise ou payée (29/10/2026).
-    const changements = diffChamps(cur.rows[0], rows[0], ["objet", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
+    const changements = diffChamps(cur.rows[0], rows[0], ["objet", "mode", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
     if (Object.keys(changements).length) {
       await logAudit({ utilisateurId: req.user.sub, action: "modifier_facture", entite: "factures", entiteId: req.params.id,
         details: { numero: rows[0].numero, statut: rows[0].statut, changements }, ip: req.ip });

@@ -56,6 +56,7 @@ const LABELS_MODE = {
   success_fee: "Success fee",
   abonnement: "Abonnement",
   consultation: "Consultation",
+  autre: "Honoraires",
 };
 
 const LABELS_STATUT = {

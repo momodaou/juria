@@ -353,6 +353,16 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     <label>Objet
                       <input [(ngModel)]="edit.objet" [name]="'edObjet' + f.id" />
                     </label>
+                    <label>Mode d'honoraires
+                      <select [(ngModel)]="edit.mode" [name]="'edMode' + f.id">
+                        <option value="forfait">Forfait</option>
+                        <option value="temps_passe">Temps passé</option>
+                        <option value="success_fee">Success fee</option>
+                        <option value="abonnement">Abonnement</option>
+                        <option value="consultation">Consultation</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                    </label>
                     <label>Montant HT
                       <input type="number" [(ngModel)]="edit.montant_ht" [name]="'edHt' + f.id" [disabled]="f.statut !== 'emise'" />
                     </label>
@@ -952,6 +962,7 @@ export class FacturationComponent implements OnInit {
     this.editionId.set(f.id);
     this.edit = {
       objet: f.objet || '',
+      mode: f.mode || 'forfait',
       montant_ht: f.montant_ht,
       taux_tva: f.taux_tva,
       montant_frais: f.montant_frais,
@@ -975,6 +986,7 @@ export class FacturationComponent implements OnInit {
     this.erreur.set('');
     const payload: any = {
       objet: this.edit.objet,
+      mode: this.edit.mode || undefined,
       date_echeance: this.edit.date_echeance || null,
       mention: this.edit.mention,
     };
