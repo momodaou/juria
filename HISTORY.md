@@ -4479,3 +4479,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 30/10/2026 — Facturation : mode d'honoraires modifiable
 - Omission signalée : le mode d'honoraires d'une facture (forfait, temps passé, success fee, abonnement, consultation, autre) se choisissait à l'émission mais n'était plus modifiable ensuite. `PUT /api/factures/:id` accepte `mode` (validé, 400 si inconnu), modifiable sur facture émise ou payée non annulée, tracé avant / après (`modifier_facture`) ; champ « Mode d'honoraires » dans le formulaire « Modifier » ; libellé « Honoraires » imprimé sur le PDF pour le mode « autre ». Le mode d'honoraires du DOSSIER était déjà modifiable depuis la fiche dossier. Tests 814/814, build OK, pas de migration.
+- Déployé : API `juria-00206-kjt`, frontend `juria-web-00278-5rq` (mode d'honoraires modifiable), `/health` et `/` = 200.
