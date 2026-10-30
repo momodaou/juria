@@ -827,20 +827,24 @@ import { LibellePipe } from '../../core/libelles';
       @if (d.pole === 'contentieux' || audiences().length) {
         <section class="panel">
           <h3>Audiences</h3>
-          <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire, ne peut pas être filtré par dossier) — mais une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
+          <p class="muted" style="margin-bottom:12px">La saisie d'une nouvelle audience se fait dans Rôle d'audience (agenda hebdomadaire) — cliquez sur la date d'une audience, ou sur la date d'un renvoi, pour ouvrir la bonne semaine du rôle avec la ligne surlignée. Une audience déjà inscrite peut être corrigée ici comme là-bas (même donnée, mise à jour immédiate dans les deux écrans).</p>
           @if (audiences().length) {
             <table>
               <tr><th>Date</th><th>Type</th><th>Juridiction</th><th>Audiencier</th><th>Résultat</th><th></th></tr>
               @for (a of audiences(); track a.id) {
                 <tr [class.urgent]="a.urgente">
-                  <td>{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</td>
+                  <td>
+                    @if (auth.peut('audiences.consulter')) {
+                      <a class="lien" [routerLink]="['/role-audience']" [queryParams]="paramsRoleAudience(a.date_audience, a.id)" title="Voir cette audience au Rôle d’audience">{{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} }</a>
+                    } @else { {{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} } }
+                  </td>
                   <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
                   <td>{{ a.juridiction || '—' }}</td>
                   <td>{{ a.avocat_nom || '—' }}</td>
                   <td>
                     @if (a.resultat) {
                       {{ libelleResultat(a.resultat, a.resultat_precision) }}@if (a.motif_renvoi) { ({{ a.motif_renvoi }}) }
-                      @if (a.prochaine_date) { — renvoyée au {{ a.prochaine_date | date:'dd/MM/yyyy' }}@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
+                      @if (a.prochaine_date) { — renvoyée au @if (auth.peut('audiences.consulter')) { <a class="lien" [routerLink]="['/role-audience']" [queryParams]="paramsRoleAudience(a.prochaine_date)" title="Voir la semaine du renvoi au Rôle d’audience">{{ a.prochaine_date | date:'dd/MM/yyyy' }}</a> } @else { {{ a.prochaine_date | date:'dd/MM/yyyy' }} }@if (a.prochaine_heure) { à {{ a.prochaine_heure.slice(0, 5) }} } }
                       @if (a.resultat === 'decision_rendue' && a.decision_document_id) {
                         <br><button type="button" class="lien" (click)="ouvrirDecision(a)">📄 Décision</button>
                       }
@@ -976,7 +980,9 @@ import { LibellePipe } from '../../core/libelles';
               <tr><th>Date</th><th>Type</th><th>Objet</th><th>Lieu</th><th>Responsable</th><th>Statut</th></tr>
               @for (dl of diligences(); track dl.id) {
                 <tr>
-                  <td>{{ dl.date_diligence | date:'dd/MM/yyyy' }}@if (dl.heure) { {{ ' ' + dl.heure.slice(0, 5) }} }</td>
+                  <td>
+                    <a class="lien" [routerLink]="['/role-audience']" [queryParams]="paramsRoleDiligence(dl)" title="Voir cette diligence au Rôle d’audience">{{ dl.date_diligence | date:'dd/MM/yyyy' }}@if (dl.heure) { {{ ' ' + dl.heure.slice(0, 5) }} }</a>
+                  </td>
                   <td>{{ libelleTypeDiligence(dl.type_diligence, dl.type_precision) }}</td>
                   <td>{{ dl.objet || '—' }}</td>
                   <td>{{ dl.lieu || '—' }}</td>
@@ -1287,6 +1293,13 @@ export class DossierDetailComponent implements OnInit {
   readonly etiquette = signal<{ qr: string; couleurHex: string } | null>(null);
   readonly evenements = signal<any[]>([]);
   // Historique des audiences (11/09/2026, gap comblé — voir CLAUDE.md/HISTORY.md).
+  // Liens profonds vers le Rôle d'audience (30/10/2026) : semaine concernée + ligne surlignée ; « retour » ramène à ce dossier.
+  paramsRoleAudience(date: string, audienceId?: string): Record<string, string> {
+    return { semaine: String(date).slice(0, 10), dossier: this.id, retour: this.id, ...(audienceId ? { audience: audienceId } : {}) };
+  }
+  paramsRoleDiligence(dl: any): Record<string, string> {
+    return { semaine: String(dl.date_diligence).slice(0, 10), diligence: dl.id, dossier: this.id, retour: this.id };
+  }
   readonly audiences = signal<any[]>([]);
   readonly diligences = signal<any[]>([]);
   readonly tachesDossier = signal<any[]>([]);

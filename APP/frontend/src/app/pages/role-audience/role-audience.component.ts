@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
@@ -16,6 +16,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     <header class="page-head">
       <div>
         <h1>Rôle d'audience</h1>
+        @if (retourDossier()) { <p><a class="lien" [routerLink]="['/dossiers', retourDossier()]">↩ Retour à la fiche du dossier</a></p> }
+        @if (messageCible()) { <p class="hint">{{ messageCible() }}</p> }
         <p>Audiences et diligences de la semaine — du {{ role()?.semaine_debut | date:'dd/MM/yyyy' }}
           au {{ role()?.semaine_fin | date:'dd/MM/yyyy' }}</p>
       </div>
@@ -59,7 +61,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                  (Date/Heure/Référence/Parties, voir "styles" plus bas). -->
             <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th>Suite programmée</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
-              <tr [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation" [class.retour-en-retard]="estEnRetardSansRetour(l)">
+              <tr [id]="'audience-' + l.id" [class.cible]="estCibleAudience(l)" [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation" [class.retour-en-retard]="estEnRetardSansRetour(l)">
                 <td class="col-date">{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
                 <td class="col-heure">{{ formaterHeure(l.heure) }}</td>
                 <td class="col-ref"><a class="lien" [routerLink]="['/dossiers', l.dossier_id]">{{ l.dossier_numero }}</a></td>
@@ -318,7 +320,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         <table>
           <tr><th>Date</th><th>Heure</th><th>Type</th><th>Dossier</th><th>Membre</th><th>Lieu</th><th>Objet</th><th></th></tr>
           @for (dl of diligences(); track dl.id) {
-            <tr [class.retour-en-retard]="estDiligenceEnRetard(dl)">
+            <tr [id]="'diligence-' + dl.id" [class.cible]="cible()?.diligence === dl.id" [class.retour-en-retard]="estDiligenceEnRetard(dl)">
               <td>{{ dl.date_diligence | date:'dd/MM/yyyy' }}</td>
               <td>{{ dl.heure || '—' }}</td>
               <td>{{ libelleTypeDiligence(dl.type_diligence) }}@if (dl.type_diligence === 'autre' && dl.type_precision) { : {{ dl.type_precision }} }</td>
@@ -459,6 +461,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     }
   `,
   styles: [`
+    tr.cible > td{background:#fff3c4 !important;transition:background .6s}
     /* 10/10/2026 — .hint n'avait jamais de règle locale dans ce fichier
        (contrairement aux 7 autres composants de l'appli qui utilisent
        cette classe) : les 2 notes explicatives (audiencier, motif de
@@ -569,6 +572,7 @@ export class RoleAudienceComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly preview = inject(DocumentPreviewService);
+  private readonly route = inject(ActivatedRoute);
   readonly role = signal<any | null>(null);
   readonly motifs = signal<{ id: string; libelle: string }[]>([]);
   readonly ligneRetour = signal<any | null>(null);
@@ -762,7 +766,48 @@ export class RoleAudienceComponent implements OnInit {
     return table[degre || ''] || table['default'];
   }
 
+  // Lien profond depuis la fiche dossier (30/10/2026) : /role-audience?semaine=AAAA-MM-JJ&audience=<id>&dossier=<id>&diligence=<id>&retour=<dossier>.
+  // La semaine demandée s'ouvre, la ligne visée défile au centre et se surligne quelques secondes.
+  readonly cible = signal<{ audience: string | null; dossier: string | null; diligence: string | null } | null>(null);
+  readonly retourDossier = signal<string | null>(null);
+  readonly messageCible = signal('');
+  estCibleAudience(l: any): boolean {
+    const c = this.cible();
+    if (!c || c.diligence) return false;
+    return c.audience ? l.id === c.audience : !!c.dossier && l.dossier_id === c.dossier;
+  }
+  private lireCible(): void {
+    const q = this.route.snapshot.queryParamMap;
+    const sem = q.get('semaine');
+    if (sem && /^\d{4}-\d{2}-\d{2}$/.test(sem)) this.semaine = sem;
+    this.retourDossier.set(q.get('retour'));
+    const c = { audience: q.get('audience'), dossier: q.get('dossier'), diligence: q.get('diligence') };
+    if (c.audience || c.dossier || c.diligence) this.cible.set(c);
+  }
+  // Après chargement : défilement vers la ligne visée, message si elle n'existe pas (rôle de la semaine non encore programmé…).
+  private viserCible(): void {
+    const c = this.cible();
+    if (!c || c.diligence) return;
+    setTimeout(() => {
+      const el = document.querySelector('tr.cible');
+      if (el) { (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' }); this.messageCible.set(''); }
+      else this.messageCible.set('Aucune audience de ce dossier n’est encore programmée cette semaine (rôle non encore établi, ou audience renvoyée à une autre date).');
+      setTimeout(() => this.cible.set(null), 8000);
+    }, 150);
+  }
+  private viserDiligence(): void {
+    const c = this.cible();
+    if (!c || !c.diligence) return;
+    setTimeout(() => {
+      const el = document.querySelector('tr.cible');
+      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+      else this.messageCible.set('Cette diligence n’est plus « à faire » (réalisée ou annulée) : elle n’apparaît plus dans la liste.');
+      setTimeout(() => this.cible.set(null), 8000);
+    }, 150);
+  }
+
   ngOnInit(): void {
+    this.lireCible();
     this.charger();
     this.api.motifsRenvoi().subscribe({ next: (m) => this.motifs.set(m) });
     this.api.listesValeurs('type_diligence').subscribe({ next: (v) => this.typesDiligence.set(v) });
@@ -781,6 +826,7 @@ export class RoleAudienceComponent implements OnInit {
         // du 13/09/2026) : sans ce délai, la table pourrait ne pas encore
         // exister au moment de la lecture.
         setTimeout(() => this.recalculerColonnesFigees());
+        if (!this.cibleVisee) { this.cibleVisee = true; this.viserCible(); }
       },
     });
   }
@@ -806,8 +852,10 @@ export class RoleAudienceComponent implements OnInit {
     table.style.setProperty('--left-parties', `${largeurDate + largeurHeure + largeurRef}px`);
   }
 
+  private cibleVisee = false;
+  private diligencesVisees = false;
   chargerDiligences(): void {
-    this.api.diligences({ statut: 'a_faire' }).subscribe({ next: (d) => this.diligences.set(d) });
+    this.api.diligences({ statut: 'a_faire' }).subscribe({ next: (d) => { this.diligences.set(d); if (!this.diligencesVisees) { this.diligencesVisees = true; this.viserDiligence(); } } });
   }
 
   ajouterDiligence(): void {
