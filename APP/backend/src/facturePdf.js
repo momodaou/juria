@@ -201,7 +201,13 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
   doc.fontSize(8).font("Helvetica").fillColor(STYLE.grisClair);
   const detailsCabinet = [cab.forme, cab.adresse, [cab.telephone, cab.email].filter(Boolean).join(" — ")].filter(Boolean);
   let yDetail = yHeader + 58;
-  for (const ligne of detailsCabinet) { doc.text(ligne, xLabel, yDetail, { width: 280 }); yDetail += 11; }
+  // 02/11/2026 — la hauteur de chaque ligne est mesurée : une adresse longue
+  // passe sur plusieurs lignes et, avec un pas fixe de 11 pt, recouvrait la
+  // ligne suivante (téléphone / e-mail) — écritures entremêlées signalées.
+  for (const ligne of detailsCabinet) {
+    doc.text(ligne, xLabel, yDetail, { width: 280 });
+    yDetail += doc.heightOfString(ligne, { width: 280 }) + 2;
+  }
   doc.fillColor(STYLE.texte);
 
   // Date d'émission, alignée à droite du même bandeau.
