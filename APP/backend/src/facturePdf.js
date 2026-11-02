@@ -198,21 +198,23 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
     // Pas de logo trouvé (environnement de test, etc.) : on continue sans —
     // jamais bloquant pour l'émission d'une facture.
   }
-  doc.fontSize(8).font("Helvetica").fillColor(STYLE.grisClair);
-  const detailsCabinet = [cab.forme, cab.adresse, [cab.telephone, cab.email].filter(Boolean).join(" — ")].filter(Boolean);
+  // 02/11/2026 — bloc d'identité sous le logo : la raison sociale (le logo
+  // porte seulement « jfc AVOCATS », sans « MALI ») en gras, puis forme,
+  // adresse et coordonnées en gris ; la hauteur de chaque ligne est mesurée
+  // (une adresse longue passait sur plusieurs lignes et recouvrait la
+  // suivante avec un pas fixe de 11 pt — écritures entremêlées signalées).
+  const largeurDetails = 340;
+  const detailsCabinet = [
+    { texte: cab.raison_sociale || "JFC AVOCATS MALI", gras: true },
+    ...[cab.forme, cab.adresse, [cab.telephone, cab.email].filter(Boolean).join(" — ")].filter(Boolean).map((texte) => ({ texte })),
+  ];
   let yDetail = yHeader + 58;
-  // 02/11/2026 — la hauteur de chaque ligne est mesurée : une adresse longue
-  // passe sur plusieurs lignes et, avec un pas fixe de 11 pt, recouvrait la
-  // ligne suivante (téléphone / e-mail) — écritures entremêlées signalées.
-  for (const ligne of detailsCabinet) {
-    doc.text(ligne, xLabel, yDetail, { width: 280 });
-    yDetail += doc.heightOfString(ligne, { width: 280 }) + 2;
+  for (const { texte, gras } of detailsCabinet) {
+    if (gras) doc.fontSize(9).font("Helvetica-Bold").fillColor(STYLE.texte);
+    else doc.fontSize(8).font("Helvetica").fillColor(STYLE.grisClair);
+    doc.text(texte, xLabel, yDetail, { width: largeurDetails });
+    yDetail += doc.heightOfString(texte, { width: largeurDetails }) + 2;
   }
-  doc.fillColor(STYLE.texte);
-
-  // Date d'émission, alignée à droite du même bandeau.
-  doc.fontSize(9).font("Helvetica").fillColor(STYLE.gris)
-    .text(`Bamako, le ${fmtDateLettres(fac.date_emission)}`, xLabel, yHeader + 3, { width: largeurPage, align: "right" });
   doc.fillColor(STYLE.texte);
 
   // Filet d'accent bicolore (clin d'œil aux deux anneaux du logo), sous le
@@ -221,7 +223,12 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
   doc.rect(xLabel, yFilet, largeurPage * 0.62, 2.5).fill(STYLE.bleu);
   doc.rect(xLabel + largeurPage * 0.62, yFilet, largeurPage * 0.38, 2.5).fill(STYLE.orange);
   doc.fillColor(STYLE.texte);
-  doc.y = yFilet + 14;
+  // Date d'émission : à droite, sous le filet et au-dessus du titre (place
+  // habituelle de « Lieu, le … » dans un courrier), non plus à la hauteur du logo.
+  doc.fontSize(9).font("Helvetica").fillColor(STYLE.gris)
+    .text(`Bamako, le ${fmtDateLettres(fac.date_emission)}`, xLabel, yFilet + 12, { width: largeurPage, align: "right" });
+  doc.fillColor(STYLE.texte);
+  doc.y = yFilet + 30;
 
   // --- Titre + référence ---
   const titre = fac.type_document === "note_de_frais" ? "NOTE DE FRAIS" : fac.type_document === "avoir" ? "AVOIR" : "NOTE D'HONORAIRES";

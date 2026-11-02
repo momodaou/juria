@@ -4500,3 +4500,7 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 ## 02/11/2026 — Facture PDF : en-tête cabinet aux écritures entremêlées
 - Cause : sous le logo, les coordonnées du cabinet (forme, adresse, téléphone — e-mail) étaient posées avec un pas fixe de 11 pt ; une adresse longue (retour à la ligne à 280 pt) recouvrait la ligne téléphone / e-mail. Reproduit à partir d'une adresse longue fictive (PDF rendu en image), puis corrigé : la hauteur réelle de chaque ligne est mesurée (`heightOfString`) avant de poser la suivante. Le filet d'accent et le reste de la page se décalent d'autant. Aucune migration ; l'API doit être redéployée.
 - Déployé : API `juria-00207-7kb` (en-tête de la facture PDF corrigé), `/health` = 200.
+
+## 02/11/2026 — Facture PDF : raison sociale, date, bloc d'adresse
+- Observations : (i) la date était à la hauteur du logo, en haut à droite, sans lien avec le reste ; (ii) les lignes d'adresse passaient à la ligne à 280 pt ; (iii) l'en-tête n'imprimait pas « JFC AVOCATS MALI » (le logo porte seulement « jfc AVOCATS »).
+- Corrigé dans `facturePdf.js` : raison sociale (`parametres_cabinet.raison_sociale`, repli « JFC AVOCATS MALI ») en gras sous le logo, puis forme / adresse / coordonnées en gris sur 340 pt ; « Bamako, le … » à droite sous le filet, au-dessus du titre (place habituelle d'un courrier). Aucune migration ; l'API doit être redéployée.
