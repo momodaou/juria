@@ -7,12 +7,13 @@ import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 
 @Component({
   selector: 'app-facturation',
   standalone: true,
-  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, RouterLink, MenuActionsComponent, ReglementFormComponent],
+  imports: [DecimalPipe, DatePipe, FormsModule, ClientPickerComponent, DossierPickerComponent, RouterLink, MenuActionsComponent, ReglementFormComponent],
   template: `
     <header class="page-head"><h1>Facturation</h1></header>
 
@@ -23,18 +24,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     <section class="panel">
       <h3>Nouvelle facture</h3>
       <div class="form">
-        <label>Dossier
-          <select [(ngModel)]="dossierId" name="dossier" (ngModelChange)="onDossierChange()">
-            <option value="">— choisir —</option>
-            <option value="__autre__">Autre (facturer un client sans dossier)</option>
-            @for (d of dossiers(); track d.id) {
-              <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option>
-            }
-          </select>
-        </label>
-        @if (dossierId === '__autre__') {
-          <label class="large">Client
+        @if (dossierId !== '__autre__') {
+          <label class="large">Dossier
+            <app-dossier-picker [valeur]="dossierId || null" (valeurChange)="dossierId = $event ?? ''" (dossierChoisi)="onDossierChoisi($event)"></app-dossier-picker>
+            <span class="hint"><button type="button" class="lien" (click)="facturerSansDossier()">Facturer un client sans dossier</button></span>
+          </label>
+        } @else {
+          <label class="large">Client (facture sans dossier)
             <app-client-picker [valeur]="factureClientId" (valeurChange)="factureClientId = $event" />
+            <span class="hint"><button type="button" class="lien" (click)="choisirUnDossier()">← Choisir un dossier</button></span>
           </label>
         }
         <label>Mode
@@ -100,13 +98,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       <h3>Facturer un dossier (temps + débours)</h3>
       <p class="desc">Sélectionne un dossier pour lister les temps facturables et les débours décaissés/refacturables pas encore rattachés à une facture, puis coche ce qui doit y figurer. Le montant est calculé automatiquement — uniquement en FCFA (temps et débours sont toujours enregistrés en XOF).</p>
       <div class="form">
-        <label>Dossier
-          <select [(ngModel)]="dossierTempsId" name="dossierTemps" (ngModelChange)="chargerTempsNonFactures()">
-            <option value="">— choisir —</option>
-            @for (d of dossiers(); track d.id) {
-              <option [value]="d.id">{{ d.numero }} — {{ d.intitule }}</option>
-            }
-          </select>
+        <label class="large">Dossier
+          <app-dossier-picker [valeur]="dossierTempsId || null" (valeurChange)="dossierTempsId = $event ?? ''; chargerTempsNonFactures()"></app-dossier-picker>
         </label>
         <label>Mode
           <select [(ngModel)]="modeTemps" name="modeTemps">
@@ -507,7 +500,6 @@ export class FacturationComponent implements OnInit {
   readonly filtreDossierId = signal<string | null>(null);
   readonly filtreDossierNumero = signal<string | null>(null);
 
-  readonly dossiers = signal<Dossier[]>([]);
   readonly factures = signal<any[]>([]);
   readonly impayees = signal<any[]>([]);
   readonly comptes = signal<{ id: string; intitule: string; type: string; banque?: string }[]>([]);
@@ -589,7 +581,6 @@ export class FacturationComponent implements OnInit {
   edit: any = {};
 
   ngOnInit(): void {
-    this.api.dossiers().subscribe({ next: (d) => this.dossiers.set(d), error: () => {} });
     // Comptes qui reçoivent un règlement : banque et mobile money (ni caisse ni anciens types).
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c.filter((x) => ['fonctionnement', 'carpa', 'mobile_money'].includes(x.type))), error: () => {} });
     this.api.moyensPaiement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
@@ -857,11 +848,15 @@ export class FacturationComponent implements OnInit {
 
   // Pré-remplit l'objet de la nouvelle facture depuis celui du dossier
   // choisi — reste un champ libre ensuite (jamais recalculé après ce choix).
-  onDossierChange(): void {
-    if (this.dossierId === '__autre__') { this.objet = ''; this.factureClientId = null; return; }
-    const d = this.dossiers().find((x) => x.id === this.dossierId);
+  // 02/11/2026 — sélecteur à recherche (app-dossier-picker) à la place de la
+  // liste déroulante : celle-ci ne contenait que les 200 dossiers les plus
+  // récemment modifiés (LIMIT 200 de GET /api/dossiers), un dossier plus
+  // ancien devenait introuvable pour facturer.
+  onDossierChoisi(d: Dossier | null): void {
     this.objet = d?.objet || '';
   }
+  facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; }
+  choisirUnDossier(): void { this.dossierId = ''; this.objet = ''; this.factureClientId = null; }
 
   // Raccourci depuis le registre "Clients sous convention" (07/10/2026,
   // bascule sur une facture CLIENT — pas dossier — le 09/10/2026 : une
