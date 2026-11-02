@@ -198,16 +198,15 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
     // Pas de logo trouvé (environnement de test, etc.) : on continue sans —
     // jamais bloquant pour l'émission d'une facture.
   }
-  // 02/11/2026 — bloc d'identité sous le logo : la raison sociale (le logo
-  // porte seulement « jfc AVOCATS », sans « MALI ») en gras, puis forme,
-  // adresse et coordonnées en gris ; la hauteur de chaque ligne est mesurée
-  // (une adresse longue passait sur plusieurs lignes et recouvrait la
-  // suivante avec un pas fixe de 11 pt — écritures entremêlées signalées).
+  // 02/11/2026 — bloc d'identité sous le logo : forme, adresse et coordonnées
+  // en gris ; la hauteur de chaque ligne est mesurée (une adresse longue
+  // passait sur plusieurs lignes et recouvrait la suivante avec un pas fixe de
+  // 11 pt — écritures entremêlées signalées). La raison sociale n'est PAS
+  // répétée en texte : le logo porte déjà « jfc AVOCATS » (un « JFC AVOCATS
+  // MALI » en gras dessous faisait doublon, retiré le jour même).
   const largeurDetails = 340;
-  const detailsCabinet = [
-    { texte: cab.raison_sociale || "JFC AVOCATS MALI", gras: true },
-    ...[cab.forme, cab.adresse, [cab.telephone, cab.email].filter(Boolean).join(" — ")].filter(Boolean).map((texte) => ({ texte })),
-  ];
+  const detailsCabinet = [cab.forme, cab.adresse, [cab.telephone, cab.email].filter(Boolean).join(" — ")]
+    .filter(Boolean).map((texte) => ({ texte }));
   let yDetail = yHeader + 58;
   for (const { texte, gras } of detailsCabinet) {
     if (gras) doc.fontSize(9).font("Helvetica-Bold").fillColor(STYLE.texte);

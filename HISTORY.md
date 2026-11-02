@@ -4505,3 +4505,6 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Observations : (i) la date était à la hauteur du logo, en haut à droite, sans lien avec le reste ; (ii) les lignes d'adresse passaient à la ligne à 280 pt ; (iii) l'en-tête n'imprimait pas « JFC AVOCATS MALI » (le logo porte seulement « jfc AVOCATS »).
 - Corrigé dans `facturePdf.js` : raison sociale (`parametres_cabinet.raison_sociale`, repli « JFC AVOCATS MALI ») en gras sous le logo, puis forme / adresse / coordonnées en gris sur 340 pt ; « Bamako, le … » à droite sous le filet, au-dessus du titre (place habituelle d'un courrier). Aucune migration ; l'API doit être redéployée.
 - Déployé : API `juria-00208-v49` (en-tête de facture : raison sociale, date sous le filet, bloc d'adresse élargi), `/health` = 200.
+
+## 02/11/2026 — Facture PDF : « JFC AVOCATS MALI » en gras retiré de l'en-tête
+- Constat de l'utilisateur : le logo (« jfc AVOCATS ») et « JFC AVOCATS MALI » imprimé dessous ne vont pas ensemble (doublon). Texte retiré ; le logo reste seul avec forme / adresse / coordonnées en gris (la date sous le filet et le bloc d'adresse élargi sont conservés). Le nom complet « JFC AVOCATS MALI » reste imprimé à la signature en bas de page. Pour que « MALI » figure dans l'en-tête, il faut un logo qui l'intègre (`APP/backend/assets/logo-jfc.png`). L'API doit être redéployée.
