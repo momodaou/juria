@@ -4499,3 +4499,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 
 ## 02/11/2026 — Facture PDF : en-tête cabinet aux écritures entremêlées
 - Cause : sous le logo, les coordonnées du cabinet (forme, adresse, téléphone — e-mail) étaient posées avec un pas fixe de 11 pt ; une adresse longue (retour à la ligne à 280 pt) recouvrait la ligne téléphone / e-mail. Reproduit à partir d'une adresse longue fictive (PDF rendu en image), puis corrigé : la hauteur réelle de chaque ligne est mesurée (`heightOfString`) avant de poser la suivante. Le filet d'accent et le reste de la page se décalent d'autant. Aucune migration ; l'API doit être redéployée.
+- Déployé : API `juria-00207-7kb` (en-tête de la facture PDF corrigé), `/health` = 200.
