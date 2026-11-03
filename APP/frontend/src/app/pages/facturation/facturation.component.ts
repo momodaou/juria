@@ -27,11 +27,21 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         @if (dossierId !== '__autre__') {
           <label class="large">Dossier
             <app-dossier-picker [valeur]="dossierId || null" (valeurChange)="dossierId = $event ?? ''" (dossierChoisi)="onDossierChoisi($event)"></app-dossier-picker>
-            <span class="hint"><button type="button" class="lien" (click)="facturerSansDossier()">Facturer un client sans dossier</button></span>
+            <span class="hint"><button type="button" class="lien" (click)="facturerSansDossier()">Facturer un client sans dossier</button>
+              @if (abonnements().length) { · <button type="button" class="lien" (click)="choixAbonnementOuvert.set(!choixAbonnementOuvert())">Facturer un abonnement</button> }</span>
           </label>
+          @if (choixAbonnementOuvert()) {
+            <label class="large">Client sous abonnement
+              <select class="in" (change)="choisirAbonnement($any($event.target).value)">
+                <option value="">— choisir un client sous convention —</option>
+                @for (a of abonnements(); track a.client_id) { <option [value]="a.client_id">{{ a.client }}</option> }
+              </select>
+            </label>
+          }
         } @else {
           <label class="large">Client (facture sans dossier)
-            <app-client-picker [valeur]="factureClientId" [nomInitial]="factureClientNom" (valeurChange)="factureClientId = $event" />
+            <app-client-picker [valeur]="factureClientId" [nomInitial]="factureClientNom" (valeurChange)="onClientFactureChoisi($event)" />
+            @if (clientSousAbonnement()) { <span class="hint"><b>Client sous convention-cadre :</b> mode « Abonnement » proposé et montant convenu repris (modifiables ci-dessous).</span> }
             <span class="hint">Une facture d'abonnement (convention-cadre) se facture au nom du client, pas d'un dossier. <button type="button" class="lien" (click)="choisirUnDossier()">← Choisir un dossier</button></span>
           </label>
         }
@@ -530,6 +540,7 @@ export class FacturationComponent implements OnInit {
   factureClientId: string | null = null;
   // Nom affiché dans le sélecteur de client quand il est pré-rempli (depuis le registre des abonnements) ; sans lui, le sélecteur affichait « (client sélectionné) ».
   factureClientNom: string | null = null;
+  readonly choixAbonnementOuvert = signal(false);
   mode = 'temps_passe';
   montantHt: number | null = null;
   // Objet propre à la facture (05/09/2026, diagnostic Facturation) — distinct
@@ -857,7 +868,28 @@ export class FacturationComponent implements OnInit {
   onDossierChoisi(d: Dossier | null): void {
     this.objet = d?.objet || '';
   }
-  facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; }
+  facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; this.choixAbonnementOuvert.set(false); }
+
+  // 03/11/2026 — client choisi dans une facture sans dossier : s'il est sous
+  // convention-cadre, le mode « Abonnement » est proposé et le montant convenu
+  // repris (jamais imposé : tout reste modifiable). Évite de facturer par erreur
+  // un forfait ou du temps passé à un client en abonnement.
+  onClientFactureChoisi(id: string | null): void {
+    this.factureClientId = id;
+    const a = id ? this.abonnements().find((x) => x.client_id === id) : null;
+    if (!a) return;
+    this.mode = 'abonnement';
+    if (!this.montantHt && a.montant_convenu_xof) this.montantHt = a.montant_convenu_xof;
+  }
+  clientSousAbonnement(): boolean {
+    return !!this.factureClientId && this.abonnements().some((x) => x.client_id === this.factureClientId);
+  }
+  choisirAbonnement(clientId: string): void {
+    const a = this.abonnements().find((x) => x.client_id === clientId);
+    if (!a) return;
+    this.preparerFacturationAbonnement(a, false);
+    this.choixAbonnementOuvert.set(false);
+  }
   choisirUnDossier(): void { this.dossierId = ''; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; }
 
   // Raccourci depuis le registre "Clients sous convention" (07/10/2026,
@@ -867,7 +899,7 @@ export class FacturationComponent implements OnInit {
   // abonnement, montant convenu s'il existe) plutôt que de dupliquer un
   // mécanisme d'émission — le registre reste un affichage dérivé,
   // l'émission reste le seul formulaire existant.
-  preparerFacturationAbonnement(a: any): void {
+  preparerFacturationAbonnement(a: any, defiler = true): void {
     this.message.set('');
     this.erreur.set('');
     this.dossierId = '__autre__';
@@ -876,7 +908,7 @@ export class FacturationComponent implements OnInit {
     this.mode = 'abonnement';
     this.objet = '';
     this.montantHt = a.montant_convenu_xof ?? null;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (defiler) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   actionsPourAbonnement(a: any): ActionMenuItem[] {
