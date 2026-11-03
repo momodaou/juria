@@ -31,8 +31,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
           </label>
         } @else {
           <label class="large">Client (facture sans dossier)
-            <app-client-picker [valeur]="factureClientId" (valeurChange)="factureClientId = $event" />
-            <span class="hint"><button type="button" class="lien" (click)="choisirUnDossier()">← Choisir un dossier</button></span>
+            <app-client-picker [valeur]="factureClientId" [nomInitial]="factureClientNom" (valeurChange)="factureClientId = $event" />
+            <span class="hint">Une facture d'abonnement (convention-cadre) se facture au nom du client, pas d'un dossier. <button type="button" class="lien" (click)="choisirUnDossier()">← Choisir un dossier</button></span>
           </label>
         }
         <label>Mode
@@ -528,6 +528,8 @@ export class FacturationComponent implements OnInit {
   // 05/09/2026 — POST /api/factures acceptait déjà client_id seul, cette
   // option manquait côté écran).
   factureClientId: string | null = null;
+  // Nom affiché dans le sélecteur de client quand il est pré-rempli (depuis le registre des abonnements) ; sans lui, le sélecteur affichait « (client sélectionné) ».
+  factureClientNom: string | null = null;
   mode = 'temps_passe';
   montantHt: number | null = null;
   // Objet propre à la facture (05/09/2026, diagnostic Facturation) — distinct
@@ -855,8 +857,8 @@ export class FacturationComponent implements OnInit {
   onDossierChoisi(d: Dossier | null): void {
     this.objet = d?.objet || '';
   }
-  facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; }
-  choisirUnDossier(): void { this.dossierId = ''; this.objet = ''; this.factureClientId = null; }
+  facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; }
+  choisirUnDossier(): void { this.dossierId = ''; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; }
 
   // Raccourci depuis le registre "Clients sous convention" (07/10/2026,
   // bascule sur une facture CLIENT — pas dossier — le 09/10/2026 : une
@@ -870,6 +872,7 @@ export class FacturationComponent implements OnInit {
     this.erreur.set('');
     this.dossierId = '__autre__';
     this.factureClientId = a.client_id;
+    this.factureClientNom = a.client;
     this.mode = 'abonnement';
     this.objet = '';
     this.montantHt = a.montant_convenu_xof ?? null;
@@ -1039,7 +1042,7 @@ export class FacturationComponent implements OnInit {
       next: (f) => {
         this.creationFactureEnCours.set(false);
         this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise})${f.acompte ? ' — acompte de ' + f.acompte + ' enregistré, statut : ' + f.statut : ''}.`);
-        this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null; this.reinitialiserAcompte();
+        this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; this.reinitialiserAcompte();
         this.rafraichir();
       },
       error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
