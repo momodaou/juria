@@ -4537,3 +4537,10 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Décisions : N/Réf = référence JURIA ; sorties A (papier à en-tête) / B (en-tête numérique) ; en-tête page 1 seule, « n/N » ; colonne de droite à 10,3 cm ; cachet unique + signature par associé apposés ensemble par le signataire (sortie B) ; qualités par signataire ; deux logos au choix.
 - En attente : validation du plan, logo « Mali » haute résolution, essai d'impression sur le vrai papier.
 - 04/11/2026 (nuit) — Papier à en-tête vierge reçu et mesuré (filet vertical à 5,86 cm, coordonnées x 0,6–5,1 / y 24,5–27,4, barre y 28,9–29,7, décor pâle en bas à droite) : retrait de la page 1 proposé à 3,0 cm (texte à 6,2 cm) pour garder ≥ 3 mm de jeu avec le filet ; logo « Mali » reconstruit en haute résolution depuis le vecteur de la charte (`DOC/CLAUDE CODE - JURIA/Logos/`, hors Git). Plan de construction mis à jour.
+
+## 04/11/2026 — Générateur de courriers, lot 0 (essai de faisabilité) — code non branché, non déployé
+- `APP/backend/src/courrier/` : `mesures.js` (mesures du papier et de la lettre type), `moteurPdf.js` (mise en page maison pdfkit : page 1 à 6,2 cm, pages suivantes 3,175 cm, colonne de droite 10,3 cm, bloc de signature calé, « n/N » dès 2 pages), `moteurDocx.js` (Word : zone d'exclusion flottante à habillage carré pour le retrait de la page 1, calques d'en-tête B derrière le texte), `calibragePdf.js` (page de calibrage), `contenuExemple.js`.
+- Sortie B : calques `APP/backend/assets/courrier/entete-b-*.png` produits par `scripts/build-entete-courrier.py` (logo haute résolution, filet, coordonnées, barre, décor pâle), mesurés sur la feuille vierge.
+- Script d'essai `APP/backend/scripts/courrier-lot0.js` ; tests `courrierLot0.test.js` (11 verts) : géométrie, A = B, mention longue, N/R, calques Word, numérotation, calibrage.
+- Vérifié : rendu PDF (image) et rendu Word via LibreOffice (exclusion et calques fonctionnent) ; NON vérifié : Word lui-même (à ouvrir par l'utilisateur) et impression sur le vrai papier.
+- Fichiers d'essai remis dans `DOC/CLAUDE CODE - JURIA/Lot 0 - essais courriers/` (hors Git) avec un LISEZ-MOI.
