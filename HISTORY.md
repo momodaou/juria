@@ -4530,3 +4530,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Frontend : panneau « Réserver un numéro » (numéro affiché + bouton Copier), bandeau de rappel (numéros sans lettre, dont > 5 jours), filtre, mentions « Numéro réservé — lettre à joindre » / « Numéro annulé », action « Annuler ce numéro… ».
 - Tests : `courrierReservationNumero.test.js` (5) ; suite complète 819/819 (`npm test`, `--runInBand` obligatoire : sans lui, 13 suites échouent par concurrence sur la base).
 - Rappel par la cloche : à brancher avec le centre de notifications (en attendant, bandeau dans le registre).
+- Déploiement 04/11/2026 : migration Cloud SQL appliquée (4 colonnes `courriers`, idempotente), puis API `juria-00210-4cs` et frontend `juria-web-00282-z45`. `/health` = 200, `/` = 200.
