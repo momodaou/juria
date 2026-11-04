@@ -4531,3 +4531,8 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Tests : `courrierReservationNumero.test.js` (5) ; suite complète 819/819 (`npm test`, `--runInBand` obligatoire : sans lui, 13 suites échouent par concurrence sur la base).
 - Rappel par la cloche : à brancher avec le centre de notifications (en attendant, bandeau dans le registre).
 - Déploiement 04/11/2026 : migration Cloud SQL appliquée (4 colonnes `courriers`, idempotente), puis API `juria-00210-4cs` et frontend `juria-web-00282-z45`. `/health` = 200, `/` = 200.
+
+## 04/11/2026 — Générateur de courriers : conception et plan de construction (aucun code)
+- Maquette cliquable (https://claude.ai/artifact/NrcGSBdwBfP8LQhrD22PTr), actifs graphiques hors Git (`DOC/CLAUDE CODE - JURIA/Signatures/` : cachet redessiné, 3 signatures, positions), plan `DOC/CLAUDE CODE - JURIA/JURIA - Plan de construction du generateur de courriers - 04.11.2026.docx` (8 lots, lot 0 = essai de faisabilité Word/PDF/papier).
+- Décisions : N/Réf = référence JURIA ; sorties A (papier à en-tête) / B (en-tête numérique) ; en-tête page 1 seule, « n/N » ; colonne de droite à 10,3 cm ; cachet unique + signature par associé apposés ensemble par le signataire (sortie B) ; qualités par signataire ; deux logos au choix.
+- En attente : validation du plan, logo « Mali » haute résolution, essai d'impression sur le vrai papier.
