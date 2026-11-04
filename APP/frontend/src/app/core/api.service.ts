@@ -803,7 +803,7 @@ export class ApiService {
   }
 
   // Registre du courrier
-  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string } = {}): Observable<any[]> {
+  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string; numeros_reserves?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';
@@ -814,6 +814,13 @@ export class ApiService {
   }
   creerCourrier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers`, payload);
+  }
+  // Réservation d'un numéro de courrier départ avant la rédaction de la lettre (04/11/2026).
+  reserverNumeroCourrier(payload: { dossier_id?: string | null; correspondant?: string; objet?: string; type?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/reserver-numero`, payload);
+  }
+  annulerNumeroCourrier(id: string, motif: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/annuler-numero`, { motif });
   }
   // Acte reçu sans dossier : orientation puis imputation avec instructions (17/10/2026).
   orienterCourrier(id: string, payload: { decision: string; dossier_id?: string; motif?: string }): Observable<any> {

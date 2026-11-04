@@ -4522,3 +4522,11 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Audit : `routes/depenses.js` et `routes/charges.js` n'émettent AUCUNE notification (ni e-mail ni alerte) ; seules 3 tuiles passives du Tableau de bord existent.
 - Proposition (non construite, en attente de feu vert) : cloche dans l'application (table `notifications`, `notifier()` ciblant par permission, SSE/LISTEN-NOTIFY existant), e-mail en repli si non lu (4 h ouvrées décisions / 24 h information), relance quotidienne à 48 h ouvrées, catalogue D1–M1.
 - Livrables hors Git : maquette cliquable (artifact) et `DOC/CLAUDE CODE - JURIA/JURIA - Registre des notifications - MAJ 04.11.2026.docx` (refonte intégrale du registre, remplace la version du 29/10/2026).
+
+## 04/11/2026 — Registre du courrier : réservation d'un numéro de courrier départ (lettre préparée sur Word)
+- Besoin : la lettre se rédige sur Word AVANT d'être enregistrée, mais doit porter sa référence ; la référence n'existait qu'à l'enregistrement.
+- Décisions : courriers généraux possibles (dossier facultatif) ; réservation ouverte à tous les titulaires de `courriers.creer` ; annulation par celui qui a réservé ou `courriers.statut.modifier`, avec motif obligatoire ; un numéro annulé reste visible (jamais de trou silencieux).
+- Backend : colonnes `numero_reserve`, `annule_le`, `annule_par`, `annule_motif` (migration idempotente, aucune valeur d'ENUM) ; `POST /api/courriers/reserver-numero`, `POST /api/courriers/:id/annuler-numero`, filtre `numeros_reserves=true` ; pas de pièce ni de changement de statut sur un numéro annulé. Même numérotation et même verrou que l'enregistrement normal.
+- Frontend : panneau « Réserver un numéro » (numéro affiché + bouton Copier), bandeau de rappel (numéros sans lettre, dont > 5 jours), filtre, mentions « Numéro réservé — lettre à joindre » / « Numéro annulé », action « Annuler ce numéro… ».
+- Tests : `courrierReservationNumero.test.js` (5) ; suite complète 819/819 (`npm test`, `--runInBand` obligatoire : sans lui, 13 suites échouent par concurrence sur la base).
+- Rappel par la cloche : à brancher avec le centre de notifications (en attendant, bandeau dans le registre).

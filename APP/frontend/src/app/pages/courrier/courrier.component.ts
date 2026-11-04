@@ -120,6 +120,33 @@ import { LibellePipe } from '../../core/libelles';
     </section>
     }
 
+    @if (auth.peut('courriers.creer')) {
+    <section class="panel">
+      <h3>Réserver un numéro (courrier départ préparé sur Word)</h3>
+      <p class="muted" style="margin:-4px 0 10px">La lettre se rédige souvent avant d'être enregistrée : réservez d'abord sa référence, reportez-la sur la lettre, puis joignez la lettre signée à ce courrier (colonne « Pièce »). Tout est facultatif — un courrier général du cabinet n'a pas de dossier.</p>
+      <div class="grid2">
+        <div class="col2">
+          <label>Dossier concerné (facultatif)</label>
+          <app-dossier-picker [valeur]="reservation.dossier_id" (valeurChange)="reservation.dossier_id = $event"></app-dossier-picker>
+        </div>
+        <div><label>Destinataire (facultatif)</label><input class="in" [(ngModel)]="reservation.correspondant" name="resCorrespondant" /></div>
+        <div><label>Objet (facultatif)</label><input class="in" [(ngModel)]="reservation.objet" name="resObjet" /></div>
+      </div>
+      <button class="btn" (click)="reserverNumero()" [disabled]="reservationEnCours()">{{ reservationEnCours() ? 'Réservation…' : 'Réserver un numéro' }}</button>
+      @if (numeroReserve(); as n) {
+        <p class="ok-msg">✓ Numéro réservé : <b style="font-size:1.1em;user-select:all">{{ n }}</b>
+          <button class="lien" (click)="copierNumero(n)">{{ copie() ? 'Copié ✓' : 'Copier' }}</button>
+          — à reporter sur la lettre ; joignez ensuite la lettre signée depuis la liste ci-dessous.</p>
+      }
+      @if (erreurReservation()) { <p class="err">{{ erreurReservation() }}</p> }
+    </section>
+    }
+
+    @if (reservesEnAttente().n > 0) {
+      <p class="bandeau-filtre">⚠ {{ reservesEnAttente().n }} numéro(s) réservé(s) sans lettre jointe@if (reservesEnAttente().anciens > 0) { , dont {{ reservesEnAttente().anciens }} depuis plus de 5 jours }
+        — <button class="lien" (click)="filtreReserves = !filtreReserves; charger()">{{ filtreReserves ? 'voir tout le courrier' : 'les voir' }}</button> (joindre la lettre ou annuler le numéro).</p>
+    }
+
     <section class="panel">
       <div class="filtres">
         <select class="in filtre" [(ngModel)]="filtreSens" (ngModelChange)="charger()">
@@ -151,6 +178,7 @@ import { LibellePipe } from '../../core/libelles';
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreNumerisation" (ngModelChange)="charger()" /> En attente de numérisation</label>
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreMes" (ngModelChange)="charger()" /> Mes courriers</label>
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreAOrienter" (ngModelChange)="charger()" /> À orienter</label>
+        <label class="chk"><input type="checkbox" [(ngModel)]="filtreReserves" (ngModelChange)="charger()" /> Numéros réservés sans lettre</label>
       </div>
       <!-- 15/10/2026 — Q5 : le visa ne calcule jamais le vrai délai légal
            (dépend du degré/juridiction, seul l'avocat peut le déterminer) —
@@ -163,7 +191,10 @@ import { LibellePipe } from '../../core/libelles';
           <tr><th>Réf.</th><th>Sens</th><th>Type</th><th>Date</th><th>Correspondant</th><th>Objet</th><th>Dossier</th><th>Destinataire / imputé</th><th>Pièce</th><th>Statut</th><th></th></tr>
           @for (c of courriers(); track c.id) {
             <tr>
-              <td>{{ c.reference }}</td>
+              <td>{{ c.reference }}
+                @if (c.annule_le) { <br><span class="tag" [title]="c.annule_motif || ''">Numéro annulé</span> }
+                @else if (c.numero_reserve && !c.document_id && !c.fichier_brut_nom) { <br><span class="tag attente">Numéro réservé — lettre à joindre</span> }
+              </td>
               <td><span class="tag" [class.ok]="c.sens === 'arrivee'">{{ c.sens === 'arrivee' ? 'Arrivée' : 'Départ' }}</span></td>
               <td>{{ libelleType(c.type, c.type_precision) }}</td>
               <td>{{ c.date_courrier | date:'dd/MM/yyyy' }}</td>
@@ -193,12 +224,16 @@ import { LibellePipe } from '../../core/libelles';
                        dossier n'est rattaché. -->
                   <button class="lien" (click)="apercuPieceBrute(c)">Aperçu</button> ·
                   <button class="lien" (click)="ouvrirPieceBrute(c)">Ouvrir</button>
+                } @else if (c.annule_le) {
+                  —
                 } @else if (auth.peut('courriers.creer')) {
                   <input type="file" class="mini-file" (change)="joindrePiece(c, $event)" title="Joindre le scan de ce courrier" />
                 } @else { — }
               </td>
               <td>
-                @if (auth.peut('courriers.statut.modifier')) {
+                @if (c.annule_le) {
+                  <span class="muted-sm">Annulé : {{ c.annule_motif }}</span>
+                } @else if (auth.peut('courriers.statut.modifier')) {
                   <select class="statut-select" [ngModel]="c.statut" (ngModelChange)="changerStatut(c, $event)">
                     <option value="recu">Reçu</option>
                     <option value="impute">Imputé</option>
@@ -215,6 +250,17 @@ import { LibellePipe } from '../../core/libelles';
               </td>
               <td><app-menu-actions [actions]="actionsPour(c)" /></td>
             </tr>
+            @if (annulationId() === c.id) {
+              <tr class="edition">
+                <td colspan="11">
+                  <b>Annuler le numéro {{ c.reference }}</b> — il restera visible au registre, marqué « annulé ».
+                  <div style="margin-top:8px"><label>Motif (obligatoire)</label><input class="in" [(ngModel)]="annulationMotif" name="anMotif" /></div>
+                  <button class="lien" (click)="annulerNumero(c)" [disabled]="!annulationMotif.trim()">Confirmer l'annulation</button>
+                  <button class="lien" (click)="annulationId.set(null)">Fermer</button>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
             @if (orientationId() === c.id) {
               <tr class="edition">
                 <td colspan="11">
@@ -388,6 +434,16 @@ export class CourrierComponent implements OnInit {
   filtreSens = '';
   filtreType = '';
   filtreNumerisation = false;
+  filtreReserves = false;
+  // Réservation de numéro (04/11/2026)
+  reservation: any = { dossier_id: null, correspondant: '', objet: '' };
+  readonly reservationEnCours = signal(false);
+  readonly numeroReserve = signal<string | null>(null);
+  readonly erreurReservation = signal('');
+  readonly copie = signal(false);
+  readonly reservesEnAttente = signal<{ n: number; anciens: number }>({ n: 0, anciens: 0 });
+  readonly annulationId = signal<string | null>(null);
+  annulationMotif = '';
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
   fichierNouveauCourrier: File | null = null;
 
@@ -408,7 +464,47 @@ export class CourrierComponent implements OnInit {
       ...(this.filtreNumerisation ? { en_attente_numerisation: 'true' } : {}),
       ...(this.filtreMes ? { mes: 'true' } : {}),
       ...(this.filtreAOrienter ? { orientation: 'a_orienter' } : {}),
+      ...(this.filtreReserves ? { numeros_reserves: 'true' } : {}),
     }).subscribe({ next: (c) => this.courriers.set(c) });
+    this.chargerReserves();
+  }
+
+  // Numéros réservés dont la lettre n'est pas encore jointe : rappel affiché en haut du registre.
+  private chargerReserves(): void {
+    this.api.courriers({ numeros_reserves: 'true' }).subscribe({
+      next: (l) => {
+        const limite = Date.now() - 5 * 24 * 3600 * 1000;
+        this.reservesEnAttente.set({ n: l.length, anciens: l.filter((c) => new Date(c.cree_le).getTime() < limite).length });
+      },
+      error: () => {},
+    });
+  }
+
+  reserverNumero(): void {
+    this.reservationEnCours.set(true); this.erreurReservation.set(''); this.numeroReserve.set(null); this.copie.set(false);
+    this.api.reserverNumeroCourrier({
+      dossier_id: this.reservation.dossier_id || null,
+      correspondant: this.reservation.correspondant, objet: this.reservation.objet,
+    }).subscribe({
+      next: (r) => {
+        this.reservationEnCours.set(false); this.numeroReserve.set(r.reference);
+        this.reservation = { dossier_id: null, correspondant: '', objet: '' };
+        this.charger();
+      },
+      error: (e) => { this.reservationEnCours.set(false); this.erreurReservation.set(e?.error?.error ?? 'Réservation impossible.'); },
+    });
+  }
+
+  copierNumero(n: string): void {
+    navigator.clipboard?.writeText(n).then(() => this.copie.set(true)).catch(() => {});
+  }
+
+  annulerNumero(c: any): void {
+    this.erreur.set('');
+    this.api.annulerNumeroCourrier(c.id, this.annulationMotif.trim()).subscribe({
+      next: () => { this.annulationId.set(null); this.annulationMotif = ''; this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Annulation impossible.'),
+    });
   }
 
   // 24/09/2026 — gap signalé par l'utilisateur : la colonne Type affichait
@@ -542,6 +638,11 @@ export class CourrierComponent implements OnInit {
       } else if (c.dossier_id && c.orientation !== 'sans_suite') {
         actions.push({ label: c.imputation_id ? 'Réimputer…' : 'Imputer…', action: () => { this.erreur.set(''); this.imputForm = {}; this.orientationId.set(null); this.imputationId.set(c.id); } });
       }
+    }
+    // Numéro réservé resté sans lettre : annulable par celui qui l'a réservé ou par la gestion du registre.
+    if (c.numero_reserve && !c.annule_le && !c.document_id && !c.fichier_brut_nom
+        && (c.cree_par === this.auth.utilisateur()?.id || this.auth.peut('courriers.statut.modifier'))) {
+      actions.push({ label: 'Annuler ce numéro…', danger: true, action: () => { this.erreur.set(''); this.annulationMotif = ''; this.annulationId.set(c.id); } });
     }
     if (this.auth.peut('courriers.viser') && c.dossier_id) {
       actions.push({ label: c.vise_le ? 'Re-viser' : 'Viser', action: () => this.viser(c) });

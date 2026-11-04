@@ -5645,3 +5645,14 @@ ON CONFLICT (role, action_code) DO NOTHING;
 -- À cocher aussi dans la Matrice de production (Accès & permissions › Décaisser une dépense) ; ce bloc en est le report.
 INSERT INTO permissions_role (role, action_code, autorise) VALUES ('admin_general', 'depenses.decaisser', TRUE)
 ON CONFLICT (role, action_code) DO UPDATE SET autorise = TRUE;
+
+-- ============================================================
+-- RÉSERVATION DE NUMÉRO DE COURRIER DÉPART (04/11/2026)
+-- La lettre est rédigée sur Word AVANT d'être enregistrée : on réserve d'abord la référence (DEP-…),
+-- on la reporte sur la lettre, puis on joint la lettre signée. Un numéro non utilisé s'ANNULE (jamais
+-- de trou silencieux) : la référence reste visible au registre avec son motif.
+-- ============================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS numero_reserve BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_le TIMESTAMPTZ;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_motif TEXT;

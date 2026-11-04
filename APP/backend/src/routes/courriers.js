@@ -5,7 +5,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
-const { requirePermission } = require("../permissions");
+const { requirePermission, estAutorise } = require("../permissions");
 const { logAudit } = require("../audit");
 const router = express.Router();
 
@@ -140,7 +140,7 @@ async function apresRattachement(client, courrier, utilisateurId, orientation = 
 
 // GET /api/courriers?sens=&type=&dossier_id=&statut=&q=&en_attente_numerisation=true
 router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
-  const { sens, type, dossier_id, statut, q, en_attente_numerisation, mes, orientation } = req.query;
+  const { sens, type, dossier_id, statut, q, en_attente_numerisation, mes, orientation, numeros_reserves } = req.query;
   const params = [];
   const clauses = [];
   const vis = filtreVisibilite(req.user, params);
@@ -159,11 +159,14 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   // pour l'accueil (a_numeriser posé à la création, numerise désormais
   // mis à jour réellement — voir POST /:id/document et PUT /:id).
   if (en_attente_numerisation === "true") { clauses.push(`c.a_numeriser = TRUE AND c.numerise = FALSE`); }
+  // 04/11/2026 — numéros réservés dont la lettre n'est pas encore jointe (ni annulés).
+  if (numeros_reserves === "true") { clauses.push(`c.numero_reserve AND c.annule_le IS NULL AND c.document_id IS NULL AND c.fichier_brut_chemin IS NULL`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
+              c.numero_reserve, c.annule_le, c.annule_motif, c.cree_le, c.cree_par,
               c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
               c.expedie_par, c.expedie_le, c.destinataire_id, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
               dest.prenom || ' ' || dest.nom AS destinataire_nom,
@@ -213,6 +216,63 @@ router.get("/:id", requirePermission("courriers.consulter"), async (req, res) =>
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// POST /api/courriers/reserver-numero  { dossier_id?, correspondant?, objet?, type? }  (04/11/2026)
+// Réserve la référence d'un courrier DÉPART avant que la lettre ne soit rédigée (Word) : tout est
+// facultatif (courrier général du cabinet possible, sans dossier). Même numérotation, même verrou
+// que l'enregistrement normal. La lettre signée se joint ensuite (POST /:id/document) ; un numéro
+// inutilisé s'annule (POST /:id/annuler-numero), il ne disparaît jamais.
+router.post("/reserver-numero", requirePermission("courriers.creer"), async (req, res) => {
+  const b = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const dateCourrier = new Date().toISOString().slice(0, 10);
+    const reference = await genererReference(client, "depart", dateCourrier);
+    const ins = await client.query(
+      `INSERT INTO courriers (reference, sens, type, date_courrier, correspondant, objet, dossier_id,
+                              support, statut, a_numeriser, recu_par, cree_par, numero_reserve)
+       VALUES ($1,'depart',COALESCE($2::type_courrier,'lettre'),$3,$4,$5,$6::uuid,'numerique','recu',FALSE,$7::uuid,$7::uuid,TRUE)
+       RETURNING id, reference, date_courrier, correspondant, objet, dossier_id`,
+      [reference, b.type || null, dateCourrier, String(b.correspondant || "").trim().slice(0, 240) || null,
+       String(b.objet || "").trim().slice(0, 300) || null, b.dossier_id || null, req.user.sub]
+    );
+    await logAudit({ utilisateurId: req.user.sub, action: "reserver_numero_courrier", entite: "courriers", entiteId: ins.rows[0].id,
+      details: { reference }, ip: req.ip });
+    await client.query("COMMIT");
+    res.status(201).json(ins.rows[0]);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/courriers/:id/annuler-numero  { motif }  (04/11/2026)
+// Annule un numéro réservé resté sans lettre : la référence reste au registre, marquée « annulé ».
+// Réservé à celui qui l'a réservé ou à ceux qui gèrent le registre (courriers.statut.modifier).
+router.post("/:id/annuler-numero", requirePermission("courriers.creer"), async (req, res) => {
+  const motif = String((req.body || {}).motif || "").trim();
+  if (!motif) return res.status(400).json({ error: "Un motif est requis pour annuler un numéro." });
+  try {
+    const { rows: [c] } = await pool.query(
+      "SELECT reference, cree_par, numero_reserve, annule_le, document_id, fichier_brut_chemin FROM courriers WHERE id = $1", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Courrier introuvable" });
+    if (!c.numero_reserve) return res.status(409).json({ error: "Seul un numéro réservé peut être annulé." });
+    if (c.annule_le) return res.status(409).json({ error: "Ce numéro est déjà annulé." });
+    if (c.document_id || c.fichier_brut_chemin) return res.status(409).json({ error: "Une lettre est déjà jointe : ce numéro est utilisé." });
+    if (c.cree_par !== req.user.sub && !(await estAutorise(req.user.role, "courriers.statut.modifier", req.user.sub))) {
+      return res.status(403).json({ error: "Seul celui qui a réservé ce numéro (ou la gestion du registre) peut l'annuler." });
+    }
+    await pool.query("UPDATE courriers SET annule_le = now(), annule_par = $1::uuid, annule_motif = $2 WHERE id = $3",
+      [req.user.sub, motif.slice(0, 500), req.params.id]);
+    await logAudit({ utilisateurId: req.user.sub, action: "annuler_numero_courrier", entite: "courriers", entiteId: req.params.id,
+      details: { reference: c.reference, motif }, ip: req.ip });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // POST /api/courriers
@@ -293,10 +353,11 @@ router.post("/:id/document", requirePermission("courriers.creer"), upload.single
   if (!req.file) return res.status(400).json({ error: "Fichier manquant" });
   try {
     const { rows } = await pool.query(
-      "SELECT dossier_id, document_id, fichier_brut_chemin FROM courriers WHERE id = $1",
+      "SELECT dossier_id, document_id, fichier_brut_chemin, annule_le FROM courriers WHERE id = $1",
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
+    if (rows[0].annule_le) return res.status(409).json({ error: "Ce numéro est annulé : on ne peut plus y joindre de lettre." });
     if (rows[0].document_id || rows[0].fichier_brut_chemin) {
       return res.status(409).json({ error: "Une pièce est déjà jointe à ce courrier." });
     }
@@ -447,11 +508,11 @@ router.put("/:id/statut", requirePermission("courriers.statut.modifier"), async 
          transmis_le = CASE WHEN $5 THEN now() ELSE transmis_le END,
          expedie_par = CASE WHEN $6 THEN $3 ELSE expedie_par END,
          expedie_le = CASE WHEN $6 THEN now() ELSE expedie_le END
-       WHERE id = $4
+       WHERE id = $4 AND annule_le IS NULL
        RETURNING id, statut, imputation_id`,
       [statut, imputation_id || null, req.user.sub, req.params.id, estImpute, estExpedie]
     );
-    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable" });
+    if (!rows[0]) return res.status(404).json({ error: "Courrier introuvable ou numéro annulé" });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
