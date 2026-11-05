@@ -251,7 +251,14 @@ router.get("/", async (req, res) => {
     // Tuile personnelle, pour ceux qui peuvent rédiger ou signer un courrier.
     let courriersDepart = null;
     if ((await estAutorise(req.user.role, "courriers.creer", req.user.sub)) || (await estAutorise(req.user.role, "courriers.signer", req.user.sub))) {
-      courriersDepart = await require("../courrier/redaction").resume(req.user);
+      // Isolée (05/11/2026) : une erreur sur cette seule tuile (ex. migration non appliquée) ne doit jamais empêcher
+      // le Tableau de bord de se charger ; la tuile est alors simplement absente et l'erreur reste dans les journaux.
+      try {
+        courriersDepart = await require("../courrier/redaction").resume(req.user);
+      } catch (e) {
+        console.error("Tuile Courriers départ indisponible :", e.message);
+        courriersDepart = null;
+      }
     }
     // Courriers reçus à orienter (17/10/2026) : actes reçus sans dossier, en
     // attente de la décision de l'avocat destinataire. Les associés voient tout ;

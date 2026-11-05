@@ -4598,3 +4598,9 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Tests : `courrierLot6.test.js` (5) ; suite complète 880/880 ; build de production vérifié ; tuile et filtres joués dans un navigateur (développement, API locale).
 - À déployer (API + web), sur accord explicite : aucune migration.
 - Déploiement 05/11/2026 du lot 6 (sans migration) : API `juria-00213-ctw` et frontend `juria-web-00286-8xd`. `/health` = 200, `/` = 200.
+
+## 05/11/2026 — Incident : Tableau de bord « impossible de charger » (migration lots 2 à 5 non appliquée) + isolement de la tuile
+- Symptôme : `GET /api/dashboard` en 500 depuis le déploiement du lot 6 (révision `juria-00213-ctw`). Cause (journal Cloud Run) : `column c.etat_redaction does not exist` — la migration `migration-courrier-lots2-5.sql` n'avait JAMAIS été appliquée en production (la première tentative a échoué faute de Docker, le résultat n'a pas été remonté ; le Registre du courrier était touché de la même façon).
+- Correction : migration réappliquée par l'utilisateur (« ✅ Terminé »), fichier supprimé du dépôt. Journal contrôlé : plus d'erreur de colonne depuis 13 h 33 UTC.
+- Prévention : la tuile « Courriers départ » est désormais isolée dans `dashboard.js` (try/catch : en cas d'erreur la tuile est absente, le reste du tableau de bord se charge, l'erreur reste au journal) ; test `dashboardTuileCourriersIsolee.test.js`. Règle de méthode : après toute migration de production, vérifier dans les journaux l'absence d'erreur de colonne AVANT de conclure ; ne jamais déployer l'API sans avoir vu « ✅ Terminé » de la migration.
+- À déployer : API seule (aucune migration).
