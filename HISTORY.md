@@ -4552,3 +4552,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Front-end : composant `courrier-reglages` dans Accès & permissions (réglages du papier, logo, cachet, qualité et signature de chaque signataire).
 - Tests : `courrierReglages.test.js` (9) ; suite complète 839/839 (`npm test`, --runInBand). Compilation du front vérifiée.
 - Migration de production à appliquer avant le déploiement de l'API : `migration-courrier-lot1.sql` (4 + 9 colonnes, 13 lignes de Matrice).
+- Déploiement 05/11/2026 du lot 1 : migration Cloud SQL `migration-courrier-lot1.sql` appliquée (colonnes + action `courriers.signer`), puis API `juria-00211-wrf` et frontend `juria-web-00283-58j`. `/health` = 200, `/` = 200. À faire ensuite : déposer le cachet et les 3 signatures et saisir les qualités (Accès & permissions › Courriers).
