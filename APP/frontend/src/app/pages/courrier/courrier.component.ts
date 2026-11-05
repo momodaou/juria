@@ -2,7 +2,7 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { ApiService } from '../../core/api.service';
+import { ApiService, RappelsCourrier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
@@ -145,6 +145,19 @@ import { LibellePipe } from '../../core/libelles';
     </section>
     }
 
+    <!-- Rappels personnels des lettres rédigées dans JURIA (lot 6) : mes lettres à signer, mes brouillons anciens. -->
+    @if (rappels(); as rp) {
+      @if (rp.a_signer_n > 0) {
+        <p class="bandeau-filtre">✍ {{ rp.a_signer_n }} lettre(s) à signer par vous — <a class="lien" routerLink="/courrier" [queryParams]="{ etat: 'a_signer', moi: 'signer' }">les voir</a></p>
+      }
+      @if (rp.brouillons_anciens_n > 0) {
+        <p class="bandeau-filtre">⚠ {{ rp.brouillons_anciens_n }} brouillon(s) de plus de {{ rp.jours_ancien }} jours — chacun consomme un numéro — <a class="lien" routerLink="/courrier" [queryParams]="{ etat: 'brouillon', moi: 'auteur' }">les voir</a> (terminer, soumettre ou annuler).</p>
+      }
+    }
+    @if (filtreMoi || filtreEtat) {
+      <p class="bandeau-filtre">Filtré : {{ libelleFiltreRedaction() }} — <a class="lien" routerLink="/courrier" [queryParams]="{}">voir tout le courrier</a></p>
+    }
+
     @if (reservesEnAttente().n > 0) {
       <p class="bandeau-filtre">⚠ {{ reservesEnAttente().n }} numéro(s) réservé(s) sans lettre jointe@if (reservesEnAttente().anciens > 0) { , dont {{ reservesEnAttente().anciens }} depuis plus de 5 jours }
         — <button class="lien" (click)="filtreReserves = !filtreReserves; charger()">{{ filtreReserves ? 'voir tout le courrier' : 'les voir' }}</button> (joindre la lettre ou annuler le numéro).</p>
@@ -182,6 +195,12 @@ import { LibellePipe } from '../../core/libelles';
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreMes" (ngModelChange)="charger()" /> Mes courriers</label>
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreAOrienter" (ngModelChange)="charger()" /> À orienter</label>
         <label class="chk"><input type="checkbox" [(ngModel)]="filtreReserves" (ngModelChange)="charger()" /> Numéros réservés sans lettre</label>
+        <select class="in filtre" [(ngModel)]="filtreEtat" (ngModelChange)="charger()">
+          <option value="">Toutes les lettres</option>
+          <option value="brouillon">Brouillons</option>
+          <option value="a_signer">À signer</option>
+          <option value="signee">Signées</option>
+        </select>
       </div>
       <!-- 15/10/2026 — Q5 : le visa ne calcule jamais le vrai délai légal
            (dépend du degré/juridiction, seul l'avocat peut le déterminer) —
@@ -377,7 +396,7 @@ import { LibellePipe } from '../../core/libelles';
     .btn:disabled{opacity:.6}
     .btn-entete{display:inline-block;padding:6px 14px;font-size:var(--fs-sm);line-height:1.4;text-decoration:none;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
-    .filtres{display:flex;gap:10px;margin-bottom:14px}
+    .filtres{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .statut-select{border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:var(--fs-sm)}
@@ -452,12 +471,28 @@ export class CourrierComponent implements OnInit {
   form: any = { sens: 'arrivee', type: 'lettre', support: 'papier', date_courrier: new Date().toISOString().slice(0, 10) };
   fichierNouveauCourrier: File | null = null;
 
+  // Rappels personnels (lot 6) et filtres « lettres rédigées dans JURIA » (état de rédaction, les miennes).
+  readonly rappels = signal<RappelsCourrier | null>(null);
+  filtreEtat = '';
+  filtreMoi = '';
+
+  libelleFiltreRedaction(): string {
+    const etat = ({ brouillon: 'brouillons', a_signer: 'lettres à signer', signee: 'lettres signées' } as Record<string, string>)[this.filtreEtat] ?? 'lettres';
+    return this.filtreMoi === 'signer' ? 'mes ' + etat + ' (à signer par moi)' : this.filtreMoi === 'auteur' ? 'mes ' + etat + ' (rédigées par moi)' : etat;
+  }
+
   ngOnInit(): void {
-    const params = this.route.snapshot.queryParamMap;
-    this.filtreDossierId.set(params.get('dossier'));
-    this.filtreDossierNumero.set(params.get('dossierLabel'));
-    if (params.get('orientation') === 'a_orienter') this.filtreAOrienter = true;
-    this.charger();
+    // Les filtres suivent l'adresse (liens de la tuile du Tableau de bord, du bandeau) : relus à chaque changement de paramètres.
+    this.route.queryParamMap.subscribe((params) => {
+      this.filtreDossierId.set(params.get('dossier'));
+      this.filtreDossierNumero.set(params.get('dossierLabel'));
+      this.filtreAOrienter = params.get('orientation') === 'a_orienter';
+      this.filtreEtat = ['brouillon', 'a_signer', 'signee'].includes(params.get('etat') ?? '') ? (params.get('etat') as string) : '';
+      this.filtreMoi = ['signer', 'auteur'].includes(params.get('moi') ?? '') ? (params.get('moi') as string) : '';
+      this.filtreReserves = params.get('reserves') === 'oui';
+      this.charger();
+    });
+    this.api.rappelsCourrier().subscribe({ next: (r) => this.rappels.set(r), error: () => {} });
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });
   }
 
@@ -470,6 +505,8 @@ export class CourrierComponent implements OnInit {
       ...(this.filtreMes ? { mes: 'true' } : {}),
       ...(this.filtreAOrienter ? { orientation: 'a_orienter' } : {}),
       ...(this.filtreReserves ? { numeros_reserves: 'true' } : {}),
+      ...(this.filtreEtat ? { etat: this.filtreEtat } : {}),
+      ...(this.filtreMoi ? { moi: this.filtreMoi } : {}),
     }).subscribe({ next: (c) => this.courriers.set(c) });
     this.chargerReserves();
   }

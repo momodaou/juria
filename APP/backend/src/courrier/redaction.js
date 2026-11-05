@@ -314,4 +314,33 @@ async function pdfSigne(id) {
   return { buffer: await readObject(c.pdf_signe_chemin), nom: c.reference + "-signe.pdf" };
 }
 
-module.exports = { creer, modifier, soumettre, retourBrouillon, lire, fichierVersion, infoApposition, apercuSignature, signer, pdfSigne, ErreurRedaction };
+// ---------------------------------------------------------------------------------------------------------------------
+// Rappels personnels (lot 6, 05/11/2026) : alimentent la tuile « Courriers départ » du Tableau de bord et le bandeau du
+// registre. Strictement personnels (mes lettres à signer, mes brouillons, mes numéros réservés) ; seulement la référence,
+// l'objet, l'état et l'ancienneté — aucun montant, aucune donnée sensible.
+// ---------------------------------------------------------------------------------------------------------------------
+const JOURS_BROUILLON_ANCIEN = 5;
+
+async function resume(utilisateur) {
+  const moi = utilisateur.sub;
+  const derniere = "COALESCE((SELECT max(v.cree_le) FROM courrier_versions v WHERE v.courrier_id = c.id), c.cree_le)";
+  const { rows: signer } = await pool.query(
+    "SELECT c.id, c.reference, c.objet FROM courriers c WHERE c.etat_redaction = 'a_signer' AND c.signataire_id = $1::uuid AND c.annule_le IS NULL " +
+    "ORDER BY c.cree_le ASC", [moi]);
+  const { rows: brouillons } = await pool.query(
+    "SELECT c.id, c.reference, c.objet, GREATEST(0, floor(extract(epoch FROM (now() - " + derniere + ")) / 86400))::int AS jours " +
+    "FROM courriers c WHERE c.etat_redaction = 'brouillon' AND c.cree_par = $1::uuid AND c.annule_le IS NULL ORDER BY " + derniere + " ASC", [moi]);
+  const { rows: [r] } = await pool.query(
+    "SELECT count(*)::int AS n FROM courriers WHERE numero_reserve AND annule_le IS NULL AND document_id IS NULL AND fichier_brut_chemin IS NULL AND cree_par = $1::uuid", [moi]);
+  return {
+    a_signer_n: signer.length,
+    a_signer_apercu: signer.slice(0, 3),
+    brouillons_n: brouillons.length,
+    brouillons_anciens_n: brouillons.filter((b) => b.jours >= JOURS_BROUILLON_ANCIEN).length,
+    brouillons_apercu: brouillons.slice(0, 3),
+    reserves_n: r.n,
+    jours_ancien: JOURS_BROUILLON_ANCIEN,
+  };
+}
+
+module.exports = { creer, modifier, soumettre, retourBrouillon, lire, fichierVersion, infoApposition, apercuSignature, signer, pdfSigne, resume, ErreurRedaction };

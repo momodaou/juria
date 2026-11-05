@@ -560,6 +560,31 @@ const CONFIG: Record<string, TuileConfig> = {
             </div>
           </a>
         }
+        @if (d.courriers_depart; as cd) {
+          <!-- 05/11/2026 (lot 6) — Courriers départ : tuile personnelle (mes lettres à signer, mes brouillons dont les anciens,
+               mes numéros réservés sans lettre — cette ligne n'apparaît que s'il y en a). Aucun montant, aucune donnée sensible. -->
+          <div class="kpi apercu" [class.tier-vigilance]="cd.a_signer_n > 0 || cd.brouillons_anciens_n > 0" [class.tier-info]="cd.a_signer_n === 0 && cd.brouillons_anciens_n === 0">
+            <span class="tico" [innerHTML]="icons['audiences']"></span>
+            <span class="n">{{ cd.a_signer_n + cd.brouillons_n }}</span><span class="l">Courriers départ</span>
+            <div class="mini-liste">
+              <div class="mini-ligne">
+                <a class="principal" routerLink="/courrier" [queryParams]="{ etat: 'a_signer', moi: 'signer' }">Mes lettres à signer</a>
+                <span class="secondaire">{{ cd.a_signer_n }}</span>
+              </div>
+              <div class="mini-ligne">
+                <a class="principal" routerLink="/courrier" [queryParams]="{ etat: 'brouillon', moi: 'auteur' }">Mes brouillons en cours</a>
+                <span class="secondaire">{{ cd.brouillons_n }}@if (cd.brouillons_anciens_n > 0) { · {{ cd.brouillons_anciens_n }} de plus de {{ cd.jours_ancien }} j }</span>
+              </div>
+              @if (cd.reserves_n > 0) {
+                <div class="mini-ligne">
+                  <a class="principal" routerLink="/courrier" [queryParams]="{ reserves: 'oui' }">Numéros réservés sans lettre</a>
+                  <span class="secondaire">{{ cd.reserves_n }}</span>
+                </div>
+              }
+            </div>
+            <span class="hint voir"><a routerLink="/courrier/rediger">Rédiger un courrier</a> · <a routerLink="/courrier">Registre</a></span>
+          </div>
+        }
         @if (d.courriers_a_orienter_n !== null) {
           <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'courriers_a_orienter'" (click)="clic('courriers_a_orienter')">
             <span class="tico" [innerHTML]="icons['audiences']"></span>

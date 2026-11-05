@@ -31,6 +31,11 @@ function erreur(res, e) {
 
 router.get("/gabarits", requirePermission("courriers.creer"), (req, res) => res.json(listerGabarits()));
 
+// Rappels personnels : mes lettres à signer, mes brouillons (dont les anciens), mes numéros réservés sans lettre.
+router.get("/mes-rappels", requirePermission("courriers.consulter"), async (req, res) => {
+  try { res.json(await R.resume(req.user)); } catch (e) { erreur(res, e); }
+});
+
 router.post("/rediger", requirePermission("courriers.creer"), async (req, res) => {
   try { res.status(201).json(await R.creer(req.user, req.body || {})); } catch (e) { erreur(res, e); }
 });

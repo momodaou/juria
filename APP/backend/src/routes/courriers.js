@@ -140,7 +140,7 @@ async function apresRattachement(client, courrier, utilisateurId, orientation = 
 
 // GET /api/courriers?sens=&type=&dossier_id=&statut=&q=&en_attente_numerisation=true
 router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
-  const { sens, type, dossier_id, statut, q, en_attente_numerisation, mes, orientation, numeros_reserves } = req.query;
+  const { sens, type, dossier_id, statut, q, en_attente_numerisation, mes, orientation, numeros_reserves, etat, moi } = req.query;
   const params = [];
   const clauses = [];
   const vis = filtreVisibilite(req.user, params);
@@ -161,6 +161,10 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
   if (en_attente_numerisation === "true") { clauses.push(`c.a_numeriser = TRUE AND c.numerise = FALSE`); }
   // 04/11/2026 — numéros réservés dont la lettre n'est pas encore jointe (ni annulés).
   if (numeros_reserves === "true") { clauses.push(`c.numero_reserve AND c.annule_le IS NULL AND c.document_id IS NULL AND c.fichier_brut_chemin IS NULL`); }
+  // 05/11/2026 (lot 6) — lettres rédigées dans JURIA : état de rédaction, et « les miennes » (à signer par moi / rédigées par moi).
+  if (["brouillon", "a_signer", "signee"].includes(etat)) { params.push(etat); clauses.push(`c.etat_redaction = $${params.length}`); }
+  if (moi === "signer") { params.push(req.user.sub); clauses.push(`c.signataire_id = $${params.length}::uuid AND c.annule_le IS NULL`); }
+  if (moi === "auteur") { params.push(req.user.sub); clauses.push(`c.cree_par = $${params.length}::uuid AND c.annule_le IS NULL`); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(

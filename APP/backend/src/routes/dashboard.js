@@ -247,6 +247,12 @@ router.get("/", async (req, res) => {
         WHERE d.apres_coup_statut = 'a_valider' ORDER BY d.engagee_le ASC LIMIT 2`);
       apresCoupApercu = aca.rows;
     }
+    // Courriers départ (lot 6, 05/11/2026) : mes lettres à signer, mes brouillons, mes numéros réservés sans lettre.
+    // Tuile personnelle, pour ceux qui peuvent rédiger ou signer un courrier.
+    let courriersDepart = null;
+    if ((await estAutorise(req.user.role, "courriers.creer", req.user.sub)) || (await estAutorise(req.user.role, "courriers.signer", req.user.sub))) {
+      courriersDepart = await require("../courrier/redaction").resume(req.user);
+    }
     // Courriers reçus à orienter (17/10/2026) : actes reçus sans dossier, en
     // attente de la décision de l'avocat destinataire. Les associés voient tout ;
     // un destinataire voit les siens (la tuile n'apparaît que s'il y en a).
@@ -663,6 +669,7 @@ router.get("/", async (req, res) => {
       chemises_stock_bas: chemisesBas,
       emails_suspendus_jusqu_a: emailsSuspendusJusqua,
       especes_a_deposer: especesADeposer,
+      courriers_depart: courriersDepart,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,

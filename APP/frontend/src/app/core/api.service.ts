@@ -3,6 +3,17 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 
+// Rappels personnels des courriers rédigés dans JURIA (lot 6) : tuile du Tableau de bord et bandeau du registre.
+export interface RappelsCourrier {
+  a_signer_n: number;
+  a_signer_apercu: { id: string; reference: string; objet: string }[];
+  brouillons_n: number;
+  brouillons_anciens_n: number;
+  brouillons_apercu: { id: string; reference: string; objet: string; jours: number }[];
+  reserves_n: number;
+  jours_ancien: number;
+}
+
 export interface DashboardData {
   dossiers_actifs: number;
   dossiers_urgents: number;
@@ -83,6 +94,8 @@ export interface DashboardData {
   // Fin de la suspension des e-mails de conflit / création de dossier — null si aucune ou sans droit (21/10/2026).
   emails_suspendus_jusqu_a: string | null;
   chemises_stock_bas: { couleur: string; quantite: number; seuil: number }[] | null;
+  // Courriers départ (lot 6, 05/11/2026) — personnel ; null si l'utilisateur ne peut ni rédiger ni signer de courrier.
+  courriers_depart: RappelsCourrier | null;
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
   depenses_apres_coup_n: number | null;
@@ -803,7 +816,7 @@ export class ApiService {
   }
 
   // Registre du courrier
-  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string; numeros_reserves?: string } = {}): Observable<any[]> {
+  courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string; numeros_reserves?: string; etat?: string; moi?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, v); });
     const q = params.toString() ? `?${params.toString()}` : '';
@@ -1182,6 +1195,10 @@ export class ApiService {
   }
   retourBrouillonCourrier(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers/${id}/retour-brouillon`, {});
+  }
+  // Rappels personnels (lot 6) : mes lettres à signer, mes brouillons (dont anciens), mes numéros réservés sans lettre.
+  rappelsCourrier(): Observable<RappelsCourrier> {
+    return this.http.get<RappelsCourrier>(`${this.base}/api/courriers/mes-rappels`);
   }
   // Signature des courriers rédigés (lot 5, 05/11/2026)
   infoAppositionCourrier(id: string): Observable<any> {
