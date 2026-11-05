@@ -166,6 +166,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.reference, c.sens, c.type, c.type_precision, c.date_courrier, c.correspondant, c.objet,
               c.support, c.statut, c.a_numeriser, c.numerise, c.dossier_id, c.document_id,
+              c.gabarit_code, c.etat_redaction, c.signataire_id,
               c.numero_reserve, c.annule_le, c.annule_motif, c.cree_le, c.cree_par,
               c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
               c.expedie_par, c.expedie_le, c.destinataire_id, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
@@ -252,16 +253,19 @@ router.post("/reserver-numero", requirePermission("courriers.creer"), async (req
 });
 
 // POST /api/courriers/:id/annuler-numero  { motif }  (04/11/2026)
-// Annule un numéro réservé resté sans lettre : la référence reste au registre, marquée « annulé ».
+// Annule un numéro réservé resté sans lettre, ou un brouillon / une lettre à signer rédigés dans JURIA (lot 3, 05/11/2026) :
+// la référence reste au registre, marquée « annulé ».
 // Réservé à celui qui l'a réservé ou à ceux qui gèrent le registre (courriers.statut.modifier).
 router.post("/:id/annuler-numero", requirePermission("courriers.creer"), async (req, res) => {
   const motif = String((req.body || {}).motif || "").trim();
   if (!motif) return res.status(400).json({ error: "Un motif est requis pour annuler un numéro." });
   try {
     const { rows: [c] } = await pool.query(
-      "SELECT reference, cree_par, numero_reserve, annule_le, document_id, fichier_brut_chemin FROM courriers WHERE id = $1", [req.params.id]);
+      "SELECT reference, cree_par, numero_reserve, etat_redaction, annule_le, document_id, fichier_brut_chemin FROM courriers WHERE id = $1", [req.params.id]);
     if (!c) return res.status(404).json({ error: "Courrier introuvable" });
-    if (!c.numero_reserve) return res.status(409).json({ error: "Seul un numéro réservé peut être annulé." });
+    const redige = c.etat_redaction === "brouillon" || c.etat_redaction === "a_signer";
+    if (c.etat_redaction === "signee") return res.status(409).json({ error: "Lettre signée : le numéro est utilisé." });
+    if (!c.numero_reserve && !redige) return res.status(409).json({ error: "Seul un numéro réservé ou un brouillon rédigé dans JURIA peut être annulé." });
     if (c.annule_le) return res.status(409).json({ error: "Ce numéro est déjà annulé." });
     if (c.document_id || c.fichier_brut_chemin) return res.status(409).json({ error: "Une lettre est déjà jointe : ce numéro est utilisé." });
     if (c.cree_par !== req.user.sub && !(await estAutorise(req.user.role, "courriers.statut.modifier", req.user.sub))) {

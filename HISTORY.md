@@ -4562,3 +4562,13 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Colonne `utilisateurs.nom_signature` (ex. « Mamadou I. KONATE ») : schéma, route et écran Accès & permissions › Courriers complétés (nom + mention par signataire).
 - Tests : `courrierLot2.test.js` (16) ; suite complète 855/855 ; compilation du front vérifiée.
 - À déployer : migration `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS nom_signature VARCHAR(160);` puis API + web, sur accord explicite.
+
+## 05/11/2026 — Générateur de courriers, lot 3 (API de rédaction) — codé, testé, NON déployé
+- Schéma (idempotent, aucun ENUM) : `courriers.gabarit_code / contenu / options_redaction / etat_redaction (brouillon, à signer, signée) / signataire_id / signee_le / signee_par / apposition` ; table `courrier_versions` (une ligne par génération Word + PDF, contenu et options conservés, fichiers privés).
+- `src/courrier/redaction.js` + `src/routes/courrierRedaction.js` (montée AVANT le registre, mêmes préfixes) : `GET /api/courriers/gabarits`, `POST /rediger`, `GET /:id/redaction`, `PUT /:id/contenu`, `GET /:id/versions/:n/:format`, `POST /:id/soumettre-signature`, `POST /:id/retour-brouillon`.
+- Création : la référence DEP est attribuée DANS la transaction de génération (même numérotation et même verrou que le registre) : si la mise en page échoue, aucun numéro n'est consommé ; courrier inscrit au registre avec ou sans dossier ; signataire obligatoirement habilité (`courriers.signer`) ; erreurs de contenu détaillées par champ.
+- Modification = NOUVELLE version (les précédentes restent téléchargeables) ; refus si à signer, signée ou annulée ; modification par l'auteur ou la gestion du registre ; l'assistante peut préparer, le signataire peut renvoyer en brouillon.
+- Décision de conception : les brouillons restent hors GED ; seule la pièce définitive (signée) y entrera au lot 5.
+- Registre : la liste renvoie `gabarit_code`, `etat_redaction`, `signataire_id` ; `annuler-numero` accepte désormais un brouillon ou une lettre à signer (refus si signée).
+- Tests : `courrierLot3.test.js` (12) ; suite complète 867/867.
+- À déployer (avec la migration du lot 2 `nom_signature` si non encore appliquée) : migration du lot 3 puis API + web, sur accord explicite.

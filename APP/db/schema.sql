@@ -5688,3 +5688,35 @@ ON CONFLICT (role, action_code) DO NOTHING;
 
 -- GÉNÉRATEUR DE COURRIERS — LOT 2 (05/11/2026) : nom sous la signature (ex. « Mamadou I. KONATE » ; à défaut « Prénom NOM »)
 ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS nom_signature VARCHAR(160);
+
+-- ============================================================
+-- GÉNÉRATEUR DE COURRIERS — LOT 3 (05/11/2026) : rédaction, versions
+-- Un courrier rédigé dans JURIA porte son contenu (valeurs saisies), ses options, son état de rédaction
+-- (brouillon / à signer / signée) et son signataire ; chaque génération (Word + PDF) est une VERSION conservée.
+-- Les fichiers des versions sont stockés de façon privée ; la pièce définitive (signée) est rattachée au
+-- registre ou à la GED au lot 5.
+-- ============================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS gabarit_code VARCHAR(40);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS contenu JSONB;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS options_redaction JSONB;      -- { sortie, logo, decor, bloc_signature }
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS etat_redaction VARCHAR(12) CHECK (etat_redaction IN ('brouillon','a_signer','signee'));
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS signataire_id UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS signee_le TIMESTAMPTZ;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS signee_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS apposition JSONB;             -- tailles/position retenues à la signature (lot 5)
+
+CREATE TABLE IF NOT EXISTS courrier_versions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    courrier_id   UUID NOT NULL REFERENCES courriers(id) ON DELETE CASCADE,
+    numero        INTEGER NOT NULL,
+    contenu       JSONB NOT NULL,
+    options       JSONB,
+    signataire_id UUID REFERENCES utilisateurs(id),
+    pages         INTEGER NOT NULL,
+    pdf_chemin    VARCHAR(300) NOT NULL,
+    docx_chemin   VARCHAR(300) NOT NULL,
+    cree_par      UUID REFERENCES utilisateurs(id),
+    cree_le       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (courrier_id, numero)
+);
+CREATE INDEX IF NOT EXISTS idx_courrier_versions_courrier ON courrier_versions(courrier_id);

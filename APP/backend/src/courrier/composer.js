@@ -42,7 +42,7 @@ async function genererCourrier(params, db = pool) {
   };
   const { buffer: pdf, pages } = await genererPdf(lettre, options);
   const docx = await genererDocx(lettre, { ...options, pages });
-  return { pdf, docx, pages, lettre };
+  return { pdf, docx, pages, lettre, contenu };
 }
 
 module.exports = { genererCourrier, ErreurContenu };
