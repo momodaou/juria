@@ -1161,6 +1161,28 @@ export class ApiService {
   retirerSignatureCourrier(id: string): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/courrier-reglages/signataires/${id}/signature`);
   }
+  // Rédaction de courriers départ (lots 3 et 4, 05/11/2026) : gabarits, brouillons, versions, états.
+  gabaritsCourrier(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/courriers/gabarits`);
+  }
+  redigerCourrier(payload: Record<string, unknown>): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/rediger`, payload);
+  }
+  redactionCourrier(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/courriers/${id}/redaction`);
+  }
+  majContenuCourrier(id: string, payload: Record<string, unknown>): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courriers/${id}/contenu`, payload);
+  }
+  versionCourrier(id: string, numero: number, format: 'pdf' | 'docx'): Observable<Blob> {
+    return this.http.get(`${this.base}/api/courriers/${id}/versions/${numero}/${format}`, { responseType: 'blob' });
+  }
+  soumettreSignatureCourrier(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/soumettre-signature`, {});
+  }
+  retourBrouillonCourrier(id: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/retour-brouillon`, {});
+  }
   // Liste complète (actifs + inactifs, RIB inclus) pour la gestion — à
   // distinguer de comptesBancaires() ci-dessous (liste allégée, actifs
   // seulement, pour les sélecteurs de règlement).

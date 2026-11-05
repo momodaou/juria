@@ -19,6 +19,9 @@ import { LibellePipe } from '../../core/libelles';
         <h1>Registre du courrier</h1>
         <p>Arrivée / départ, référencement automatique, déclenchement d'événements.</p>
       </div>
+      @if (auth.peut('courriers.creer')) {
+        <a class="btn" routerLink="/courrier/rediger">Rédiger un courrier</a>
+      }
     </header>
 
     @if (filtreDossierNumero()) {
@@ -193,6 +196,7 @@ import { LibellePipe } from '../../core/libelles';
             <tr>
               <td>{{ c.reference }}
                 @if (c.annule_le) { <br><span class="tag" [title]="c.annule_motif || ''">Numéro annulé</span> }
+                @if (c.etat_redaction && !c.annule_le) { <br><span class="tag" [class.ok]="c.etat_redaction === 'signee'" [class.attente]="c.etat_redaction === 'a_signer'">{{ c.etat_redaction === 'brouillon' ? 'Brouillon' : (c.etat_redaction === 'a_signer' ? 'À signer' : 'Signée') }}</span> }
                 @else if (c.numero_reserve && !c.document_id && !c.fichier_brut_nom) { <br><span class="tag attente">Numéro réservé — lettre à joindre</span> }
               </td>
               <td><span class="tag" [class.ok]="c.sens === 'arrivee'">{{ c.sens === 'arrivee' ? 'Arrivée' : 'Départ' }}</span></td>
@@ -627,6 +631,10 @@ export class CourrierComponent implements OnInit {
   // date) ou l'imputation.
   actionsPour(c: any): ActionMenuItem[] {
     const actions: ActionMenuItem[] = [];
+    // Lettre rédigée dans JURIA (lot 4) : ouvrir l'écran de rédaction (versions, aperçu, états).
+    if (c.etat_redaction) {
+      actions.push({ label: 'Ouvrir la lettre', action: () => { this.router.navigate(['/courrier/rediger', c.id]); } });
+    }
     if (this.auth.peut('courriers.statut.modifier')) {
       actions.push({ label: 'Modifier', action: () => this.commencerEdition(c) });
     }
