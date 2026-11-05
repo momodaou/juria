@@ -668,4 +668,5 @@ router.post("/:id/viser", requirePermission("courriers.viser"), async (req, res)
   }
 });
 
+router.classerDansGed = classerDansGed;   // réutilisé par la signature des courriers rédigés dans JURIA (lot 5)
 module.exports = router;

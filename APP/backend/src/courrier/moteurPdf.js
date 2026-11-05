@@ -209,6 +209,17 @@ async function genererPdf(lettre, opts = {}) {
       doc.text(txt, pt(bordD()) - doc.widthOfString(txt), pt(M.numero.y), { lineBreak: false });
     }
   }
+  // Filigrane d'aperçu (aperçu de signature : jamais confondu avec une lettre signée)
+  if (opts.filigrane) {
+    for (let k = 0; k < total; k += 1) {
+      doc.switchToPage(k);
+      doc.save();
+      doc.rotate(-35, { origin: [L / 2, H / 2] });
+      doc.font(POLICES.b).fontSize(56).fillColor("#c0392b").opacity(0.14);
+      doc.text(opts.filigrane, L / 2 - doc.widthOfString(opts.filigrane) / 2, H / 2 - 28, { lineBreak: false });
+      doc.restore();
+    }
+  }
   doc.end();
   const buffer = await fini;
   return { buffer, pages: total };

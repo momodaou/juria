@@ -8,6 +8,10 @@
 //   GET  /api/courriers/:id/versions/:n/:format          fichier d'une version (pdf | docx)       (courriers.consulter)
 //   POST /api/courriers/:id/soumettre-signature          brouillon → à signer                     (courriers.creer, auteur ou gestion)
 //   POST /api/courriers/:id/retour-brouillon             à signer → brouillon                     (courriers.creer, auteur, signataire ou gestion)
+//   GET  /api/courriers/:id/apposition                   mode, réglages mémorisés, cachet/signature déposés (courriers.signer)
+//   POST /api/courriers/:id/apposition/apercu            PDF d'aperçu avec filigrane, jamais enregistré (courriers.signer, signataire)
+//   POST /api/courriers/:id/signer                       signature : cachet + signature sur le PDF figé (courriers.signer, signataire)
+//   GET  /api/courriers/:id/pdf-signe                    PDF signé                                (courriers.consulter)
 const express = require("express");
 const { requirePermission } = require("../permissions");
 const { enteteContentDisposition } = require("../storage");
@@ -54,6 +58,32 @@ router.post("/:id/soumettre-signature", requirePermission("courriers.creer"), as
 
 router.post("/:id/retour-brouillon", requirePermission("courriers.creer"), async (req, res) => {
   try { res.json(await R.retourBrouillon(req.user, req.params.id)); } catch (e) { erreur(res, e); }
+});
+
+router.get("/:id/apposition", requirePermission("courriers.signer"), async (req, res) => {
+  try { res.json(await R.infoApposition(req.user, req.params.id)); } catch (e) { erreur(res, e); }
+});
+
+router.post("/:id/apposition/apercu", requirePermission("courriers.signer"), async (req, res) => {
+  try {
+    const pdf = await R.apercuSignature(req.user, req.params.id, req.body || {});
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", enteteContentDisposition("apercu.pdf"));
+    res.send(pdf);
+  } catch (e) { erreur(res, e); }
+});
+
+router.post("/:id/signer", requirePermission("courriers.signer"), async (req, res) => {
+  try { res.json(await R.signer(req.user, req.params.id, req.body || {})); } catch (e) { erreur(res, e); }
+});
+
+router.get("/:id/pdf-signe", requirePermission("courriers.consulter"), async (req, res) => {
+  try {
+    const f = await R.pdfSigne(req.params.id);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", enteteContentDisposition(f.nom));
+    res.send(f.buffer);
+  } catch (e) { erreur(res, e); }
 });
 
 module.exports = router;

@@ -1183,6 +1183,19 @@ export class ApiService {
   retourBrouillonCourrier(id: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers/${id}/retour-brouillon`, {});
   }
+  // Signature des courriers rédigés (lot 5, 05/11/2026)
+  infoAppositionCourrier(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/courriers/${id}/apposition`);
+  }
+  apercuAppositionCourrier(id: string, payload: Record<string, number>): Observable<Blob> {
+    return this.http.post(`${this.base}/api/courriers/${id}/apposition/apercu`, payload, { responseType: 'blob' });
+  }
+  signerCourrier(id: string, payload: Record<string, unknown>): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/${id}/signer`, payload);
+  }
+  pdfSigneCourrier(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/api/courriers/${id}/pdf-signe`, { responseType: 'blob' });
+  }
   // Liste complète (actifs + inactifs, RIB inclus) pour la gestion — à
   // distinguer de comptesBancaires() ci-dessous (liste allégée, actifs
   // seulement, pour les sélecteurs de règlement).

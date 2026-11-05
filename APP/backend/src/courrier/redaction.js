@@ -14,10 +14,10 @@ const { genererReference } = require("../referenceCourrier");
 const { estAutorise } = require("../permissions");
 const { logAudit } = require("../audit");
 const { genererCourrier } = require("./composer");
+const { ErreurRedaction } = require("./erreurs");
+const crypto = require("crypto");
+const A = require("./apposition");
 
-class ErreurRedaction extends Error {
-  constructor(statut, message) { super(message); this.statut = statut; }
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SORTIES = ["A", "B"];
@@ -179,7 +179,7 @@ async function lire(id) {
   if (!UUID.test(id)) throw new ErreurRedaction(400, "Identifiant invalide.");
   const { rows: [c] } = await pool.query(
     "SELECT c.id, c.reference, c.gabarit_code, c.contenu, c.options_redaction, c.etat_redaction, c.signataire_id, c.dossier_id, c.cree_par, c.cree_le, " +
-    "c.signee_le, c.annule_le, s.prenom || ' ' || s.nom AS signataire_nom " +
+    "c.signee_le, c.annule_le, c.apposition, c.pdf_signe_chemin IS NOT NULL AS pdf_signe, s.prenom || ' ' || s.nom AS signataire_nom " +
     "FROM courriers c LEFT JOIN utilisateurs s ON s.id = c.signataire_id WHERE c.id = $1::uuid", [id]);
   if (!c) throw new ErreurRedaction(404, "Courrier introuvable.");
   if (!c.etat_redaction) throw new ErreurRedaction(404, "Ce courrier n'a pas été rédigé dans JURIA.");
@@ -204,4 +204,114 @@ async function fichierVersion(id, numero, format) {
   };
 }
 
-module.exports = { creer, modifier, soumettre, retourBrouillon, lire, fichierVersion, ErreurRedaction };
+// ---------------------------------------------------------------------------------------------------------------------
+// Signature (lot 5). Sortie B : cachet + signature scannée apposés sur le PDF (figé, empreinte SHA-256 tracée), pièce
+// rattachée à la GED du dossier ou au courrier. Sortie A : lettre imprimée sur le papier à en-tête et signée à la main ;
+// JURIA enregistre seulement la signature (la copie signée se joint ensuite comme pièce du courrier).
+// Seul le signataire désigné, habilité (courriers.signer), peut signer, et seulement une lettre « à signer ».
+// ---------------------------------------------------------------------------------------------------------------------
+async function chargerPourSignature(db, utilisateur, id, verrou) {
+  if (!UUID.test(id)) throw new ErreurRedaction(400, "Identifiant invalide.");
+  const { rows: [c] } = await db.query("SELECT * FROM courriers WHERE id = $1::uuid" + (verrou ? " FOR UPDATE" : ""), [id]);
+  if (!c) throw new ErreurRedaction(404, "Courrier introuvable.");
+  if (!c.etat_redaction) throw new ErreurRedaction(409, "Ce courrier n'a pas été rédigé dans JURIA.");
+  if (c.annule_le) throw new ErreurRedaction(409, "Ce courrier est annulé.");
+  if (c.etat_redaction === "signee") throw new ErreurRedaction(409, "Cette lettre est déjà signée.");
+  if (c.etat_redaction !== "a_signer") throw new ErreurRedaction(409, "La lettre doit d'abord être soumise à signature.");
+  if (c.signataire_id !== utilisateur.sub) throw new ErreurRedaction(403, "Seul le signataire désigné peut signer cette lettre.");
+  return c;
+}
+
+async function infoApposition(utilisateur, id) {
+  if (!UUID.test(id)) throw new ErreurRedaction(400, "Identifiant invalide.");
+  const { rows: [c] } = await pool.query(
+    "SELECT etat_redaction, signataire_id, options_redaction, annule_le, apposition, pdf_signe_chemin IS NOT NULL AS pdf_signe FROM courriers WHERE id = $1::uuid", [id]);
+  if (!c || !c.etat_redaction) throw new ErreurRedaction(404, "Courrier introuvable.");
+  const { rows: [r] } = await pool.query(
+    "SELECT (SELECT courrier_cachet_chemin IS NOT NULL FROM parametres_cabinet WHERE id = 1) AS cachet, " +
+    "(SELECT signature_chemin IS NOT NULL FROM utilisateurs WHERE id = $1::uuid) AS signature", [utilisateur.sub]);
+  const sortie = (c.options_redaction || {}).sortie || "A";
+  return {
+    etat_redaction: c.etat_redaction,
+    mode: sortie === "B" ? "image" : "manuscrite",
+    peut_signer: c.etat_redaction === "a_signer" && !c.annule_le && c.signataire_id === utilisateur.sub,
+    cachet_present: !!r.cachet, signature_presente: !!r.signature,
+    defauts: await A.defautsUtilisateur(pool, utilisateur.sub),
+    pdf_signe: c.pdf_signe, apposition: c.apposition,
+  };
+}
+
+async function genererSigne(db, c, utilisateur, reglages, filigrane) {
+  const sig = await A.construireSignature(db, utilisateur.sub, reglages);
+  const o = c.options_redaction || {};
+  return genererCourrier({
+    gabarit: c.gabarit_code, valeurs: c.contenu, signataireId: c.signataire_id, nref: c.reference,
+    sortie: "B", logo: o.logo, decor: o.decor, blocSignature: o.bloc_signature, signature: sig, filigrane,
+  }, db);
+}
+
+// Aperçu avec filigrane « APERÇU » : n'est jamais enregistré.
+async function apercuSignature(utilisateur, id, p) {
+  const c = await chargerPourSignature(pool, utilisateur, id, false);
+  if (((c.options_redaction || {}).sortie || "A") !== "B") throw new ErreurRedaction(409, "Sortie A : pas d'image à apposer, la lettre se signe à la main.");
+  const reglages = A.normaliser(p, await A.defautsUtilisateur(pool, utilisateur.sub));
+  return (await genererSigne(pool, c, utilisateur, reglages, "APERÇU — NON SIGNÉ")).pdf;
+}
+
+async function signer(utilisateur, id, p) {
+  if (p.confirmer !== true) throw new ErreurRedaction(400, "Confirmation requise : cochez la case avant de signer.");
+  const client = await pool.connect();
+  const deposes = [];
+  try {
+    await client.query("BEGIN");
+    const c = await chargerPourSignature(client, utilisateur, id, true);
+    const sortie = (c.options_redaction || {}).sortie || "A";
+    const { rows: [{ n }] } = await client.query("SELECT COALESCE(MAX(numero), 0) AS n FROM courrier_versions WHERE courrier_id = $1::uuid", [id]);
+    let apposition, pdf = null, pdfChemin = null;
+    if (sortie === "B") {
+      const reglages = A.normaliser(p, await A.defautsUtilisateur(client, utilisateur.sub));
+      const g = await genererSigne(client, c, utilisateur, reglages, null);
+      pdf = g.pdf;
+      const empreinte = crypto.createHash("sha256").update(pdf).digest("hex");
+      pdfChemin = await saveObject(pdf, "courrier/signes/" + id + ".pdf", "application/pdf"); deposes.push(pdfChemin);
+      apposition = { mode: "image", empreinte, version: Number(n), pages: g.pages, ...reglages };
+      // pièce définitive : GED du dossier, sinon dépôt sur le courrier
+      const nom = c.reference + "-signe.pdf";
+      if (c.dossier_id) {
+        const { classerDansGed } = require("../routes/courriers");
+        const docId = await classerDansGed(client, c.dossier_id, nom, pdf, "application/pdf", pdf.length, utilisateur.sub);
+        await client.query("UPDATE courriers SET document_id = $1::uuid, numerise = TRUE WHERE id = $2::uuid", [docId, id]);
+      } else {
+        const chemin = await saveObject(pdf, "courriers/" + id + "/" + Date.now() + "_" + nom, "application/pdf"); deposes.push(chemin);
+        await client.query(
+          "UPDATE courriers SET fichier_brut_chemin = $1, fichier_brut_nom = $2, fichier_brut_type_mime = 'application/pdf', fichier_brut_taille = $3, numerise = TRUE WHERE id = $4::uuid",
+          [chemin, nom, pdf.length, id]);
+      }
+      await client.query("UPDATE utilisateurs SET apposition_defaut = $1::jsonb WHERE id = $2::uuid", [JSON.stringify(reglages), utilisateur.sub]);
+    } else {
+      apposition = { mode: "manuscrite", version: Number(n) };
+    }
+    await client.query(
+      "UPDATE courriers SET etat_redaction = 'signee', signee_le = now(), signee_par = $1::uuid, apposition = $2::jsonb, pdf_signe_chemin = $3 WHERE id = $4::uuid",
+      [utilisateur.sub, JSON.stringify(apposition), pdfChemin, id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: utilisateur.sub, action: "signer_courrier", entite: "courriers", entiteId: id,
+      details: { reference: c.reference, mode: apposition.mode, empreinte: apposition.empreinte || null, version: apposition.version } });
+    return { id, etat_redaction: "signee", mode: apposition.mode, empreinte: apposition.empreinte || null, pdf_signe: !!pdf };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    await nettoyer(deposes);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function pdfSigne(id) {
+  if (!UUID.test(id)) throw new ErreurRedaction(400, "Identifiant invalide.");
+  const { rows: [c] } = await pool.query("SELECT reference, pdf_signe_chemin FROM courriers WHERE id = $1::uuid", [id]);
+  if (!c || !c.pdf_signe_chemin) throw new ErreurRedaction(404, "Aucun PDF signé pour ce courrier.");
+  return { buffer: await readObject(c.pdf_signe_chemin), nom: c.reference + "-signe.pdf" };
+}
+
+module.exports = { creer, modifier, soumettre, retourBrouillon, lire, fichierVersion, infoApposition, apercuSignature, signer, pdfSigne, ErreurRedaction };

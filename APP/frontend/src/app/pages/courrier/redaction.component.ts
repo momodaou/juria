@@ -1,5 +1,5 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
@@ -14,7 +14,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
 @Component({
   selector: 'app-redaction-courrier',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, DossierPickerComponent],
+  imports: [DatePipe, DecimalPipe, FormsModule, RouterLink, DossierPickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -154,6 +154,49 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         </table>
       </section>
 
+      @if (c.etat_redaction === 'a_signer' && !c.annule_le && appo(); as ap) {
+        @if (ap.peut_signer) {
+          <section class="panel">
+            <h3>Signature</h3>
+            @if (ap.mode === 'image') {
+              <p class="muted">Le cachet du cabinet et votre signature scannée seront apposés sur la lettre, qui sera figée en PDF. Réglez la taille et la position, vérifiez l'aperçu, puis signez.</p>
+              @if (!ap.cachet_present) { <p class="err">Le cachet du cabinet n'est pas déposé : demandez à l'administration de le déposer (Accès &amp; permissions › Courriers).</p> }
+              @if (!ap.signature_presente) { <p class="err">Votre signature n'est pas déposée : demandez à l'administration de la déposer (Accès &amp; permissions › Courriers).</p> }
+              <div class="grid2">
+                <div><label>Taille de l'ensemble cachet + signature : {{ reglage.ens * 100 | number:'1.0-0' }} %</label>
+                  <input type="range" min="0.7" max="1.3" step="0.05" [(ngModel)]="reglage.ens" name="sgEns" /></div>
+                <div><label>Taille de la signature seule : {{ reglage.ts * 100 | number:'1.0-0' }} %</label>
+                  <input type="range" min="0.6" max="1.4" step="0.05" [(ngModel)]="reglage.ts" name="sgTs" /></div>
+                <div><label>Décalage horizontal de la signature : {{ reglage.ox }}</label>
+                  <input type="range" min="-40" max="40" step="1" [(ngModel)]="reglage.ox" name="sgOx" /></div>
+                <div><label>Décalage vertical de la signature : {{ reglage.oy }}</label>
+                  <input type="range" min="-40" max="40" step="1" [(ngModel)]="reglage.oy" name="sgOy" /></div>
+              </div>
+              <p><button class="btn" (click)="apercuSignature()" [disabled]="enCours() || !ap.cachet_present || !ap.signature_presente">Aperçu avec cachet et signature</button></p>
+            } @else {
+              <p class="muted">Sortie A : imprimez la lettre sur le papier à en-tête, signez-la à la main (cachet compris), puis joignez la copie signée depuis le registre. Ici, vous enregistrez seulement que la lettre est signée.</p>
+            }
+            <p><label class="chk"><input type="checkbox" [(ngModel)]="confirmation" name="sgConf" />
+              {{ ap.mode === 'image' ? 'Je confirme apposer mon cachet et ma signature sur cette lettre.' : 'Je confirme avoir signé cette lettre à la main.' }}</label></p>
+            <button class="btn" (click)="signer()" [disabled]="!confirmation || enCours() || (ap.mode === 'image' && (!ap.cachet_present || !ap.signature_presente))">
+              {{ ap.mode === 'image' ? 'Signer' : 'Marquer comme signée' }}
+            </button>
+          </section>
+        }
+      }
+      @if (c.etat_redaction === 'signee') {
+        <section class="panel">
+          <h3>Lettre signée</h3>
+          <p>Signée le {{ c.signee_le | date:'dd/MM/yyyy HH:mm' }}@if (c.apposition?.mode === 'manuscrite') { <span class="muted"> — signature manuscrite (la copie signée se joint depuis le registre)</span> }.</p>
+          @if (c.pdf_signe) {
+            <button class="lien" (click)="pdfSigne(true)">Aperçu du PDF signé</button> ·
+            <button class="lien" (click)="pdfSigne(false)">Télécharger</button>
+            @if (c.apposition?.empreinte) { <p class="muted-sm">Empreinte (SHA-256) : {{ c.apposition.empreinte }}</p> }
+          }
+        </section>
+      }
+
+      @if (c.etat_redaction !== 'signee') {
       <section class="panel">
         <h3>Suite</h3>
         @if (c.etat_redaction === 'brouillon' && !c.annule_le) {
@@ -168,6 +211,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
           <p class="muted-sm">À utiliser pour corriger la lettre avant signature.</p>
         }
       </section>
+      }
     }
   `,
   styles: [`
@@ -180,6 +224,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     .btn:disabled{opacity:.6}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .muted-sm{font-size:var(--fs-xs);color:var(--grey)}
+    input[type=range]{width:100%}
     .req{color:#c0392b}
     .etat{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   `],
@@ -205,6 +250,7 @@ export class RedactionCourrierComponent implements OnInit {
     const c = this.courrier();
     return !!c && (c.etat_redaction !== 'brouillon' || !!c.annule_le);
   });
+  readonly appo = signal<any | null>(null);
   readonly versionsInverses = computed(() => [...(this.courrier()?.versions ?? [])].reverse());
 
   valeurs: Record<string, any> = {};
@@ -215,6 +261,8 @@ export class RedactionCourrierComponent implements OnInit {
   logo = 'mali';
   decor = true;
   motifAnnulation = '';
+  reglage = { ens: 1, ts: 1, ox: 0, oy: 0 };
+  confirmation = false;
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -254,6 +302,7 @@ export class RedactionCourrierComponent implements OnInit {
         this.bloc = o.bloc_signature ?? this.gabarits().find((x) => x.code === c.gabarit_code)?.bloc_signature ?? 'psc';
         if (o.logo) this.logo = o.logo;
         if (o.decor !== undefined) this.decor = !!o.decor;
+        this.chargerApposition(c);
       },
       error: (e) => this.erreur.set(e?.error?.error ?? 'Courrier introuvable.'),
     });
@@ -325,6 +374,45 @@ export class RedactionCourrierComponent implements OnInit {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = c.reference + '-v' + numero + '.' + format; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => this.erreur.set('Téléchargement impossible.'),
+    });
+  }
+
+  // Signature (lot 5) : mode, réglages mémorisés du signataire, présence du cachet et de la signature.
+  private chargerApposition(c: any): void {
+    this.appo.set(null);
+    if (c.etat_redaction !== 'a_signer' || !this.auth.peut('courriers.signer')) return;
+    this.api.infoAppositionCourrier(c.id).subscribe({
+      next: (i) => { this.appo.set(i); this.reglage = { ...this.reglage, ...(i.defauts ?? {}) }; this.confirmation = false; },
+      error: () => this.appo.set(null),
+    });
+  }
+
+  apercuSignature(): void {
+    const c = this.courrier(); if (!c) return;
+    this.preview.ouvrir('Aperçu de signature ' + c.reference + '.pdf', this.api.apercuAppositionCourrier(c.id, { ...this.reglage }));
+  }
+
+  signer(): void {
+    const c = this.courrier(); if (!c) return;
+    this.erreur.set(''); this.enCours.set(true);
+    this.api.signerCourrier(c.id, { confirmer: this.confirmation, ...this.reglage }).subscribe({
+      next: () => { this.enCours.set(false); this.message.set('Lettre signée.'); this.charger(c.id); },
+      error: (e) => this.erreurServeur(e),
+    });
+  }
+
+  pdfSigne(apercu: boolean): void {
+    const c = this.courrier(); if (!c) return;
+    const nom = c.reference + '-signe.pdf';
+    if (apercu) { this.preview.ouvrir(nom, this.api.pdfSigneCourrier(c.id)); return; }
+    this.api.pdfSigneCourrier(c.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nom; a.click();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       },
       error: () => this.erreur.set('Téléchargement impossible.'),

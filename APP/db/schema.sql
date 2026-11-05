@@ -5720,3 +5720,6 @@ CREATE TABLE IF NOT EXISTS courrier_versions (
     UNIQUE (courrier_id, numero)
 );
 CREATE INDEX IF NOT EXISTS idx_courrier_versions_courrier ON courrier_versions(courrier_id);
+
+-- GÉNÉRATEUR DE COURRIERS — LOT 5 (05/11/2026) : signature (cachet + signature apposés sur le PDF, PDF figé)
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS pdf_signe_chemin VARCHAR(300);   -- PDF signé, privé ; la pièce est aussi rattachée à la GED du dossier ou au courrier

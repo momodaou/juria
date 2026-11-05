@@ -14,7 +14,7 @@ class ErreurContenu extends Error {
   constructor(erreurs) { super("Contenu du courrier invalide : " + erreurs.map((e) => e.message).join(" ; ")); this.erreurs = erreurs; }
 }
 
-// params : { gabarit, valeurs, signataireId, nref?, blocSignature?, sortie? ('A'|'B'), logo?, decor?, trace? }
+// params : { gabarit, valeurs, signataireId, nref?, blocSignature?, sortie? ('A'|'B'), logo?, decor?, trace?, signature? (lot 5), filigrane? }
 async function genererCourrier(params, db = pool) {
   const g = gabarit(params.gabarit);
   if (!g) throw new ErreurContenu([{ cle: "gabarit", message: "Gabarit inconnu." }]);
@@ -39,6 +39,8 @@ async function genererCourrier(params, db = pool) {
     decor: params.decor === undefined ? reglages.decor : params.decor,
     mesures,
     trace: params.trace,
+    signature: params.signature,
+    filigrane: params.filigrane,
   };
   const { buffer: pdf, pages } = await genererPdf(lettre, options);
   const docx = await genererDocx(lettre, { ...options, pages });
