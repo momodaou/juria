@@ -4597,3 +4597,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - La cloche (centre de notifications) viendra se brancher sur ces mêmes compteurs.
 - Tests : `courrierLot6.test.js` (5) ; suite complète 880/880 ; build de production vérifié ; tuile et filtres joués dans un navigateur (développement, API locale).
 - À déployer (API + web), sur accord explicite : aucune migration.
+- Déploiement 05/11/2026 du lot 6 (sans migration) : API `juria-00213-ctw` et frontend `juria-web-00286-8xd`. `/health` = 200, `/` = 200.
