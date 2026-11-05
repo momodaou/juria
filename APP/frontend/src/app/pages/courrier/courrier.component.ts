@@ -20,7 +20,7 @@ import { LibellePipe } from '../../core/libelles';
         <p>Arrivée / départ, référencement automatique, déclenchement d'événements.</p>
       </div>
       @if (auth.peut('courriers.creer')) {
-        <a class="btn" routerLink="/courrier/rediger">Rédiger un courrier</a>
+        <a class="btn btn-entete" routerLink="/courrier/rediger">Rédiger un courrier</a>
       }
     </header>
 
@@ -375,6 +375,7 @@ import { LibellePipe } from '../../core/libelles';
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
+    .btn-entete{display:inline-block;padding:6px 14px;font-size:var(--fs-sm);line-height:1.4;text-decoration:none;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .filtres{display:flex;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}
