@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ParametresHonoraires, ParametresCabinet } from '../../core/api.service';
 import { ComptesCabinetComponent } from '../../core/comptes-cabinet.component';
+import { CourrierReglagesComponent } from '../../core/courrier-reglages.component';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { ROLES } from '../../core/roles';
@@ -10,7 +11,7 @@ import { ROLES } from '../../core/roles';
 @Component({
   selector: 'app-acces',
   standalone: true,
-  imports: [DatePipe, FormsModule, MenuActionsComponent, ComptesCabinetComponent],
+  imports: [DatePipe, FormsModule, MenuActionsComponent, ComptesCabinetComponent, CourrierReglagesComponent],
   template: `
     <header class="page-head">
       <div>
@@ -219,6 +220,8 @@ import { ROLES } from '../../core/roles';
         </section>
 
         <app-comptes-cabinet />
+
+        <app-courrier-reglages />
       }
 
       @if (matrice()) {

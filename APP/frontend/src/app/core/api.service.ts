@@ -1136,6 +1136,31 @@ export class ApiService {
   majParametresCabinet(payload: Partial<ParametresCabinet>): Observable<ParametresCabinet> {
     return this.http.put<ParametresCabinet>(`${this.base}/api/parametres/cabinet`, payload);
   }
+  // Générateur de courriers (lot 1, 05/11/2026) : réglages du papier à en-tête, cachet, signatures des signataires.
+  // Les images ne sont jamais renvoyées par le serveur : seulement leur présence.
+  courrierReglages(): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/courrier-reglages`);
+  }
+  majCourrierReglages(payload: Record<string, unknown>): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courrier-reglages`, payload);
+  }
+  deposerCachetCourrier(fichier: File): Observable<any> {
+    const fd = new FormData(); fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/courrier-reglages/cachet`, fd);
+  }
+  retirerCachetCourrier(): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/courrier-reglages/cachet`);
+  }
+  majSignataireCourrier(id: string, qualite: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courrier-reglages/signataires/${id}`, { qualite_signature: qualite });
+  }
+  deposerSignatureCourrier(id: string, fichier: File): Observable<any> {
+    const fd = new FormData(); fd.append('fichier', fichier);
+    return this.http.post<any>(`${this.base}/api/courrier-reglages/signataires/${id}/signature`, fd);
+  }
+  retirerSignatureCourrier(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.base}/api/courrier-reglages/signataires/${id}/signature`);
+  }
   // Liste complète (actifs + inactifs, RIB inclus) pour la gestion — à
   // distinguer de comptesBancaires() ci-dessous (liste allégée, actifs
   // seulement, pour les sélecteurs de règlement).

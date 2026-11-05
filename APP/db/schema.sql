@@ -5656,3 +5656,32 @@ ALTER TABLE courriers ADD COLUMN IF NOT EXISTS numero_reserve BOOLEAN NOT NULL D
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_le TIMESTAMPTZ;
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_par UUID REFERENCES utilisateurs(id);
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS annule_motif TEXT;
+
+-- ============================================================
+-- GÉNÉRATEUR DE COURRIERS — LOT 1 (05/11/2026) : socle
+-- Réglages du cabinet (papier à en-tête, logo, cachet), signature et qualité des signataires,
+-- permission « courriers.signer ». Les fichiers (cachet, signatures) sont stockés dans le bucket privé :
+-- seul le serveur les lit, aucune route ne les renvoie. Mesures par défaut : feuille vierge du 04/11/2026.
+-- ============================================================
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS qualite_signature VARCHAR(160);       -- ex. « Avocat aux Barreaux du Mali & de Paris »
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_chemin  VARCHAR(300);       -- signature scannée (PNG transparent), privée
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_maj_le  TIMESTAMPTZ;
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS apposition_defaut JSONB;              -- derniers réglages de taille/position retenus
+
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_logo_defaut VARCHAR(10) NOT NULL DEFAULT 'mali'
+  CHECK (courrier_logo_defaut IN ('mali','std'));
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_decor BOOLEAN NOT NULL DEFAULT TRUE;           -- décor pâle (sortie B)
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_texte_x_page1_cm NUMERIC(4,2) NOT NULL DEFAULT 6.20;   -- texte de la page 1 (à droite du filet, 5,86 cm)
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_colonne_droite_cm NUMERIC(4,2) NOT NULL DEFAULT 10.30; -- date, destinataire, signature
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_page1_haut_cm NUMERIC(4,2) NOT NULL DEFAULT 3.50;      -- première ligne (logo jusqu'à 3,0 cm)
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_page1_bas_cm NUMERIC(4,2) NOT NULL DEFAULT 27.10;      -- dernière ligne (barre dès 28,94 cm)
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_cachet_largeur_cm NUMERIC(4,2) NOT NULL DEFAULT 5.40; -- largeur du cachet à 100 %
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_cachet_chemin VARCHAR(300);
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS courrier_cachet_maj_le TIMESTAMPTZ;
+
+-- Signer un courrier (apposer cachet + signature) : associés seulement par défaut.
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'courriers.signer', r IN ('associe','associe_fondateur')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO NOTHING;

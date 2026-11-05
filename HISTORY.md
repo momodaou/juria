@@ -4544,3 +4544,11 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Script d'essai `APP/backend/scripts/courrier-lot0.js` ; tests `courrierLot0.test.js` (11 verts) : géométrie, A = B, mention longue, N/R, calques Word, numérotation, calibrage.
 - Vérifié : rendu PDF (image) et rendu Word via LibreOffice (exclusion et calques fonctionnent) ; NON vérifié : Word lui-même (à ouvrir par l'utilisateur) et impression sur le vrai papier.
 - Fichiers d'essai remis dans `DOC/CLAUDE CODE - JURIA/Lot 0 - essais courriers/` (hors Git) avec un LISEZ-MOI.
+
+## 05/11/2026 — Générateur de courriers, lot 1 (socle) — codé, testé, NON déployé
+- Décision de l'utilisateur : passer au lot 1 sans attendre les essais papier ; les mesures sont des réglages modifiables, donc réajustables après coup sans toucher au code.
+- Schéma (idempotent, aucune valeur d'ENUM) : `utilisateurs.qualite_signature / signature_chemin / signature_maj_le / apposition_defaut` ; `parametres_cabinet.courrier_*` (logo par défaut, décor, retrait du texte 6,2 cm, colonne de droite 10,3 cm, première/dernière ligne, largeur du cachet 5,4 cm, cachet) ; action `courriers.signer` (restreinte) cochée pour associé et associé-fondateur seulement (bloc d'alignement de la Matrice pour les 13 rôles).
+- Back-end : `src/courrier/reglages.js` (validation des bornes, PNG à fond transparent obligatoire ≤ 2 Mo, lecture serveur du cachet et des signatures, mesures effectives du moteur) ; routes `/api/courrier-reglages` (lecture pour courriers.creer ou parametres.cabinet.modifier ; écriture parametres.cabinet.modifier ; aucune route ne renvoie une image ; journal d'audit de chaque dépôt/retrait/modification).
+- Front-end : composant `courrier-reglages` dans Accès & permissions (réglages du papier, logo, cachet, qualité et signature de chaque signataire).
+- Tests : `courrierReglages.test.js` (9) ; suite complète 839/839 (`npm test`, --runInBand). Compilation du front vérifiée.
+- Migration de production à appliquer avant le déploiement de l'API : `migration-courrier-lot1.sql` (4 + 9 colonnes, 13 lignes de Matrice).
