@@ -12,7 +12,7 @@
 const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
-const { MESURES, pt, bordDroit } = require("./mesures");
+const { MESURES, pt } = require("./mesures");
 
 const ASSETS = path.join(__dirname, "../../assets/courrier");
 const TAILLE = MESURES.police.taille;
@@ -30,6 +30,8 @@ function segmenter(texte, gras = false) {
 }
 
 async function genererPdf(lettre, opts = {}) {
+  const M = opts.mesures || MESURES;                                  // mesures effectives (réglages du cabinet) ou valeurs par défaut
+  const bordD = () => M.page.largeur - M.margeDroite;
   const sortie = opts.sortie === "B" ? "B" : "A";
   const logo = opts.logo === "std" ? "std" : "mali";
   const decor = opts.decor !== false;
@@ -42,17 +44,17 @@ async function genererPdf(lettre, opts = {}) {
   const fini = new Promise((res) => doc.on("end", () => res(Buffer.concat(morceaux))));
 
   const calque = (nom) => fs.readFileSync(path.join(ASSETS, nom));
-  const L = pt(MESURES.page.largeur), H = pt(MESURES.page.hauteur);
+  const L = pt(M.page.largeur), H = pt(M.page.hauteur);
   let page = 0;
   let y = 0;
 
   // --- géométrie par page -------------------------------------------------------------------
-  const haut = () => pt(page === 1 ? MESURES.page1.haut : MESURES.suivantes.haut);
-  const bas = () => pt(page === 1 ? MESURES.page1.bas : MESURES.suivantes.bas);
+  const haut = () => pt(page === 1 ? M.page1.haut : M.suivantes.haut);
+  const bas = () => pt(page === 1 ? M.page1.bas : M.suivantes.bas);
   function colonne(nom, retrait = 0) {
-    const gauche = nom === "droite" ? MESURES.droiteX : (page === 1 ? MESURES.page1.texteX : MESURES.suivantes.texteX);
+    const gauche = nom === "droite" ? M.droiteX : (page === 1 ? M.page1.texteX : M.suivantes.texteX);
     const x = pt(gauche + retrait);
-    return { x, w: pt(bordDroit()) - x };
+    return { x, w: pt(bordD()) - x };
   }
 
   function decorer() {
@@ -62,7 +64,7 @@ async function genererPdf(lettre, opts = {}) {
       doc.image(calque(`entete-b-base-${logo}.png`), 0, 0, { width: L, height: H });
     } else {
       doc.font(POLICES.n).fontSize(8).fillColor(GRIS)
-        .text(lettre.nref || "", pt(MESURES.suivantes.texteX), pt(1.2), { lineBreak: false });
+        .text(lettre.nref || "", pt(M.suivantes.texteX), pt(1.2), { lineBreak: false });
       doc.fillColor("#000000");
     }
   }
@@ -135,7 +137,7 @@ async function genererPdf(lettre, opts = {}) {
     const s = opts.signature;
     if (!s) return 0;
     const ens = s.ens || 1, ts = s.ts || 1;
-    const k = pt(MESURES.cachet.largeur * ens) / s.cachet.largeur;
+    const k = pt(M.cachet.largeur * ens) / s.cachet.largeur;
     doc.image(s.cachetBuf, x, yBox, { width: s.cachet.largeur * k });
     const sw = s.sig.largeur * k * ts, sh = s.sig.hauteur * k * ts;
     const sx = x + s.sig.dx * k + (s.sig.largeur * k - sw) / 2 + (s.ox || 0);
@@ -147,7 +149,7 @@ async function genererPdf(lettre, opts = {}) {
     const s = opts.signature;
     if (!s) return pt(3.0);                                   // place laissée à la signature (la même pour A et B : mise en page identique)
     const ens = s.ens || 1, ts = s.ts || 1;
-    const k = pt(MESURES.cachet.largeur * ens) / s.cachet.largeur;
+    const k = pt(M.cachet.largeur * ens) / s.cachet.largeur;
     const sh = s.sig.hauteur * k * ts;
     const sy = s.sig.dy * k + (s.sig.hauteur * k - sh) / 2 + (s.oy || 0);
     return Math.max(s.cachet.hauteur * k, sy + sh) + 4;
@@ -160,15 +162,15 @@ async function genererPdf(lettre, opts = {}) {
     const maxW = Math.max(...lignes.map(([spec, f]) => {
       const j = jetons([spec]); return j.reduce((a, t) => a + t.w, 0) + espace() * (j.length - 1);
     }));
-    const x0 = pt(MESURES.droiteX);
-    const dispo = pt(bordDroit()) - x0;
+    const x0 = pt(M.droiteX);
+    const dispo = pt(bordD()) - x0;
     const decale = Math.max(0, Math.ceil(maxW + 2 - dispo));         // règle de secours : seul le bloc se décale
     const hBox = hauteurAppo();
     const hauteur = lignes.length * LH + hBox + LH;
     if (y + hauteur > bas()) nouvellePage();                          // le bloc ne reste jamais seul en bas de page
     const idxApres = psc ? 1 : 2;                                     // le cachet/signature se pose après la formule d'en-tête du bloc
     lignes.forEach(([spec], k) => {
-      if (k === idxApres) { apposition(pt(MESURES.droiteX) - decale, y); y += hBox; }
+      if (k === idxApres) { apposition(pt(M.droiteX) - decale, y); y += hBox; }
       bloc([spec], { col: "droite", decalX: -decale });
     });
   }
@@ -204,7 +206,7 @@ async function genererPdf(lettre, opts = {}) {
       doc.switchToPage(k);
       doc.font(POLICES.n).fontSize(9).fillColor("#333333");
       const txt = `${k + 1}/${total}`;
-      doc.text(txt, pt(bordDroit()) - doc.widthOfString(txt), pt(MESURES.numero.y), { lineBreak: false });
+      doc.text(txt, pt(bordD()) - doc.widthOfString(txt), pt(M.numero.y), { lineBreak: false });
     }
   }
   doc.end();

@@ -54,12 +54,13 @@ import { ApiService } from './api.service';
         @if (reg.signataires.length) {
           <div class="table-scroll">
             <table>
-              <tr><th>Signataire</th><th>Mention sous la signature</th><th>Signature scannée</th></tr>
+              <tr><th>Signataire</th><th>Nom et mention sous la signature</th><th>Signature scannée</th></tr>
               @for (s of reg.signataires; track s.id) {
                 <tr>
                   <td><b>{{ s.nom }}</b></td>
                   <td>
-                    <input class="in" [ngModel]="qualites[s.id] ?? s.qualite_signature ?? ''" (ngModelChange)="qualites[s.id] = $event" [name]="'crQ' + s.id" placeholder="Ex. Avocat aux Barreaux du Mali &amp; de Paris" />
+                    <input class="in" [ngModel]="noms[s.id] ?? s.nom_signature ?? ''" (ngModelChange)="noms[s.id] = $event" [name]="'crN' + s.id" placeholder="Nom sous la signature (vide = Prénom NOM)" />
+                    <input class="in" style="margin-top:4px" [ngModel]="qualites[s.id] ?? s.qualite_signature ?? ''" (ngModelChange)="qualites[s.id] = $event" [name]="'crQ' + s.id" placeholder="Ex. Avocat aux Barreaux du Mali &amp; de Paris" />
                     <button class="lien" (click)="enregistrerQualite(s.id)">Enregistrer</button>
                   </td>
                   <td>
@@ -89,6 +90,7 @@ export class CourrierReglagesComponent implements OnInit {
     courrier_page1_haut_cm: 3.5, courrier_page1_bas_cm: 27.1, courrier_cachet_largeur_cm: 5.4,
   };
   qualites: Record<string, string> = {};
+  noms: Record<string, string> = {};
 
   ngOnInit(): void { this.charger(); }
 
@@ -126,10 +128,13 @@ export class CourrierReglagesComponent implements OnInit {
     this.api.retirerCachetCourrier().subscribe({ next: () => { this.dire('Cachet retiré.'); this.charger(); } });
   }
   enregistrerQualite(id: string): void {
-    const q = this.qualites[id];
-    if (q === undefined) { this.dire('Aucune modification à enregistrer.'); return; }
-    this.api.majSignataireCourrier(id, q).subscribe({
-      next: () => { this.dire('Mention enregistrée.'); delete this.qualites[id]; this.charger(); },
+    const q = this.qualites[id], n = this.noms[id];
+    if (q === undefined && n === undefined) { this.dire('Aucune modification à enregistrer.'); return; }
+    const payload: { qualite_signature?: string; nom_signature?: string } = {};
+    if (q !== undefined) payload.qualite_signature = q;
+    if (n !== undefined) payload.nom_signature = n;
+    this.api.majSignataireCourrier(id, payload).subscribe({
+      next: () => { this.dire('Signataire enregistré.'); delete this.qualites[id]; delete this.noms[id]; this.charger(); },
       error: (e) => this.dire(e?.error?.error ?? 'Enregistrement impossible.', true),
     });
   }

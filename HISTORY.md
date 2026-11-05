@@ -4553,3 +4553,12 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Tests : `courrierReglages.test.js` (9) ; suite complète 839/839 (`npm test`, --runInBand). Compilation du front vérifiée.
 - Migration de production à appliquer avant le déploiement de l'API : `migration-courrier-lot1.sql` (4 + 9 colonnes, 13 lignes de Matrice).
 - Déploiement 05/11/2026 du lot 1 : migration Cloud SQL `migration-courrier-lot1.sql` appliquée (colonnes + action `courriers.signer`), puis API `juria-00211-wrf` et frontend `juria-web-00283-58j`. `/health` = 200, `/` = 200. À faire ensuite : déposer le cachet et les 3 signatures et saisir les qualités (Accès & permissions › Courriers).
+
+## 05/11/2026 — Générateur de courriers, lot 2 (gabarits, composition, moteurs pilotés par les réglages) — codé, testé, NON déployé
+- Décision de l'utilisateur : lancer le lot 2 sans attendre les retours du lot 0 ; la partie Word reste isolée (`moteurDocx.js`) pour être corrigée seule si l'essai dans Word l'exige.
+- `src/courrier/gabarits.js` : deux gabarits (standard, constitution) décrits comme des cases de saisie (libellé, nature, bornes, défauts, aide), validation et normalisation (texte propre, bornes, gras orphelin retiré), date du jour en lettres (« 1er »), nom et mention du signataire (`nom_signature`, `qualite_signature`, sinon « Prénom NOM » / « Avocat associé »), composition de la lettre.
+- `src/courrier/composer.js` : service qui assemble gabarit + valeurs + signataire (base) + réglages du cabinet (mesures, logo, décor) et rend PDF + Word ; erreurs détaillées (`ErreurContenu`). N/R : référence fournie par l'appelant (lot 3), sinon provisoire.
+- Moteurs PDF, Word et calibrage : mesures en paramètre (`opts.mesures`), valeurs par défaut conservées.
+- Colonne `utilisateurs.nom_signature` (ex. « Mamadou I. KONATE ») : schéma, route et écran Accès & permissions › Courriers complétés (nom + mention par signataire).
+- Tests : `courrierLot2.test.js` (16) ; suite complète 855/855 ; compilation du front vérifiée.
+- À déployer : migration `ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS nom_signature VARCHAR(160);` puis API + web, sur accord explicite.

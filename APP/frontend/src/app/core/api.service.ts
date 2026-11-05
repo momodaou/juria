@@ -1151,8 +1151,8 @@ export class ApiService {
   retirerCachetCourrier(): Observable<any> {
     return this.http.delete<any>(`${this.base}/api/courrier-reglages/cachet`);
   }
-  majSignataireCourrier(id: string, qualite: string): Observable<any> {
-    return this.http.put<any>(`${this.base}/api/courrier-reglages/signataires/${id}`, { qualite_signature: qualite });
+  majSignataireCourrier(id: string, payload: { qualite_signature?: string; nom_signature?: string }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/courrier-reglages/signataires/${id}`, payload);
   }
   deposerSignatureCourrier(id: string, fichier: File): Observable<any> {
     const fd = new FormData(); fd.append('fichier', fichier);

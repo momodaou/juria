@@ -4,9 +4,10 @@
 // texte, la colonne de droite et les zones réservées ; on relève les écarts avec les éléments préimprimés
 // (filet, coordonnées, logo, barre). Une règle graduée et un carré de 10 cm vérifient l'échelle d'impression.
 const PDFDocument = require("pdfkit");
-const { MESURES, pt, bordDroit } = require("./mesures");
+const { MESURES: MESURES_DEFAUT, pt } = require("./mesures");
 
-async function genererCalibragePdf() {
+async function genererCalibragePdf(mesures) {
+  const MESURES = mesures || MESURES_DEFAUT;
   const doc = new PDFDocument({ size: "A4", margin: 0, info: { Title: "JURIA — Page de calibrage du papier à en-tête" } });
   const morceaux = [];
   doc.on("data", (c) => morceaux.push(c));
@@ -42,11 +43,11 @@ async function genererCalibragePdf() {
   doc.font("Helvetica").fontSize(6.5).fillColor("#1a8a3a").text("filet 5,86 cm", pt(P.filetX) + 2, pt(P.filetY[0]) - 9, { lineBreak: false });
 
   // zones de JURIA (rouge : texte page 1 ; bleu : colonne de droite)
-  boite(MESURES.page1.texteX, MESURES.page1.haut, bordDroit(), MESURES.page1.bas, "#c0392b", "texte page 1 : 6,2 cm → 17,8 cm");
+  boite(MESURES.page1.texteX, MESURES.page1.haut, (MESURES.page.largeur - MESURES.margeDroite), MESURES.page1.bas, "#c0392b", "texte page 1 : 6,2 cm → 17,8 cm");
   doc.save().lineWidth(0.6).strokeColor("#2a5db0").dash(4, { space: 2 })
     .moveTo(pt(MESURES.droiteX), pt(MESURES.page1.haut)).lineTo(pt(MESURES.droiteX), pt(MESURES.page1.bas)).stroke().restore();
   doc.font("Helvetica").fontSize(6.5).fillColor("#2a5db0").text("colonne de droite 10,3 cm", pt(MESURES.droiteX) + 2, pt(MESURES.page1.haut) - 9, { lineBreak: false });
-  boite(MESURES.suivantes.texteX, MESURES.suivantes.haut, bordDroit(), MESURES.suivantes.bas, "#c0392b", "texte pages suivantes : 3,175 cm → 17,8 cm", true);
+  boite(MESURES.suivantes.texteX, MESURES.suivantes.haut, (MESURES.page.largeur - MESURES.margeDroite), MESURES.suivantes.bas, "#c0392b", "texte pages suivantes : 3,175 cm → 17,8 cm", true);
 
   // carré de 10 cm (vérification de l'échelle d'impression)
   doc.save().lineWidth(0.8).strokeColor("#000000").rect(pt(7.0), pt(8.0), pt(10), pt(10)).stroke().restore();

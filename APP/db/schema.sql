@@ -5685,3 +5685,6 @@ SELECT r, 'courriers.signer', r IN ('associe','associe_fondateur')
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
+
+-- GÉNÉRATEUR DE COURRIERS — LOT 2 (05/11/2026) : nom sous la signature (ex. « Mamadou I. KONATE » ; à défaut « Prénom NOM »)
+ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS nom_signature VARCHAR(160);

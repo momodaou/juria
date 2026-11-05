@@ -29,15 +29,15 @@ router.get("/", peutLire, async (req, res) => {
   try {
     const reglages = await R.lireReglages();
     const { rows } = await pool.query(
-      "SELECT id, prenom || ' ' || nom AS nom, role, qualite_signature, " +
+      "SELECT id, prenom || ' ' || nom AS nom, role, qualite_signature, nom_signature, " +
       "signature_chemin IS NOT NULL AS signature_presente, signature_maj_le " +
       "FROM utilisateurs " +
-      "WHERE actif = TRUE AND (role IN ('associe','associe_fondateur') OR signature_chemin IS NOT NULL OR qualite_signature IS NOT NULL) " +
+      "WHERE actif = TRUE AND (role IN ('associe','associe_fondateur') OR signature_chemin IS NOT NULL OR qualite_signature IS NOT NULL OR nom_signature IS NOT NULL) " +
       "ORDER BY nom");
     res.json({
       ...reglages,
       signataires: rows.map((r) => ({
-        id: r.id, nom: r.nom, role: r.role, qualite_signature: r.qualite_signature,
+        id: r.id, nom: r.nom, role: r.role, qualite_signature: r.qualite_signature, nom_signature: r.nom_signature,
         signature: { presente: r.signature_presente, maj_le: r.signature_maj_le },
       })),
     });
@@ -88,10 +88,18 @@ async function signataire(req, res) {
 router.put("/signataires/:id", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
   try {
     if (!(await signataire(req, res))) return;
-    const q = String((req.body || {}).qualite_signature || "").trim().slice(0, 160) || null;
-    await pool.query("UPDATE utilisateurs SET qualite_signature = $1 WHERE id = $2::uuid", [q, req.params.id]);
-    await logAudit({ utilisateurId: req.user.sub, action: "courrier_qualite_signataire", entite: "utilisateurs", entiteId: req.params.id, details: { qualite_signature: q }, ip: req.ip });
-    res.json({ id: req.params.id, qualite_signature: q });
+    const b = req.body || {};
+    const texte = (v) => String(v || "").trim().slice(0, 160) || null;
+    const sets = [], vals = [];
+    if (b.qualite_signature !== undefined) { vals.push(texte(b.qualite_signature)); sets.push("qualite_signature = $" + vals.length); }
+    if (b.nom_signature !== undefined) { vals.push(texte(b.nom_signature)); sets.push("nom_signature = $" + vals.length); }
+    if (!sets.length) return res.status(400).json({ error: "Rien à enregistrer." });
+    vals.push(req.params.id);
+    await pool.query("UPDATE utilisateurs SET " + sets.join(", ") + " WHERE id = $" + vals.length + "::uuid", vals);
+    await logAudit({ utilisateurId: req.user.sub, action: "courrier_signataire_modifie", entite: "utilisateurs", entiteId: req.params.id,
+      details: { qualite_signature: b.qualite_signature, nom_signature: b.nom_signature }, ip: req.ip });
+    const { rows: [r] } = await pool.query("SELECT id, qualite_signature, nom_signature FROM utilisateurs WHERE id = $1::uuid", [req.params.id]);
+    res.json(r);
   } catch (e) { console.error(e); res.status(400).json({ error: "Identifiant invalide." }); }
 });
 router.post("/signataires/:id/signature", requirePermission("parametres.cabinet.modifier"), envoiFichier, async (req, res) => {

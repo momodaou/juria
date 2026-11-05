@@ -32,13 +32,14 @@ const nbsp = (mot) => mot.replace(/ /g, " ");
 const libelle = (mot) => ({ t: nbsp(mot), b: true, ul: true });
 
 async function genererDocx(lettre, opts = {}) {
+  const M = opts.mesures || MESURES;
   const sortie = opts.sortie === "B" ? "B" : "A";
   const logo = opts.logo === "std" ? "std" : "mali";
   const decor = opts.decor !== false;
   const nbPages = opts.pages || 1;                         // pages comptées par le moteur PDF (numérotation si > 1)
   const calque = (nom) => fs.readFileSync(path.join(ASSETS, nom));
 
-  const retraitDroite = twips(MESURES.droiteX - MESURES.suivantes.texteX);      // colonne de droite, mesurée depuis la marge
+  const retraitDroite = twips(M.droiteX - M.suivantes.texteX);      // colonne de droite, mesurée depuis la marge
   const blocs = [];
   const p = (spec, o = {}) => new Paragraph({
     alignment: o.align || AlignmentType.LEFT,
@@ -53,7 +54,7 @@ async function genererDocx(lettre, opts = {}) {
   const flottants = [];
   flottants.push(new ImageRun({
     type: "png", data: PNG_VIDE,
-    transformation: { width: Math.round(MESURES.page1.texteX * PX), height: Math.round(MESURES.page1.bas * PX) },
+    transformation: { width: Math.round(M.page1.texteX * PX), height: Math.round(M.page1.bas * PX) },
     floating: {
       horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
       verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 },
@@ -65,7 +66,7 @@ async function genererDocx(lettre, opts = {}) {
     const couches = [...(decor ? ["entete-b-decor.png"] : []), `entete-b-base-${logo}.png`];
     couches.forEach((nom) => flottants.push(new ImageRun({
       type: "png", data: calque(nom),
-      transformation: { width: Math.round(MESURES.page.largeur * PX), height: Math.round(MESURES.page.hauteur * PX) },
+      transformation: { width: Math.round(M.page.largeur * PX), height: Math.round(M.page.hauteur * PX) },
       floating: {
         horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
         verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 },
@@ -74,7 +75,7 @@ async function genererDocx(lettre, opts = {}) {
       },
     })));
   }
-  const avant1 = twips(MESURES.page1.haut - MESURES.suivantes.haut);             // la date commence à 3,5 cm (le logo finit à 3,0 cm)
+  const avant1 = twips(M.page1.haut - M.suivantes.haut);             // la date commence à 3,5 cm (le logo finit à 3,0 cm)
   blocs.push(p([{ t: lettre.date }], { indent: retraitDroite, avant: avant1, apres: apres(1), avantRuns: flottants }));
 
   blocs.push(p([libelle("À l’attention de"), { t: " :", b: true }], { indent: retraitDroite, apres: apres(1) }));
@@ -129,7 +130,7 @@ async function genererDocx(lettre, opts = {}) {
         titlePage: true,
         page: {
           size: { width: 11906, height: 16838 },
-          margin: { top: twips(2.54), bottom: twips(2.54), left: twips(MESURES.suivantes.texteX), right: twips(MESURES.margeDroite), header: 720, footer: 720 },
+          margin: { top: twips(2.54), bottom: twips(2.54), left: twips(M.suivantes.texteX), right: twips(M.margeDroite), header: 720, footer: 720 },
         },
       },
       headers: { first: enteteVide, default: enteteSuite },
