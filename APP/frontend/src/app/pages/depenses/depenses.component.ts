@@ -612,8 +612,14 @@ export class DepensesComponent implements OnInit {
     if (this.auth.peut('depenses.decision') && (d.statut === 'validee' || d.statut === 'decaissee') && !d.annulee_le && !d.facture_id) {
       items.push({ label: 'Annuler (avec motif)', action: () => this.annulerDepense(d), danger: true });
     }
-    if (d.petite_caisse && d.apres_coup_statut === 'a_valider' && !d.annulee_le && d.engagee_par_id === this.auth.utilisateur()?.id && this.auth.peut('depenses.engager')) {
-      items.push({ label: 'Corriger (avant validation)', action: () => this.commencerEdition(d, true) });
+    // Correction d'une dépense engagée sur la petite caisse : l'engageur ou un associé ; après validation, seulement un associé (corrections de forme).
+    if (d.petite_caisse && d.engagee_par_id && !d.annulee_le) {
+      const engageur = d.engagee_par_id === this.auth.utilisateur()?.id && this.auth.peut('depenses.engager');
+      const decideur = this.auth.peut('depenses.decision');
+      const ouverte = d.apres_coup_statut === 'a_valider' || d.apres_coup_statut === 'contestee';
+      if ((ouverte && (engageur || decideur)) || (d.apres_coup_statut === 'validee' && decideur)) {
+        items.push({ label: d.apres_coup_statut === 'validee' ? 'Corriger la forme' : 'Corriger', action: () => this.commencerEdition(d, true) });
+      }
     }
     if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });

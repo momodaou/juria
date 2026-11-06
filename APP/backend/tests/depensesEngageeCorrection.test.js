@@ -6,7 +6,7 @@ const app = require("../server");
 const { SECRET } = require("../src/auth");
 const { EMAIL_TEST, MDP_TEST, assurerUtilisateurTest, pool } = require("./setup");
 
-let associe; let admin1; let admin2;
+let associe; let associe2; let admin1; let admin2;
 const auth = (t) => ({ Authorization: `Bearer ${t}` });
 const mois = () => new Date().toISOString().slice(0, 8) + "01";
 async function creerToken(role) {
@@ -21,6 +21,7 @@ async function creerToken(role) {
 beforeAll(async () => {
   await assurerUtilisateurTest();
   associe = (await request(app).post("/auth/login").send({ email: EMAIL_TEST, mot_de_passe: MDP_TEST })).body.token;
+  associe2 = await creerToken("associe");
   admin1 = await creerToken("admin_general");
   admin2 = await creerToken("admin_general");
   await request(app).put("/api/parametres/honoraires").set(auth(associe)).send({ petite_caisse_plafond_depense: 50000 });
@@ -43,15 +44,33 @@ describe("Correction d'une dépense engagée", () => {
     expect(rows.length).toBe(1);
   });
 
-  test("refus : un autre que l'engageur, ou un montant au-dessus du plafond", async () => {
+  test("un autre administrateur général ne peut pas corriger ; le plafond est rejoué", async () => {
     const e = await engager(admin1);
     expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(admin2)).send({ libelle: "X" })).status).toBe(403);
     expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(admin1)).send({ montant: 50001 })).status).toBe(409);
   });
 
-  test("refus une fois la dépense validée par un associé", async () => {
+  test("un associé corrige la dépense de l'administration générale, puis ne peut plus la valider lui-même", async () => {
     const e = await engager(admin1);
-    expect((await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(associe)).send({ decision: "validee" })).status).toBe(200);
-    expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(admin1)).send({ libelle: "Trop tard" })).status).toBe(409);
+    const r = await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(associe)).send({ libelle: "Eau de bureau" });
+    expect(r.status).toBe(200);
+    expect((await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(associe)).send({ decision: "validee" })).status).toBe(403);
+    expect((await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(associe2)).send({ decision: "validee" })).status).toBe(200);
+  });
+
+  test("après validation : seul un associé corrige la forme, jamais le montant", async () => {
+    const e = await engager(admin1);
+    await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(associe)).send({ decision: "validee" });
+    expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(admin1)).send({ libelle: "Trop tard" })).status).toBe(403);
+    expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(associe2)).send({ montant: 9000 })).status).toBe(409);
+    expect((await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(associe2)).send({ libelle: "Eau de bureau" })).status).toBe(200);
+  });
+
+  test("dépense contestée : la correction la remet à valider", async () => {
+    const e = await engager(admin1);
+    await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(associe)).send({ decision: "contestee", motif: "montant faux" });
+    const r = await request(app).put(`/api/depenses/${e.body.id}/engagee`).set(auth(admin1)).send({ montant: 9000 });
+    expect(r.status).toBe(200);
+    expect(r.body.apres_coup_statut).toBe("a_valider");
   });
 });

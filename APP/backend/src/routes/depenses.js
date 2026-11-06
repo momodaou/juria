@@ -217,6 +217,9 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
     if (d.engagee_par === req.user.sub) {
       return res.status(403).json({ error: "Vous ne pouvez pas valider une dépense que vous avez vous-même engagée : un autre associé doit le faire." });
     }
+    const { rowCount: aCorrige } = await pool.query(
+      "SELECT 1 FROM journal_audit WHERE action = 'corriger_depense_engagee' AND entite = 'depenses' AND entite_id = $1 AND utilisateur_id = $2 LIMIT 1", [req.params.id, req.user.sub]);
+    if (aCorrige) return res.status(403).json({ error: "Vous avez corrigé cette dépense : un autre associé doit la valider." });
     const { rows } = await pool.query(
       `UPDATE depenses SET apres_coup_statut = $1::varchar, apres_coup_par = $2::uuid, apres_coup_le = now(), apres_coup_motif = $3,
               valide_par = CASE WHEN $1::varchar = 'validee' THEN $2::uuid ELSE valide_par END,
@@ -230,14 +233,16 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
-// Correction d'une dépense ENGAGÉE sur la petite caisse (06/11/2026) : l'engageur
-// (typiquement l'administration générale) peut corriger ses fautes de saisie tant
-// qu'aucun associé n'a validé ou contesté la dépense (apres_coup_statut = 'a_valider').
-// Seul l'engageur lui-même, jamais un tiers. Les garde-fous de l'engagement sont
-// rejoués (plafond, caisse dotée, solde sans compter l'ancien montant). Chaque
-// correction est tracée avec les valeurs avant/après. Elle ne vaut jamais
-// validation : la règle « engageur ≠ valideur » est inchangée.
-router.put("/:id/engagee", requirePermission("depenses.engager"), async (req, res) => {
+// Correction d'une dépense ENGAGÉE sur la petite caisse (06/11/2026).
+// Qui : l'engageur lui-même (depenses.engager) ou un décideur (depenses.decision, les associés) —
+// les erreurs de saisie de l'administration générale sont fréquentes et un associé doit pouvoir les
+// corriger. Quand : tant que la dépense est « à valider » ou « contestée » (une correction la remet « à valider ») ;
+// une dépense déjà validée après coup n'accepte que les corrections de forme, par un décideur (libellé,
+// catégorie, bénéficiaire, moyen et références, justificatif) : ni montant, ni date, ni nature. Une dépense
+// annulée est verrouillée. Garde-fous de l'engagement rejoués si montant ou date changent. Tout est tracé
+// (avant/après). Indépendance : celui qui a corrigé une dépense ne peut pas ensuite la valider
+// (voir /valider-apres-coup) ; « engageur ≠ valideur » est inchangé.
+router.put("/:id/engagee", async (req, res) => {
   const b = req.body || {};
   try {
     const { rows: [d] } = await pool.query(
@@ -247,46 +252,61 @@ router.put("/:id/engagee", requirePermission("depenses.engager"), async (req, re
          FROM depenses WHERE id = $1`, [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
     if (!d.petite_caisse || !d.engagee_par) return res.status(409).json({ error: "Cette dépense n'a pas été engagée sur la petite caisse." });
-    if (d.engagee_par !== req.user.sub) return res.status(403).json({ error: "Seule la personne qui a engagé la dépense peut la corriger." });
+    const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
+    const engageur = d.engagee_par === req.user.sub && await estAutorise(req.user.role, "depenses.engager", req.user.sub);
+    if (!decideur && !engageur) return res.status(403).json({ error: "Seul l'engageur de la dépense ou un associé peut la corriger." });
     if (d.annulee_le) return res.status(409).json({ error: "Dépense annulée — non modifiable." });
-    if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Dépense déjà traitée par un associé — non modifiable." });
+    const validee = d.apres_coup_statut === "validee";
+    if (!["a_valider", "contestee", "validee"].includes(d.apres_coup_statut)) return res.status(409).json({ error: "Dépense non modifiable." });
+    if (validee && !decideur) return res.status(403).json({ error: "Dépense déjà validée : seul un associé peut en corriger la forme." });
 
     const libelle = b.libelle !== undefined ? String(b.libelle).trim() : d.libelle;
     const montant = b.montant !== undefined && b.montant !== null && b.montant !== "" ? Math.round(Number(b.montant)) : Number(d.montant);
     if (!libelle || !(montant > 0)) return res.status(400).json({ error: "libelle et montant positif requis" });
     const dateDepense = b.date_depense || d.date_depense;
+    const monnaieChange = montant !== Number(d.montant) || dateDepense !== d.date_depense;
+    if (validee && monnaieChange) return res.status(409).json({ error: "Dépense déjà validée : montant et date ne sont plus modifiables (annulez-la puis ressaisissez-la si nécessaire)." });
     const n = resoudreNature(b, d);
     if (n.erreur) return res.status(400).json({ error: n.erreur });
+    if (validee && (n.nature !== d.nature || (n.dossierId || null) !== (d.dossier_id || null))) {
+      return res.status(409).json({ error: "Dépense déjà validée : la nature et le dossier ne sont plus modifiables." });
+    }
     const refs = b.references && typeof b.references === "object" ? { ...b.references } : (d.references_paiement || {});
     const beneficiaire = b.beneficiaire !== undefined ? (String(b.beneficiaire || refs.beneficiaire || "").trim().slice(0, 160) || null) : d.beneficiaire;
     if (beneficiaire && !refs.beneficiaire) refs.beneficiaire = beneficiaire;
     const regl = await preparerDecaissement(pool, { mode_paiement: b.mode_paiement || d.mode_paiement, compte_id: b.compte_id !== undefined ? b.compte_id : d.compte_id, references: refs }, { exigerReferences: true });
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
 
-    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
-    const plafond = par.rows[0]?.plafond;
-    if (plafond != null && montant > Number(plafond)) {
-      return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}).` });
+    if (monnaieChange) {
+      const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
+      const plafond = par.rows[0]?.plafond;
+      if (plafond != null && montant > Number(plafond)) {
+        return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}).` });
+      }
+      const moisNouveau = premierDuMois(new Date(dateDepense));
+      const moisAncien = premierDuMois(new Date(d.date_depense));
+      const caisse = await soldePetiteCaisse(moisNouveau);
+      if (!caisse.dotee) return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
+      const disponible = caisse.solde + (moisNouveau === moisAncien ? Number(d.montant) : 0);
+      if (montant > disponible) return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${disponible}).`, solde: disponible });
     }
-    const moisNouveau = premierDuMois(new Date(dateDepense));
-    const moisAncien = premierDuMois(new Date(d.date_depense));
-    const caisse = await soldePetiteCaisse(moisNouveau);
-    if (!caisse.dotee) return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
-    const disponible = caisse.solde + (moisNouveau === moisAncien ? Number(d.montant) : 0);
-    if (montant > disponible) return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${disponible}).`, solde: disponible });
 
     const { rows } = await pool.query(
       `UPDATE depenses SET libelle = $1, montant = $2, date_depense = $3::date,
               categorie = COALESCE($4::categorie_depense, categorie), mode_paiement = $5::mode_paiement, compte_id = $6,
               references_paiement = $7::jsonb, beneficiaire = $8, justificatif = COALESCE($9, justificatif),
-              nature = $10, dossier_id = $11
-        WHERE id = $12 AND apres_coup_statut = 'a_valider' AND annulee_le IS NULL
+              nature = $10, dossier_id = $11,
+              apres_coup_statut = CASE WHEN apres_coup_statut = 'contestee' THEN 'a_valider' ELSE apres_coup_statut END,
+              apres_coup_par = CASE WHEN apres_coup_statut = 'contestee' THEN NULL ELSE apres_coup_par END,
+              apres_coup_le = CASE WHEN apres_coup_statut = 'contestee' THEN NULL ELSE apres_coup_le END
+        WHERE id = $12 AND apres_coup_statut = $13 AND annulee_le IS NULL
         RETURNING id, libelle, montant, statut, apres_coup_statut`,
       [libelle, montant, dateDepense, b.categorie || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
-       JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id]);
+       JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id, d.apres_coup_statut]);
     if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
     await logAudit({ utilisateurId: req.user.sub, action: "corriger_depense_engagee", entite: "depenses", entiteId: req.params.id,
-      details: { avant: { libelle: d.libelle, montant: Number(d.montant), date_depense: d.date_depense, mode_paiement: d.mode_paiement, beneficiaire: d.beneficiaire },
+      details: { par_engageur: d.engagee_par === req.user.sub, statut_apres_coup_avant: d.apres_coup_statut,
+                 avant: { libelle: d.libelle, montant: Number(d.montant), date_depense: d.date_depense, mode_paiement: d.mode_paiement, beneficiaire: d.beneficiaire },
                  apres: { libelle, montant, date_depense: dateDepense, mode_paiement: regl.valeurs.mode_paiement, beneficiaire } }, ip: req.ip });
     res.json(rows[0]);
   } catch (e) {
