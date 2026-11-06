@@ -940,9 +940,12 @@ export class OuvertureComponent implements OnInit {
         this.oublierConflitEnCours();
         // Dossier ouvert depuis un courrier : on lui rattache l'acte (rappels inclus).
         if (this.courrierSourceId) {
+          // Venu du parcours « Acte reçu avec audience » : retour à l'écran qui programme l'audience.
+          const retourActe = this.route.snapshot.queryParamMap.get('retour') === 'acte-audience';
+          const suite = () => this.router.navigate(retourActe ? ['/courrier/acte-audience', this.courrierSourceId] : ['/dossiers', r.id]);
           this.api.orienterCourrier(this.courrierSourceId, { decision: 'cree', dossier_id: r.id }).subscribe({
-            next: () => this.router.navigate(['/dossiers', r.id]),
-            error: () => this.router.navigate(['/dossiers', r.id]),
+            next: suite,
+            error: suite,
           });
           return;
         }

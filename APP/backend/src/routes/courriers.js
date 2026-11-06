@@ -14,6 +14,7 @@ const router = express.Router();
 // constante plutôt qu'un module partagé) : seul un avocat peut "viser"
 // un courrier (voir POST /:id/viser).
 const { genererReference } = require("../referenceCourrier");
+const audiencesHelpers = require("./audiences").helpers;
 const ROLES_AVOCAT = ["associe", "associe_fondateur", "of_counsel", "avocat_stagiaire", "collaborateur"];
 
 // 17/10/2026 — parcours « acte reçu sans dossier » : l'assistante enregistre avec
@@ -173,7 +174,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
               c.gabarit_code, c.etat_redaction, c.signataire_id,
               c.numero_reserve, c.annule_le, c.annule_motif, c.cree_le, c.cree_par,
               c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
-              c.expedie_par, c.expedie_le, c.destinataire_id, c.acte_audience, c.audience_indiquee, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
+              c.expedie_par, c.expedie_le, c.destinataire_id, c.acte_audience, c.audience_indiquee, c.audience_programmee_le, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
               dest.prenom || ' ' || dest.nom AS destinataire_nom,
               d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
               t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
@@ -405,6 +406,92 @@ router.post("/acte-audience", requirePermission("courriers.acte_audience.deposer
     await logAudit({ utilisateurId: req.user.sub, action: "deposer_acte_audience", entite: "courriers", entiteId: courrier.id,
       details: { reference: courrier.reference, nature, client: correspondant, audience_indiquee: courrier.audience_indiquee, destinataire_id: courrier.destinataire_id }, ip: req.ip });
     res.status(201).json({ ...courrier, jours_restants: joursRestants, urgent, tache: t.rows[0] });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/courriers/:id/dossiers-suggeres — dossiers dont le client ressemble à l'expéditeur de l'acte (06/11/2026, lot 2).
+router.get("/:id/dossiers-suggeres", requirePermission("courriers.acte_audience.programmer"), async (req, res) => {
+  try {
+    const { rows: [c] } = await pool.query("SELECT correspondant, dossier_id FROM courriers WHERE id = $1", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Courrier introuvable" });
+    const mot = String(c.correspondant || "").trim();
+    if (!mot) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT d.id, d.numero, d.intitule, d.juridiction,
+              COALESCE(cl.denomination, trim(COALESCE(cl.prenom,'') || ' ' || COALESCE(cl.nom,''))) AS client
+         FROM dossiers d JOIN clients cl ON cl.id = d.client_id
+        WHERE COALESCE(cl.denomination, '') ILIKE $1 OR COALESCE(cl.nom, '') ILIKE $1
+        ORDER BY d.cree_le DESC LIMIT 12`, [`%${mot}%`]);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
+// POST /api/courriers/:id/programmer-audience — parcours « Acte reçu avec audience », lot 2 (06/11/2026).
+// Rattache l'acte au dossier (s'il ne l'est pas encore : déplacement de la pièce dans la GED, tâche « Orienter » close),
+// inscrit l'audience au rôle de la semaine, confie à l'avocat désigné une tâche de préparation. Le dossier doit exister :
+// pour un nouveau dossier, le contrôle de conflits puis l'ouverture (écran Nouveau dossier) passent avant.
+// body : { dossier_id?, date_prevue, heure?, juridiction?, type?, avocat_id?, urgente?, instructions? }
+router.post("/:id/programmer-audience", requirePermission("courriers.acte_audience.programmer"), async (req, res) => {
+  const b = req.body || {};
+  if (!b.date_prevue || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.date_prevue))) return res.status(400).json({ error: "Indiquez la date de l'audience." });
+  const erreurAudiencier = await audiencesHelpers.verifierAudiencierAutorise(pool, b.avocat_id);
+  if (erreurAudiencier) return res.status(400).json({ error: erreurAudiencier });
+  const client = await pool.connect();
+  let ancienCheminBrut = null;
+  try {
+    await client.query("BEGIN");
+    const { rows: [c] } = await client.query("SELECT * FROM courriers WHERE id = $1 FOR UPDATE", [req.params.id]);
+    if (!c) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Courrier introuvable" }); }
+    if (!c.acte_audience) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Ce courrier n'est pas un acte déposé avec audience." }); }
+    if (c.audience_programmee_le) { await client.query("ROLLBACK"); return res.status(409).json({ error: "L'audience de cet acte est déjà programmée." }); }
+    if (c.orientation === "sans_suite") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Cet acte a été classé sans suite." }); }
+    let dossierId = c.dossier_id;
+    if (!dossierId) {
+      dossierId = b.dossier_id;
+      if (!dossierId) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Choisissez le dossier de l'acte (ou ouvrez-le d'abord)." }); }
+      const d = await client.query("SELECT id FROM dossiers WHERE id = $1", [dossierId]);
+      if (!d.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Dossier introuvable" }); }
+      await client.query("UPDATE courriers SET dossier_id = $1 WHERE id = $2", [dossierId, c.id]);
+      const maj = (await client.query("SELECT * FROM courriers WHERE id = $1", [c.id])).rows[0];
+      if (maj.fichier_brut_chemin && !maj.document_id) {
+        const buf = await readObject(maj.fichier_brut_chemin);
+        const docId = await classerDansGed(client, dossierId, maj.fichier_brut_nom, buf, maj.fichier_brut_type_mime, maj.fichier_brut_taille, req.user.sub);
+        await client.query(
+          `UPDATE courriers SET document_id = $1, numerise = TRUE, fichier_brut_chemin = NULL, fichier_brut_nom = NULL,
+             fichier_brut_type_mime = NULL, fichier_brut_taille = NULL WHERE id = $2`, [docId, c.id]);
+        ancienCheminBrut = maj.fichier_brut_chemin;
+      }
+      await apresRattachement(client, { ...maj, orientation: c.orientation }, req.user.sub, "rattache");
+    }
+    const avocatId = b.avocat_id || c.destinataire_id;
+    const juridiction = String(b.juridiction || c.audience_juridiction || "").trim().slice(0, 160) || null;
+    const role = await audiencesHelpers.trouverOuCreerRole(client, audiencesHelpers.lundiDeSemaine(b.date_prevue), req.user.sub);
+    const au = await client.query(
+      `INSERT INTO audiences (dossier_id, avocat_id, juridiction, date_audience, type, heure, instructions, urgente, cree_par)
+       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8::boolean,FALSE),$9) RETURNING id`,
+      [dossierId, avocatId || null, juridiction, b.date_prevue, b.type || null, b.heure || null, b.instructions || null, b.urgente ?? null, req.user.sub]);
+    await client.query(
+      `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
+       VALUES ($1,$2,$3,$4,$5,COALESCE($6::type_audience,'mise_en_etat'),$7)`,
+      [role.id, au.rows[0].id, dossierId, b.date_prevue, juridiction, b.type || null, avocatId || null]);
+    await client.query("UPDATE courriers SET audience_programmee_le = now(), audience_id = $1 WHERE id = $2", [au.rows[0].id, c.id]);
+    const tache = await client.query(
+      `INSERT INTO taches (dossier_id, titre, description, responsable_id, echeance, priorite, cree_par, courrier_id)
+       VALUES ($1,$2,$3,$4,LEAST($5::date, current_date + 2),$6::priorite_tache,$7,$8) RETURNING id, titre, echeance`,
+      [dossierId, `Préparer l'audience du ${b.date_prevue} (acte ${c.reference})`,
+       "Constitution, conclusions et pièces à préparer pour l'audience inscrite au rôle depuis l'acte reçu.",
+       avocatId || c.destinataire_id, b.date_prevue, b.urgente ? "haute" : "normale", req.user.sub, c.id]);
+    await client.query("COMMIT");
+    if (ancienCheminBrut) await deleteObject(ancienCheminBrut);
+    await logAudit({ utilisateurId: req.user.sub, action: "programmer_audience_depuis_acte", entite: "courriers", entiteId: c.id,
+      details: { dossier_id: dossierId, audience_id: au.rows[0].id, date_prevue: b.date_prevue, juridiction, avocat_id: avocatId || null }, ip: req.ip });
+    res.status(201).json({ dossier_id: dossierId, audience_id: au.rows[0].id, role_id: role.id, tache: tache.rows[0] });
   } catch (e) {
     await client.query("ROLLBACK");
     console.error(e);

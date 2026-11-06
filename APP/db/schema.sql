@@ -5743,3 +5743,19 @@ SELECT r, 'courriers.acte_audience.deposer',
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
+
+
+-- ============================================================
+-- PARCOURS « ACTE REÇU AVEC AUDIENCE » — LOT 2 (06/11/2026)
+-- Rattachement de l'acte au dossier + inscription de l'audience au rôle. Un dossier n'existe qu'après le contrôle de
+-- conflits : l'audience est donc programmée une fois le dossier ouvert (ou retrouvé) ; d'ici là la tuile du Tableau
+-- de bord garde l'acte en rouge. Permission distincte : associés par défaut, accordable aux autres dans la Matrice.
+-- ============================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_programmee_le TIMESTAMPTZ;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_id UUID REFERENCES audiences(id) ON DELETE SET NULL;
+
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'courriers.acte_audience.programmer', r IN ('associe','associe_fondateur')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO NOTHING;

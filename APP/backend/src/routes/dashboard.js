@@ -285,7 +285,7 @@ router.get("/", async (req, res) => {
       const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
       const filtre = estAssocie ? "" : "AND c.destinataire_id = $1::uuid";
       const args = estAssocie ? [] : [req.user.sub];
-      const cond = `c.acte_audience AND c.orientation = 'a_orienter' AND c.audience_indiquee IS NOT NULL AND c.audience_indiquee <= current_date + 7 ${filtre}`;
+      const cond = `c.acte_audience AND c.audience_programmee_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NOT NULL AND c.audience_indiquee <= current_date + 7 ${filtre}`;
       const an = await pool.query(`SELECT count(*) AS n FROM courriers c WHERE ${cond}`, args);
       if (estAssocie || Number(an.rows[0].n) > 0) {
         actesAudienceN = Number(an.rows[0].n);
@@ -1104,7 +1104,7 @@ router.get("/detail/:type", async (req, res) => {
           SELECT c.id, c.reference, c.correspondant, c.type_precision AS nature, c.date_signification, c.audience_indiquee,
                  (c.audience_indiquee - current_date) AS jours_restants, dest.prenom || ' ' || dest.nom AS destinataire
           FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
-          WHERE c.acte_audience AND c.orientation = 'a_orienter' AND c.audience_indiquee IS NOT NULL
+          WHERE c.acte_audience AND c.audience_programmee_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NOT NULL
             AND c.audience_indiquee <= current_date + 7 ${estAssocie ? "" : "AND c.destinataire_id = $1::uuid"}
           ORDER BY c.audience_indiquee ASC LIMIT 200`, estAssocie ? [] : [req.user.sub]);
         return res.json(rows);

@@ -75,6 +75,7 @@ const CATALOGUE = [
   { code: "courriers.consulter", module: "Registre du courrier", label: "Consulter le registre du courrier", restreinte: true },
   { code: "courriers.creer", module: "Registre du courrier", label: "Enregistrer un courrier" },
   { code: "courriers.acte_audience.deposer", module: "Registre du courrier", label: "Déposer un acte reçu avec audience (étape 1 du parcours)" },
+  { code: "courriers.acte_audience.programmer", module: "Registre du courrier", label: "Programmer l'audience d'un acte reçu (rattacher au dossier, inscrire au rôle)", restreinte: true },
   { code: "courriers.statut.modifier", module: "Registre du courrier", label: "Faire évoluer le statut" },
   { code: "courriers.signer", module: "Registre du courrier", label: "Signer un courrier (apposer le cachet et la signature)", restreinte: true },
   // 15/10/2026 — réflexion "Registre courrier" (Q1) : visa de l'avocat,

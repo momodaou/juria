@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { AuthService } from '../../core/auth.service';
 import { ApiService } from '../../core/api.service';
 
 // Parcours « Acte reçu avec audience », étape 1 (06/11/2026) : l'acte transmis par le client (souvent par e-mail) est
@@ -29,6 +30,9 @@ import { ApiService } from '../../core/api.service';
         }
         <p class="muted-sm">Prévenez l'avocat désigné pour qu'il traite l'acte sans attendre. L'ouverture du dossier et la programmation de l'audience au rôle se font ensuite.</p>
         <p style="margin-top:14px">
+          @if (auth.peut('courriers.acte_audience.programmer')) {
+            <a class="btn" style="margin-right:14px" [routerLink]="['/courrier/acte-audience', r.id]">Programmer l'audience maintenant</a>
+          }
           <button class="btn" (click)="recommencer()">Déposer un autre acte</button>
           <a class="lien" style="margin-left:14px" routerLink="/courrier">Retour au registre</a>
         </p>
@@ -104,6 +108,7 @@ import { ApiService } from '../../core/api.service';
 })
 export class ActeAudienceComponent implements OnInit {
   private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
   private static readonly ROLES_AVOCAT = ['associe', 'associe_fondateur', 'of_counsel', 'avocat_stagiaire', 'collaborateur'];
 
   readonly natures = ['Assignation', 'Requête', 'Sommation', 'Commandement', 'Signification de jugement', 'Autre acte'];

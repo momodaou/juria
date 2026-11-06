@@ -831,6 +831,8 @@ export class ApiService {
   deposerActeAudience(fd: FormData): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers/acte-audience`, fd);
   }
+  dossiersSugeresActe(id: string): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/courriers/${id}/dossiers-suggeres`); }
+  programmerAudienceActe(id: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/courriers/${id}/programmer-audience`, payload); }
   creerCourrier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers`, payload);
   }

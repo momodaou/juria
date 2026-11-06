@@ -675,6 +675,10 @@ export class CourrierComponent implements OnInit {
   // date) ou l'imputation.
   actionsPour(c: any): ActionMenuItem[] {
     const actions: ActionMenuItem[] = [];
+    // Acte reçu avec audience, pas encore programmée (parcours lot 2, 06/11/2026).
+    if (c.acte_audience && !c.audience_programmee_le && c.orientation !== 'sans_suite' && this.auth.peut('courriers.acte_audience.programmer')) {
+      actions.push({ label: "Programmer l'audience", action: () => { this.router.navigate(['/courrier/acte-audience', c.id]); } });
+    }
     // Lettre rédigée dans JURIA (lot 4) : ouvrir l'écran de rédaction (versions, aperçu, états).
     if (c.etat_redaction) {
       actions.push({ label: 'Ouvrir la lettre', action: () => { this.router.navigate(['/courrier/rediger', c.id]); } });

@@ -736,3 +736,5 @@ router.get("/:id/pdf", requirePermission("audiences.consulter"), async (req, res
 });
 
 module.exports = router;
+// Aides réutilisées par le parcours « Acte reçu avec audience » (routes/courriers.js, 06/11/2026).
+module.exports.helpers = { lundiDeSemaine, trouverOuCreerRole, verifierAudiencierAutorise };

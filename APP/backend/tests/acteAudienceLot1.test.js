@@ -77,3 +77,42 @@ describe("Dépôt d'un acte reçu avec audience", () => {
     expect(detail.body[0]).toMatchObject({ reference: expect.any(String), jours_restants: expect.any(Number) });
   });
 });
+
+describe("Lot 2 : programmer l'audience depuis l'acte", () => {
+  const dossierPour = async () => {
+    const cl = await pool.query("INSERT INTO clients (type, denomination, reference) VALUES ('morale','BDM TEST ' || substr(md5(random()::text),1,5), 'C' || substr(md5(random()::text),1,8)) RETURNING id, denomination");
+    const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const d = await pool.query(
+      `INSERT INTO dossiers (numero, intitule, client_id, pole, responsable_id)
+       SELECT $1, 'Dossier test lot 2', $2, (SELECT unnest(enum_range(NULL::pole_cabinet)) LIMIT 1), id FROM utilisateurs LIMIT 1 RETURNING id`, ["T-" + ref, cl.rows[0].id]);
+    return { dossierId: d.rows[0].id, client: cl.rows[0].denomination };
+  };
+  const acte = async (extra = {}) => (await deposer(assistante, { correspondant: "BDM SA", destinataire_id: collabId, audience_indiquee: dans(4), ...extra })).body;
+
+  test("un associé programme l'audience : rattachement, rôle, tâche ; l'acte quitte la tuile", async () => {
+    const { dossierId } = await dossierPour();
+    const a = await acte();
+    const r = await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(associe))
+      .send({ dossier_id: dossierId, date_prevue: dans(4), heure: "08:30", juridiction: "Tribunal de commerce de Bamako", type: "mise_en_etat", urgente: true });
+    expect(r.status).toBe(201);
+    expect(r.body.dossier_id).toBe(dossierId);
+    const c = (await pool.query("SELECT dossier_id, audience_programmee_le, orientation FROM courriers WHERE id = $1", [a.id])).rows[0];
+    expect(c.dossier_id).toBe(dossierId); expect(c.audience_programmee_le).not.toBeNull(); expect(c.orientation).toBe("rattache");
+    expect((await pool.query("SELECT 1 FROM role_audience_lignes WHERE audience_id = $1", [r.body.audience_id])).rowCount).toBe(1);
+    const detail = await request(app).get("/api/dashboard/detail/actes_audience").set(auth(associe));
+    expect(detail.body.some((l) => l.id === a.id)).toBe(false);
+    const deux = await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(associe)).send({ dossier_id: dossierId, date_prevue: dans(4) });
+    expect(deux.status).toBe(409);
+  });
+
+  test("sans dossier : refus ; sans date : refus ; rôle sans permission : 403 ; suggestions par client", async () => {
+    const a = await acte();
+    expect((await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(associe)).send({ date_prevue: dans(4) })).status).toBe(400);
+    expect((await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(associe)).send({ dossier_id: "x" })).status).toBe(400);
+    expect((await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(collab)).send({ date_prevue: dans(4) })).status).toBe(403);
+    const { client } = await dossierPour();
+    const b = await acte({ correspondant: client });
+    const s = await request(app).get(`/api/courriers/${b.id}/dossiers-suggeres`).set(auth(associe));
+    expect(s.status).toBe(200); expect(s.body.length).toBeGreaterThanOrEqual(1);
+  });
+});
