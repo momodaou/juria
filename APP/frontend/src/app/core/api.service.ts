@@ -963,6 +963,10 @@ export class ApiService {
   decaisserDepense(id: string, body: any = {}): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, body);
   }
+  // 06/11/2026 : correction d'une dépense engagée sur la petite caisse, par son engageur, avant validation après coup.
+  majDepenseEngagee(id: string, payload: any): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/depenses/${id}/engagee`, payload);
+  }
   majDepense(id: string, payload: any): Observable<any> {
     return this.http.put<any>(`${this.base}/api/depenses/${id}`, payload);
   }

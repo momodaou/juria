@@ -612,6 +612,9 @@ export class DepensesComponent implements OnInit {
     if (this.auth.peut('depenses.decision') && (d.statut === 'validee' || d.statut === 'decaissee') && !d.annulee_le && !d.facture_id) {
       items.push({ label: 'Annuler (avec motif)', action: () => this.annulerDepense(d), danger: true });
     }
+    if (d.petite_caisse && d.apres_coup_statut === 'a_valider' && !d.annulee_le && d.engagee_par_id === this.auth.utilisateur()?.id && this.auth.peut('depenses.engager')) {
+      items.push({ label: 'Corriger (avant validation)', action: () => this.commencerEdition(d, true) });
+    }
     if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });
       items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
@@ -819,7 +822,9 @@ export class DepensesComponent implements OnInit {
   // corriger un mauvais compte/mode de paiement, ou une case petite
   // caisse/justificatif/refacturable cochée par erreur, exigeait jusqu'ici
   // de retirer la dépense et de la ressaisir entièrement.
-  commencerEdition(d: any): void {
+  readonly editionEngagee = signal(false);
+  commencerEdition(d: any, engagee = false): void {
+    this.editionEngagee.set(engagee);
     this.erreur.set('');
     this.editForm = {
       type: d.type, categorie: d.categorie, libelle: d.libelle, montant: d.montant,
@@ -839,8 +844,9 @@ export class DepensesComponent implements OnInit {
     if (!id || this.editionEnCours()) return;
     this.erreur.set('');
     this.editionEnCours.set(true);
-    this.api.majDepense(id, this.editForm).subscribe({
-      next: () => { this.editionEnCours.set(false); this.editionId.set(null); this.editForm = {}; this.charger(); },
+    const appel = this.editionEngagee() ? this.api.majDepenseEngagee(id, this.editForm) : this.api.majDepense(id, this.editForm);
+    appel.subscribe({
+      next: () => { this.editionEnCours.set(false); this.editionId.set(null); this.editForm = {}; this.charger(); this.chargerCaisse(); },
       error: (e) => { this.editionEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Modification impossible.'); },
     });
   }

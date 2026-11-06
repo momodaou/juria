@@ -230,6 +230,71 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
+// Correction d'une dépense ENGAGÉE sur la petite caisse (06/11/2026) : l'engageur
+// (typiquement l'administration générale) peut corriger ses fautes de saisie tant
+// qu'aucun associé n'a validé ou contesté la dépense (apres_coup_statut = 'a_valider').
+// Seul l'engageur lui-même, jamais un tiers. Les garde-fous de l'engagement sont
+// rejoués (plafond, caisse dotée, solde sans compter l'ancien montant). Chaque
+// correction est tracée avec les valeurs avant/après. Elle ne vaut jamais
+// validation : la règle « engageur ≠ valideur » est inchangée.
+router.put("/:id/engagee", requirePermission("depenses.engager"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows: [d] } = await pool.query(
+      `SELECT id, nature, dossier_id, libelle, montant, categorie, mode_paiement, compte_id, references_paiement, beneficiaire,
+              justificatif, engagee_par, apres_coup_statut, annulee_le, petite_caisse,
+              to_char(date_depense, 'YYYY-MM-DD') AS date_depense
+         FROM depenses WHERE id = $1`, [req.params.id]);
+    if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    if (!d.petite_caisse || !d.engagee_par) return res.status(409).json({ error: "Cette dépense n'a pas été engagée sur la petite caisse." });
+    if (d.engagee_par !== req.user.sub) return res.status(403).json({ error: "Seule la personne qui a engagé la dépense peut la corriger." });
+    if (d.annulee_le) return res.status(409).json({ error: "Dépense annulée — non modifiable." });
+    if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Dépense déjà traitée par un associé — non modifiable." });
+
+    const libelle = b.libelle !== undefined ? String(b.libelle).trim() : d.libelle;
+    const montant = b.montant !== undefined && b.montant !== null && b.montant !== "" ? Math.round(Number(b.montant)) : Number(d.montant);
+    if (!libelle || !(montant > 0)) return res.status(400).json({ error: "libelle et montant positif requis" });
+    const dateDepense = b.date_depense || d.date_depense;
+    const n = resoudreNature(b, d);
+    if (n.erreur) return res.status(400).json({ error: n.erreur });
+    const refs = b.references && typeof b.references === "object" ? { ...b.references } : (d.references_paiement || {});
+    const beneficiaire = b.beneficiaire !== undefined ? (String(b.beneficiaire || refs.beneficiaire || "").trim().slice(0, 160) || null) : d.beneficiaire;
+    if (beneficiaire && !refs.beneficiaire) refs.beneficiaire = beneficiaire;
+    const regl = await preparerDecaissement(pool, { mode_paiement: b.mode_paiement || d.mode_paiement, compte_id: b.compte_id !== undefined ? b.compte_id : d.compte_id, references: refs }, { exigerReferences: true });
+    if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+
+    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
+    const plafond = par.rows[0]?.plafond;
+    if (plafond != null && montant > Number(plafond)) {
+      return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}).` });
+    }
+    const moisNouveau = premierDuMois(new Date(dateDepense));
+    const moisAncien = premierDuMois(new Date(d.date_depense));
+    const caisse = await soldePetiteCaisse(moisNouveau);
+    if (!caisse.dotee) return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
+    const disponible = caisse.solde + (moisNouveau === moisAncien ? Number(d.montant) : 0);
+    if (montant > disponible) return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${disponible}).`, solde: disponible });
+
+    const { rows } = await pool.query(
+      `UPDATE depenses SET libelle = $1, montant = $2, date_depense = $3::date,
+              categorie = COALESCE($4::categorie_depense, categorie), mode_paiement = $5::mode_paiement, compte_id = $6,
+              references_paiement = $7::jsonb, beneficiaire = $8, justificatif = COALESCE($9, justificatif),
+              nature = $10, dossier_id = $11
+        WHERE id = $12 AND apres_coup_statut = 'a_valider' AND annulee_le IS NULL
+        RETURNING id, libelle, montant, statut, apres_coup_statut`,
+      [libelle, montant, dateDepense, b.categorie || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
+       JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id]);
+    if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
+    await logAudit({ utilisateurId: req.user.sub, action: "corriger_depense_engagee", entite: "depenses", entiteId: req.params.id,
+      details: { avant: { libelle: d.libelle, montant: Number(d.montant), date_depense: d.date_depense, mode_paiement: d.mode_paiement, beneficiaire: d.beneficiaire },
+                 apres: { libelle, montant, date_depense: dateDepense, mode_paiement: regl.valeurs.mode_paiement, beneficiaire } }, ip: req.ip });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // Rapprochement mensuel : le solde réel du porte-monnaie (relevé de
 // l'opérateur ou comptage des espèces) est comparé au solde calculé par JURIA.
 router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
