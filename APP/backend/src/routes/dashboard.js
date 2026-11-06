@@ -278,6 +278,26 @@ router.get("/", async (req, res) => {
         courriersOrienterApercu = ca.rows;
       }
     }
+    // Actes reçus avec audience dans moins de 7 jours, pas encore traités (06/11/2026, parcours « Acte reçu avec audience »).
+    // Associés : tous ; avocat désigné : les siens (la tuile n'apparaît que s'il y en a). Isolée : une erreur ne casse jamais le tableau de bord.
+    let actesAudienceN = null, actesAudienceApercu = [];
+    try {
+      const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
+      const filtre = estAssocie ? "" : "AND c.destinataire_id = $1::uuid";
+      const args = estAssocie ? [] : [req.user.sub];
+      const cond = `c.acte_audience AND c.orientation = 'a_orienter' AND c.audience_indiquee IS NOT NULL AND c.audience_indiquee <= current_date + 7 ${filtre}`;
+      const an = await pool.query(`SELECT count(*) AS n FROM courriers c WHERE ${cond}`, args);
+      if (estAssocie || Number(an.rows[0].n) > 0) {
+        actesAudienceN = Number(an.rows[0].n);
+        const aa = await pool.query(
+          `SELECT c.id, c.reference, c.correspondant, c.audience_indiquee, (c.audience_indiquee - current_date) AS jours_restants
+           FROM courriers c WHERE ${cond} ORDER BY c.audience_indiquee ASC LIMIT 2`, args);
+        actesAudienceApercu = aa.rows;
+      }
+    } catch (e) {
+      console.error("Tuile Actes avec audience indisponible :", e.message);
+      actesAudienceN = null; actesAudienceApercu = [];
+    }
     // Stock de chemises bas (20/10/2026) : couleurs au niveau du seuil ou en dessous,
     // seulement si le stock est initialisé et que le profil peut le consulter.
     let chemisesBas = null;
@@ -677,6 +697,8 @@ router.get("/", async (req, res) => {
       emails_suspendus_jusqu_a: emailsSuspendusJusqua,
       especes_a_deposer: especesADeposer,
       courriers_depart: courriersDepart,
+      actes_audience_n: actesAudienceN,
+      actes_audience_apercu: actesAudienceApercu,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,
@@ -1073,6 +1095,18 @@ router.get("/detail/:type", async (req, res) => {
           ) der WHERE der.resultat = 'avant_dire_droit'
           ORDER BY der.date_audience ASC LIMIT 200
         `);
+        return res.json(rows);
+      }
+      // 06/11/2026 — actes reçus avec audience dans moins de 7 jours, à traiter.
+      case "actes_audience": {
+        const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
+        const { rows } = await pool.query(`
+          SELECT c.id, c.reference, c.correspondant, c.type_precision AS nature, c.date_signification, c.audience_indiquee,
+                 (c.audience_indiquee - current_date) AS jours_restants, dest.prenom || ' ' || dest.nom AS destinataire
+          FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
+          WHERE c.acte_audience AND c.orientation = 'a_orienter' AND c.audience_indiquee IS NOT NULL
+            AND c.audience_indiquee <= current_date + 7 ${estAssocie ? "" : "AND c.destinataire_id = $1::uuid"}
+          ORDER BY c.audience_indiquee ASC LIMIT 200`, estAssocie ? [] : [req.user.sub]);
         return res.json(rows);
       }
       // 17/10/2026 — courriers reçus sans dossier, à orienter par l'avocat destinataire.

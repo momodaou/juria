@@ -173,7 +173,7 @@ router.get("/", requirePermission("courriers.consulter"), async (req, res) => {
               c.gabarit_code, c.etat_redaction, c.signataire_id,
               c.numero_reserve, c.annule_le, c.annule_motif, c.cree_le, c.cree_par,
               c.fichier_brut_nom, c.imputation_id, c.transmis_par, c.transmis_le, c.vise_par, c.vise_le,
-              c.expedie_par, c.expedie_le, c.destinataire_id, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
+              c.expedie_par, c.expedie_le, c.destinataire_id, c.acte_audience, c.audience_indiquee, c.orientation, c.orientation_motif, c.instructions_imputation, c.recu_par,
               dest.prenom || ' ' || dest.nom AS destinataire_nom,
               d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS impute_a,
               t.prenom || ' ' || t.nom AS transmis_par_nom, v.prenom || ' ' || v.nom AS vise_par_nom
@@ -338,6 +338,73 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
     }
     await client.query("COMMIT");
     res.status(201).json({ ...courrier, declenchement, rappel });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/courriers/acte-audience  (multipart/form-data, champ "fichier") — 06/11/2026, parcours « Acte reçu avec audience », lot 1.
+// Étape 1 : l'acte reçu du client (souvent une assignation transmise par e-mail) est déposé en une seule opération :
+// courrier arrivée sans dossier + pièce (dépôt temporaire) + avocat désigné + tâche « Orienter » (urgente si l'audience
+// indiquée est à 7 jours ou moins). Aucun dossier ni audience n'est créé ici (lots suivants : ce sont les associés,
+// ou qui en reçoit la permission, qui ouvrent le dossier et programment l'audience).
+router.post("/acte-audience", requirePermission("courriers.acte_audience.deposer"), upload.single("fichier"), async (req, res) => {
+  const b = req.body || {};
+  if (!req.file) return res.status(400).json({ error: "Déposez le fichier de l'acte." });
+  const correspondant = String(b.correspondant || "").trim().slice(0, 240);
+  if (!correspondant) return res.status(400).json({ error: "Indiquez le client qui a transmis l'acte." });
+  if (!b.destinataire_id) return res.status(400).json({ error: "Désignez l'avocat qui traite l'acte." });
+  const dateOk = (v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(String(v));
+  if (![b.date_courrier, b.date_signification, b.audience_indiquee].every(dateOk)) return res.status(400).json({ error: "Date invalide." });
+  const d = await pool.query("SELECT role, actif FROM utilisateurs WHERE id = $1", [b.destinataire_id]);
+  if (!d.rows[0] || !d.rows[0].actif || !ROLES_AVOCAT.includes(d.rows[0].role)) {
+    return res.status(400).json({ error: "L'avocat désigné doit être un avocat actif." });
+  }
+  const nature = String(b.nature || "Assignation").trim().slice(0, 80);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const dateCourrier = b.date_courrier || new Date().toISOString().slice(0, 10);
+    const reference = await genererReference(client, "arrivee", dateCourrier);
+    const objet = `${nature}${b.audience_indiquee ? " — audience du " + b.audience_indiquee : ""}`.slice(0, 300);
+    const ins = await client.query(
+      `INSERT INTO courriers
+         (reference, sens, type, type_precision, date_courrier, correspondant, objet, support, statut,
+          recu_par, cree_par, destinataire_id, orientation, transmis_par, transmis_le,
+          acte_audience, date_signification, audience_indiquee, audience_juridiction)
+       VALUES ($1,'arrivee','acte_huissier',$2,$3,$4,$5,'numerique','recu',
+               $6,$6,$7::uuid,'a_orienter',$6,now(),
+               TRUE,$8::date,$9::date,$10)
+       RETURNING *`,
+      [reference, nature, dateCourrier, correspondant, objet, req.user.sub, b.destinataire_id,
+       b.date_signification || null, b.audience_indiquee || null, String(b.audience_juridiction || "").trim().slice(0, 160) || null]
+    );
+    const courrier = ins.rows[0];
+    const nom = req.file.originalname;
+    const chemin = await saveObject(req.file.buffer, `courriers/${courrier.id}/${Date.now()}_${nom}`.replace(/\s+/g, "_"), req.file.mimetype);
+    await client.query(
+      `UPDATE courriers SET fichier_brut_chemin = $1, fichier_brut_nom = $2, fichier_brut_type_mime = $3, fichier_brut_taille = $4 WHERE id = $5`,
+      [chemin, nom, req.file.mimetype, req.file.size, courrier.id]);
+    let joursRestants = null;
+    if (courrier.audience_indiquee) {
+      const j = await client.query("SELECT ($1::date - current_date) AS j", [courrier.audience_indiquee]);
+      joursRestants = Number(j.rows[0].j);
+    }
+    const urgent = joursRestants !== null && joursRestants <= 7;
+    const t = await client.query(
+      `INSERT INTO taches (dossier_id, titre, description, responsable_id, echeance, priorite, cree_par, courrier_id, courrier_etape)
+       VALUES (NULL,$1,$2,$3,(current_date + $4::int),$5::priorite_tache,$6,$7,'orienter') RETURNING id, titre, echeance`,
+      [`${urgent ? "URGENT — " : ""}Acte reçu à traiter ${courrier.reference} — ${nature} (${correspondant})`,
+       `Acte reçu du client${courrier.audience_indiquee ? ", audience indiquée le " + courrier.audience_indiquee : ""} : rattacher à un dossier (ou ouvrir le dossier) et programmer l'audience au rôle.`,
+       courrier.destinataire_id, urgent ? 0 : 2, urgent ? "haute" : "normale", req.user.sub, courrier.id]);
+    await client.query("COMMIT");
+    await logAudit({ utilisateurId: req.user.sub, action: "deposer_acte_audience", entite: "courriers", entiteId: courrier.id,
+      details: { reference: courrier.reference, nature, client: correspondant, audience_indiquee: courrier.audience_indiquee, destinataire_id: courrier.destinataire_id }, ip: req.ip });
+    res.status(201).json({ ...courrier, jours_restants: joursRestants, urgent, tache: t.rows[0] });
   } catch (e) {
     await client.query("ROLLBACK");
     console.error(e);

@@ -55,6 +55,7 @@ const PERMISSION_TUILE: Record<string, string | null> = {
   doublons: 'parametres.cabinet.modifier',
   // Courriers reçus sans dossier, à orienter (17/10/2026) — associés : tout ; destinataire : les siens.
   courriers_a_orienter: null,
+  actes_audience: null,
   // Dépenses engagées à valider après coup (17/10/2026) — réservé à qui peut valider.
   depenses_apres_coup: 'depenses.decision',
   heures: 'cabinet.consulter', probono: null, conges: 'cabinet.consulter',
@@ -198,6 +199,21 @@ const CONFIG: Record<string, TuileConfig> = {
     sorts: [
       { label: 'Jours d\'attente (le plus ancien)', key: 'jours_attente', dir: 'desc' },
       { label: 'Date (la plus récente)', key: 'date_audience', dir: 'desc' },
+    ],
+  },
+  // Actes reçus avec audience dans moins de 7 jours (06/11/2026).
+  actes_audience: {
+    titre: 'Actes avec audience dans moins de 7 jours',
+    cols: [
+      { key: 'audience_indiquee', label: 'Audience le', format: 'date' },
+      { key: 'jours_restants', label: 'Jours restants', format: 'num' },
+      { key: 'reference', label: 'Référence' },
+      { key: 'correspondant', label: 'Client' },
+      { key: 'nature', label: 'Acte' },
+      { key: 'destinataire', label: 'Avocat désigné' },
+    ],
+    sorts: [
+      { label: 'Audience la plus proche', key: 'jours_restants', dir: 'asc' },
     ],
   },
   // Courriers reçus sans dossier, à orienter (17/10/2026).
@@ -584,6 +600,23 @@ const CONFIG: Record<string, TuileConfig> = {
             </div>
             <span class="hint voir"><a routerLink="/courrier/rediger">Rédiger un courrier</a> · <a routerLink="/courrier">Registre</a></span>
           </div>
+        }
+        @if (d.actes_audience_n !== null && d.actes_audience_n !== undefined) {
+          <button type="button" class="kpi tier-critique apercu" [class.active]="ouvert() === 'actes_audience'" (click)="clic('actes_audience')">
+            <span class="tico" [innerHTML]="icons['audiences']"></span>
+            <span class="n">{{ d.actes_audience_n }}</span><span class="l">Actes avec audience &lt; 7 jours</span>
+            @if (d.actes_audience_apercu.length) {
+              <div class="mini-liste">
+                @for (l of d.actes_audience_apercu; track l.id) {
+                  <div class="mini-ligne">
+                    <a class="principal" routerLink="/courrier" [queryParams]="{ orientation: 'a_orienter' }" (click)="$event.stopPropagation()">{{ l.reference }} — {{ l.correspondant }}</a>
+                    <span class="secondaire">{{ l.audience_indiquee | date:'dd/MM' }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.actes_audience_n }}</span>
+          </button>
         }
         @if (d.courriers_a_orienter_n !== null) {
           <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'courriers_a_orienter'" (click)="clic('courriers_a_orienter')">

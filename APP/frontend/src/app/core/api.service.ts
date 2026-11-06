@@ -96,6 +96,8 @@ export interface DashboardData {
   chemises_stock_bas: { couleur: string; quantite: number; seuil: number }[] | null;
   // Courriers départ (lot 6, 05/11/2026) — personnel ; null si l'utilisateur ne peut ni rédiger ni signer de courrier.
   courriers_depart: RappelsCourrier | null;
+  actes_audience_n: number | null;
+  actes_audience_apercu: { id: string; reference: string; correspondant: string; audience_indiquee: string; jours_restants: number }[];
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
   depenses_apres_coup_n: number | null;
@@ -824,6 +826,10 @@ export class ApiService {
   }
   courrier(id: string): Observable<any> {
     return this.http.get<any>(`${this.base}/api/courriers/${id}`);
+  }
+  // Parcours « Acte reçu avec audience », étape 1 (06/11/2026) : dépôt de l'acte + avocat désigné, en une seule requête.
+  deposerActeAudience(fd: FormData): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/courriers/acte-audience`, fd);
   }
   creerCourrier(payload: any): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers`, payload);

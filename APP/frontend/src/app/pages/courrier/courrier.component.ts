@@ -19,9 +19,14 @@ import { LibellePipe } from '../../core/libelles';
         <h1>Registre du courrier</h1>
         <p>Arrivée / départ, référencement automatique, déclenchement d'événements.</p>
       </div>
-      @if (auth.peut('courriers.creer')) {
-        <a class="btn btn-entete" routerLink="/courrier/rediger">Rédiger un courrier</a>
-      }
+      <div class="entete-actions">
+        @if (auth.peut('courriers.acte_audience.deposer')) {
+          <a class="btn btn-entete" routerLink="/courrier/acte-audience">Acte reçu avec audience</a>
+        }
+        @if (auth.peut('courriers.creer')) {
+          <a class="btn btn-entete" routerLink="/courrier/rediger">Rédiger un courrier</a>
+        }
+      </div>
     </header>
 
     @if (filtreDossierNumero()) {
@@ -394,6 +399,7 @@ import { LibellePipe } from '../../core/libelles';
     .col2{grid-column:1 / -1}
     .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .btn:disabled{opacity:.6}
+    .entete-actions{display:flex;gap:8px;flex-wrap:wrap}
     .btn-entete{display:inline-block;padding:6px 14px;font-size:var(--fs-sm);line-height:1.4;text-decoration:none;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .filtres{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}

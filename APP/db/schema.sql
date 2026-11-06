@@ -5723,3 +5723,23 @@ CREATE INDEX IF NOT EXISTS idx_courrier_versions_courrier ON courrier_versions(c
 
 -- GÉNÉRATEUR DE COURRIERS — LOT 5 (05/11/2026) : signature (cachet + signature apposés sur le PDF, PDF figé)
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS pdf_signe_chemin VARCHAR(300);   -- PDF signé, privé ; la pièce est aussi rattachée à la GED du dossier ou au courrier
+
+
+-- ============================================================
+-- PARCOURS « ACTE REÇU AVEC AUDIENCE » — LOT 1 (06/11/2026)
+-- Dépôt d'un acte reçu du client (assignation transmise par e-mail) : courrier arrivée sans dossier + pièce + avocat désigné.
+-- Les lots suivants ouvrent le dossier et programment l'audience (permission distincte, associés par défaut).
+-- ============================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS acte_audience BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS date_signification DATE;        -- date de signification de l'acte au client (point de départ des délais)
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_indiquee DATE;         -- date d'audience lue sur l'acte (indication, pas encore au rôle)
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_juridiction VARCHAR(160);
+CREATE INDEX IF NOT EXISTS idx_courriers_acte_audience ON courriers(audience_indiquee) WHERE acte_audience;
+
+-- Qui peut déposer l'acte (étape 1) : associés, avocats, juriste, assistante. Of Counsel, stagiaire, archiviste et les autres : non (réglable dans la Matrice).
+INSERT INTO permissions_role (role, action_code, autorise)
+SELECT r, 'courriers.acte_audience.deposer',
+       r IN ('associe','associe_fondateur','collaborateur','avocat_stagiaire','juriste','assistante')
+FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
+                  'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
+ON CONFLICT (role, action_code) DO NOTHING;
