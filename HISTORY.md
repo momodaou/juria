@@ -4627,4 +4627,4 @@ Autres idées possibles : récapitulatif hebdomadaire des dépenses à valider ;
 - Limite par fichier portée de 25 à 30 Mo (documents, courriers, audiences, charges, biblio, dépenses) ; pièces KYC inchangées (15 Mo).
 - `server.js` : `LIMIT_FILE_SIZE` renvoie un 413 avec un message français clair (au lieu de « File too large »).
 - GED d'un dossier : l'erreur de dépôt s'affiche juste sous la zone de téléversement (signal `erreurDepot`), plus en haut de page.
-- Pas encore déployé (en attente d'accord).
+- Déployé : API juria-00220-hgk, web juria-web-00292-cgv ; /health 200, / 200 ; la seule erreur Cloud Run récente (21:35) précède le déploiement.
