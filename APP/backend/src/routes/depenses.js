@@ -10,7 +10,7 @@ const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit } = require("../audit");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
 // Nature d'une dépense (16/10/2026) : « dossier » (charge liée à une

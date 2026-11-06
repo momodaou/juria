@@ -16,7 +16,7 @@ const { logAudit, diffChamps } = require("../audit");
 const { preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const { genererEtatChargesPdf } = require("../etatChargesPdf");
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
 const SEUIL_ALERTE_RETARD = 2; // mois de report à partir desquels la ligne est signalée

@@ -7,7 +7,7 @@ const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteCon
 const { filtreTypeFichier } = require("../uploadFilter");
 const { requirePermission } = require("../permissions");
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
 // GET /api/biblio?type=&matiere=&q=

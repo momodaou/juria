@@ -87,6 +87,9 @@ app.use((req, res) => res.status(404).json({ error: "Ressource introuvable" }));
 // d'un fichier par uploadFilter) : réponse JSON propre plutôt que la page
 // HTML d'erreur par défaut d'Express.
 app.use((err, req, res, next) => {
+  if (err && err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "Fichier trop volumineux : 30 Mo au maximum par fichier (15 Mo pour les pièces KYC). Réduisez-le (compression du PDF ou des images) ou scindez-le." });
+  }
   console.error(err);
   res.status(400).json({ error: err.message || "Requête invalide" });
 });

@@ -1098,6 +1098,7 @@ import { LibellePipe } from '../../core/libelles';
               {{ envoi() ? 'Envoi…' : 'Téléverser' }}
             </button>
           </div>
+          @if (erreurDepot()) { <p class="err" style="margin:6px 0 12px">{{ erreurDepot() }}</p> }
         }
 
         @if (documents().length) {
@@ -1393,6 +1394,7 @@ export class DossierDetailComponent implements OnInit {
 
   readonly fichier = signal<File | null>(null);
   readonly envoi = signal(false);
+  readonly erreurDepot = signal('');
   categorie = 'piece_client';
   // Confidentialité du document GED (28/09/2026) — voir confidentialiteDocuments.js.
   confidentialiteDoc = 'dossier';
@@ -2597,10 +2599,10 @@ export class DossierDetailComponent implements OnInit {
     const f = this.fichier();
     if (!f) return;
     this.envoi.set(true);
-    this.erreur.set('');
+    this.erreurDepot.set('');
     this.api.televerserDocument(this.id, f, { categorie: this.categorie, confidentialite: this.confidentialiteDoc, nom: this.nomDocument ? this.nomDocument + this.extensionDe(f.name) : undefined }).subscribe({
       next: () => { this.envoi.set(false); this.fichier.set(null); this.nomDocument = ''; this.rafraichirDocuments(); },
-      error: (e) => { this.envoi.set(false); this.erreur.set(e?.error?.error ?? 'Téléversement impossible'); },
+      error: (e) => { this.envoi.set(false); this.erreurDepot.set(e?.status === 413 ? (e?.error?.error ?? 'Fichier trop volumineux (30 Mo au maximum).') : (e?.error?.error ?? 'Téléversement impossible')); },
     });
   }
 

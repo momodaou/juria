@@ -39,7 +39,7 @@ function filtreVisibilite(user, params) {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 Mo, même limite que documents.js
+  limits: { fileSize: 30 * 1024 * 1024 }, // 30 Mo
   fileFilter: filtreTypeFichier,
 });
 
