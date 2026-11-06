@@ -679,6 +679,9 @@ export class CourrierComponent implements OnInit {
     if (c.acte_audience && !c.audience_programmee_le && c.orientation !== 'sans_suite' && this.auth.peut('courriers.acte_audience.programmer')) {
       actions.push({ label: "Programmer l'audience", action: () => { this.router.navigate(['/courrier/acte-audience', c.id]); } });
     }
+    if (c.acte_audience && !c.annule_le && this.auth.peut('courriers.acte_audience.deposer')) {
+      actions.push({ label: "Corriger l'acte", action: () => { this.router.navigate(['/courrier/acte-audience', c.id, 'corriger']); } });
+    }
     // Lettre rédigée dans JURIA (lot 4) : ouvrir l'écran de rédaction (versions, aperçu, états).
     if (c.etat_redaction) {
       actions.push({ label: 'Ouvrir la lettre', action: () => { this.router.navigate(['/courrier/rediger', c.id]); } });

@@ -206,6 +206,7 @@ const CONFIG: Record<string, TuileConfig> = {
     titre: 'Actes avec audience dans moins de 7 jours',
     cols: [
       { key: 'audience_indiquee', label: 'Audience le', format: 'date' },
+      { key: 'audience_heure', label: 'Heure' },
       { key: 'jours_restants', label: 'Jours restants', format: 'num' },
       { key: 'reference', label: 'Référence' },
       { key: 'correspondant', label: 'Client' },
@@ -610,12 +611,13 @@ const CONFIG: Record<string, TuileConfig> = {
                 @for (l of d.actes_audience_apercu; track l.id) {
                   <div class="mini-ligne">
                     <a class="principal" routerLink="/courrier" [queryParams]="{ orientation: 'a_orienter' }" (click)="$event.stopPropagation()">{{ l.reference }} — {{ l.correspondant }}</a>
-                    <span class="secondaire">{{ l.audience_indiquee | date:'dd/MM' }}</span>
+                    <span class="secondaire">{{ l.audience_indiquee | date:'dd/MM' }}{{ l.audience_heure ? ' ' + l.audience_heure : '' }}</span>
                   </div>
                 }
               </div>
             }
-            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les {{ d.actes_audience_n }}</span>
+            @if (d.actes_sans_date_n > 0) { <span class="secondaire">+ {{ d.actes_sans_date_n }} sans date d'audience</span> }
+            <span class="hint voir"><span [innerHTML]="icons['chevron']"></span>Voir les actes</span>
           </button>
         }
         @if (d.courriers_a_orienter_n !== null) {

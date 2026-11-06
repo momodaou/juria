@@ -50,7 +50,8 @@ import { ApiService } from '../../core/api.service';
           </div>
           <div>
             <label>Client qui a transmis l'acte <span class="req">*</span></label>
-            <input class="in" [(ngModel)]="form.correspondant" name="client" list="clientsBanques" placeholder="Ex. BDM SA" />
+            <input class="in" [(ngModel)]="form.correspondant" name="client" list="clientsBanques" placeholder="Ex. BDM SA" (change)="chargerHabitudes()" />
+            @if (habitudes()) { <span class="muted-sm">{{ habitudes() }}</span> }
             <datalist id="clientsBanques">
               @for (c of clientsConnus(); track c) { <option [value]="c"></option> }
             </datalist>
@@ -76,6 +77,10 @@ import { ApiService } from '../../core/api.service';
             <span class="muted-sm">Si elle est à 7 jours ou moins, l'acte est signalé en rouge.</span>
           </div>
           <div>
+            <label>Heure de l'audience (si indiquée)</label>
+            <input class="in" type="time" [(ngModel)]="form.audience_heure" name="heure" />
+          </div>
+          <div>
             <label>Juridiction (si indiquée)</label>
             <input class="in" [(ngModel)]="form.audience_juridiction" name="juridiction" placeholder="Ex. Tribunal de commerce de Bamako" />
           </div>
@@ -88,6 +93,15 @@ import { ApiService } from '../../core/api.service';
           </div>
         </div>
         @if (alerteDelai()) { <p class="alerte">{{ alerteDelai() }}</p> }
+        @if (doublons().length) {
+          <div class="alerte">
+            <b>Un acte semblable est déjà enregistré pour ce client :</b>
+            <ul>
+              @for (d of doublons(); track d.id) { <li>{{ d.reference }} — {{ d.nature || 'Acte' }}{{ d.audience_indiquee ? ', audience le ' + d.audience_indiquee.slice(0, 10) : '' }}</li> }
+            </ul>
+            <button class="btn ghost" (click)="deposer(true)" [disabled]="enCours()">C'est un autre acte : déposer quand même</button>
+          </div>
+        }
         <p class="muted-sm">À cette étape, rien d'autre n'est créé : ni dossier, ni audience au rôle. L'avocat désigné reçoit une tâche, et les associés voient la tuile du Tableau de bord si l'audience est proche.</p>
         <p style="margin-top:14px"><button class="btn" (click)="deposer()" [disabled]="enCours() || !pret()">Déposer l'acte</button></p>
       </section>
@@ -117,6 +131,8 @@ export class ActeAudienceComponent implements OnInit {
   readonly enCours = signal(false);
   readonly erreur = signal('');
   readonly resultat = signal<any | null>(null);
+  readonly doublons = signal<any[]>([]);
+  readonly habitudes = signal('');
   // Les champs saisis au clavier alimentent des signaux dérivés (pas de zone.js) : form reste un simple objet de saisie.
   form: any = this.vierge();
 
@@ -129,11 +145,28 @@ export class ActeAudienceComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.utilisateurs().subscribe({ next: (u) => this.membres.set(u), error: () => {} });
+    this.api.habitudesActe().subscribe({ next: (h) => { if (h.clients?.length) this.clientsConnus.set([...new Set([...h.clients, 'BDM SA', 'ORABANK Mali'])]); }, error: () => {} });
+  }
+
+  // Mémorisation par client (sans IA) : propose la juridiction, l'avocat et la nature les plus fréquents, sans écraser une saisie.
+  chargerHabitudes(): void {
+    const client = String(this.form.correspondant || '').trim();
+    if (!client) { this.habitudes.set(''); return; }
+    this.api.habitudesActe(client).subscribe({
+      next: (h) => {
+        const infos: string[] = [];
+        if (h.juridiction && !this.form.audience_juridiction) { this.form.audience_juridiction = h.juridiction; infos.push('juridiction ' + h.juridiction); }
+        if (h.destinataire_id && !this.form.destinataire_id) { this.form.destinataire_id = h.destinataire_id; infos.push('avocat habituel'); }
+        if (h.nature && this.form.nature === 'Assignation' && this.natures.includes(h.nature)) this.form.nature = h.nature;
+        this.habitudes.set(infos.length ? 'Habitudes de ce client reprises : ' + infos.join(', ') + '.' : '');
+      },
+      error: () => {},
+    });
   }
 
   private vierge(): any {
     const auj = new Date().toISOString().slice(0, 10);
-    return { correspondant: '', nature: 'Assignation', date_signification: '', date_courrier: auj, audience_indiquee: '', audience_juridiction: '', destinataire_id: '' };
+    return { correspondant: '', nature: 'Assignation', date_signification: '', date_courrier: auj, audience_indiquee: '', audience_heure: '', audience_juridiction: '', destinataire_id: '' };
   }
 
   pret(): boolean {
@@ -154,19 +187,25 @@ export class ActeAudienceComponent implements OnInit {
     this.fichier.set(f);
   }
 
-  deposer(): void {
+  deposer(confirmer = false): void {
     const f = this.fichier();
     if (!f || this.enCours() || !this.pret()) return;
     this.erreur.set('');
+    if (!confirmer) this.doublons.set([]);
     this.enCours.set(true);
     const fd = new FormData();
     fd.append('fichier', f);
-    for (const k of ['correspondant', 'nature', 'date_signification', 'date_courrier', 'audience_indiquee', 'audience_juridiction', 'destinataire_id']) {
+    for (const k of ['correspondant', 'nature', 'date_signification', 'date_courrier', 'audience_indiquee', 'audience_heure', 'audience_juridiction', 'destinataire_id']) {
       if (this.form[k]) fd.append(k, this.form[k]);
     }
+    if (confirmer) fd.append('confirmer_doublon', 'true');
     this.api.deposerActeAudience(fd).subscribe({
-      next: (r) => { this.enCours.set(false); this.resultat.set(r); },
-      error: (e) => { this.enCours.set(false); this.erreur.set(e?.error?.error ?? 'Dépôt impossible.'); },
+      next: (r) => { this.enCours.set(false); this.doublons.set([]); this.resultat.set(r); },
+      error: (e) => {
+        this.enCours.set(false);
+        if (e?.status === 409 && e?.error?.doublons) { this.doublons.set(e.error.doublons); return; }
+        this.erreur.set(e?.error?.error ?? 'Dépôt impossible.');
+      },
     });
   }
 
@@ -174,6 +213,8 @@ export class ActeAudienceComponent implements OnInit {
     this.form = this.vierge();
     this.fichier.set(null);
     this.resultat.set(null);
+    this.doublons.set([]);
+    this.habitudes.set('');
     this.erreur.set('');
   }
 }

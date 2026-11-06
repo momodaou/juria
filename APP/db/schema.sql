@@ -5759,3 +5759,11 @@ SELECT r, 'courriers.acte_audience.programmer', r IN ('associe','associe_fondate
 FROM unnest(ARRAY['associe','associe_fondateur','of_counsel','collaborateur','avocat_stagiaire','stagiaire','juriste',
                   'admin_general','assistante','comptable','assistant_comptable','admin_it','archiviste']::role_utilisateur[]) AS r
 ON CONFLICT (role, action_code) DO NOTHING;
+
+
+-- ============================================================
+-- PARCOURS « ACTE REÇU AVEC AUDIENCE » — LOT 3 (06/11/2026)
+-- Heure d'audience indiquée au dépôt ; correction, remplacement du fichier et annulation d'un acte déposé (colonnes
+-- annule_* existantes) ; avertissement de doublon ; mémorisation par client (lecture seule) ; tâche confiée à la programmation.
+-- ============================================================
+ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_heure VARCHAR(5);   -- HH:MM lue sur l'acte

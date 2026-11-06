@@ -97,7 +97,8 @@ export interface DashboardData {
   // Courriers départ (lot 6, 05/11/2026) — personnel ; null si l'utilisateur ne peut ni rédiger ni signer de courrier.
   courriers_depart: RappelsCourrier | null;
   actes_audience_n: number | null;
-  actes_audience_apercu: { id: string; reference: string; correspondant: string; audience_indiquee: string; jours_restants: number }[];
+  actes_sans_date_n: number;
+  actes_audience_apercu: { id: string; reference: string; correspondant: string; audience_indiquee: string; audience_heure: string | null; jours_restants: number }[];
   courriers_a_orienter_n: number | null;
   courriers_a_orienter_apercu: { id: string; reference: string; type: string; correspondant: string; date_courrier: string; destinataire: string }[];
   depenses_apres_coup_n: number | null;
@@ -831,6 +832,11 @@ export class ApiService {
   deposerActeAudience(fd: FormData): Observable<any> {
     return this.http.post<any>(`${this.base}/api/courriers/acte-audience`, fd);
   }
+  habitudesActe(client?: string): Observable<any> { return this.http.get<any>(`${this.base}/api/courriers/acte-audience/habitudes`, { params: client ? { client } : {} }); }
+  corrigerActe(id: string, payload: any): Observable<any> { return this.http.put<any>(`${this.base}/api/courriers/${id}/acte-audience`, payload); }
+  remplacerFichierActe(id: string, fichier: File): Observable<any> { const fd = new FormData(); fd.append('fichier', fichier); return this.http.post<any>(`${this.base}/api/courriers/${id}/acte-fichier`, fd); }
+  retirerFichierActe(id: string): Observable<any> { return this.http.delete<any>(`${this.base}/api/courriers/${id}/acte-fichier`); }
+  annulerActe(id: string, motif: string): Observable<any> { return this.http.post<any>(`${this.base}/api/courriers/${id}/annuler-acte`, { motif }); }
   dossiersSugeresActe(id: string): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/courriers/${id}/dossiers-suggeres`); }
   programmerAudienceActe(id: string, payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/courriers/${id}/programmer-audience`, payload); }
   creerCourrier(payload: any): Observable<any> {

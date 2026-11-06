@@ -280,23 +280,26 @@ router.get("/", async (req, res) => {
     }
     // Actes reçus avec audience dans moins de 7 jours, pas encore traités (06/11/2026, parcours « Acte reçu avec audience »).
     // Associés : tous ; avocat désigné : les siens (la tuile n'apparaît que s'il y en a). Isolée : une erreur ne casse jamais le tableau de bord.
-    let actesAudienceN = null, actesAudienceApercu = [];
+    let actesAudienceN = null, actesAudienceApercu = [], actesSansDateN = 0;
     try {
       const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
       const filtre = estAssocie ? "" : "AND c.destinataire_id = $1::uuid";
       const args = estAssocie ? [] : [req.user.sub];
-      const cond = `c.acte_audience AND c.audience_programmee_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NOT NULL AND c.audience_indiquee <= current_date + 7 ${filtre}`;
+      const cond = `c.acte_audience AND c.audience_programmee_le IS NULL AND c.annule_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NOT NULL AND c.audience_indiquee <= current_date + 7 ${filtre}`;
+      const condSans = `c.acte_audience AND c.audience_programmee_le IS NULL AND c.annule_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NULL ${filtre}`;
+      const sn = await pool.query(`SELECT count(*) AS n FROM courriers c WHERE ${condSans}`, args);
+      actesSansDateN = Number(sn.rows[0].n);
       const an = await pool.query(`SELECT count(*) AS n FROM courriers c WHERE ${cond}`, args);
-      if (estAssocie || Number(an.rows[0].n) > 0) {
+      if (estAssocie || Number(an.rows[0].n) > 0 || actesSansDateN > 0) {
         actesAudienceN = Number(an.rows[0].n);
         const aa = await pool.query(
-          `SELECT c.id, c.reference, c.correspondant, c.audience_indiquee, (c.audience_indiquee - current_date) AS jours_restants
+          `SELECT c.id, c.reference, c.correspondant, c.audience_indiquee, c.audience_heure, (c.audience_indiquee - current_date) AS jours_restants
            FROM courriers c WHERE ${cond} ORDER BY c.audience_indiquee ASC LIMIT 2`, args);
         actesAudienceApercu = aa.rows;
       }
     } catch (e) {
       console.error("Tuile Actes avec audience indisponible :", e.message);
-      actesAudienceN = null; actesAudienceApercu = [];
+      actesAudienceN = null; actesAudienceApercu = []; actesSansDateN = 0;
     }
     // Stock de chemises bas (20/10/2026) : couleurs au niveau du seuil ou en dessous,
     // seulement si le stock est initialisé et que le profil peut le consulter.
@@ -699,6 +702,7 @@ router.get("/", async (req, res) => {
       courriers_depart: courriersDepart,
       actes_audience_n: actesAudienceN,
       actes_audience_apercu: actesAudienceApercu,
+      actes_sans_date_n: actesSansDateN,
       courriers_a_orienter_n: courriersOrienterN,
       courriers_a_orienter_apercu: courriersOrienterApercu,
       depenses_apres_coup_n: apresCoupN,
@@ -1101,12 +1105,12 @@ router.get("/detail/:type", async (req, res) => {
       case "actes_audience": {
         const estAssocie = ["associe", "associe_fondateur"].includes(req.user.role);
         const { rows } = await pool.query(`
-          SELECT c.id, c.reference, c.correspondant, c.type_precision AS nature, c.date_signification, c.audience_indiquee,
+          SELECT c.id, c.reference, c.correspondant, c.type_precision AS nature, c.date_signification, c.audience_indiquee, c.audience_heure,
                  (c.audience_indiquee - current_date) AS jours_restants, dest.prenom || ' ' || dest.nom AS destinataire
           FROM courriers c LEFT JOIN utilisateurs dest ON dest.id = c.destinataire_id
-          WHERE c.acte_audience AND c.audience_programmee_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite' AND c.audience_indiquee IS NOT NULL
-            AND c.audience_indiquee <= current_date + 7 ${estAssocie ? "" : "AND c.destinataire_id = $1::uuid"}
-          ORDER BY c.audience_indiquee ASC LIMIT 200`, estAssocie ? [] : [req.user.sub]);
+          WHERE c.acte_audience AND c.audience_programmee_le IS NULL AND c.annule_le IS NULL AND c.orientation IS DISTINCT FROM 'sans_suite'
+            AND (c.audience_indiquee IS NULL OR c.audience_indiquee <= current_date + 7) ${estAssocie ? "" : "AND c.destinataire_id = $1::uuid"}
+          ORDER BY c.audience_indiquee ASC NULLS LAST LIMIT 200`, estAssocie ? [] : [req.user.sub]);
         return res.json(rows);
       }
       // 17/10/2026 — courriers reçus sans dossier, à orienter par l'avocat destinataire.

@@ -116,3 +116,52 @@ describe("Lot 2 : programmer l'audience depuis l'acte", () => {
     expect(s.status).toBe(200); expect(s.body.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("Lot 3 : heure, correction, fichier, annulation, doublon, habitudes, travail confié", () => {
+  const acte = async (extra = {}) => (await deposer(assistante, { correspondant: "CLIENT L3 " + Math.random().toString(36).slice(2, 6), destinataire_id: collabId, audience_indiquee: dans(5), audience_heure: "08:30", ...extra })).body;
+
+  test("l'heure est enregistrée ; un acte semblable est signalé puis accepté si confirmé", async () => {
+    const cl = "DOUBLON " + Math.random().toString(36).slice(2, 6);
+    const a = await deposer(assistante, { correspondant: cl, destinataire_id: collabId, audience_indiquee: dans(9), audience_heure: "14:00" });
+    expect(a.status).toBe(201); expect(a.body.audience_heure).toBe("14:00");
+    const b = await deposer(assistante, { correspondant: cl, destinataire_id: collabId, audience_indiquee: dans(9) });
+    expect(b.status).toBe(409); expect(b.body.doublons.length).toBe(1);
+    expect((await deposer(assistante, { correspondant: cl, destinataire_id: collabId, audience_indiquee: dans(9), confirmer_doublon: "true" })).status).toBe(201);
+  });
+
+  test("correction : le déposant corrige la date et l'avocat ; refus pour un tiers ; refus si audience programmée", async () => {
+    const a = await acte();
+    const r = await request(app).put(`/api/courriers/${a.id}/acte-audience`).set(auth(assistante)).send({ audience_indiquee: dans(2), audience_heure: "09:00", audience_juridiction: "TC Bamako" });
+    expect(r.status).toBe(200); expect(r.body.audience_heure).toBe("09:00");
+    expect((await request(app).put(`/api/courriers/${a.id}/acte-audience`).set(auth(collab2)).send({ audience_juridiction: "X" })).status).toBe(403);
+    const cl = await pool.query("INSERT INTO clients (type, denomination, reference) VALUES ('morale','L3 ' || substr(md5(random()::text),1,5), 'C' || substr(md5(random()::text),1,8)) RETURNING id");
+    const d = await pool.query(`INSERT INTO dossiers (numero, intitule, client_id, pole, responsable_id) SELECT $1, 'Dossier L3', $2, (SELECT unnest(enum_range(NULL::pole_cabinet)) LIMIT 1), id FROM utilisateurs LIMIT 1 RETURNING id`, ["T-" + Math.random().toString(36).slice(2, 8).toUpperCase(), cl.rows[0].id]);
+    const p = await request(app).post(`/api/courriers/${a.id}/programmer-audience`).set(auth(associe)).send({
+      dossier_id: d.rows[0].id, date_prevue: dans(2), confier: { utilisateur_id: collabId, instructions: "Préparer la constitution" } });
+    expect(p.status).toBe(201); expect(p.body.tache_confiee.titre).toMatch(/Travail confié/);
+    expect((await request(app).put(`/api/courriers/${a.id}/acte-audience`).set(auth(associe)).send({ audience_indiquee: dans(3) })).status).toBe(409);
+    expect((await request(app).post(`/api/courriers/${a.id}/annuler-acte`).set(auth(associe)).send({ motif: "test" })).status).toBe(409);
+  });
+
+  test("fichier remplacé puis retiré ; annulation avec motif sort l'acte de la tuile", async () => {
+    const a = await acte();
+    const rem = await request(app).post(`/api/courriers/${a.id}/acte-fichier`).set(auth(assistante)).attach("fichier", Buffer.from("%PDF-1.4 v2"), { filename: "v2.pdf", contentType: "application/pdf" });
+    expect(rem.status).toBe(200); expect(rem.body.fichier_brut_nom).toBe("v2.pdf");
+    expect((await request(app).delete(`/api/courriers/${a.id}/acte-fichier`).set(auth(assistante))).status).toBe(204);
+    expect((await request(app).post(`/api/courriers/${a.id}/annuler-acte`).set(auth(assistante)).send({})).status).toBe(400);
+    expect((await request(app).post(`/api/courriers/${a.id}/annuler-acte`).set(auth(assistante)).send({ motif: "Déposé par erreur" })).status).toBe(200);
+    const detail = await request(app).get("/api/dashboard/detail/actes_audience").set(auth(associe));
+    expect(detail.body.some((l) => l.id === a.id)).toBe(false);
+  });
+
+  test("sans date d'audience : compté à part ; habitudes par client ; liste des clients", async () => {
+    const cl = "HABITUDE " + Math.random().toString(36).slice(2, 6);
+    await deposer(assistante, { correspondant: cl, destinataire_id: collabId, audience_juridiction: "Tribunal de commerce de Bamako", nature: "Sommation" });
+    const dash = await request(app).get("/api/dashboard").set(auth(associe));
+    expect(dash.body.actes_sans_date_n).toBeGreaterThanOrEqual(1);
+    const h = await request(app).get("/api/courriers/acte-audience/habitudes").query({ client: cl }).set(auth(assistante));
+    expect(h.status).toBe(200); expect(h.body.juridiction).toBe("Tribunal de commerce de Bamako"); expect(h.body.destinataire_id).toBe(collabId);
+    const l = await request(app).get("/api/courriers/acte-audience/habitudes").set(auth(assistante));
+    expect(l.body.clients).toContain(cl);
+  });
+});

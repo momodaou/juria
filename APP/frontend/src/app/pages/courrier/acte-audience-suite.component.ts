@@ -91,6 +91,22 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
               </div>
               <div class="col2"><label>Instructions (facultatif)</label><textarea class="in" rows="2" [(ngModel)]="f.instructions" name="instr"></textarea></div>
             </div>
+            <div class="confier">
+              <label class="inline"><input type="checkbox" [(ngModel)]="confier.actif" name="confierActif" /> Confier un travail à quelqu'un (il le retrouve dans le menu Tâches)</label>
+              @if (confier.actif) {
+                <div class="grid2">
+                  <div>
+                    <label>Personne</label>
+                    <select class="in" [(ngModel)]="confier.utilisateur_id" name="confierQui">
+                      <option value="">—</option>
+                      @for (m of membres(); track m.id) { <option [value]="m.id">{{ m.prenom }} {{ m.nom }}</option> }
+                    </select>
+                  </div>
+                  <div><label>Échéance (facultatif)</label><input class="in" type="date" [(ngModel)]="confier.echeance" name="confierEch" /></div>
+                  <div class="col2"><label>Instructions <span class="req">*</span></label><textarea class="in" rows="2" [(ngModel)]="confier.instructions" name="confierInstr" placeholder="Ex. Préparer la constitution et les conclusions"></textarea></div>
+                </div>
+              }
+            </div>
             @if (urgente()) {
               <p class="alerte">{{ jours()! < 0 ? 'La date est passée : vérifiez-la.' : 'Audience dans ' + jours() + ' jour(s) : elle sera marquée urgente au rôle.' }}</p>
             }
@@ -108,6 +124,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
               <li>L'acte <b>{{ c.reference }}</b> est rattaché au dossier <b>{{ nomDossier() }}</b> et sa pièce est rangée dans le dossier.</li>
               <li>Audience le <b>{{ f.date_prevue | date:'dd/MM/yyyy' }}</b>{{ f.heure ? ' à ' + f.heure : '' }}{{ f.juridiction ? ' · ' + f.juridiction : '' }}, inscrite au rôle de la semaine{{ urgente() ? ' (urgente)' : '' }}.</li>
               <li>Une tâche de préparation est confiée à l'avocat{{ nomAvocat() ? ' ' + nomAvocat() : ' désigné' }}.</li>
+              @if (confier.actif && confier.utilisateur_id) { <li>Travail confié à <b>{{ nomPersonne(confier.utilisateur_id) }}</b> : {{ confier.instructions }}</li> }
             </ul>
             <p>
               <button class="btn ghost" (click)="etape.set(2)">Retour</button>
@@ -137,6 +154,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     .carte{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:6px 0;cursor:pointer;font-weight:400;color:inherit}
     .carte.on{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
     .recap li{margin:6px 0}
+    .confier{margin-top:6px}
+    label.inline{display:flex;gap:8px;align-items:center;font-weight:400;color:inherit}
   `],
 })
 export class ActeAudienceSuiteComponent implements OnInit {
@@ -156,6 +175,7 @@ export class ActeAudienceSuiteComponent implements OnInit {
   dossierId: string | null = null;
   autreDossier: string | null = null;
   f: any = { date_prevue: '', heure: '', juridiction: '', type: 'mise_en_etat', avocat_id: '', instructions: '' };
+  confier: any = { actif: false, utilisateur_id: '', instructions: '', echeance: '' };
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id')!;
@@ -164,6 +184,7 @@ export class ActeAudienceSuiteComponent implements OnInit {
       next: (c) => {
         this.f.date_prevue = c.audience_indiquee ? String(c.audience_indiquee).slice(0, 10) : '';
         this.f.juridiction = c.audience_juridiction ?? '';
+        this.f.heure = c.audience_heure ?? '';
         this.f.avocat_id = c.destinataire_id ?? '';
         if (c.dossier_id) { this.dossierId = c.dossier_id; }
         this.courrier.set(c);   // en dernier : le signal déclenche l'affichage, les champs sont déjà remplis (pas de zone.js)
@@ -179,6 +200,10 @@ export class ActeAudienceSuiteComponent implements OnInit {
   nomDossier(): string {
     const d = this.suggestions().find((x) => x.id === this.dossierId);
     return d ? d.numero + ' · ' + d.intitule : (this.courrier()?.dossier_id ? 'déjà rattaché' : 'choisi');
+  }
+  nomPersonne(id: string): string {
+    const m = this.membres().find((x) => x.id === id);
+    return m ? m.prenom + ' ' + m.nom : '';
   }
   nomAvocat(): string {
     const m = this.membres().find((x) => x.id === this.f.avocat_id);
@@ -207,6 +232,7 @@ export class ActeAudienceSuiteComponent implements OnInit {
     const corps: any = { ...this.f, urgente: this.urgente() };
     if (!c.dossier_id) corps.dossier_id = this.dossierId;
     Object.keys(corps).forEach((k) => { if (corps[k] === '' || corps[k] === null) delete corps[k]; });
+    if (this.confier.actif && this.confier.utilisateur_id) corps.confier = { utilisateur_id: this.confier.utilisateur_id, instructions: this.confier.instructions, echeance: this.confier.echeance || undefined };
     this.api.programmerAudienceActe(c.id, corps).subscribe({
       next: (r) => { this.enCours.set(false); this.dossierId = r.dossier_id; this.fini.set(true); },
       error: (e) => { this.enCours.set(false); this.erreur.set(e?.error?.error ?? 'Programmation impossible.'); },

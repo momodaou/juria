@@ -71,6 +71,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/courrier/acte-audience.component').then((m) => m.ActeAudienceComponent),
       },
       {
+        path: 'courrier/acte-audience/:id/corriger',
+        loadComponent: () => import('./pages/courrier/acte-audience-corriger.component').then((m) => m.ActeAudienceCorrigerComponent),
+      },
+      {
         path: 'courrier/acte-audience/:id',
         loadComponent: () => import('./pages/courrier/acte-audience-suite.component').then((m) => m.ActeAudienceSuiteComponent),
       },
