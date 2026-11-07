@@ -85,6 +85,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
             }
           </select>
         </label>
+        <label>Date d'émission
+          <input type="date" [(ngModel)]="dateEmission" name="dateEmission" [max]="aujourdhui" />
+          <span class="hint">Par défaut : aujourd'hui. À modifier pour une facture émise avant JURIA.</span>
+        </label>
+        <label>N° d'origine (facultatif)
+          <input [(ngModel)]="numeroOrigine" name="numeroOrigine" maxlength="60" placeholder="Ancien numéro, si facture émise avant JURIA" />
+        </label>
         <label class="large">Mention (facultatif)
           <input [(ngModel)]="mention" name="mention" placeholder="ex. Frais de virement à la charge du client" />
         </label>
@@ -124,6 +131,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <option [value]="c.id">{{ c.intitule }}{{ c.banque ? ' — ' + c.banque : '' }}</option>
             }
           </select>
+        </label>
+        <label>Date d'émission
+          <input type="date" [(ngModel)]="dateEmission" name="dateEmissionTemps" [max]="aujourdhui" />
+          <span class="hint">Par défaut : aujourd'hui. À modifier pour une facture émise avant JURIA.</span>
+        </label>
+        <label>N° d'origine (facultatif)
+          <input [(ngModel)]="numeroOrigine" name="numeroOrigineTemps" maxlength="60" placeholder="Ancien numéro, si facture émise avant JURIA" />
         </label>
         <label class="large">Mention (facultatif)
           <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" />
@@ -335,10 +349,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
       @if (factures().length) {
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th>@if (afficherContreValeur()) { <th>Contre-valeur FCFA</th> }<th>Statut</th><th></th></tr>
+          <tr><th class="nowrap">N°</th><th class="nowrap">Émise le</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th>@if (afficherContreValeur()) { <th>Contre-valeur FCFA</th> }<th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
-              <td class="nowrap">{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
+              <td class="nowrap">{{ f.numero }}@if (f.numero_origine) { <br /><span class="muted" title="Numéro d'origine (avant JURIA)">Réf. d'origine : {{ f.numero_origine }}</span> }</td>
+              <td class="nowrap">{{ f.date_emission ? (f.date_emission | date:'dd/MM/yyyy') : '—' }}</td>
+              <td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
               <td class="nowrap-n">{{ libelleMode(f.mode) }}</td>
               <td class="nowrap-n">{{ f.montant_ht | number }} {{ dev(f.devise) }}</td>
@@ -374,6 +390,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                     </label>
                     <label>Frais
                       <input type="number" [(ngModel)]="edit.montant_frais" [name]="'edFrais' + f.id" [disabled]="f.statut !== 'emise'" />
+                    </label>
+                    <label>Date d'émission
+                      <input type="date" [(ngModel)]="edit.date_emission" [name]="'edEmis' + f.id" [max]="aujourdhui" />
+                    </label>
+                    <label>N° d'origine
+                      <input [(ngModel)]="edit.numero_origine" [name]="'edOrig' + f.id" maxlength="60" placeholder="Ancien numéro (facultatif)" />
                     </label>
                     <label>Échéance
                       <input type="date" [(ngModel)]="edit.date_echeance" [name]="'edEch' + f.id" />
@@ -577,6 +599,10 @@ export class FacturationComponent implements OnInit {
   pDate = '';
   readonly paiementEnCours = signal(false);
   mention = '';
+  // Facture émise avant JURIA (07/11/2026) : date d'émission indiquée (vide = aujourd'hui) et ancien numéro.
+  dateEmission = '';
+  numeroOrigine = '';
+  readonly aujourdhui = new Date().toISOString().slice(0, 10);
 
   // Facturer un dossier (temps + débours)
   readonly tempsNonFactures = signal<any[]>([]);
@@ -708,11 +734,13 @@ export class FacturationComponent implements OnInit {
   private ajouterInfosReglement(payload: any): void {
     if (this.compteReglementId) { payload.compte_reglement_id = this.compteReglementId; payload.mode_reglement = 'virement'; }
     if (this.mention) payload.mention = this.mention;
+    if (this.dateEmission) payload.date_emission = this.dateEmission;
+    if (this.numeroOrigine.trim()) payload.numero_origine = this.numeroOrigine.trim();
     if (this.acompteMontant && this.acompteMontant > 0) {
       payload.acompte = { montant: this.acompteMontant, ...this.reglementPourEnvoi(this.acompte) };
     }
   }
-  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompte = this.modeleReglement(); }
+  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompte = this.modeleReglement(); this.dateEmission = ''; this.numeroOrigine = ''; }
 
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
@@ -740,7 +768,7 @@ export class FacturationComponent implements OnInit {
     return (f.statut === 'emise' || f.statut === 'partielle') && !!f.date_echeance && new Date(f.date_echeance) < new Date(new Date().toDateString()) && f.reliquat > 0;
   }
   readonly afficherContreValeur = computed(() => this.factures().some((f) => f.devise !== 'XOF'));
-  nbColonnes(): number { return this.afficherContreValeur() ? 11 : 10; }
+  nbColonnes(): number { return this.afficherContreValeur() ? 12 : 11; }
 
   // Paiement du reste dû en une fois (avec le moyen choisi dans le panneau).
   encaisserTotalite(f: any): void {
@@ -996,6 +1024,8 @@ export class FacturationComponent implements OnInit {
       montant_ht: f.montant_ht,
       taux_tva: f.taux_tva,
       montant_frais: f.montant_frais,
+      date_emission: f.date_emission ? String(f.date_emission).slice(0, 10) : '',
+      numero_origine: f.numero_origine || '',
       date_echeance: f.date_echeance ? String(f.date_echeance).slice(0, 10) : '',
       compte_reglement_id: f.compte_reglement_id || '',
       mode_reglement: f.mode_reglement || '',
@@ -1019,7 +1049,9 @@ export class FacturationComponent implements OnInit {
       mode: this.edit.mode || undefined,
       date_echeance: this.edit.date_echeance || null,
       mention: this.edit.mention,
+      numero_origine: (this.edit.numero_origine || '').trim(),
     };
+    if (this.edit.date_emission) payload.date_emission = this.edit.date_emission;
     // Moyen de règlement choisi explicitement (29/10/2026) ; à défaut, « virement » seulement si un compte est indiqué
     // et qu'aucun moyen n'était encore enregistré (comportement historique).
     if (this.edit.mode_reglement) payload.mode_reglement = this.edit.mode_reglement;

@@ -211,7 +211,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.taux_tva, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut, f.mention, f.mode_reglement, f.compte_reglement_id,
-              f.date_emission, f.date_echeance, f.dossier_id, f.client_id,
+              f.date_emission, f.numero_origine, f.date_echeance, f.dossier_id, f.client_id,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero,
               COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS encaisse,
@@ -245,9 +245,29 @@ function verifierDossierUnique(rows, dossierIdConnu) {
   return { dossierId: dossierLignes || dossierIdConnu };
 }
 
+// 07/11/2026 — factures émises avant JURIA : la date d'émission peut être indiquée (jamais dans le futur) et un
+// « N° d'origine » facultatif garde le lien avec l'ancien numéro. Le numéro JURIA reste automatique (année de la date d'émission).
+function lireDateEmission(valeur) {
+  if (valeur === undefined || valeur === null || valeur === "") return { date: null };
+  const v = String(valeur);
+  const d = new Date(`${v}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) {
+    return { erreur: "Date d'émission invalide (AAAA-MM-JJ)." };
+  }
+  if (v > new Date().toISOString().slice(0, 10)) return { erreur: "La date d'émission ne peut pas être dans le futur." };
+  if (v < "2000-01-01") return { erreur: "Date d'émission invalide (antérieure à 2000)." };
+  return { date: v };
+}
+function lireNumeroOrigine(valeur) {
+  if (valeur === undefined || valeur === null) return { numero: null };
+  const v = String(valeur).trim();
+  if (v.length > 60) return { erreur: "N° d'origine trop long (60 caractères au plus)." };
+  return { numero: v || null };
+}
+
 // POST /api/factures
 // { dossier_id?, client_id?, mode, montant_ht, devise?, taux_applique?,
-//   taux_tva?, provision?, montant_frais?, date_echeance? }
+//   taux_tva?, provision?, montant_frais?, date_emission?, numero_origine?, date_echeance? }
 // ... ou, pour facturer du temps déjà saisi plutôt que saisir un montant :
 // { dossier_id, mode, temps_ids: [...], devise?('XOF' uniquement), ... }
 // — montant_ht est alors calculé depuis les temps sélectionnés (voir
@@ -270,6 +290,13 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
   const depenseIds = Array.isArray(b.depense_ids) ? b.depense_ids.filter(Boolean) : [];
+  const emission = lireDateEmission(b.date_emission);
+  if (emission.erreur) return res.status(400).json({ error: emission.erreur });
+  const origine = lireNumeroOrigine(b.numero_origine);
+  if (origine.erreur) return res.status(400).json({ error: origine.erreur });
+  if (emission.date && b.date_echeance && String(b.date_echeance) < emission.date) {
+    return res.status(400).json({ error: "L'échéance ne peut pas précéder la date d'émission." });
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -407,7 +434,7 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       : (devise === "XOF" ? "xof" : "devise");
 
     // Numérotation automatique : F-AA-XXX
-    const yy = new Date().getFullYear().toString().slice(2);
+    const yy = (emission.date || new Date().toISOString().slice(0, 10)).slice(2, 4);
     // 21/10/2026 — « plus grand numéro + 1 » (et non « nombre de factures + 1 », qui retombait
     // sur un numéro déjà pris après une suppression ou un numéro saisi à la main) ; verrou de
     // transaction pour que deux émissions simultanées n'obtiennent pas le même numéro.
@@ -422,14 +449,15 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
           libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance,
-          mode_reglement, compte_reglement_id, mention, objet)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,current_date,TRUE,$12,
-               $13,$14,$15,'emise',current_date,$16,$17,$18,$19,$20)
-       RETURNING id, numero, objet, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
+          mode_reglement, compte_reglement_id, mention, objet, numero_origine)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,COALESCE($21::date, current_date),TRUE,$12,
+               $13,$14,$15,'emise',COALESCE($21::date, current_date),$16,$17,$18,$19,$20,$22)
+       RETURNING id, numero, numero_origine, date_emission::text AS date_emission, objet, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
                  montant_frais, montant_debours, statut`,
       [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
        devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null,
-       b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null, b.objet || null]
+       b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null, b.objet || null,
+       emission.date, origine.numero]
     );
 
     // Acompte / provision reçu à l'émission (16/10/2026) : un premier
@@ -455,9 +483,10 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       await client.query(
         `INSERT INTO paiements (facture_id, montant, mode, date_paiement, reference, devise, taux_applique, montant_xof,
                                 compte_id, references_paiement, frais_retenus, depot_statut, date_depot, montant_verse, frais_a_charge)
-         VALUES ($1,$2,$3::mode_paiement,current_date,$4,$5,$6,$7,$8::uuid,$9::jsonb,$10,$11,$12::date,$13,$14)`,
+         VALUES ($1,$2,$3::mode_paiement,COALESCE($15::date, current_date),$4,$5,$6,$7,$8::uuid,$9::jsonb,$10,$11,$12::date,$13,$14)`,
         [rows[0].id, imputeA, b.acompte.mode, referenceCourte(v.references) || b.acompte.reference || null, rows[0].devise, rows[0].taux_applique,
-         Math.round(imputeA * Number(rows[0].taux_applique)), v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot, mnt, charge]
+         Math.round(imputeA * Number(rows[0].taux_applique)), v.compte_id, JSON.stringify(v.references), v.frais_retenus, v.depot_statut, v.date_depot, mnt, charge,
+         emission.date]
       );
       acompteEnregistre = imputeA;
     }
@@ -531,7 +560,7 @@ router.post("/:id/annuler", requirePermission("factures.annuler"), async (req, r
 });
 
 // PUT /api/factures/:id  { objet?, mode? (mode d'honoraires), montant_ht?, taux_tva?, montant_frais?,
-//   date_echeance?, mode_reglement?, compte_reglement_id?, mention? }
+//   date_emission?, numero_origine?, date_echeance?, mode_reglement?, compte_reglement_id?, mention? }
 // Corrige une facture émise. Réutilise le taux de change et le montant de
 // débours déjà figés à l'émission (ni l'un ni l'autre ne se corrigent ici —
 // annuler/recréer si la devise ou les débours rattachés doivent changer) ;
@@ -554,6 +583,7 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
   try {
     const cur = await pool.query(
       `SELECT statut, montant_ht, taux_tva, montant_frais, montant_debours, taux_applique, montant_ttc, objet,
+              date_emission::text AS date_emission, numero_origine,
               date_echeance::text AS date_echeance, mode_reglement, compte_reglement_id, mention, mode FROM factures WHERE id = $1`,
       [req.params.id]
     );
@@ -569,6 +599,24 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
       return res.status(409).json({
         error: "Le montant ne peut plus être corrigé : un paiement est déjà enregistré sur cette facture. Retirez-le d'abord (onglet Paiements) pour pouvoir le corriger.",
       });
+    }
+
+    // Date d'émission (07/11/2026) : corrigible, jamais dans le futur, jamais après un paiement déjà enregistré ;
+    // le numéro de la facture, lui, ne change jamais. N° d'origine : vide = effacer.
+    const emission = lireDateEmission(b.date_emission);
+    if (emission.erreur) return res.status(400).json({ error: emission.erreur });
+    const origine = lireNumeroOrigine(b.numero_origine);
+    if (origine.erreur) return res.status(400).json({ error: origine.erreur });
+    if (emission.date) {
+      const prem = await pool.query("SELECT MIN(date_paiement)::text AS d FROM paiements WHERE facture_id = $1", [req.params.id]);
+      if (prem.rows[0].d && emission.date > prem.rows[0].d) {
+        return res.status(409).json({ error: `La date d'émission ne peut pas être postérieure au premier paiement (${prem.rows[0].d}).` });
+      }
+    }
+    const echeanceFinale = b.date_echeance || cur.rows[0].date_echeance;
+    const emissionFinale = emission.date || cur.rows[0].date_emission;
+    if (emission.date && echeanceFinale && echeanceFinale < emissionFinale) {
+      return res.status(400).json({ error: "L'échéance ne peut pas précéder la date d'émission." });
     }
 
     const ht = b.montant_ht !== undefined ? Math.round(Number(b.montant_ht)) : Number(cur.rows[0].montant_ht);
@@ -590,16 +638,17 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
          montant_frais = $5, montant_ttc = $6, montant_ttc_xof = $7,
          date_echeance = COALESCE($8, date_echeance), mode_reglement = COALESCE($9::mode_paiement, mode_reglement),
          compte_reglement_id = COALESCE($10::uuid, compte_reglement_id), mention = COALESCE($11, mention),
-         mode = COALESCE($13::mode_honoraires, mode)
+         mode = COALESCE($13::mode_honoraires, mode), date_emission = COALESCE($14::date, date_emission),
+         numero_origine = CASE WHEN $15::boolean THEN $16 ELSE numero_origine END
        WHERE id = $12
-       RETURNING id, numero, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut, date_echeance::text AS date_echeance,
+       RETURNING id, numero, numero_origine, date_emission::text AS date_emission, objet, montant_ht, montant_tva, montant_frais, montant_ttc, montant_ttc_xof, statut, date_echeance::text AS date_echeance,
                  mode_reglement, compte_reglement_id, mention, taux_tva, mode`,
       [b.objet ?? null, ht, tauxTva, tva, frais, ttc, ttcXof,
        b.date_echeance || null, b.mode_reglement || null, b.compte_reglement_id || null, b.mention ?? null,
-       req.params.id, b.mode || null]
+       req.params.id, b.mode || null, emission.date, b.numero_origine !== undefined, origine.numero]
     );
     // Trace (avant / après) d'une correction de facture émise ou payée (29/10/2026).
-    const changements = diffChamps(cur.rows[0], rows[0], ["objet", "mode", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
+    const changements = diffChamps(cur.rows[0], rows[0], ["objet", "mode", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_emission", "numero_origine", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
     if (Object.keys(changements).length) {
       await logAudit({ utilisateurId: req.user.sub, action: "modifier_facture", entite: "factures", entiteId: req.params.id,
         details: { numero: rows[0].numero, statut: rows[0].statut, changements }, ip: req.ip });

@@ -5767,3 +5767,10 @@ ON CONFLICT (role, action_code) DO NOTHING;
 -- annule_* existantes) ; avertissement de doublon ; mémorisation par client (lecture seule) ; tâche confiée à la programmation.
 -- ============================================================
 ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_heure VARCHAR(5);   -- HH:MM lue sur l'acte
+
+-- ============================================================
+-- FACTURES ÉMISES AVANT JURIA (07/11/2026) : « N° d'origine » facultatif
+-- (ancien numéro, pour garder le lien avec le papier). Le numéro JURIA reste automatique ; la date d'émission
+-- est désormais indiquée/corrigible (jamais dans le futur) et l'année du numéro suit cette date.
+-- ============================================================
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS numero_origine VARCHAR(60);

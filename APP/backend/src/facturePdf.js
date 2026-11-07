@@ -234,6 +234,11 @@ function dessinerFacture(doc, { fac, cab, temps, debours, paiements, equipe, com
   doc.fontSize(18).font("Helvetica-Bold").fillColor(STYLE.bleu).text(titre, xLabel, doc.y, { width: largeurPage, align: "center" });
   doc.fillColor(STYLE.texte);
   doc.fontSize(11).font("Helvetica-Bold").text(`N° ${fac.numero}`, xLabel, doc.y + 2, { width: largeurPage, align: "center" });
+  if (fac.numero_origine) {
+    doc.fontSize(8).font("Helvetica").fillColor(STYLE.gris)
+      .text(`Réf. d'origine : ${fac.numero_origine}`, xLabel, doc.y + 1, { width: largeurPage, align: "center" });
+    doc.fillColor(STYLE.texte);
+  }
   doc.fontSize(9).font("Helvetica").fillColor(fac.statut === "annulee" ? STYLE.rouge : STYLE.gris)
     .text(`Statut : ${LABELS_STATUT[fac.statut] || fac.statut}`, xLabel, doc.y + 2, { width: largeurPage, align: "center" });
   doc.fillColor(STYLE.texte);
