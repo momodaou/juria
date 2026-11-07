@@ -55,7 +55,8 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
     }
   `,
   styles: [`
-    :host { display: block; position: relative; }
+    :host { display: block; position: relative; margin: 14px 0 10px; }
+    :host-context(.app.collapsed) { margin: 12px 0 8px; }
     .nc-rangee { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: none; color: #cfd6e3;
       padding: 10px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: var(--fs-md); white-space: nowrap; text-align: left; }
     .nc-rangee:hover { background: rgba(255,255,255,.08); color: #fff; }
