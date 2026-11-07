@@ -4692,3 +4692,10 @@ Périmètre réduit validé par l'utilisateur : e-mails + travail confié par co
 - **Cloche de facturation** : le job de discipline de facturation (actif) crée une notification regroupée « N éléments de facturation à suivre » (nouveau type `facturation_a_suivre`), quel que soit l'interrupteur.
 - **Travail confié** : acte reçu à traiter (déposant → avocat désigné), orientation d'un courrier sans dossier, programmation d'audience depuis l'acte (avocat chargé de l'audience + personne à qui un travail est confié) et imputation d'un courrier → notification « Une tâche vous est confiée » (jamais l'auteur).
 - Tests : `notificationsLot3.test.js` (7 tests, rejouables). Pas de migration SQL.
+- **Déploiement du lot 3 (07/11/2026)** : `deploy.sh both` (accord explicite) → frontend `juria-web-00296-7t9` ; API : voir `gcloud run revisions list`. Vérifications : `/health` 200, `/` 200, les 4 routes de jobs e-mail (`recap-matin`, `recap-lundi`, `recap-creations`, `notifications-repli`) sans secret → 401 (montées). Interrupteur d'e-mails toujours FALSE ; aucun job planifié.
+
+## 07/11/2026 — Notifications : bannière des urgences et alerte du navigateur (codées, NON déployées)
+Ajoutées sur la recommandation de Claude (les fiches A1, B1, D1 les prévoyaient pour les situations graves) ; **les réglages personnels restent en réserve**.
+- **Bannière** : bandeau rouge en haut de l'écran tant qu'une notification **critique** reste « à traiter » (délai à J-1 ou jour J, conflit à décider, dépenses / état de charges en attente > 48 h, tâche en retard escaladée) ; boutons « Traiter » et « Voir tout » ; disparaît seule quand l'action est faite. Serveur : filtre `?niveau=critique` sur `GET /api/notifications`.
+- **Alerte du navigateur** : bulle du système pour les urgences (critiques, délais, conflits, dépenses soumises) seulement quand JURIA est en arrière-plan ET que la personne l'a accordée (bouton « Activer les alertes du navigateur » dans le panneau de la cloche ; jamais automatique).
+- Vérifié : build Angular, 15 tests de `notificationsCentre.test.js`, contrôle visuel Playwright (bannière + panneau).

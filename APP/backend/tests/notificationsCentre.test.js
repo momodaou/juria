@@ -78,6 +78,18 @@ describe("notifier() et lecture", () => {
     expect(await liste(a, "?filtre=non_lues")).toHaveLength(0);
   });
 
+  test("filtre par niveau : la bannière ne reçoit que les urgences encore « à traiter »", async () => {
+    const a = await creer("associe");
+    await notif.notifier({ type: "conflit_a_decider", destinataires: [a.id], ref: "u1", aTraiter: true });
+    await notif.notifier({ type: "tache_assignee", destinataires: [a.id], ref: "u2", aTraiter: true });
+    await notif.notifier({ type: "diligence_modifiee", destinataires: [a.id], charge: { statut: "annule" } });
+    const urgences = await liste(a, "?filtre=a_traiter&niveau=critique");
+    expect(urgences).toHaveLength(1);
+    expect(urgences[0].type).toBe("conflit_a_decider");
+    await notif.traiter("conflit_a_decider", "u1");
+    expect(await liste(a, "?filtre=a_traiter&niveau=critique")).toHaveLength(0);
+  });
+
   test("traiter() retire la marque « à traiter »", async () => {
     const a = await creer("juriste");
     await notif.notifier({ type: "tache_assignee", destinataires: [a.id], ref: "r3", aTraiter: true });

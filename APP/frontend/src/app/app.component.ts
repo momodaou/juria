@@ -5,7 +5,7 @@ import { AuthService } from './core/auth.service';
 import { MessagerieService } from './core/messagerie.service';
 import { MessagerieWidgetComponent } from './core/messagerie-widget.component';
 import { NotificationsService } from './core/notifications.service';
-import { NotificationsClocheComponent, NotificationsToastsComponent } from './core/notifications-cloche.component';
+import { NotificationsClocheComponent, NotificationsToastsComponent, NotificationsBanniereComponent } from './core/notifications-cloche.component';
 import { DocumentPreviewComponent } from './core/document-preview.component';
 import { ExportPrintComponent } from './core/export-print.component';
 
@@ -40,7 +40,7 @@ interface NavBloc {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NotificationsClocheComponent, NotificationsToastsComponent, MessagerieWidgetComponent, DocumentPreviewComponent, ExportPrintComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NotificationsClocheComponent, NotificationsToastsComponent, NotificationsBanniereComponent, MessagerieWidgetComponent, DocumentPreviewComponent, ExportPrintComponent],
   template: `
     @if (auth.estConnecte) {
       <div class="app" [class.collapsed]="collapsed()">
@@ -94,6 +94,7 @@ interface NavBloc {
           </button>
         </aside>
         <main class="main">
+          <app-notifications-banniere />
           <app-export-print />
           <div id="vue-active"><router-outlet /></div>
         </main>

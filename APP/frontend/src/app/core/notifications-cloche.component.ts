@@ -35,6 +35,11 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
             </button>
           }
         </div>
+        @if (svc.permissionAlertes() === 'default') {
+          <button type="button" class="nc-alertes" (click)="svc.activerAlertes()">🔔 Activer les alertes du navigateur (urgences quand JURIA est en arrière-plan)</button>
+        } @else if (svc.permissionAlertes() === 'denied') {
+          <p class="nc-alertes-info">Les alertes du navigateur sont bloquées : autorisez-les dans les réglages du site pour les recevoir.</p>
+        }
         <div class="nc-liste">
           @for (n of svc.liste(); track n.id) {
             <button type="button" class="nc-item" [class.nc-nonlue]="!n.lue_le" (click)="svc.ouvrir(n)">
@@ -78,6 +83,8 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
     .nc-filtres { display: flex; gap: 6px; padding: 0 14px 8px; border-bottom: 1px solid var(--line); }
     .nc-filtres button { background: var(--light); border: none; border-radius: 999px; padding: 4px 10px; font-size: var(--fs-sm); color: var(--slate); cursor: pointer; }
     .nc-filtres button.nc-on { background: var(--navy); color: #fff; }
+    .nc-alertes { display: block; width: calc(100% - 28px); margin: 8px 14px 0; text-align: left; background: var(--info-bg); color: var(--info); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: var(--fs-sm); cursor: pointer; }
+    .nc-alertes-info { margin: 8px 14px 0; font-size: var(--fs-xs); color: var(--grey); }
     .nc-liste { overflow-y: auto; min-height: 0; flex: 1; }
     .nc-item { display: flex; gap: 10px; width: 100%; text-align: left; background: #fff; color: #22303f; border: none; border-bottom: 1px solid var(--line);
       padding: 10px 14px; cursor: pointer; font: inherit; }
@@ -134,5 +141,37 @@ export class NotificationsClocheComponent {
   `],
 })
 export class NotificationsToastsComponent {
+  readonly svc = inject(NotificationsService);
+}
+
+
+// Bannière des urgences (07/11/2026) : bandeau rouge en haut de l'écran tant qu'une notification critique reste « à traiter »
+// (délai de procédure à J-1 ou le jour même, conflit à décider, dépenses en attente depuis plus de 48 h…). Disparaît seule dès
+// que l'action est faite.
+@Component({
+  selector: 'app-notifications-banniere',
+  standalone: true,
+  template: `
+    @if (svc.urgences().length) {
+      <div class="nb-banniere" role="alert">
+        <span class="nb-texte">
+          <strong>Urgent :</strong> {{ svc.urgences()[0].texte }}
+          @if (svc.urgences().length > 1) { <span class="nb-plus">(+ {{ svc.urgences().length - 1 }} autre{{ svc.urgences().length > 2 ? 's' : '' }})</span> }
+        </span>
+        <button type="button" class="nb-bouton" (click)="svc.ouvrir(svc.urgences()[0])">Traiter</button>
+        @if (svc.urgences().length > 1) { <button type="button" class="nb-bouton nb-sec" (click)="svc.basculer()">Voir tout</button> }
+      </div>
+    }
+  `,
+  styles: [`
+    .nb-banniere { position: sticky; top: 0; z-index: 900; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--red); color: #fff; padding: 9px 16px; font-size: var(--fs-base); box-shadow: 0 2px 8px rgba(20,30,50,.18); }
+    .nb-texte { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .nb-plus { opacity: .85; margin-left: 4px; }
+    .nb-bouton { background: #fff; color: var(--red); border: none; border-radius: 6px; padding: 5px 12px; font-weight: 600; cursor: pointer; font-size: var(--fs-sm); }
+    .nb-bouton.nb-sec { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.7); }
+  `],
+})
+export class NotificationsBanniereComponent {
   readonly svc = inject(NotificationsService);
 }

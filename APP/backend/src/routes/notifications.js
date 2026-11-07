@@ -6,10 +6,11 @@ const { presenter } = require("../notifications");
 
 const router = express.Router();
 
-// GET /api/notifications?filtre=tout|non_lues|a_traiter&limite=30&avant=<iso>
+// GET /api/notifications?filtre=tout|non_lues|a_traiter&niveau=critique&limite=30&avant=<iso>
 router.get("/", async (req, res) => {
   const filtre = ["tout", "non_lues", "a_traiter"].includes(req.query.filtre) ? req.query.filtre : "tout";
   const limite = Math.min(Math.max(parseInt(req.query.limite, 10) || 30, 1), 100);
+  const niveau = ["information", "action", "critique"].includes(req.query.niveau) ? req.query.niveau : null;
   const avant = req.query.avant && !Number.isNaN(Date.parse(req.query.avant)) ? req.query.avant : null;
   try {
     const { rows } = await pool.query(
@@ -17,7 +18,8 @@ router.get("/", async (req, res) => {
        WHERE destinataire_id = $1
          AND ($2 = 'tout' OR ($2 = 'non_lues' AND lue_le IS NULL) OR ($2 = 'a_traiter' AND a_traiter AND traitee_le IS NULL))
          AND ($3::timestamptz IS NULL OR cree_le < $3::timestamptz)
-       ORDER BY cree_le DESC LIMIT $4`, [req.user.sub, filtre, avant, limite]);
+         AND ($5::varchar IS NULL OR niveau = $5::varchar)
+       ORDER BY cree_le DESC LIMIT $4`, [req.user.sub, filtre, avant, limite, niveau]);
     res.json(rows.map(presenter));
   } catch (e) {
     console.error(e);

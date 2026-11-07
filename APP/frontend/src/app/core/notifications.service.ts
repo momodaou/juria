@@ -44,12 +44,19 @@ export class NotificationsService {
   readonly filtre = signal<FiltreNotifications>('tout');
   readonly chargement = signal(false);
   readonly toasts = signal<Toast[]>([]);
+  /** Urgences : notifications critiques encore « à traiter » — affichées dans la bannière du haut de l'écran jusqu'à leur traitement. */
+  readonly urgences = signal<Notification[]>([]);
+  /** Alertes du navigateur (bulles du système) : permission accordée par la personne, jamais imposée. */
+  readonly permissionAlertes = signal<'default' | 'granted' | 'denied' | 'indisponible'>(
+    typeof Notification === 'undefined' ? 'indisponible' : (Notification.permission as 'default' | 'granted' | 'denied'),
+  );
 
   demarrer(): void {
     if (this.abonne || !this.auth.token) return;
     this.abonne = true;
     this.rafraichirCompteur();
     this.charger();
+    this.chargerUrgences();
     this.abonnement = this.messagerie.notification$.subscribe((ev) => {
       if (ev.type === 'notification') this.recevoir(ev.notification as Notification);
       else if (ev.type === 'notification_traitee') this.marquerTraiteeLocalement(ev.id as string);
@@ -65,6 +72,7 @@ export class NotificationsService {
     this.aTraiter.set(0);
     this.ouvert.set(false);
     this.toasts.set([]);
+    this.urgences.set([]);
     for (const t of this.minuteries.values()) clearTimeout(t);
     this.minuteries.clear();
   }
@@ -85,6 +93,19 @@ export class NotificationsService {
     });
   }
 
+  chargerUrgences(): void {
+    this.http.get<Notification[]>(`${this.base}?filtre=a_traiter&niveau=critique&limite=20`).subscribe({
+      next: (l) => this.urgences.set(l),
+      error: () => {},
+    });
+  }
+
+  /** Demande la permission des alertes du navigateur (clic de la personne, jamais automatique). */
+  activerAlertes(): void {
+    if (typeof Notification === 'undefined') return;
+    Notification.requestPermission().then((p) => this.permissionAlertes.set(p as 'default' | 'granted' | 'denied'));
+  }
+
   basculer(): void {
     const ouvrir = !this.ouvert();
     this.ouvert.set(ouvrir);
@@ -97,12 +118,27 @@ export class NotificationsService {
     // Remplace la ligne si elle existe déjà (notification regroupée mise à jour), sinon l'ajoute en tête.
     this.liste.update((l) => [n, ...l.filter((x) => x.id !== n.id)]);
     this.rafraichirCompteur();
+    this.chargerUrgences();
     // Une notification regroupée déjà annoncée ne refait pas de toast (« 5 dossiers » ne clignote pas 5 fois).
-    if (n.nombre <= 1) this.afficherToast(n);
+    if (n.nombre <= 1) {
+      this.afficherToast(n);
+      this.alerteNavigateur(n);
+    }
+  }
+
+  // Bulle du système pour les situations graves, seulement si la personne l'a accordée et que JURIA n'est pas à l'écran.
+  private alerteNavigateur(n: Notification): void {
+    const grave = n.niveau === 'critique' || ['delai_procedure', 'conflit_a_decider', 'depense_soumise'].includes(n.type);
+    if (!grave || this.permissionAlertes() !== 'granted' || typeof document === 'undefined' || !document.hidden) return;
+    try {
+      const bulle = new Notification('JURIA', { body: n.texte, tag: n.id });
+      bulle.onclick = () => { window.focus(); this.ouvrir(n); bulle.close(); };
+    } catch { /* alerte indisponible : sans effet */ }
   }
 
   private marquerTraiteeLocalement(id: string): void {
     this.liste.update((l) => l.map((n) => (n.id === id ? { ...n, a_traiter: false } : n)));
+    this.urgences.update((l) => l.filter((n) => n.id !== id));
     this.rafraichirCompteur();
   }
 
