@@ -8,6 +8,7 @@ const { parserNumeros } = require("../vignettesNumeros");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit } = require("../audit");
+const notif = require("../notifications");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
@@ -138,6 +139,11 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
        n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references),
        String(b.beneficiaire || '').trim().slice(0, 160) || null]
     );
+    // Centre de notifications (lot 2) : les décideurs sont prévenus (jamais l'auteur) ; pas de montant dans le texte.
+    if (rows[0].statut === "soumise") {
+      await notif.notifier({ type: "depense_soumise", destinataires: await notif.titulairesPermission("depenses.decision"),
+        auteurId: req.user.sub, ref: rows[0].id, aTraiter: true });
+    }
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -197,6 +203,14 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
     );
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
       details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde }, ip: req.ip });
+    // Centre de notifications (lot 2) : un autre associé doit valider après coup (jamais l'engageur) ; solde bas (20 %).
+    await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
+      auteurId: req.user.sub, ref: rows[0].id, aTraiter: true });
+    const refMois = "solde_bas:" + mois.slice(0, 7);
+    if (caisse.dotation > 0 && caisse.solde - montant <= caisse.dotation * 0.2 && !(await notif.dejaNotifie("caisse_alerte", refMois))) {
+      await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
+        auteurId: req.user.sub, ref: refMois, charge: { sujet: "solde_bas" } });
+    }
     res.status(201).json({ ...rows[0], solde_restant: caisse.solde - montant });
   } catch (e) {
     console.error(e);
@@ -228,6 +242,13 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
       [decision, req.user.sub, motif || null, req.params.id]
     );
     if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
+    await notif.traiter("depense_apres_coup", req.params.id);
+    await notif.notifier({ type: "depense_apres_coup_traitee", destinataires: [d.engagee_par], auteurId: req.user.sub, ref: req.params.id,
+      niveau: decision === "contestee" ? "action" : "information", charge: { decision, motif: motif || undefined } });
+    if (decision === "contestee") {
+      await notif.notifier({ type: "depense_contestee", destinataires: await notif.titulairesPermission("depenses.decision"),
+        auteurId: req.user.sub, ref: req.params.id });
+    }
     await logAudit({ utilisateurId: req.user.sub, action: decision === "validee" ? "valider_apres_coup" : "contester_depense", entite: "depenses", entiteId: req.params.id, details: { motif: motif || null }, ip: req.ip });
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
@@ -304,6 +325,10 @@ router.put("/:id/engagee", async (req, res) => {
       [libelle, montant, dateDepense, b.categorie || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
        JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id, d.apres_coup_statut]);
     if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
+    if (d.apres_coup_statut === "contestee") {
+      await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
+        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
+    }
     await logAudit({ utilisateurId: req.user.sub, action: "corriger_depense_engagee", entite: "depenses", entiteId: req.params.id,
       details: { par_engageur: d.engagee_par === req.user.sub, statut_apres_coup_avant: d.apres_coup_statut,
                  avant: { libelle: d.libelle, montant: Number(d.montant), date_depense: d.date_depense, mode_paiement: d.mode_paiement, beneficiaire: d.beneficiaire },
@@ -330,6 +355,10 @@ router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_c
       [mois, solde, reel, reel - solde, b.note || null, req.user.sub]
     );
     await logAudit({ utilisateurId: req.user.sub, action: "rapprochement_petite_caisse", entite: "depenses", entiteId: rows[0].id, details: { mois, ecart: rows[0].ecart }, ip: req.ip });
+    if (Number(rows[0].ecart) !== 0) {
+      await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
+        auteurId: req.user.sub, ref: "ecart:" + rows[0].id, charge: { sujet: "ecart" } });
+    }
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });
@@ -374,6 +403,10 @@ router.post("/:id/annuler", requirePermission("depenses.decision"), async (req, 
     );
     if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
     await logAudit({ utilisateurId: req.user.sub, action: "annuler_depense", entite: "depenses", entiteId: req.params.id, details: { motif, statut_avant: rows[0].statut_avant_annulation }, ip: req.ip });
+    await notif.traiter("depense_a_decaisser", req.params.id);
+    const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
+    const aPrevenir = [so && so.soumis_par, ...(await notif.titulairesPermission("depenses.decision"))];
+    await notif.notifier({ type: "depense_annulee", destinataires: aPrevenir, auteurId: req.user.sub, ref: req.params.id, charge: { motif } });
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
@@ -540,6 +573,7 @@ router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
     }
     const { rowCount } = await pool.query("DELETE FROM depenses WHERE id = $1 AND statut = 'soumise'", [req.params.id]);
     if (!rowCount) return res.status(409).json({ error: "Dépense déjà traitée — non retirable." });
+    await notif.traiter("depense_soumise", req.params.id);
     res.status(204).end();
   } catch (e) {
     console.error(e);
@@ -656,6 +690,14 @@ router.post("/:id/decision", requirePermission("depenses.decision"), async (req,
       [statut, motif_rejet || null, req.user.sub, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Dépense introuvable ou déjà traitée" });
+    await notif.traiter("depense_soumise", req.params.id);
+    const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
+    await notif.notifier({ type: "depense_decidee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id,
+      charge: { decision: statut, motif: statut === "rejetee" ? (motif_rejet || undefined) : undefined } });
+    if (statut === "validee") {
+      await notif.notifier({ type: "depense_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"),
+        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -699,6 +741,9 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
       [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references), String(v.references.beneficiaire || "").trim().slice(0, 160) || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
+    await notif.traiter("depense_a_decaisser", req.params.id);
+    const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
+    await notif.notifier({ type: "depense_decaissee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

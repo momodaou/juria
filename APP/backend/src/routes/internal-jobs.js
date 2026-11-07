@@ -23,6 +23,7 @@ const { executerJobAlertesAbonnements } = require("../jobs/alertesAbonnements");
 const { executerJobAlertesTachesRetard } = require("../jobs/alertesTachesRetard");
 const { executerJobAlertesDoublons } = require("../jobs/alertesDoublons");
 const { executerJobNotificationsRepli } = require("../jobs/notificationsRepli");
+const { executerJobNotificationsRelances } = require("../jobs/notificationsRelances");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -43,6 +44,17 @@ function requireSchedulerSecret(req, res, next) {
 router.post("/notifications-repli", requireSchedulerSecret, async (req, res) => {
   try {
     res.json(await executerJobNotificationsRepli(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// 07/11/2026 — relances du centre de notifications (en attente > 48 h ouvrées, retards, état de charges à soumettre, stock bas).
+// Cloche seulement, aucun e-mail. Cadence recommandée : une fois par jour ouvré, le matin.
+router.post("/notifications-relances", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobNotificationsRelances(pool));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

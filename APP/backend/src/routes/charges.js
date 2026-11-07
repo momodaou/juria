@@ -13,6 +13,7 @@ const { pool } = require("../db");
 const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteContentDisposition } = require("../storage");
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit, diffChamps } = require("../audit");
+const notif = require("../notifications");
 const { preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const { genererEtatChargesPdf } = require("../etatChargesPdf");
@@ -428,7 +429,11 @@ router.post("/etats/:id/soumettre", requirePermission("depenses.creer"), async (
       "UPDATE etats_charges SET statut = 'soumis', soumis_le = now() WHERE id = $1::uuid AND statut = 'en_preparation'", [req.params.id]);
     if (!rowCount) return res.status(409).json({ error: "État introuvable ou déjà soumis." });
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_soumis", entite: "etat_charges", entiteId: req.params.id });
-    res.json(await chargerEtat(req.params.id));
+    const etat = await chargerEtat(req.params.id);
+    // Centre de notifications (lot 2) : la soumission est l'événement principal ; les décideurs sont prévenus tout de suite.
+    await notif.notifier({ type: "etat_soumis", destinataires: await notif.titulairesPermission("depenses.decision"), auteurId: req.user.sub,
+      ref: req.params.id, aTraiter: true, charge: { mois: etat.mois } });
+    res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
@@ -440,7 +445,11 @@ router.post("/etats/:id/rouvrir", requirePermission("depenses.creer"), async (re
          AND NOT EXISTS (SELECT 1 FROM etats_charges_lignes WHERE etat_id = $1::uuid AND decision <> 'en_attente')`, [req.params.id]);
     if (!rowCount) return res.status(409).json({ error: "Impossible de rouvrir : l'état n'est pas soumis ou des décisions ont déjà été prises." });
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_rouvert", entite: "etat_charges", entiteId: req.params.id });
-    res.json(await chargerEtat(req.params.id));
+    const etat = await chargerEtat(req.params.id);
+    await notif.traiter(["etat_soumis", "etat_en_attente"], req.params.id);
+    await notif.notifier({ type: "etat_rouvert", destinataires: await notif.titulairesPermission("depenses.decision"), auteurId: req.user.sub,
+      ref: req.params.id, charge: { mois: etat.mois } });
+    res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
@@ -616,6 +625,7 @@ router.post("/etats/:id/approuver-tout", requirePermission("depenses.decision"),
     }
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_approuver_tout", entite: "etat_charges", entiteId: req.params.id,
       details: { approuvees: creees.length, ignorees, total } });
+    for (const c of creees) await notifierDecisionLigne(req.params.id, null, true, req.user.sub);
     const complet = await chargerEtat(req.params.id);
     complet.approuvees = creees.length; complet.ignorees = ignorees; complet.total_approuve = total;
     res.json(complet);
@@ -752,6 +762,21 @@ router.post("/etats/:id/lignes/:ligneId/annuler-decision", requirePermission("de
   } finally { client.release(); }
 });
 
+// Centre de notifications (lot 2) : le préparateur apprend les décisions (regroupées : « N lignes décidées ») et les
+// personnes qui décaissent apprennent que des dépenses validées les attendent (regroupées par état).
+async function notifierDecisionLigne(etatId, mois, approuvee, decideurId) {
+  try {
+    const { rows: [e] } = await pool.query("SELECT prepare_par, mois::text AS mois FROM etats_charges WHERE id = $1::uuid", [etatId]);
+    if (!e) return;
+    await notif.notifier({ type: "etat_lignes_decidees", destinataires: [e.prepare_par], auteurId: decideurId, ref: etatId,
+      cle: "etat_decisions:" + etatId, charge: { mois: e.mois } });
+    if (approuvee) {
+      await notif.notifier({ type: "depenses_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"), auteurId: decideurId,
+        ref: etatId, cle: "etat_a_decaisser:" + etatId, charge: {} });
+    }
+  } catch (e) { console.error("Notification de décision de ligne impossible :", e.message); }
+}
+
 // Décision des associés sur une ligne : approuvee (crée la dépense validée),
 // rejetee (motif obligatoire) ou reportee (revient le mois suivant).
 // Le moyen / compte / montant peuvent être orientés dans la même requête.
@@ -795,6 +820,7 @@ router.post("/etats/:id/lignes/:ligneId/decision", requirePermission("depenses.d
     if (depenseId) await copierPiecesVersDepense(l.id, depenseId, req.user.sub);
     await logAudit({ utilisateurId: req.user.sub, action: `etat_charges_${b.decision}`, entite: "etat_charges_ligne", entiteId: l.id,
       details: { libelle: l.libelle, montant, retard_mois: l.retard_mois } });
+    await notifierDecisionLigne(req.params.id, l.mois, !!depenseId, req.user.sub);
     res.json(maj);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
@@ -813,7 +839,10 @@ router.post("/etats/:id/cloturer", requirePermission("depenses.decision"), async
       "UPDATE etats_charges SET statut = 'clos', clos_par = $2::uuid, clos_le = now() WHERE id = $1::uuid AND statut = 'soumis'", [req.params.id, req.user.sub]);
     if (!rowCount) return res.status(409).json({ error: "L'état n'est pas soumis aux associés." });
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_clos", entite: "etat_charges", entiteId: req.params.id });
-    res.json(await chargerEtat(req.params.id));
+    const etat = await chargerEtat(req.params.id);
+    await notif.traiter(["etat_soumis", "etat_en_attente"], req.params.id);
+    await notif.notifier({ type: "etat_clos", destinataires: [etat.prepare_par], auteurId: req.user.sub, ref: req.params.id, charge: { mois: etat.mois } });
+    res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 

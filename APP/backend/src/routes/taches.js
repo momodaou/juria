@@ -167,7 +167,7 @@ router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res)
     );
     if (!rows[0]) return res.status(404).json({ error: "Tâche introuvable" });
     if (statut === "termine") await cloturerCourrierLie(req.params.id);
-    if (statut === "termine" || statut === "annule") await notif.traiter(["tache_assignee", "tache_retard"], req.params.id);
+    if (statut === "termine" || statut === "annule") await notif.traiter(["tache_assignee", "tache_retard", "tache_retard_escalade"], req.params.id);
     if (avant.statut !== statut) {
       await logAudit({
         utilisateurId: req.user.sub, action: "modifier_statut_tache", entite: "taches", entiteId: req.params.id,
@@ -230,7 +230,7 @@ router.put("/:id/details", requirePermission("taches.creer"), async (req, res) =
       }
       if (changements.responsable_id) {
         // Réaffectation : l'ancienne notification n'est plus « à traiter » ; le nouveau responsable est prévenu.
-        await notif.traiter(["tache_assignee", "tache_retard"], req.params.id);
+        await notif.traiter(["tache_assignee", "tache_retard", "tache_retard_escalade"], req.params.id);
         await notif.notifier({
           type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: req.params.id, aTraiter: true,
           charge: { dossier: await notif.numeroDossier(rows[0].dossier_id) },
@@ -267,7 +267,7 @@ router.post("/:id/valider", requirePermission("taches.valider"), async (req, res
       });
     }
     await cloturerCourrierLie(rows[0].id);
-    await notif.traiter(["tache_assignee", "tache_retard"], rows[0].id);
+    await notif.traiter(["tache_assignee", "tache_retard", "tache_retard_escalade"], rows[0].id);
     await logAudit({
       utilisateurId: req.user.sub, action: "valider_tache", entite: "taches", entiteId: rows[0].id,
       details: { dossier_id: rows[0].dossier_id }, ip: req.ip,

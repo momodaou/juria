@@ -13,6 +13,7 @@ const TYPES_SUSPENDABLES = ["conflit_a_decider", "conflit_tranche", "dossier_cre
 function texteSur(n) {
   // Pas de contenu libre dans un e-mail : une relance est annoncée sans son mot.
   if (n.type === "relance_action") return "Vous avez été relancé(e) sur une action.";
+  if (["depense_decidee", "depense_apres_coup_traitee", "depense_annulee"].includes(n.type)) return "Une de vos dépenses a été traitée : voir le détail dans JURIA.";
   return notif.composerTexte(n);
 }
 
