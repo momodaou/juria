@@ -14,6 +14,7 @@ const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteCon
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit, diffChamps } = require("../audit");
 const notif = require("../notifications");
+const mailer = require("../mailer");
 const { preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
 const { genererEtatChargesPdf } = require("../etatChargesPdf");
@@ -433,6 +434,7 @@ router.post("/etats/:id/soumettre", requirePermission("depenses.creer"), async (
     // Centre de notifications (lot 2) : la soumission est l'événement principal ; les décideurs sont prévenus tout de suite.
     await notif.notifier({ type: "etat_soumis", destinataires: await notif.titulairesPermission("depenses.decision"), auteurId: req.user.sub,
       ref: req.params.id, aTraiter: true, charge: { mois: etat.mois } });
+    await envoyerEtatParEmail(etat, req.user.sub);
     res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
@@ -761,6 +763,32 @@ router.post("/etats/:id/lignes/:ligneId/annuler-decision", requirePermission("de
     res.status(400).json({ error: e.message });
   } finally { client.release(); }
 });
+
+// Centre de notifications (lot 3) : e-mail UNIQUE aux décideurs à la soumission, avec le PDF de l'état en pièce jointe (date dans le
+// nom du fichier : après une réouverture l'ancien PDF n'est plus à jour). Aucun montant dans le corps du message. Gardé par
+// l'interrupteur général des e-mails de notification (éteint par défaut). Jamais bloquant.
+async function envoyerEtatParEmail(etat, auteurId) {
+  try {
+    if (!(await notif.emailsActifs())) return;
+    const ids = (await notif.titulairesPermission("depenses.decision")).filter((i) => i !== auteurId);
+    const { rows: dest } = await pool.query(
+      "SELECT prenom, email FROM utilisateurs WHERE actif AND id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''", [ids]);
+    if (!dest.length) return;
+    const { rows: [c] } = await pool.query("SELECT raison_sociale FROM parametres_cabinet WHERE id = 1");
+    const pdf = await genererEtatChargesPdf({ etat, lignes: etat.lignes, raisonSociale: c && c.raison_sociale });
+    const jour = new Date().toISOString().slice(0, 10);
+    const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
+    const mois = notif.moisFr(etat.mois);
+    for (const d of dest) {
+      await mailer.envoyerEmail({
+        to: d.email, subject: `État de charges de ${mois} soumis à votre décision`,
+        html: `<p>Bonjour ${d.prenom},</p><p>L'état de charges de ${mois} vient d'être soumis aux associés. Le document est joint à ce message (version du ${jour.split("-").reverse().join("/")}).</p>` +
+              `<p><a href="${base}/depenses/etat-charges">Décider dans JURIA</a></p><p style="color:#888;font-size:12px">Message automatique — ne pas répondre.</p>`,
+        attachments: [{ filename: `etat-charges-${String(etat.mois).slice(0, 7)}-soumis-le-${jour}.pdf`, content: pdf }],
+      });
+    }
+  } catch (e) { console.error("E-mail de soumission de l'état de charges impossible (non bloquant) :", e.message); }
+}
 
 // Centre de notifications (lot 2) : le préparateur apprend les décisions (regroupées : « N lignes décidées ») et les
 // personnes qui décaissent apprennent que des dépenses validées les attendent (regroupées par état).

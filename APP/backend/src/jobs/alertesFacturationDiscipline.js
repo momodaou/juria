@@ -30,6 +30,7 @@
 // groupé par destinataire plutôt qu'un e-mail par dossier/facture — cette
 // version envoie un e-mail par événement, comme alertesHonoraires.js.
 const { envoyerEmail } = require("../mailer");
+const notif = require("../notifications");
 const { STATUT_FACTURATION_EXPR, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 
 const ROLES_DESTINATAIRES = ["associe", "associe_fondateur", "admin_general", "comptable"];
@@ -51,7 +52,7 @@ function lienDossier(dossierId) {
 // Impayé — facture émise non soldée au-delà de 60 puis 90 jours après
 // son échéance (bornes identiques à la tuile "Ancienneté des impayés").
 // ---------------------------------------------------------------------
-async function executerAlerteImpaye(pool, dests) {
+async function executerAlerteImpaye(pool, dests, emailsActifs) {
   const { rows: factures } = await pool.query(`
     SELECT f.id, f.numero, f.dossier_id, f.montant_ttc, f.date_echeance,
            (current_date - f.date_echeance) AS jours_retard,
@@ -74,7 +75,10 @@ async function executerAlerteImpaye(pool, dests) {
     await pool.query(`UPDATE factures SET ${colonnes.map((c) => `${c} = TRUE`).join(", ")} WHERE id = $1`, [f.id]);
 
     const seuil = palier === "j90" ? "90 jours" : "60 jours";
-    for (const d of dests) {
+    // Centre de notifications (lot 3) : la cloche regroupe (« N éléments de facturation à suivre ») ; quand l'interrupteur des
+    // e-mails de notification est allumé, le récapitulatif du lundi remplace les e-mails par facture.
+    await notif.notifier({ type: "facturation_a_suivre", destinataires: dests.map((x) => x.id), cle: "facturation_a_suivre" });
+    for (const d of emailsActifs ? [] : dests) {
       const resultat = await envoyerEmail({
         to: d.email,
         subject: `Facture impayée depuis plus de ${seuil} — ${f.numero}`,
@@ -93,7 +97,7 @@ async function executerAlerteImpaye(pool, dests) {
 // Jamais facturé ("en attente de facturation") — dossier non pro bono
 // sans aucune facture au-delà de 30 puis 60 jours.
 // ---------------------------------------------------------------------
-async function executerAlerteEnAttenteFacturation(pool, dests) {
+async function executerAlerteEnAttenteFacturation(pool, dests, emailsActifs) {
   const { rows: dossiers } = await pool.query(`
     SELECT d.id, d.numero, d.intitule, d.alerte_facturation_j30, d.alerte_facturation_j60,
            (${STATUT_FACTURATION_EXPR}) AS statut_facturation
@@ -113,7 +117,8 @@ async function executerAlerteEnAttenteFacturation(pool, dests) {
     await pool.query(`UPDATE dossiers SET ${colonnes.map((c) => `${c} = TRUE`).join(", ")} WHERE id = $1`, [d.id]);
 
     const libelle = palier === "j60" ? "Toujours pas facturé" : "En attente de facturation";
-    for (const dest of dests) {
+    await notif.notifier({ type: "facturation_a_suivre", destinataires: dests.map((x) => x.id), cle: "facturation_a_suivre" });
+    for (const dest of emailsActifs ? [] : dests) {
       const resultat = await envoyerEmail({
         to: dest.email,
         subject: `${libelle} — ${d.numero}`,
@@ -130,8 +135,9 @@ async function executerAlerteEnAttenteFacturation(pool, dests) {
 
 async function executerJobAlertesFacturationDiscipline(pool) {
   const dests = await destinataires(pool);
-  const impaye = await executerAlerteImpaye(pool, dests);
-  const enAttenteFacturation = await executerAlerteEnAttenteFacturation(pool, dests);
+  const emailsActifs = await notif.emailsActifs(pool);
+  const impaye = await executerAlerteImpaye(pool, dests, emailsActifs);
+  const enAttenteFacturation = await executerAlerteEnAttenteFacturation(pool, dests, emailsActifs);
   return { destinataires: dests.length, impaye, en_attente_facturation: enAttenteFacturation };
 }
 

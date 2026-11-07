@@ -24,6 +24,7 @@ const { executerJobAlertesTachesRetard } = require("../jobs/alertesTachesRetard"
 const { executerJobAlertesDoublons } = require("../jobs/alertesDoublons");
 const { executerJobNotificationsRepli } = require("../jobs/notificationsRepli");
 const { executerJobNotificationsRelances } = require("../jobs/notificationsRelances");
+const { executerRecapMatin, executerRecapLundi, executerRecapCreations } = require("../jobs/recapsEmail");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -60,6 +61,19 @@ router.post("/notifications-relances", requireSchedulerSecret, async (req, res) 
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
+// 07/11/2026 — e-mails récapitulatifs (lot 3). Sans effet tant que parametres_cabinet.notifications_email_actif est FALSE.
+// Cadences recommandées : recap-matin chaque matin ouvré (7 h 30), recap-lundi le lundi (7 h), recap-creations chaque soir ouvré (17 h 30).
+for (const [chemin, fonction] of [["recap-matin", executerRecapMatin], ["recap-lundi", executerRecapLundi], ["recap-creations", executerRecapCreations]]) {
+  router.post("/" + chemin, requireSchedulerSecret, async (req, res) => {
+    try {
+      res.json(await fonction(pool));
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+}
 
 router.post("/alertes-delais", requireSchedulerSecret, async (req, res) => {
   try {

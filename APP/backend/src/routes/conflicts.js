@@ -69,6 +69,8 @@ const LIBELLES_DECISION = {
 // retourne par hasard sur « Nouveau dossier » pour le découvrir.
 async function notifierDecisionConflit(checkId, decision) {
   try {
+    // Interrupteur des e-mails de notification allumé : la cloche + l'e-mail de repli (2 h) remplacent l'e-mail direct.
+    if (await notif.emailsActifs()) return;
     if (await envoiSuspendu("decision_conflit", { controle_id: checkId, decision })) return;
     const { rows } = await pool.query(
       `SELECT cc.intitule_projet, u.email, u.prenom
@@ -100,6 +102,7 @@ async function notifierDecisionConflit(checkId, decision) {
 
 async function notifierConflitPotentiel(check, termes) {
   try {
+    if (await notif.emailsActifs()) return;
     if (await envoiSuspendu("conflit_potentiel", { controle_id: check.id })) return;
     const dests = await destinatairesConflit();
     if (!dests.length) return;

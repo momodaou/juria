@@ -39,6 +39,7 @@ const CATALOGUE = {
   apres_coup_en_attente: { niveau: "action", repliHeures: null, texte: (c) => `${c.n > 1 ? c.n + " dépenses engagées attendent" : "Une dépense engagée attend"} votre validation après coup depuis plus de 48 heures.`, lien: () => "/depenses" },
   etat_en_attente: { niveau: "critique", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} attend vos décisions depuis plus de 48 heures.`, lien: () => "/depenses/etat-charges" },
   tache_retard_escalade: { niveau: "critique", repliHeures: null, texte: (c) => `Une tâche que vous avez confiée est en retard depuis plus de 48 heures${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/plan-action" },
+  facturation_a_suivre: { niveau: "action", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} éléments de facturation sont à suivre (factures impayées, dossiers jamais facturés).` : "Un élément de facturation est à suivre (facture impayée ou dossier jamais facturé)."), lien: () => "/facturation" },
   stock_bas: { niveau: "information", repliHeures: null, texte: (c) => `Le stock de chemises ${c.couleur || ""} est bas.`.replace("  ", " "), lien: () => "/cabinet" },
 };
 
@@ -192,4 +193,4 @@ async function relancer({ cible, id, action, mot, user, ip, db = pool }) {
   return { statut: 200, corps: { ok: true } };
 }
 
-module.exports = { dejaNotifie, titulairesPermissions, emailsActifs, relancer, CATALOGUE, notifier, traiter, numeroDossier, titulairesPermission, presenter, composerTexte, heuresOuvrees };
+module.exports = { moisFr, dejaNotifie, titulairesPermissions, emailsActifs, relancer, CATALOGUE, notifier, traiter, numeroDossier, titulairesPermission, presenter, composerTexte, heuresOuvrees };

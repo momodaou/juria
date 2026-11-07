@@ -157,6 +157,8 @@ async function notifierAssociesNouveauDossier(dossierId, numero, intitule, creat
     console.error("Notification interne de nouveau dossier échouée (non bloquant) :", e.message);
   }
   try {
+    // Quand les e-mails de notification sont activés, le récapitulatif du soir (17 h 30) remplace l'e-mail envoyé à chaque création.
+    if (await notif.emailsActifs()) return;
     if (await envoiSuspendu("creation_dossier", { dossier_id: dossierId, numero })) return;
     const { rows: dests } = await pool.query(
       `SELECT email, prenom FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])`,
