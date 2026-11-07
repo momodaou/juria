@@ -50,6 +50,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/ouverture/ouverture.component').then((m) => m.OuvertureComponent),
       },
       {
+        path: 'notifications',
+        loadComponent: () => import('./pages/notifications/notifications.component').then((m) => m.NotificationsComponent),
+      },
+      {
         path: 'conflits',
         loadComponent: () => import('./pages/conflits/conflits.component').then((m) => m.ConflitsComponent),
       },

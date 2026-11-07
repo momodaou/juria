@@ -43,6 +43,8 @@ export class NotificationsService {
   readonly ouvert = signal(false);
   readonly filtre = signal<FiltreNotifications>('tout');
   readonly chargement = signal(false);
+  /** Reste-t-il des notifications plus anciennes que celles affichées ? (bouton « Voir plus ») */
+  readonly plusAnciennes = signal(false);
   readonly toasts = signal<Toast[]>([]);
   /** Urgences : notifications critiques encore « à traiter » — affichées dans la bannière du haut de l'écran jusqu'à leur traitement. */
   readonly urgences = signal<Notification[]>([]);
@@ -88,9 +90,26 @@ export class NotificationsService {
     this.filtre.set(filtre);
     this.chargement.set(true);
     this.http.get<Notification[]>(`${this.base}?filtre=${filtre}&limite=40`).subscribe({
-      next: (l) => { this.liste.set(l); this.chargement.set(false); },
+      next: (l) => { this.liste.set(l); this.plusAnciennes.set(l.length >= 40); this.chargement.set(false); },
       error: () => this.chargement.set(false),
     });
+  }
+
+  /** Charge les 40 notifications précédentes (plus anciennes que la dernière affichée). */
+  chargerPlus(): void {
+    const derniere = this.liste()[this.liste().length - 1];
+    if (!derniere || this.chargement()) return;
+    this.chargement.set(true);
+    this.http.get<Notification[]>(`${this.base}?filtre=${this.filtre()}&limite=40&avant=${encodeURIComponent(derniere.cree_le)}`).subscribe({
+      next: (l) => { this.liste.update((x) => [...x, ...l.filter((n) => !x.some((y) => y.id === n.id))]); this.plusAnciennes.set(l.length >= 40); this.chargement.set(false); },
+      error: () => this.chargement.set(false),
+    });
+  }
+
+  /** Ouvre une notification depuis la page : marquée lue, puis on va à l'écran concerné. */
+  ouvrirDepuisPage(n: Notification): void {
+    this.marquerLue(n.id);
+    if (n.lien) this.router.navigateByUrl(n.lien);
   }
 
   chargerUrgences(): void {
