@@ -895,11 +895,25 @@ export class RoleAudienceComponent implements OnInit {
     if (!this.auth.peut('audiences.diligence.gerer')) return [];
     const moi = this.auth.utilisateur()?.id;
     if (dl.membre_id !== moi && dl.cree_par !== moi && dl.dossier_responsable_id !== moi) return [];
+    const items: ActionMenuItem[] = [];
+    // Bouton « Relancer » (07/11/2026) : jamais sur soi-même ; le serveur refait le contrôle (4 h entre deux relances).
+    if (dl.membre_id && dl.membre_id !== moi) items.push({ label: 'Relancer', action: () => this.relancerDiligence(dl), title: 'Envoyer un rappel au membre chargé de la diligence' });
     return [
+      ...items,
       { label: 'Fait', action: () => this.majDiligence(dl, 'fait') },
       { label: 'Reporter', action: () => this.majDiligence(dl, 'reporte') },
       { label: 'Annuler', action: () => this.majDiligence(dl, 'annule'), danger: true },
     ];
+  }
+
+  relancerDiligence(dl: any): void {
+    const mot = prompt('Un mot pour la personne (facultatif) :', '');
+    if (mot === null) return; // annulé
+    this.erreur.set('');
+    this.api.relancerDiligence(dl.id, mot || undefined).subscribe({
+      next: () => alert('Relance envoyée.'),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Relance impossible.'),
+    });
   }
 
   majDiligence(dl: any, statut: string): void {

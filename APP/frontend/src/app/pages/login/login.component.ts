@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { MessagerieService } from '../../core/messagerie.service';
+import { NotificationsService } from '../../core/notifications.service';
 
 @Component({
   selector: 'app-login',
@@ -38,6 +39,7 @@ import { MessagerieService } from '../../core/messagerie.service';
 export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly messagerie = inject(MessagerieService);
+  private readonly notifications = inject(NotificationsService);
   private readonly router = inject(Router);
 
   email = '';
@@ -53,6 +55,7 @@ export class LoginComponent {
       next: () => {
         this.chargement.set(false);
         this.messagerie.demarrer();
+        this.notifications.demarrer();
         this.auth.chargerProfil();
         this.router.navigate(['/cockpit']);
       },

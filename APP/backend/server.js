@@ -69,6 +69,7 @@ app.use("/api/parametres", authenticate, require("./src/routes/parametres"));
 app.use("/api/courrier-reglages", authenticate, require("./src/routes/courrierReglages"));
 app.use("/api/stock-chemises", authenticate, require("./src/routes/stockChemises"));
 app.use("/api/fonds-tiers", authenticate, require("./src/routes/fondsTiers"));
+app.use("/api/notifications", authenticate, require("./src/routes/notifications"));
 // Pas de middleware authenticate ici : la route /stream gère son propre
 // jeton (EventSource ne pose pas d'en-tête Authorization) ; toutes les
 // autres routes du module l'appliquent elles-mêmes en interne — voir

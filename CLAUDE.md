@@ -76,6 +76,8 @@ Permissions : table `permissions_role` + catalogue statique `backend/src/permiss
 - Documents de référence (hors Git, dans `DOC/CLAUDE CODE - JURIA/`) : registre des notifications par e-mail, registre des identifiants, chartes graphiques et supports physiques, maquettes des 4 chemises à rabat (étiquette JURIA 100×60 mm sur page A4 ; 4 couleurs : bleu, doré, rouge, vert).
 - Fonctions notables à connaître (détail dans `HISTORY.md` et l'archive) : lettre de mission auto-générée à l'ouverture ; discipline de facturation (statuts « en attente »/« toujours pas facturé » + alertes) ; convention-cadre (abonnement) portée par le **client** ; vignettes de plaidoirie ancrées sur l'instance ; journal d'audit procédural + bandeaux « Créé par / Dernière modification » ; délégations d'accès réellement effectives ; contrôle de conflits asynchrone (registre `/conflits`) ; messagerie type WhatsApp (LISTEN/NOTIFY + SSE) ; rôle d'audience (retours, renvois chaînés, diffusion e-mail avec PDF) ; registre du courrier (viser, expédier, numérisation, dépôt temporaire avant dossier).
 
+- **Centre de notifications (lot 1, 07/11/2026, codé non déployé)** : cloche + toast, `backend/src/notifications.js` (`notifier()`), e-mails de notification éteints par l'interrupteur `parametres_cabinet.notifications_email_actif` ; détail dans `HISTORY.md`.
+
 ## Notes pour les futures sessions Claude
 - Avant toute action structurante, consigner l'entrée dans `HISTORY.md`.
 - Tenir ce fichier à jour **en le gardant court** : ajouter une ligne de résumé ici, le détail dans `HISTORY.md`. Si ce fichier dépasse ~100 000 caractères, le réduire à nouveau.

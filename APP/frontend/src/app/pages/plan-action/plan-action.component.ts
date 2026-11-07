@@ -384,10 +384,29 @@ export class PlanActionComponent implements OnInit {
       return this.auth.peut('taches.statut.modifier') ? [{ label: 'Réactiver', action: () => this.reactiver(t) }] : [];
     }
     const items: ActionMenuItem[] = [];
+    if (this.peutRelancer(t, col)) items.push({ label: 'Relancer', action: () => this.relancer(t), title: 'Envoyer un rappel à la personne chargée de la tâche' });
     if (col.statut === 'a_valider' && this.auth.peut('taches.valider')) items.push({ label: 'Valider', action: () => this.valider(t) });
     if (col.statut !== 'termine' && this.auth.peut('taches.creer')) items.push({ label: 'Modifier', action: () => this.commencerEdition(t) });
     if (col.statut !== 'termine' && this.auth.peut('taches.statut.modifier')) items.push({ label: 'Annuler', action: () => this.annulerTache(t), danger: true });
     return items;
+  }
+
+  // Bouton « Relancer » (07/11/2026) : le créateur, le responsable du dossier et les associés, jamais sur soi-même ni
+  // sur une tâche finie. Le serveur refait le même contrôle et limite à une relance toutes les 4 heures.
+  peutRelancer(t: any, col: any): boolean {
+    const moi = this.auth.utilisateur();
+    if (!moi || !this.auth.peut('taches.statut.modifier') || col.statut === 'termine' || !t.responsable_id || t.responsable_id === moi.id) return false;
+    return t.cree_par === moi.id || t.dossier_responsable_id === moi.id || ['associe', 'associe_fondateur'].includes(moi.role);
+  }
+
+  relancer(t: any): void {
+    const mot = prompt('Un mot pour la personne (facultatif) :', '');
+    if (mot === null) return; // annulé
+    this.erreur.set('');
+    this.api.relancerTache(t.id, mot || undefined).subscribe({
+      next: () => alert('Relance envoyée.'),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Relance impossible.'),
+    });
   }
 
   commencerEdition(t: any): void {

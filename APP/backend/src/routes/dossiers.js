@@ -16,6 +16,7 @@ const { envoyerEmail } = require("../mailer");
 const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
 const { CHAMPS_PARTIE, clausesMaj, selectChamps } = require("../identiteActes");
 const { envoiSuspendu } = require("../suspensionEmails");
+const notif = require("../notifications");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -143,6 +144,18 @@ async function notifierAssociesNouveauDossier(dossierId, numero, intitule, creat
     rolesDestinataires.push("admin_general");
   }
   if (!rolesDestinataires.length) return;
+  // Centre de notifications (07/11/2026) : cloche regroupée (« N nouveaux dossiers créés aujourd'hui »). Mêmes destinataires
+  // que l'e-mail (l'associé-fondateur reste exclu) ; la suspension temporaire ne concerne que les e-mails.
+  try {
+    const { rows: ds } = await pool.query(
+      "SELECT id FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])", [rolesDestinataires]);
+    await notif.notifier({
+      type: "dossier_cree", destinataires: ds.map((r) => r.id), auteurId: createurId,
+      cle: "dossiers_crees:" + new Date().toISOString().slice(0, 10), charge: { dossier: numero },
+    });
+  } catch (e) {
+    console.error("Notification interne de nouveau dossier échouée (non bloquant) :", e.message);
+  }
   try {
     if (await envoiSuspendu("creation_dossier", { dossier_id: dossierId, numero })) return;
     const { rows: dests } = await pool.query(

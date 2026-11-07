@@ -22,6 +22,7 @@ const { executerJobAlertesRetoursManquants } = require("../jobs/alertesRetoursMa
 const { executerJobAlertesAbonnements } = require("../jobs/alertesAbonnements");
 const { executerJobAlertesTachesRetard } = require("../jobs/alertesTachesRetard");
 const { executerJobAlertesDoublons } = require("../jobs/alertesDoublons");
+const { executerJobNotificationsRepli } = require("../jobs/notificationsRepli");
 const router = express.Router();
 
 function requireSchedulerSecret(req, res, next) {
@@ -36,6 +37,17 @@ function requireSchedulerSecret(req, res, next) {
   }
   next();
 }
+
+// 07/11/2026 — e-mail de repli du centre de notifications (non lu au bout du délai). Cadence recommandée : toutes les 30 minutes
+// en semaine. À créer EN PAUSE ; sans effet tant que l'interrupteur parametres_cabinet.notifications_email_actif est FALSE.
+router.post("/notifications-repli", requireSchedulerSecret, async (req, res) => {
+  try {
+    res.json(await executerJobNotificationsRepli(pool));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
 router.post("/alertes-delais", requireSchedulerSecret, async (req, res) => {
   try {

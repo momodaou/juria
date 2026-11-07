@@ -11,6 +11,8 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { logAudit } = require("../audit");
+const notif = require("../notifications");
+const numeroDossier = (id) => notif.numeroDossier(id);
 const router = express.Router();
 
 // GET /api/diligences?dossier_id=&statut=  — même permission de
@@ -93,6 +95,13 @@ router.post("/", requirePermission("audiences.diligence.gerer"), async (req, res
       details: { dossier_id: rows[0].dossier_id, membre_id: rows[0].membre_id, objet: b.objet || null },
       ip: req.ip,
     });
+    // Centre de notifications (07/11/2026) : le membre assigné est prévenu tout de suite (jamais l'auteur de l'assignation).
+    if (rows[0].membre_id) {
+      await notif.notifier({
+        type: "diligence_assignee", destinataires: [rows[0].membre_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true,
+        charge: { date: rows[0].date_diligence, dossier: await numeroDossier(rows[0].dossier_id) },
+      });
+    }
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -136,12 +145,39 @@ router.put("/:id/statut", requirePermission("audiences.diligence.gerer"), async 
     );
     if (!rows[0]) return res.status(404).json({ error: "Diligence introuvable" });
     if (actuelle.statut !== statut) {
+      // Centre de notifications : la diligence n'est plus « à traiter » dès qu'elle est faite, reportée ou annulée ;
+      // reportée/annulée par un autre que le membre assigné : celui-ci en est informé.
+      if (statut !== "a_faire") await notif.traiter("diligence_assignee", req.params.id);
+      if ((statut === "reporte" || statut === "annule") && actuelle.membre_id) {
+        await notif.notifier({
+          type: "diligence_modifiee", destinataires: [actuelle.membre_id], auteurId: req.user.sub, ref: req.params.id,
+          charge: { statut, dossier: await numeroDossier(actuelle.dossier_id) },
+        });
+      }
       await logAudit({
         utilisateurId: req.user.sub, action: "modifier_statut_diligence", entite: "diligences", entiteId: req.params.id,
         details: { dossier_id: actuelle.dossier_id, avant: actuelle.statut, apres: statut }, ip: req.ip,
       });
     }
     res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/diligences/:id/relancer  { mot? } — bouton « Relancer » (07/11/2026) : notifie le membre assigné.
+router.post("/:id/relancer", requirePermission("audiences.diligence.gerer"), async (req, res) => {
+  try {
+    const { rows: [dl] } = await pool.query(
+      `SELECT dl.membre_id AS executant_id, dl.cree_par, dl.dossier_id, dl.statut, d.responsable_id AS dossier_responsable_id
+       FROM diligences dl LEFT JOIN dossiers d ON d.id = dl.dossier_id WHERE dl.id = $1`, [req.params.id]);
+    if (!dl) return res.status(404).json({ error: "Diligence introuvable" });
+    const r = await notif.relancer({
+      cible: "diligence", id: req.params.id, mot: (req.body || {}).mot, user: req.user, ip: req.ip,
+      action: { ...dl, termine: ["fait", "annule"].includes(dl.statut) },
+    });
+    res.status(r.statut).json(r.corps);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerEmail } = require("../mailer");
 const { envoiSuspendu } = require("../suspensionEmails");
+const notif = require("../notifications");
 const { logAudit } = require("../audit");
 const router = express.Router();
 
@@ -173,6 +174,12 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
         { id: ins.rows[0].id, intitule_projet: b.intitule_projet || null },
         details
       );
+      // Centre de notifications (07/11/2026) : la cloche n'est pas concernée par la suspension des e-mails ;
+      // seuls les titulaires de conflits.decision (donc pas l'associé-fondateur) sont prévenus.
+      await notif.notifier({
+        type: "conflit_a_decider", destinataires: await notif.titulairesPermission("conflits.decision"),
+        auteurId: req.user.sub, ref: ins.rows[0].id, aTraiter: true,
+      });
     }
 
     res.status(201).json({
@@ -323,6 +330,12 @@ router.post("/:id/decision", requirePermission("conflits.decision"), async (req,
     // ci-dessus) : un échec d'envoi ne doit jamais faire échouer la
     // décision elle-même, déjà enregistrée.
     await notifierDecisionConflit(req.params.id, decision);
+    // Centre de notifications : la demande n'est plus « à traiter » pour les autres décideurs ; le demandeur apprend la décision.
+    await notif.traiter("conflit_a_decider", req.params.id);
+    const { rows: [demandeur] } = await pool.query("SELECT cree_par FROM conflict_checks WHERE id = $1", [req.params.id]);
+    if (demandeur && demandeur.cree_par) {
+      await notif.notifier({ type: "conflit_tranche", destinataires: [demandeur.cree_par], auteurId: req.user.sub, ref: req.params.id, charge: { decision } });
+    }
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

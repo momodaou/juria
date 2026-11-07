@@ -3,6 +3,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { logAudit } = require("../audit");
+const notif = require("../notifications");
 const router = express.Router();
 
 // Délégation d'une tâche (Bloc D, 10/10/2026, diagnostic "instruction
@@ -70,7 +71,7 @@ router.get("/", requirePermission("taches.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT t.id, t.titre, t.type, t.priorite, t.statut, t.echeance, t.validation_requise,
               t.description, t.dossier_id, t.responsable_id, d.numero AS dossier_numero,
-              d.intitule AS dossier_intitule,
+              d.intitule AS dossier_intitule, d.responsable_id AS dossier_responsable_id,
               u.prenom || ' ' || u.nom AS responsable,
               t.cree_par, cp.prenom || ' ' || cp.nom AS cree_par_nom
        FROM taches t
@@ -113,6 +114,11 @@ router.post("/", requirePermission("taches.creer"), async (req, res) => {
       utilisateurId: req.user.sub, action: "creer_tache", entite: "taches", entiteId: rows[0].id,
       details: { dossier_id: rows[0].dossier_id, titre: rows[0].titre, responsable_id: rows[0].responsable_id },
       ip: req.ip,
+    });
+    // Centre de notifications (07/11/2026) : prévenu tout de suite si la tâche est confiée à quelqu'un d'autre.
+    await notif.notifier({
+      type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true,
+      charge: { dossier: await notif.numeroDossier(rows[0].dossier_id) },
     });
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -161,6 +167,7 @@ router.put("/:id", requirePermission("taches.statut.modifier"), async (req, res)
     );
     if (!rows[0]) return res.status(404).json({ error: "Tâche introuvable" });
     if (statut === "termine") await cloturerCourrierLie(req.params.id);
+    if (statut === "termine" || statut === "annule") await notif.traiter(["tache_assignee", "tache_retard"], req.params.id);
     if (avant.statut !== statut) {
       await logAudit({
         utilisateurId: req.user.sub, action: "modifier_statut_tache", entite: "taches", entiteId: req.params.id,
@@ -221,6 +228,14 @@ router.put("/:id/details", requirePermission("taches.creer"), async (req, res) =
         const v1 = avant[c] ?? null, v2 = rows[0][c] ?? null;
         if (String(v1) !== String(v2)) changements[c] = { avant: v1, apres: v2 };
       }
+      if (changements.responsable_id) {
+        // Réaffectation : l'ancienne notification n'est plus « à traiter » ; le nouveau responsable est prévenu.
+        await notif.traiter(["tache_assignee", "tache_retard"], req.params.id);
+        await notif.notifier({
+          type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: req.params.id, aTraiter: true,
+          charge: { dossier: await notif.numeroDossier(rows[0].dossier_id) },
+        });
+      }
       if (Object.keys(changements).length) {
         await logAudit({
           utilisateurId: req.user.sub, action: "modifier_details_tache", entite: "taches", entiteId: req.params.id,
@@ -252,11 +267,31 @@ router.post("/:id/valider", requirePermission("taches.valider"), async (req, res
       });
     }
     await cloturerCourrierLie(rows[0].id);
+    await notif.traiter(["tache_assignee", "tache_retard"], rows[0].id);
     await logAudit({
       utilisateurId: req.user.sub, action: "valider_tache", entite: "taches", entiteId: rows[0].id,
       details: { dossier_id: rows[0].dossier_id }, ip: req.ip,
     });
     res.json(rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/taches/:id/relancer  { mot? } — bouton « Relancer » (07/11/2026) : notifie la personne chargée de la tâche.
+// Peuvent relancer le créateur, le responsable du dossier et les associés (voir notifications.relancer).
+router.post("/:id/relancer", requirePermission("taches.statut.modifier"), async (req, res) => {
+  try {
+    const { rows: [t] } = await pool.query(
+      `SELECT t.responsable_id AS executant_id, t.cree_par, t.dossier_id, t.statut, d.responsable_id AS dossier_responsable_id
+       FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id WHERE t.id = $1`, [req.params.id]);
+    if (!t) return res.status(404).json({ error: "Tâche introuvable" });
+    const r = await notif.relancer({
+      cible: "tache", id: req.params.id, mot: (req.body || {}).mot, user: req.user, ip: req.ip,
+      action: { ...t, termine: ["termine", "annule"].includes(t.statut) },
+    });
+    res.status(r.statut).json(r.corps);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

@@ -1,6 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
 
@@ -55,6 +55,9 @@ export class MessagerieService {
 
   private source: EventSource | null = null;
 
+  /** Notifications du centre de notifications (07/11/2026) reçues sur ce même flux SSE — relayées à NotificationsService. */
+  readonly notification$ = new Subject<any>();
+
   readonly conversations = signal<Conversation[]>([]);
   readonly nonLus = signal(0);
   /** Messages de la conversation actuellement ouverte à l'écran (si l'écran Messagerie est affiché). */
@@ -91,6 +94,7 @@ export class MessagerieService {
         else if (evenement.type === 'lu') this.recevoirLecture(evenement);
         else if (evenement.type === 'frappe') this.recevoirFrappe(evenement);
         else if (evenement.type === 'titre') this.rafraichirConversations();
+        else if (evenement.type === 'notification' || evenement.type === 'notification_traitee') this.notification$.next(evenement);
       } catch {
         /* ping ou trame ignorée */
       }

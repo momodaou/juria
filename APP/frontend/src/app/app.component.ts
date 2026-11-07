@@ -4,6 +4,8 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { AuthService } from './core/auth.service';
 import { MessagerieService } from './core/messagerie.service';
 import { MessagerieWidgetComponent } from './core/messagerie-widget.component';
+import { NotificationsService } from './core/notifications.service';
+import { NotificationsClocheComponent, NotificationsToastsComponent } from './core/notifications-cloche.component';
 import { DocumentPreviewComponent } from './core/document-preview.component';
 import { ExportPrintComponent } from './core/export-print.component';
 
@@ -38,7 +40,7 @@ interface NavBloc {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, MessagerieWidgetComponent, DocumentPreviewComponent, ExportPrintComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NotificationsClocheComponent, NotificationsToastsComponent, MessagerieWidgetComponent, DocumentPreviewComponent, ExportPrintComponent],
   template: `
     @if (auth.estConnecte) {
       <div class="app" [class.collapsed]="collapsed()">
@@ -64,6 +66,8 @@ interface NavBloc {
               </svg>
             </button>
           </div>
+
+          <app-notifications-cloche />
 
           <nav>
             @for (bloc of blocsNav(); track $index) {
@@ -94,6 +98,7 @@ interface NavBloc {
           <div id="vue-active"><router-outlet /></div>
         </main>
       </div>
+      <app-notifications-toasts />
       <app-messagerie-widget />
       <app-document-preview />
     } @else {
@@ -104,6 +109,7 @@ interface NavBloc {
 export class AppComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly messagerie = inject(MessagerieService);
+  private readonly notifications = inject(NotificationsService);
   private readonly router = inject(Router);
 
   peutVoirRole(item: NavItem): boolean {
@@ -127,6 +133,7 @@ export class AppComponent implements OnInit {
   ngOnInit(): void {
     if (this.auth.estConnecte) {
       this.messagerie.demarrer();
+      this.notifications.demarrer();
       this.auth.chargerProfil(); // permissions à jour après un rechargement de page
     }
   }
@@ -286,6 +293,7 @@ export class AppComponent implements OnInit {
 
   deconnexion(): void {
     this.messagerie.arreter();
+    this.notifications.arreter();
     this.auth.logout();
     this.router.navigate(['/login']);
   }

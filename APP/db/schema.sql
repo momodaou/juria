@@ -5774,3 +5774,34 @@ ALTER TABLE courriers ADD COLUMN IF NOT EXISTS audience_heure VARCHAR(5);   -- H
 -- est désormais indiquée/corrigible (jamais dans le futur) et l'année du numéro suit cette date.
 -- ============================================================
 ALTER TABLE factures ADD COLUMN IF NOT EXISTS numero_origine VARCHAR(60);
+
+-- ============================================================
+-- CENTRE DE NOTIFICATIONS — LOT 1 (07/11/2026)
+-- Cloche + toast dans l'application. Une ligne par destinataire ; le TEXTE n'est pas stocké : il est composé à
+-- l'affichage à partir de (type, charge, nombre) — aucun montant ni nom de client. `cle_regroupement` : tant qu'une
+-- notification du même destinataire et de la même clé n'est pas lue, un nouvel événement l'incrémente (« 5 dossiers
+-- créés aujourd'hui ») au lieu d'en créer une autre. `a_traiter` reste vrai tant que l'action n'est pas accomplie.
+-- `repli_envoye_le` : e-mail de repli (job planifié, créé EN PAUSE ; interrupteur général
+-- parametres_cabinet.notifications_email_actif, FALSE par défaut : aucun e-mail de notification ne part tant qu'il n'est pas activé).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notifications (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  destinataire_id  UUID NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+  type             VARCHAR(60) NOT NULL,
+  niveau           VARCHAR(12) NOT NULL DEFAULT 'information' CHECK (niveau IN ('information','action','critique')),
+  charge           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  lien             VARCHAR(300),
+  cle_regroupement VARCHAR(160),
+  nombre           INTEGER NOT NULL DEFAULT 1,
+  a_traiter        BOOLEAN NOT NULL DEFAULT FALSE,
+  cree_le          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  lue_le           TIMESTAMPTZ,
+  traitee_le       TIMESTAMPTZ,
+  repli_envoye_le  TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_dest ON notifications (destinataire_id, cree_le DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_ref ON notifications (type, ((charge->>'ref')));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_regroupement
+  ON notifications (destinataire_id, cle_regroupement) WHERE cle_regroupement IS NOT NULL AND lue_le IS NULL;
+
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS notifications_email_actif BOOLEAN NOT NULL DEFAULT FALSE;

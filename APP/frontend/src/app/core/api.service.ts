@@ -818,6 +818,14 @@ export class ApiService {
     return this.http.put<any>(`${this.base}/api/diligences/${id}/statut`, { statut, observations });
   }
 
+  // Bouton « Relancer » (07/11/2026) : notifie la personne chargée de l'action (centre de notifications)
+  relancerTache(id: string, mot?: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/taches/${id}/relancer`, { mot });
+  }
+  relancerDiligence(id: string, mot?: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/diligences/${id}/relancer`, { mot });
+  }
+
   // Registre du courrier
   courriers(filtres: { sens?: string; type?: string; dossier_id?: string; statut?: string; q?: string; en_attente_numerisation?: string; mes?: string; orientation?: string; numeros_reserves?: string; etat?: string; moi?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
