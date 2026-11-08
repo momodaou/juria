@@ -55,6 +55,7 @@ describe("notifier() et lecture", () => {
     let l = await liste(a);
     expect(l).toHaveLength(1);
     expect(l[0].nombre).toBe(3);
+    expect(l[0].lien).toBe("/dossiers"); // groupe : liste des dossiers (pas une fiche précise)
     expect(l[0].texte).toBe("3 nouveaux dossiers ont été créés aujourd'hui.");
     // une fois lue, un nouvel événement ouvre une nouvelle ligne
     await request(app).post(`/api/notifications/${l[0].id}/lue`).set(auth(a));
@@ -110,6 +111,7 @@ describe("Diligences", () => {
     expect(r.status).toBe(201);
     let l = await liste(membre);
     expect(l[0].type).toBe("diligence_assignee");
+    expect(l[0].lien).toBe(`/role-audience?diligence=${r.body.id}`); // arrivée précise sur la diligence
     expect(l[0].a_traiter).toBe(true);
     expect(await liste(chef, "?filtre=a_traiter")).not.toContainEqual(expect.objectContaining({ type: "diligence_assignee" }));
     const rep = await request(app).put(`/api/diligences/${r.body.id}/statut`).set(auth(chef)).send({ statut: "reporte" });
@@ -132,6 +134,7 @@ describe("Tâches et relance", () => {
     const t = await request(app).post("/api/taches").set(auth(chef)).send({ titre: "Conclusions", responsable_id: x.id });
     expect(t.status).toBe(201);
     expect((await liste(x))[0].type).toBe("tache_assignee");
+    expect((await liste(x))[0].lien).toBe(`/plan-action?tache=${t.body.id}`); // arrivée précise sur la carte
     const re = await request(app).put(`/api/taches/${t.body.id}/details`).set(auth(chef)).send({ responsable_id: y.id });
     expect(re.status).toBe(200);
     expect((await liste(x))[0].a_traiter).toBe(false);

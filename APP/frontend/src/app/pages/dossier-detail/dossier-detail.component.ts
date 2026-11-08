@@ -7,6 +7,7 @@ import { AuthService } from '../../core/auth.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { viserElement } from '../../core/cible-notification';
 import { libelleRole } from '../../core/roles';
 import { LibellePipe } from '../../core/libelles';
 
@@ -788,7 +789,7 @@ import { LibellePipe } from '../../core/libelles';
           <table>
             <tr><th>Type</th><th>Intitulé</th><th>Échéance</th><th>Jours</th><th></th></tr>
             @for (e of evenements(); track e.id) {
-              <tr>
+              <tr [id]="'evenement-' + e.id">
                 <td>{{ libelleType(e.type) }}@if (e.type === 'autre' && e.precision) { : {{ e.precision }} }</td><td>{{ e.titre }}</td>
                 <td>{{ e.date_echeance | date:'dd/MM/yyyy' }}</td>
                 <td>
@@ -2454,8 +2455,18 @@ export class DossierDetailComponent implements OnInit {
       .join(', ');
   }
 
+  // Arrivée depuis une notification de délai (?evenement=<id>) : l'échéance visée défile au centre et se surligne.
+  private evenementCible: string | null = null;
+  private viserEvenement(): void {
+    if (this.evenementCible === null) this.evenementCible = this.route.snapshot.queryParamMap.get('evenement') ?? '';
+    const id = this.evenementCible;
+    if (!id) return;
+    this.evenementCible = '';
+    setTimeout(() => viserElement('evenement-' + id), 300);
+  }
+
   private rafraichirDelais(): void {
-    this.api.dossierEvenements(this.id).subscribe({ next: (e) => this.evenements.set(e), error: () => {} });
+    this.api.dossierEvenements(this.id).subscribe({ next: (e) => { this.evenements.set(e); this.viserEvenement(); }, error: () => {} });
   }
   // Échéances : traiter / modifier-reporter / annuler (25/09/2026) — voir
   // echeancier.component.ts, même logique.

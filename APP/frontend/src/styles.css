@@ -225,3 +225,7 @@ tr:has(td.clik):hover{background:#f7f9fc}
 .login-card input{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:var(--fs-md)}
 .login-card button{margin-top:20px;background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:11px;font-size:var(--fs-md);font-weight:600;cursor:pointer}
 .login-card button:disabled{opacity:.6;cursor:default}
+
+/* Arrivée depuis une notification : élément visé surligné quelques secondes (core/cible-notification.ts) */
+.cible-notif{outline:3px solid var(--gold);outline-offset:-3px;background:#fff3c4;transition:background .6s}
+tr.cible-notif>td{background:#fff3c4 !important}

@@ -9,6 +9,7 @@ import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.direct
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, libelleCategorieDepense } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { viserElement } from '../../core/cible-notification';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 
 @Component({
@@ -157,10 +158,11 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
            souvent fermé — donc invisibles (25/09/2026). -->
       @if (erreur() && !editionId() && !afficherForm()) { <p class="err">{{ erreur() }}</p> }
       @if (depenses().length) {
+        @if (messageCible()) { <p class="bandeau-filtre">{{ messageCible() }}</p> }
         <table>
           <tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Nature / dossier</th><th>Pièces</th><th>Statut</th><th></th></tr>
           @for (d of depenses(); track d.id) {
-            <tr [class.annulee]="!!d.annulee_le">
+            <tr [id]="'depense-' + d.id" [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
               <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }
                 @if (d.etat_mois) { <span class="tag">État {{ d.etat_mois | date:'MM/yyyy' }}</span> }
@@ -495,12 +497,25 @@ export class DepensesComponent implements OnInit {
   // acheté n'est pas forcément une suite continue.
   vignetteNumeros = '';
 
+  // Arrivée depuis une notification (?depense=<id>) : la ligne visée défile au centre et se surligne.
+  private depenseCible: string | null = null;
+  readonly messageCible = signal('');
+  private viserDepense(): void {
+    const id = this.depenseCible;
+    if (!id) return;
+    this.depenseCible = null;
+    setTimeout(() => {
+      if (!viserElement('depense-' + id)) this.messageCible.set('Cette dépense n’apparaît pas dans la liste : elle a été retirée, ou un filtre la masque (« Réinitialiser les filtres »).');
+    }, 200);
+  }
+
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     // 24/10/2026 — lien « À décaisser » de l'état mensuel des charges.
     this.filtreStatut = params.get('statut') ?? '';
+    this.depenseCible = params.get('depense');
     this.charger();
     this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
@@ -521,7 +536,7 @@ export class DepensesComponent implements OnInit {
       statut: this.filtreStatut, type: this.filtreType, categorie: this.filtreCategorie, nature: this.filtreNature,
       petite_caisse: this.filtreCaisse, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
       masquer_annulees: this.masquerAnnulees, ...(dossierId ? { dossier_id: dossierId } : {}),
-    }).subscribe({ next: (d) => this.depenses.set(d) });
+    }).subscribe({ next: (d) => { this.depenses.set(d); this.viserDepense(); } });
     this.chargerADecaisser();
   }
   // Recherche texte : on attend la fin de la frappe avant d'interroger le serveur.

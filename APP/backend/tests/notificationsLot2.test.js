@@ -45,6 +45,7 @@ describe("Dépenses", () => {
     expect(n1.a_traiter).toBe(true);
     expect(n1.texte).toBe("Une dépense attend votre décision.");
     expect(n1.texte).not.toMatch(/25000|Fournitures/);
+    expect(n1.lien).toBe(`/depenses?depense=${r.body.id}`); // arrivée précise sur la dépense
     expect(await de(adminG, "depense_soumise")).toHaveLength(0);
 
     const d = await request(app).post(`/api/depenses/${r.body.id}/decision`).set(auth(assoc1)).send({ statut: "validee" });
@@ -127,6 +128,7 @@ describe("États de charges", () => {
     const n = (await de(assoc, "etat_soumis"))[0];
     expect(n.texte).toBe(`L'état de charges de ${M.label} est soumis : des lignes attendent votre décision.`);
     expect(n.a_traiter).toBe(true);
+    expect(n.lien).toBe(`/depenses/etat-charges?etat=${id}`); // arrivée précise sur l'état
     expect(await de(prep, "etat_soumis")).toHaveLength(0);
 
     await request(app).post(`/api/charges/etats/${id}/lignes/${l1.id}/decision`).set(auth(assoc)).send({ decision: "rejetee", motif: "Trop cher" });

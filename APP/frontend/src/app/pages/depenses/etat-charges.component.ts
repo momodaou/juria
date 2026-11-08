@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService, MoyenPaiement } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
@@ -50,6 +50,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
     </nav>
 
     @if (onglet() === 'etats') {
+    @if (messageCible()) { <p class="hint">{{ messageCible() }}</p> }
     <section class="panel">
       <h3>États</h3>
       @if (!etats().length) { <p class="hint">Aucun état pour le moment. Choisissez un mois puis « Nouvel état » : il se remplit avec vos charges habituelles et les charges reportées.</p> }
@@ -456,6 +457,9 @@ export class EtatChargesComponent implements OnInit {
   readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly preview = inject(DocumentPreviewService);
+  private readonly route = inject(ActivatedRoute);
+  /** Arrivée depuis une notification : message si l'état visé n'existe plus. */
+  readonly messageCible = signal('');
 
   readonly seuil = 2;
   readonly categoriesCabinet = CATEGORIES_CABINET;
@@ -632,6 +636,11 @@ export class EtatChargesComponent implements OnInit {
   // À l'arrivée, l'état utile s'ouvre tout seul : celui du mois en cours, sinon le plus récent encore ouvert, sinon le plus récent.
   private ouvrirParDefaut(l: any[]): void {
     if (this.detail() || !l.length) return;
+    // Arrivée depuis une notification : ?etat=<id> ou ?mois=AAAA-MM → cet état s'ouvre et défile au centre.
+    const q = this.route.snapshot.queryParamMap;
+    const vise = q.get('etat') ? l.find((e) => e.id === q.get('etat')) : q.get('mois') ? l.find((e) => String(e.mois).slice(0, 7) === q.get('mois')) : null;
+    if (vise) { this.ouvrir(vise.id, true); return; }
+    if (q.get('etat') || q.get('mois')) this.messageCible.set(q.get('mois') ? 'L’état de ce mois n’est pas encore créé : choisissez le mois puis « Nouvel état ».' : 'Cet état de charges n’existe plus : voici l’état utile du moment.');
     const courant = new Date().toISOString().slice(0, 7);
     const choix = l.find((e) => String(e.mois).slice(0, 7) === courant) ?? l.find((e) => e.statut !== 'clos') ?? l[0];
     this.ouvrir(choix.id);

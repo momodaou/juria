@@ -10,35 +10,35 @@ const bus = require("./messagerie-bus");
 // Catalogue : niveau par défaut, délai du repli par e-mail (en jours ouvrés × 24 h : voir heuresOuvrees), texte et lien.
 // repliHeures = null : jamais d'e-mail de repli pour ce type.
 const CATALOGUE = {
-  diligence_assignee: { niveau: "action", repliHeures: 4, texte: (c) => `Une diligence vous est confiée${c.date ? " (le " + jourFr(c.date) + ")" : ""}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/role-audience" },
-  diligence_modifiee: { niveau: "information", repliHeures: null, texte: (c) => `Une diligence qui vous est confiée est ${c.statut === "annule" ? "annulée" : "reportée"}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/role-audience" },
-  tache_assignee: { niveau: "action", repliHeures: 4, texte: (c) => `Une tâche vous est confiée${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/plan-action" },
-  tache_retard: { niveau: "action", repliHeures: 24, texte: (c) => `Une tâche est en retard${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/plan-action" },
-  relance_action: { niveau: "action", repliHeures: 4, texte: (c) => `${c.par || "Quelqu'un"} vous relance sur ${c.cible === "diligence" ? "une diligence" : "une tâche"}${c.dossier ? " — dossier " + c.dossier : ""}${c.mot ? " : « " + c.mot + " »" : "."}`, lien: (c) => (c.cible === "diligence" ? "/role-audience" : "/plan-action") },
-  delai_procedure: { niveau: "action", repliHeures: null, texte: (c) => (c.jours === 0 ? "Un délai de procédure expire aujourd'hui" : `Un délai de procédure expire dans ${c.jours} jour${c.jours > 1 ? "s" : ""}`) + (c.dossier ? ` — dossier ${c.dossier}.` : "."), lien: (c) => (c.dossier_id ? `/dossiers/${c.dossier_id}` : "/echeancier") },
+  diligence_assignee: { niveau: "action", repliHeures: 4, texte: (c) => `Une diligence vous est confiée${c.date ? " (le " + jourFr(c.date) + ")" : ""}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/role-audience?diligence=${c.ref}` : "/role-audience") },
+  diligence_modifiee: { niveau: "information", repliHeures: null, texte: (c) => `Une diligence qui vous est confiée est ${c.statut === "annule" ? "annulée" : "reportée"}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/role-audience?diligence=${c.ref}` : "/role-audience") },
+  tache_assignee: { niveau: "action", repliHeures: 4, texte: (c) => `Une tâche vous est confiée${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/plan-action?tache=${c.ref}` : "/plan-action") },
+  tache_retard: { niveau: "action", repliHeures: 24, texte: (c) => `Une tâche est en retard${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/plan-action?tache=${c.ref}` : "/plan-action") },
+  relance_action: { niveau: "action", repliHeures: 4, texte: (c) => `${c.par || "Quelqu'un"} vous relance sur ${c.cible === "diligence" ? "une diligence" : "une tâche"}${c.dossier ? " — dossier " + c.dossier : ""}${c.mot ? " : « " + c.mot + " »" : "."}`, lien: (c) => (c.cible === "diligence" ? (c.ref ? `/role-audience?diligence=${c.ref}` : "/role-audience") : (c.ref ? `/plan-action?tache=${c.ref}` : "/plan-action")) },
+  delai_procedure: { niveau: "action", repliHeures: null, texte: (c) => (c.jours === 0 ? "Un délai de procédure expire aujourd'hui" : `Un délai de procédure expire dans ${c.jours} jour${c.jours > 1 ? "s" : ""}`) + (c.dossier ? ` — dossier ${c.dossier}.` : "."), lien: (c) => (c.dossier_id ? `/dossiers/${c.dossier_id}${c.ref ? "?evenement=" + c.ref : ""}` : "/echeancier") },
   conflit_a_decider: { niveau: "critique", repliHeures: 2, texte: () => "Un contrôle de conflit d'intérêts attend votre décision.", lien: (c) => (c.ref ? `/conflits?id=${c.ref}` : "/conflits") },
   conflit_tranche: { niveau: "information", repliHeures: null, texte: (c) => `Votre contrôle de conflit est tranché : ${c.decision === "accepte" ? "accepté" : c.decision === "refuse" ? "refusé" : "orienté"}.`, lien: () => "/ouverture" },
-  dossier_cree: { niveau: "information", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} nouveaux dossiers ont été créés aujourd'hui.` : `Un nouveau dossier a été créé${c.dossier ? " : " + c.dossier : ""}.`), lien: () => "/dossiers" },
+  dossier_cree: { niveau: "information", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} nouveaux dossiers ont été créés aujourd'hui.` : `Un nouveau dossier a été créé${c.dossier ? " : " + c.dossier : ""}.`), lien: (c, n) => (n <= 1 && c.dossier_id ? `/dossiers/${c.dossier_id}` : "/dossiers") },
   // --- Lot 2 (07/11/2026) : dépenses, petite caisse, états de charges, retards, stock ---
-  depense_soumise: { niveau: "action", repliHeures: null, texte: () => "Une dépense attend votre décision.", lien: () => "/depenses" },
-  depense_decidee: { niveau: "information", repliHeures: 24, texte: (c) => `Votre dépense a été ${c.decision === "validee" ? "validée" : "rejetée"}${c.motif ? " : « " + c.motif + " »." : "."}`, lien: () => "/depenses" },
-  depense_a_decaisser: { niveau: "action", repliHeures: 24, texte: () => "Une dépense validée est à décaisser.", lien: () => "/depenses" },
-  depenses_a_decaisser: { niveau: "action", repliHeures: 24, texte: (c, n) => (n > 1 ? `${n} dépenses validées sont à décaisser.` : "Une dépense validée est à décaisser."), lien: () => "/depenses" },
-  depense_decaissee: { niveau: "information", repliHeures: null, texte: () => "Votre dépense a été décaissée.", lien: () => "/depenses" },
-  depense_annulee: { niveau: "information", repliHeures: null, texte: (c) => `Une dépense a été annulée${c.motif ? " : « " + c.motif + " »." : "."}`, lien: () => "/depenses" },
-  depense_apres_coup: { niveau: "action", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse attend votre validation après coup.", lien: () => "/depenses" },
-  depense_apres_coup_traitee: { niveau: "information", repliHeures: 24, texte: (c) => (c.decision === "contestee" ? `Votre dépense engagée est contestée${c.motif ? " : « " + c.motif + " »." : "."}` : "Votre dépense engagée a été validée."), lien: () => "/depenses" },
-  depense_contestee: { niveau: "information", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse a été contestée.", lien: () => "/depenses" },
+  depense_soumise: { niveau: "action", repliHeures: null, texte: () => "Une dépense attend votre décision.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_decidee: { niveau: "information", repliHeures: 24, texte: (c) => `Votre dépense a été ${c.decision === "validee" ? "validée" : "rejetée"}${c.motif ? " : « " + c.motif + " »." : "."}`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_a_decaisser: { niveau: "action", repliHeures: 24, texte: () => "Une dépense validée est à décaisser.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depenses_a_decaisser: { niveau: "action", repliHeures: 24, texte: (c, n) => (n > 1 ? `${n} dépenses validées sont à décaisser.` : "Une dépense validée est à décaisser."), lien: () => "/depenses?statut=validee" },
+  depense_decaissee: { niveau: "information", repliHeures: null, texte: () => "Votre dépense a été décaissée.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_annulee: { niveau: "information", repliHeures: null, texte: (c) => `Une dépense a été annulée${c.motif ? " : « " + c.motif + " »." : "."}`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_apres_coup: { niveau: "action", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse attend votre validation après coup.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_apres_coup_traitee: { niveau: "information", repliHeures: 24, texte: (c) => (c.decision === "contestee" ? `Votre dépense engagée est contestée${c.motif ? " : « " + c.motif + " »." : "."}` : "Votre dépense engagée a été validée."), lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_contestee: { niveau: "information", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse a été contestée.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
   caisse_alerte: { niveau: "action", repliHeures: 24, texte: (c) => (c.sujet === "solde_bas" ? "Le solde de la petite caisse est bas." : c.sujet === "non_dotee" ? "La petite caisse n'est pas dotée pour ce mois." : "Un écart a été constaté au rapprochement de la petite caisse."), lien: () => "/depenses" },
-  etat_a_soumettre: { niveau: "action", repliHeures: 24, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est à soumettre aux associés.`, lien: () => "/depenses/etat-charges" },
-  etat_soumis: { niveau: "action", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est soumis : des lignes attendent votre décision.`, lien: () => "/depenses/etat-charges" },
-  etat_lignes_decidees: { niveau: "information", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} lignes de l'état de charges de ${moisFr(c.mois)} ont été décidées.` : `Une ligne de l'état de charges de ${moisFr(c.mois)} a été décidée.`), lien: () => "/depenses/etat-charges" },
-  etat_clos: { niveau: "information", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est clos.`, lien: () => "/depenses/etat-charges" },
-  etat_rouvert: { niveau: "information", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} a été rouvert par son préparateur.`, lien: () => "/depenses/etat-charges" },
-  depenses_en_attente: { niveau: "critique", repliHeures: null, texte: (c) => `${c.n > 1 ? c.n + " dépenses attendent" : "Une dépense attend"} votre décision depuis plus de 48 heures.`, lien: () => "/depenses" },
+  etat_a_soumettre: { niveau: "action", repliHeures: 24, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est à soumettre aux associés.`, lien: (c) => (c.mois ? `/depenses/etat-charges?mois=${String(c.mois).slice(0, 7)}` : "/depenses/etat-charges") },
+  etat_soumis: { niveau: "action", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est soumis : des lignes attendent votre décision.`, lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
+  etat_lignes_decidees: { niveau: "information", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} lignes de l'état de charges de ${moisFr(c.mois)} ont été décidées.` : `Une ligne de l'état de charges de ${moisFr(c.mois)} a été décidée.`), lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
+  etat_clos: { niveau: "information", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est clos.`, lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
+  etat_rouvert: { niveau: "information", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} a été rouvert par son préparateur.`, lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
+  depenses_en_attente: { niveau: "critique", repliHeures: null, texte: (c) => `${c.n > 1 ? c.n + " dépenses attendent" : "Une dépense attend"} votre décision depuis plus de 48 heures.`, lien: () => "/depenses?statut=soumise" },
   apres_coup_en_attente: { niveau: "action", repliHeures: null, texte: (c) => `${c.n > 1 ? c.n + " dépenses engagées attendent" : "Une dépense engagée attend"} votre validation après coup depuis plus de 48 heures.`, lien: () => "/depenses" },
-  etat_en_attente: { niveau: "critique", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} attend vos décisions depuis plus de 48 heures.`, lien: () => "/depenses/etat-charges" },
-  tache_retard_escalade: { niveau: "critique", repliHeures: null, texte: (c) => `Une tâche que vous avez confiée est en retard depuis plus de 48 heures${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: () => "/plan-action" },
+  etat_en_attente: { niveau: "critique", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} attend vos décisions depuis plus de 48 heures.`, lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
+  tache_retard_escalade: { niveau: "critique", repliHeures: null, texte: (c) => `Une tâche que vous avez confiée est en retard depuis plus de 48 heures${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/plan-action?tache=${c.ref}` : "/plan-action") },
   facturation_a_suivre: { niveau: "action", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} éléments de facturation sont à suivre (factures impayées, dossiers jamais facturés).` : "Un élément de facturation est à suivre (facture impayée ou dossier jamais facturé)."), lien: () => "/facturation" },
   stock_bas: { niveau: "information", repliHeures: null, texte: (c) => `Le stock de chemises ${c.couleur || ""} est bas.`.replace("  ", " "), lien: () => "/cabinet" },
 };
@@ -60,7 +60,7 @@ function composerTexte(n) {
 function composerLien(n) {
   if (n.lien) return n.lien;
   const def = CATALOGUE[n.type];
-  return def ? def.lien(n.charge || {}) : null;
+  return def ? def.lien(n.charge || {}, n.nombre || 1) : null;
 }
 
 // Forme envoyée à l'écran (liste et flux en direct).

@@ -6,6 +6,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { viserElement } from '../../core/cible-notification';
 
 const COLONNES = [
   { statut: 'a_faire', titre: 'À faire' },
@@ -117,12 +118,13 @@ const COLONNES = [
       </section>
     }
 
+    @if (messageCible()) { <p class="bandeau-filtre">{{ messageCible() }}</p> }
     <div class="kanban">
       @for (col of colonnes; track col.statut) {
         <div class="colonne">
           <h4>{{ col.titre }} <span class="compte">{{ parStatut(col.statut).length }}</span></h4>
           @for (t of parStatut(col.statut); track t.id) {
-            <div class="carte" [class.urgente]="t.priorite === 'urgente'">
+            <div class="carte" [id]="'tache-' + t.id" [class.urgente]="t.priorite === 'urgente'">
               @if (editionId() === t.id) {
                 <!-- Correction d'une tâche (25/09/2026) -->
                 <div class="carte-edition">
@@ -316,8 +318,21 @@ export class PlanActionComponent implements OnInit {
     return this.utilisateurs().filter((u: any) => u.id === moi.id);
   }
 
+  // Arrivée depuis une notification (?tache=<id>) : la carte visée défile au centre et se surligne.
+  private tacheCible: string | null = null;
+  readonly messageCible = signal('');
+  private viserTache(): void {
+    const id = this.tacheCible;
+    if (!id) return;
+    this.tacheCible = null;
+    setTimeout(() => {
+      if (!viserElement('tache-' + id)) this.messageCible.set('Cette tâche n’apparaît plus dans cette vue : elle est terminée ou annulée depuis plus de 30 jours, ou elle ne figure pas dans la vue affichée.');
+    }, 200);
+  }
+
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
+    this.tacheCible = params.get('tache');
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     // 14/10/2026 — vue par défaut : tout le cabinet pour qui peut déléguer
@@ -354,7 +369,7 @@ export class PlanActionComponent implements OnInit {
     else if (this.vueFiltre() === 'mine') params.set('mine', '1');
     if (this.afficherAnciennes()) params.set('anciennes', 'true');
     const qs = params.toString();
-    this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => this.taches.set(t) });
+    this.api.taches(qs ? `?${qs}` : '').subscribe({ next: (t) => { this.taches.set(t); this.viserTache(); } });
   }
 
   basculerAnciennes(): void {

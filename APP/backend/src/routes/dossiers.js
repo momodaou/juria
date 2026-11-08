@@ -151,7 +151,7 @@ async function notifierAssociesNouveauDossier(dossierId, numero, intitule, creat
       "SELECT id FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])", [rolesDestinataires]);
     await notif.notifier({
       type: "dossier_cree", destinataires: ds.map((r) => r.id), auteurId: createurId,
-      cle: "dossiers_crees:" + new Date().toISOString().slice(0, 10), charge: { dossier: numero },
+      cle: "dossiers_crees:" + new Date().toISOString().slice(0, 10), charge: { dossier: numero, dossier_id: dossierId },
     });
   } catch (e) {
     console.error("Notification interne de nouveau dossier échouée (non bloquant) :", e.message);
