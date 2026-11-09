@@ -27,10 +27,19 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
       </button>
 
       @if (ouvert()) {
-        <div class="mw-panneau" [style.width.px]="largeur()" [style.height.px]="hauteur()">
-          <!-- Poignée d'étirement (coin haut-gauche : le panneau est ancré en bas à droite). -->
-          <div class="mw-poignee" title="Étirer la fenêtre" (pointerdown)="debutEtirement($event)"></div>
-          <div class="mw-entete">
+        <div class="mw-panneau" [style.width.px]="largeur()" [style.height.px]="hauteur()"
+             [style.left.px]="gauche()" [style.top.px]="haut()"
+             [style.right]="gauche() === null ? null : 'auto'" [style.bottom]="haut() === null ? null : 'auto'">
+          <!-- Zones d'étirement invisibles : 4 côtés + 4 coins, comme une fenêtre macOS. -->
+          <div class="mw-bord mw-n" (pointerdown)="debutEtirement($event, 'n')"></div>
+          <div class="mw-bord mw-s" (pointerdown)="debutEtirement($event, 's')"></div>
+          <div class="mw-bord mw-e" (pointerdown)="debutEtirement($event, 'e')"></div>
+          <div class="mw-bord mw-w" (pointerdown)="debutEtirement($event, 'w')"></div>
+          <div class="mw-bord mw-nw" (pointerdown)="debutEtirement($event, 'nw')"></div>
+          <div class="mw-bord mw-ne" (pointerdown)="debutEtirement($event, 'ne')"></div>
+          <div class="mw-bord mw-sw" (pointerdown)="debutEtirement($event, 'sw')"></div>
+          <div class="mw-bord mw-se" (pointerdown)="debutEtirement($event, 'se')"></div>
+          <div class="mw-entete" (pointerdown)="debutDeplacement($event)">
             @if (vue() === 'fil') {
               <button type="button" class="mw-icon-btn" (click)="retourListe()" title="Retour aux conversations">←</button>
               <!-- 12/10/2026 — avatar type WhatsApp (demande utilisateur). -->
@@ -200,12 +209,19 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     }
     .mw-panneau{
       position:fixed;right:24px;bottom:88px;z-index:1000;
-      min-width:300px;min-height:380px;max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);background:#fff;border:1px solid var(--line);
+      min-width:300px;min-height:380px;background:#fff;border:1px solid var(--line);
       border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.22);
       display:flex;flex-direction:column;overflow:hidden;
     }
-    .mw-poignee{position:absolute;top:0;left:0;width:18px;height:18px;cursor:nwse-resize;z-index:2;touch-action:none}
-    .mw-poignee::after{content:"";position:absolute;top:4px;left:4px;width:8px;height:8px;border-top:2px solid rgba(255,255,255,.55);border-left:2px solid rgba(255,255,255,.55)}
+    .mw-bord{position:absolute;z-index:2;touch-action:none}
+    .mw-n{top:0;left:10px;right:10px;height:6px;cursor:ns-resize}
+    .mw-s{bottom:0;left:10px;right:10px;height:6px;cursor:ns-resize}
+    .mw-e{right:0;top:10px;bottom:10px;width:6px;cursor:ew-resize}
+    .mw-w{left:0;top:10px;bottom:10px;width:6px;cursor:ew-resize}
+    .mw-nw{top:0;left:0;width:12px;height:12px;cursor:nwse-resize}
+    .mw-se{bottom:0;right:0;width:12px;height:12px;cursor:nwse-resize}
+    .mw-ne{top:0;right:0;width:12px;height:12px;cursor:nesw-resize}
+    .mw-sw{bottom:0;left:0;width:12px;height:12px;cursor:nesw-resize}
     .mw-entete{
       display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--navy);color:#fff;flex-shrink:0;
     }
@@ -300,53 +316,116 @@ export class MessagerieWidgetComponent implements OnInit {
 
   readonly ouvert = signal(false);
 
-  // Taille du panneau : étirable par la poignée (haut-gauche) et mémorisée
-  // dans le navigateur ; bouton pour agrandir / revenir à la taille d'origine.
+  // Fenêtre libre (09/11/2026) : déplaçable par l'en-tête, étirable par les 4 côtés
+  // et les 4 coins ; taille et position mémorisées dans le navigateur. Tant que
+  // gauche/haut sont null, le panneau reste ancré en bas à droite (position d'origine).
   private static readonly TAILLE_ORIGINE = { l: 340, h: 460 };
   private static readonly TAILLE_GRANDE = { l: 520, h: 640 };
-  private static readonly CLE_TAILLE = 'juria.messagerie.taille';
-  readonly largeur = signal(this.tailleMemorisee().l);
-  readonly hauteur = signal(this.tailleMemorisee().h);
-  readonly estAgrandi = signal(this.largeur() > 400 || this.hauteur() > 520);
+  private static readonly MIN = { l: 300, h: 380 };
+  private static readonly CLE_TAILLE = 'juria.messagerie.fenetre';
+  private readonly memo = this.fenetreMemorisee();
+  readonly largeur = signal(this.memo.l);
+  readonly hauteur = signal(this.memo.h);
+  readonly gauche = signal<number | null>(this.memo.x);
+  readonly haut = signal<number | null>(this.memo.y);
+  readonly estAgrandi = signal(this.memo.l > 400 || this.memo.h > 520);
 
-  private tailleMemorisee(): { l: number; h: number } {
+  private fenetreMemorisee(): { l: number; h: number; x: number | null; y: number | null } {
+    const o = MessagerieWidgetComponent.TAILLE_ORIGINE;
     try {
       const v = JSON.parse(localStorage.getItem(MessagerieWidgetComponent.CLE_TAILLE) || 'null');
-      if (v && Number.isFinite(v.l) && Number.isFinite(v.h)) return { l: v.l, h: v.h };
-    } catch { /* stockage indisponible : taille d'origine */ }
-    return MessagerieWidgetComponent.TAILLE_ORIGINE;
+      if (v && Number.isFinite(v.l) && Number.isFinite(v.h)) {
+        const place = Number.isFinite(v.x) && Number.isFinite(v.y);
+        return { l: v.l, h: v.h, x: place ? v.x : null, y: place ? v.y : null };
+      }
+    } catch { /* stockage indisponible : position d'origine */ }
+    return { l: o.l, h: o.h, x: null, y: null };
   }
 
-  private appliquerTaille(l: number, h: number): void {
-    const lMax = Math.max(300, window.innerWidth - 32);
-    const hMax = Math.max(380, window.innerHeight - 110);
-    this.largeur.set(Math.round(Math.min(Math.max(l, 300), lMax)));
-    this.hauteur.set(Math.round(Math.min(Math.max(h, 380), hMax)));
+  private memoriserFenetre(): void {
+    try {
+      localStorage.setItem(MessagerieWidgetComponent.CLE_TAILLE,
+        JSON.stringify({ l: this.largeur(), h: this.hauteur(), x: this.gauche(), y: this.haut() }));
+    } catch { /* ignoré */ }
+  }
+
+  /** Remet la fenêtre entièrement visible (écran redimensionné, position mémorisée trop loin). */
+  @HostListener('window:resize')
+  recadrer(): void {
+    const m = MessagerieWidgetComponent.MIN;
+    const l = Math.min(Math.max(this.largeur(), m.l), Math.max(m.l, window.innerWidth));
+    const h = Math.min(Math.max(this.hauteur(), m.h), Math.max(m.h, window.innerHeight));
+    this.largeur.set(l); this.hauteur.set(h);
+    if (this.gauche() !== null && this.haut() !== null) {
+      this.gauche.set(Math.min(Math.max(this.gauche()!, 0), Math.max(0, window.innerWidth - l)));
+      this.haut.set(Math.min(Math.max(this.haut()!, 0), Math.max(0, window.innerHeight - h)));
+    } else {
+      // ancrée en bas à droite : ne doit pas déborder par le haut (bas = 88 px)
+      this.hauteur.set(Math.min(h, Math.max(m.h, window.innerHeight - 88 - 8)));
+    }
     this.estAgrandi.set(this.largeur() > 400 || this.hauteur() > 520);
-  }
-
-  private memoriserTaille(): void {
-    try { localStorage.setItem(MessagerieWidgetComponent.CLE_TAILLE, JSON.stringify({ l: this.largeur(), h: this.hauteur() })); } catch { /* ignoré */ }
   }
 
   basculerTaille(): void {
     const t = this.estAgrandi() ? MessagerieWidgetComponent.TAILLE_ORIGINE : MessagerieWidgetComponent.TAILLE_GRANDE;
-    this.appliquerTaille(t.l, t.h);
-    this.memoriserTaille();
+    this.largeur.set(t.l); this.hauteur.set(t.h);
+    this.gauche.set(null); this.haut.set(null); // retour à l'ancrage d'origine
+    this.recadrer();
+    this.memoriserFenetre();
   }
 
-  debutEtirement(ev: PointerEvent): void {
-    ev.preventDefault();
-    const x0 = ev.clientX, y0 = ev.clientY, l0 = this.largeur(), h0 = this.hauteur();
-    const bouger = (e: PointerEvent) => this.appliquerTaille(l0 + (x0 - e.clientX), h0 + (y0 - e.clientY));
+  private rectPanneau(ev: PointerEvent): DOMRect | null {
+    const el = (ev.target as HTMLElement).closest('.mw-panneau');
+    return el ? el.getBoundingClientRect() : null;
+  }
+
+  private suivre(bouger: (e: PointerEvent) => void): void {
     const fin = () => {
       window.removeEventListener('pointermove', bouger);
       window.removeEventListener('pointerup', fin);
-      this.memoriserTaille();
+      window.removeEventListener('pointercancel', fin);
+      this.memoriserFenetre();
     };
     window.addEventListener('pointermove', bouger);
     window.addEventListener('pointerup', fin);
+    window.addEventListener('pointercancel', fin);
   }
+
+  /** Déplacement par l'en-tête (hors boutons). */
+  debutDeplacement(ev: PointerEvent): void {
+    if ((ev.target as HTMLElement).closest('button')) return;
+    const r = this.rectPanneau(ev);
+    if (!r) return;
+    ev.preventDefault();
+    const x0 = ev.clientX, y0 = ev.clientY;
+    this.suivre((e) => {
+      this.gauche.set(Math.round(Math.min(Math.max(r.left + e.clientX - x0, 0), Math.max(0, window.innerWidth - r.width))));
+      this.haut.set(Math.round(Math.min(Math.max(r.top + e.clientY - y0, 0), Math.max(0, window.innerHeight - r.height))));
+      this.largeur.set(Math.round(r.width)); this.hauteur.set(Math.round(r.height));
+    });
+  }
+
+  /** Étirement par un côté (n/s/e/w) ou un coin (nw/ne/sw/se). */
+  debutEtirement(ev: PointerEvent, cote: string): void {
+    const r = this.rectPanneau(ev);
+    if (!r) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const m = MessagerieWidgetComponent.MIN;
+    const x0 = ev.clientX, y0 = ev.clientY;
+    this.suivre((e) => {
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      let L = r.left, T = r.top, R = r.right, B = r.bottom;
+      if (cote.includes('w')) L = Math.max(0, Math.min(r.left + dx, R - m.l));
+      if (cote.includes('e')) R = Math.min(window.innerWidth, Math.max(r.right + dx, L + m.l));
+      if (cote.includes('n')) T = Math.max(0, Math.min(r.top + dy, B - m.h));
+      if (cote.includes('s')) B = Math.min(window.innerHeight, Math.max(r.bottom + dy, T + m.h));
+      this.gauche.set(Math.round(L)); this.haut.set(Math.round(T));
+      this.largeur.set(Math.round(R - L)); this.hauteur.set(Math.round(B - T));
+      this.estAgrandi.set(this.largeur() > 400 || this.hauteur() > 520);
+    });
+  }
+
   readonly vue = signal<'liste' | 'fil'>('liste');
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);
@@ -546,6 +625,7 @@ export class MessagerieWidgetComponent implements OnInit {
     if (this.ouvert()) {
       this.fermer();
     } else {
+      this.recadrer();
       this.ouvert.set(true);
       this.messagerie.rafraichirConversations();
     }

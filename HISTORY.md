@@ -4722,3 +4722,7 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Bulle de messagerie (`messagerie-widget.component.ts`) : poignée d'étirement en haut à gauche (panneau ancré en bas à droite), taille mémorisée dans le navigateur (`juria.messagerie.taille`), bornes 300×380 mini / fenêtre−marges maxi, bouton ↗/↙ Agrandir (520×640) / Taille initiale.
 - Tests messagerie : 18/18 ; build Angular OK.
 - **Déploiement (09/11/2026)** : `deploy.sh both` (accord explicite) → API `juria-00227-k68`, frontend `juria-web-00301-c8t`. Vérifications : `/health` 200, `/` 200.
+
+## 09/11/2026 — Messagerie : fenêtre libre (déplacement + étirement 8 directions)
+- Demande de l'utilisateur (après analyse validée) : la bulle ouverte se comporte comme une fenêtre macOS. `messagerie-widget.component.ts` : déplacement par l'en-tête (hors boutons), étirement par les 4 côtés et 4 coins (zones invisibles, curseur adapté, aucun trait de marquage), position + taille mémorisées (`juria.messagerie.fenetre`), recadrage à l'ouverture et au redimensionnement de la fenêtre du navigateur, minimum 300×380. La bulle ronde reste fixe en bas à droite. Bouton ↗/↙ : agrandir / taille et position d'origine.
+- Vérifié par Playwright (déplacement, 2 coins, 2 côtés, blocage aux bords de l'écran, mémorisation après rechargement, bouton) ; build Angular OK.
