@@ -27,7 +27,9 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
       </button>
 
       @if (ouvert()) {
-        <div class="mw-panneau">
+        <div class="mw-panneau" [style.width.px]="largeur()" [style.height.px]="hauteur()">
+          <!-- Poignée d'étirement (coin haut-gauche : le panneau est ancré en bas à droite). -->
+          <div class="mw-poignee" title="Étirer la fenêtre" (pointerdown)="debutEtirement($event)"></div>
           <div class="mw-entete">
             @if (vue() === 'fil') {
               <button type="button" class="mw-icon-btn" (click)="retourListe()" title="Retour aux conversations">←</button>
@@ -57,6 +59,7 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
               @if (vue() === 'liste' && auth.peut('messagerie.creer_conversation')) {
                 <button type="button" class="mw-icon-btn" title="Nouvelle conversation" (click)="afficherNouvelle.set(!afficherNouvelle())">+</button>
               }
+              <button type="button" class="mw-icon-btn" [title]="estAgrandi() ? 'Taille initiale' : 'Agrandir'" (click)="basculerTaille()">{{ estAgrandi() ? '↙' : '↗' }}</button>
               <button type="button" class="mw-icon-btn" title="Ouvrir en plein écran" (click)="ouvrirPageComplete()">⤢</button>
               <button type="button" class="mw-icon-btn" title="Fermer" (click)="fermer()">✕</button>
             </div>
@@ -197,10 +200,12 @@ import { MessagerieService, Conversation, Message } from './messagerie.service';
     }
     .mw-panneau{
       position:fixed;right:24px;bottom:88px;z-index:1000;
-      width:340px;height:460px;max-height:70vh;background:#fff;border:1px solid var(--line);
+      min-width:300px;min-height:380px;max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);background:#fff;border:1px solid var(--line);
       border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.22);
       display:flex;flex-direction:column;overflow:hidden;
     }
+    .mw-poignee{position:absolute;top:0;left:0;width:18px;height:18px;cursor:nwse-resize;z-index:2;touch-action:none}
+    .mw-poignee::after{content:"";position:absolute;top:4px;left:4px;width:8px;height:8px;border-top:2px solid rgba(255,255,255,.55);border-left:2px solid rgba(255,255,255,.55)}
     .mw-entete{
       display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--navy);color:#fff;flex-shrink:0;
     }
@@ -294,6 +299,54 @@ export class MessagerieWidgetComponent implements OnInit {
   readonly messagerie = inject(MessagerieService);
 
   readonly ouvert = signal(false);
+
+  // Taille du panneau : étirable par la poignée (haut-gauche) et mémorisée
+  // dans le navigateur ; bouton pour agrandir / revenir à la taille d'origine.
+  private static readonly TAILLE_ORIGINE = { l: 340, h: 460 };
+  private static readonly TAILLE_GRANDE = { l: 520, h: 640 };
+  private static readonly CLE_TAILLE = 'juria.messagerie.taille';
+  readonly largeur = signal(this.tailleMemorisee().l);
+  readonly hauteur = signal(this.tailleMemorisee().h);
+  readonly estAgrandi = signal(this.largeur() > 400 || this.hauteur() > 520);
+
+  private tailleMemorisee(): { l: number; h: number } {
+    try {
+      const v = JSON.parse(localStorage.getItem(MessagerieWidgetComponent.CLE_TAILLE) || 'null');
+      if (v && Number.isFinite(v.l) && Number.isFinite(v.h)) return { l: v.l, h: v.h };
+    } catch { /* stockage indisponible : taille d'origine */ }
+    return MessagerieWidgetComponent.TAILLE_ORIGINE;
+  }
+
+  private appliquerTaille(l: number, h: number): void {
+    const lMax = Math.max(300, window.innerWidth - 32);
+    const hMax = Math.max(380, window.innerHeight - 110);
+    this.largeur.set(Math.round(Math.min(Math.max(l, 300), lMax)));
+    this.hauteur.set(Math.round(Math.min(Math.max(h, 380), hMax)));
+    this.estAgrandi.set(this.largeur() > 400 || this.hauteur() > 520);
+  }
+
+  private memoriserTaille(): void {
+    try { localStorage.setItem(MessagerieWidgetComponent.CLE_TAILLE, JSON.stringify({ l: this.largeur(), h: this.hauteur() })); } catch { /* ignoré */ }
+  }
+
+  basculerTaille(): void {
+    const t = this.estAgrandi() ? MessagerieWidgetComponent.TAILLE_ORIGINE : MessagerieWidgetComponent.TAILLE_GRANDE;
+    this.appliquerTaille(t.l, t.h);
+    this.memoriserTaille();
+  }
+
+  debutEtirement(ev: PointerEvent): void {
+    ev.preventDefault();
+    const x0 = ev.clientX, y0 = ev.clientY, l0 = this.largeur(), h0 = this.hauteur();
+    const bouger = (e: PointerEvent) => this.appliquerTaille(l0 + (x0 - e.clientX), h0 + (y0 - e.clientY));
+    const fin = () => {
+      window.removeEventListener('pointermove', bouger);
+      window.removeEventListener('pointerup', fin);
+      this.memoriserTaille();
+    };
+    window.addEventListener('pointermove', bouger);
+    window.addEventListener('pointerup', fin);
+  }
   readonly vue = signal<'liste' | 'fil'>('liste');
   readonly utilisateurs = signal<any[]>([]);
   readonly afficherNouvelle = signal(false);

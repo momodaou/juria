@@ -214,7 +214,12 @@ export class MessagerieService {
 
   private marquerLu(id: string): void {
     this.http.post(`${this.base}/api/messagerie/conversations/${id}/lu`, {}).subscribe({
-      next: () => this.rafraichirConversations(),
+      next: () => {
+        this.rafraichirConversations();
+        // Le total de la pastille se recalcule côté serveur : sans cela il
+        // restait affiché après lecture jusqu'au prochain rechargement.
+        this.rafraichirNonLus();
+      },
     });
   }
 

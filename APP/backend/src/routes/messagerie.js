@@ -196,7 +196,14 @@ router.get("/non-lus", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT COUNT(*) AS total FROM messages m
        JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.utilisateur_id = $1
-       WHERE m.cree_le > COALESCE(cp.dernier_lu_le, 'epoch'::timestamptz) AND m.auteur_id <> $1`,
+       WHERE m.cree_le > COALESCE(cp.dernier_lu_le, 'epoch'::timestamptz) AND m.auteur_id <> $1
+         -- Même visibilité que la liste des conversations : une conversation
+         -- masquée, archivée ou supprimée (sans nouveau message depuis) ne
+         -- compte pas, sinon la pastille reste allumée sans rien à lire.
+         AND cp.masquee_le IS NULL
+         AND (cp.supprimee_le IS NULL OR m.cree_le > cp.supprimee_le)
+         AND (cp.archivee_le IS NULL
+              OR cp.archivee_le < (SELECT MAX(m2.cree_le) FROM messages m2 WHERE m2.conversation_id = m.conversation_id))`,
       [req.user.sub]
     );
     res.json({ total: Number(rows[0].total) });
