@@ -221,6 +221,27 @@ describe("Délais de procédure", () => {
   });
 });
 
+describe("Délai de procédure traité depuis l'écran", () => {
+  test("POST /api/evenements/:id/statut retire tout de suite l'alerte pour tous (sans attendre le job)", async () => {
+    const resp = await creer("collaborateur");
+    const cl = await pool.query("INSERT INTO clients (type, denomination) VALUES ('morale', 'Client délai route') RETURNING id");
+    const num = "DLR-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+    const d = await pool.query(
+      `INSERT INTO dossiers (numero, intitule, client_id, pole, responsable_id)
+       VALUES ($1,'Dossier délai route',$2,(SELECT unnest(enum_range(NULL::pole_cabinet)) LIMIT 1),$3) RETURNING id`, [num, cl.rows[0].id, resp.id]);
+    const ev = await pool.query(
+      `INSERT INTO evenements (dossier_id, type, titre, date_echeance, responsable_id)
+       VALUES ($1,'delai_procedure','Appel urgent', now() + interval '1 day', $2) RETURNING id`, [d.rows[0].id, resp.id]);
+    await executerJobAlertesDelais(pool);
+    const avant = (await liste(associe)).find((m) => m.type === "delai_procedure" && m.texte.includes(num));
+    expect(avant.a_traiter).toBe(true);
+    const r = await request(app).post(`/api/evenements/${ev.rows[0].id}/statut`).set(auth(associe)).send({ statut: "traite" });
+    expect(r.status).toBe(200);
+    expect((await liste(associe)).find((m) => m.type === "delai_procedure" && m.texte.includes(num)).a_traiter).toBe(false);
+    expect((await liste(resp)).find((m) => m.type === "delai_procedure" && m.texte.includes(num)).a_traiter).toBe(false);
+  });
+});
+
 describe("E-mail de repli", () => {
   const mercredi = new Date("2026-11-11T12:00:00Z");
   test("interrupteur éteint : aucun e-mail", async () => {

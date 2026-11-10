@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { executerJobAlertesDelais } = require("../jobs/alertesDelais");
 const { logAudit, diffChamps } = require("../audit");
+const notif = require("../notifications");
 const router = express.Router();
 
 // Repli d'intitulé quand aucun titre n'est saisi (titre NOT NULL en base).
@@ -165,6 +166,8 @@ router.post("/:id/statut", requirePermission("evenements.creer"), async (req, re
         error: existe.rows[0] ? "Échéance déjà traitée ou annulée (par quelqu'un d'autre entre-temps ?)" : "Échéance introuvable",
       });
     }
+    // Centre de notifications : l'alerte de délai n'est plus « à traiter » pour personne, tout de suite (bande des urgences, cloche).
+    await notif.traiter("delai_procedure", req.params.id);
     await logAudit({
       utilisateurId: req.user.sub, action: `${statut === "traite" ? "traiter" : "annuler"}_echeance`,
       entite: "evenements", entiteId: req.params.id,
