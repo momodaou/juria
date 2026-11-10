@@ -4750,3 +4750,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ## 10/11/2026 — Correctif : délai de procédure traité → alerte retirée tout de suite
 - Constat de l'utilisateur : un délai de procédure traité dans JURIA, mais la bande rouge des urgences restait en haut. Cause : `POST /api/evenements/:id/statut` (traiter/annuler une échéance) ne marquait pas la notification `delai_procedure` « traitée » ; seul le job quotidien `juria-alertes-delais` le faisait. Correctif : `notif.traiter("delai_procedure", id)` dans la route (retrait immédiat de la bande et de la cloche chez tous les destinataires). Test ajouté (`notificationsCentre.test.js`). Tests : 939/939 (base neuve, `--runInBand`).
+- Déploiement (accord de l'utilisateur, `./scripts/deploy.sh api`) : API `juria-00229-87x` (frontend inchangé `juria-web-00302-kcz`). Vérifications : `/health` 200, `/` 200.
