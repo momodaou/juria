@@ -10,7 +10,7 @@ const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit } = require("../audit");
 const notif = require("../notifications");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
-const { requirePermission, estAutorise } = require("../permissions");
+const { requirePermission, requireAnyPermission, estAutorise } = require("../permissions");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
@@ -24,6 +24,28 @@ function resoudreNature(b, existant) {
   const dossierId = nature === "cabinet" ? null : (b.dossier_id || (existant && existant.dossier_id) || null);
   if (nature === "dossier" && !dossierId) return { erreur: "Une charge liée à un dossier doit préciser le dossier." };
   return { nature, dossierId };
+}
+
+// ---------------------------------------------------------------------
+// Ordre de paiement / exécution (11/11/2026, projet « Dépenses & caisses », lot A).
+// Les associés (depenses.decision) ORDONNENT : moyen + compte à débiter, à la validation ou après. L'administration
+// générale et le comptable (depenses.decaisser sans decision) EXÉCUTENT : ils ne voient le moyen et l'intitulé du compte
+// qu'une fois l'ordre donné, et ne saisissent que les références de l'opération. Les autres ne voient rien.
+// ---------------------------------------------------------------------
+async function profilReglement(req) {
+  const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
+  const executant = decideur || (await estAutorise(req.user.role, "depenses.decaisser", req.user.sub));
+  return { decideur, executant };
+}
+
+// Valide un ordre de paiement : moyen valide, compte compatible ET obligatoire (sauf espèces, sans compte).
+async function verifierOrdre(b) {
+  if (!b.mode_paiement) return { erreur: "Précisez le moyen de paiement." };
+  const r = await preparerDecaissement(pool, { mode_paiement: b.mode_paiement, compte_id: b.compte_id || null, references: b.references }, { exigerReferences: false });
+  if (r.erreur) return r;
+  const moyen = DECAISSEMENT_PAR_CODE[r.valeurs.mode_paiement];
+  if (moyen.comptes !== "aucun" && !r.valeurs.compte_id) return { erreur: "Précisez le compte à débiter pour ce moyen de paiement." };
+  return r;
 }
 
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=&a_refacturer=
@@ -64,7 +86,8 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement, d.references_paiement,
               d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              d.facture_id, d.dossier_id, d.nature, d.beneficiaire, c.intitule AS compte,
+              d.facture_id, d.dossier_id, d.nature, d.beneficiaire, c.intitule AS compte, d.compte_id,
+              d.ordre_paiement_le, d.blocage_motif, d.blocage_le, (d.mode_paiement IS NOT NULL) AS moyen_defini,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
               EXISTS (SELECT 1 FROM depense_pieces p WHERE p.depense_id = d.id AND p.retenu) AS devis_retenu, dos.numero AS dossier_numero,
@@ -82,6 +105,16 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
        ORDER BY d.date_depense DESC, d.cree_le DESC LIMIT 300`,
       params
     );
+    // Masquage du règlement (moyen, compte, références) : voir le bloc « Ordre de paiement » ci-dessus.
+    const profil = await profilReglement(req);
+    if (!profil.decideur) {
+      for (const d of rows) {
+        const visible = profil.executant && d.ordre_paiement_le && ["validee", "decaissee"].includes(d.statut);
+        if (!visible) { d.mode_paiement = null; d.compte = null; d.compte_id = null; d.references_paiement = {}; }
+        else if (d.statut !== "decaissee") d.references_paiement = {};
+        if (!profil.executant) { d.blocage_motif = null; d.blocage_le = null; }
+      }
+    }
     res.json(rows);
   } catch (e) {
     console.error(e);
@@ -115,7 +148,9 @@ router.get("/verifier-doublon", requirePermission("depenses.creer"), async (req,
 // { type, categorie, libelle, montant, date_depense?, mode_paiement?, compte_id?,
 //   petite_caisse?, justificatif?, refacturable_client?, dossier_id?, recurrente? }
 router.post("/", requirePermission("depenses.creer"), async (req, res) => {
-  const b = req.body || {};
+  const b = { ...(req.body || {}) };
+  // Le moyen et le compte relèvent de l'ordre de paiement des associés : ignorés pour les autres déposants.
+  if (!(await profilReglement(req)).decideur) { delete b.mode_paiement; delete b.compte_id; delete b.references; }
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
@@ -193,10 +228,12 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id,
-          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement, beneficiaire)
+          statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement, beneficiaire,
+          ordre_paiement_le, ordre_paiement_par)
        VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
                TRUE,COALESCE($8,false),$9,$10,
-               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb,$13)
+               'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb,$13,
+               now(),$11)
        RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
       [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
        b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub, JSON.stringify(regl.valeurs.references), beneficiaire]
@@ -507,7 +544,8 @@ router.delete("/vignettes/utilisations/:id", requirePermission("depenses.vignett
 // même principe que les autres corrections « avant qu'un engagement soit
 // pris » déjà dans JURIA (facture non payée, instance...).
 router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
-  const b = req.body || {};
+  const b = { ...(req.body || {}) };
+  if (!(await profilReglement(req)).decideur) { delete b.mode_paiement; delete b.compte_id; delete b.references; }
   try {
     const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut, nature, dossier_id FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
@@ -679,39 +717,115 @@ router.delete("/:id/pieces/:pieceId", requirePermission("depenses.creer"), async
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
-// POST /api/depenses/:id/decision  { statut: 'validee'|'rejetee', motif_rejet? }  (gérant : associé/admin)
+// POST /api/depenses/:id/decision  { statut: 'validee'|'rejetee', motif_rejet?, mode_paiement?, compte_id?, references? }
+// (associés). Validation avec moyen (+ compte) = ORDRE DE PAIEMENT donné d'un coup ; sans moyen, la dépense reste « validée, en
+// attente d'ordre de paiement » (voir POST /:id/ordre-paiement). Le rejet exige un motif.
 router.post("/:id/decision", requirePermission("depenses.decision"), async (req, res) => {
-  const { statut, motif_rejet } = req.body || {};
+  const b = req.body || {};
+  const { statut, motif_rejet } = b;
   if (!["validee", "rejetee"].includes(statut)) return res.status(400).json({ error: "Statut invalide" });
+  if (statut === "rejetee" && !String(motif_rejet || "").trim()) return res.status(400).json({ error: "Un motif est requis pour rejeter une dépense." });
+  let ordre = null;
+  if (statut === "validee" && b.mode_paiement) {
+    const r = await verifierOrdre(b);
+    if (r.erreur) return res.status(400).json({ error: r.erreur });
+    ordre = r.valeurs;
+  }
   try {
     const { rows } = await pool.query(
-      `UPDATE depenses SET statut = $1::statut_depense, motif_rejet = $2, valide_par = $3, valide_le = now()
+      `UPDATE depenses SET statut = $1::statut_depense, motif_rejet = $2, valide_par = $3, valide_le = now(),
+              mode_paiement = CASE WHEN $5::boolean THEN $6::mode_paiement ELSE mode_paiement END,
+              compte_id = CASE WHEN $5::boolean THEN $7::uuid ELSE compte_id END,
+              references_paiement = CASE WHEN $5::boolean THEN $8::jsonb ELSE references_paiement END,
+              ordre_paiement_le = CASE WHEN $5::boolean THEN now() ELSE ordre_paiement_le END,
+              ordre_paiement_par = CASE WHEN $5::boolean THEN $3::uuid ELSE ordre_paiement_par END
        WHERE id = $4 AND statut = 'soumise' RETURNING id, statut`,
-      [statut, motif_rejet || null, req.user.sub, req.params.id]
+      [statut, String(motif_rejet || "").trim() || null, req.user.sub, req.params.id, !!ordre,
+       ordre ? ordre.mode_paiement : null, ordre ? ordre.compte_id : null, JSON.stringify(ordre ? ordre.references : {})]
     );
     if (!rows[0]) return res.status(404).json({ error: "Dépense introuvable ou déjà traitée" });
     await notif.traiter("depense_soumise", req.params.id);
     const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
     await notif.notifier({ type: "depense_decidee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id,
-      charge: { decision: statut, motif: statut === "rejetee" ? (motif_rejet || undefined) : undefined } });
-    if (statut === "validee") {
+      charge: { decision: statut, motif: statut === "rejetee" ? String(motif_rejet).trim() : undefined } });
+    // « À décaisser » ne part vers les exécutants qu'une fois l'ordre de paiement donné.
+    if (statut === "validee" && ordre) {
       await notif.notifier({ type: "depense_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"),
         auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
     }
-    res.json(rows[0]);
+    res.json({ ...rows[0], ordre_donne: !!ordre });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
-// POST /api/depenses/:id/decaisser  (comptabilité : comptable/associe/admin)
+// POST /api/depenses/:id/ordre-paiement  { mode_paiement, compte_id?, references? }  (associés)
+// Donne (ou corrige) l'ordre de paiement d'une dépense validée non encore décaissée : moyen + compte à débiter. Efface un
+// éventuel blocage signalé par l'exécutant et prévient les exécutants quand l'ordre est donné pour la première fois ou après blocage.
+router.post("/:id/ordre-paiement", requirePermission("depenses.decision"), async (req, res) => {
+  const r = await verifierOrdre(req.body || {});
+  if (r.erreur) return res.status(400).json({ error: r.erreur });
+  try {
+    const { rows: [d] } = await pool.query("SELECT statut, ordre_paiement_le, blocage_le, annulee_le FROM depenses WHERE id = $1", [req.params.id]);
+    if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    if (d.statut !== "validee" || d.annulee_le) return res.status(409).json({ error: "L'ordre de paiement se donne sur une dépense validée, non encore décaissée." });
+    const v = r.valeurs;
+    const { rows } = await pool.query(
+      `UPDATE depenses SET mode_paiement = $1::mode_paiement, compte_id = $2::uuid, references_paiement = $3::jsonb,
+              ordre_paiement_le = now(), ordre_paiement_par = $4::uuid, blocage_motif = NULL, blocage_par = NULL, blocage_le = NULL
+       WHERE id = $5 AND statut = 'validee' RETURNING id, statut`,
+      [v.mode_paiement, v.compte_id, JSON.stringify(v.references), req.user.sub, req.params.id]);
+    if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps." });
+    await logAudit({ utilisateurId: req.user.sub, action: "ordonner_paiement_depense", entite: "depenses", entiteId: req.params.id,
+      details: { mode_paiement: v.mode_paiement, premier_ordre: !d.ordre_paiement_le, apres_blocage: !!d.blocage_le }, ip: req.ip });
+    await notif.traiter("depense_blocage", req.params.id);
+    if (!d.ordre_paiement_le || d.blocage_le) {
+      await notif.notifier({ type: "depense_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"),
+        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
+    }
+    res.json({ ...rows[0], ordre_donne: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/depenses/:id/blocage  { motif }  (exécutants) : signale un empêchement (solde insuffisant, chèque indisponible…).
+// Les associés sont prévenus ; le décaissement reste bloqué pour les exécutants jusqu'à un nouvel ordre de paiement.
+router.post("/:id/blocage", requirePermission("depenses.decaisser"), async (req, res) => {
+  const motif = String((req.body || {}).motif || "").trim().slice(0, 300);
+  if (!motif) return res.status(400).json({ error: "Précisez le motif du blocage." });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE depenses SET blocage_motif = $1, blocage_par = $2::uuid, blocage_le = now()
+       WHERE id = $3 AND statut = 'validee' AND annulee_le IS NULL RETURNING id`, [motif, req.user.sub, req.params.id]);
+    if (!rows[0]) return res.status(409).json({ error: "Le blocage ne se signale que sur une dépense validée, non encore décaissée." });
+    await logAudit({ utilisateurId: req.user.sub, action: "signaler_blocage_depense", entite: "depenses", entiteId: req.params.id, details: { motif }, ip: req.ip });
+    await notif.notifier({ type: "depense_blocage", destinataires: await notif.titulairesPermission("depenses.decision"),
+      auteurId: req.user.sub, ref: req.params.id, aTraiter: true, charge: { motif: motif.slice(0, 140) } });
+    res.json({ id: req.params.id, bloquee: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/depenses/:id/decaisser  (exécution : comptable/admin générale ; associés aussi)
+// Un exécutant ne peut décaisser qu'une dépense dont l'ordre de paiement est donné : il saisit seulement les références
+// (le moyen et le compte sont ceux de l'ordre). Un associé peut tout faire d'un seul geste (ordre + exécution).
 router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (req, res) => {
   const b = req.body || {};
   try {
+    const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
     const { rows: [d] } = await pool.query(
-      "SELECT statut, montant, mode_paiement, compte_id, references_paiement, beneficiaire FROM depenses WHERE id = $1", [req.params.id]);
+      `SELECT statut, montant, mode_paiement, compte_id, references_paiement, beneficiaire, ordre_paiement_le, blocage_le
+         FROM depenses WHERE id = $1`, [req.params.id]);
     if (!d || d.statut !== "validee") return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
+    if (!decideur) {
+      if (!d.ordre_paiement_le) return res.status(409).json({ error: "L'ordre de paiement n'a pas encore été donné par un associé : le décaissement est impossible pour le moment." });
+      if (d.blocage_le) return res.status(409).json({ error: "Ce décaissement a été signalé comme bloqué : attendez le nouvel ordre de paiement d'un associé." });
+    }
     // Justificatif exigé au-delà d'un seuil (réglage facultatif, 0 = désactivé) : au moins une facture ou une pièce « autre ».
     const { rows: [par] } = await pool.query("SELECT seuil_justificatif_decaissement AS seuil FROM parametres_cabinet WHERE id = 1");
     const seuil = Number(par && par.seuil);
@@ -724,11 +838,12 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
     // Bénéficiaire saisi une seule fois : celui de la dépense pré-remplit celui du moyen de paiement (et inversement).
     const refsDecaissement = { ...((b.references !== undefined ? b.references : d.references_paiement) || {}) };
     if (!refsDecaissement.beneficiaire && d.beneficiaire) refsDecaissement.beneficiaire = d.beneficiaire;
-    // Le moyen, le compte et les références peuvent être précisés ou corrigés au
-    // décaissement ; les références du moyen sont alors exigées (l'argent sort).
+    // Moyen et compte : fixés par l'ordre pour un exécutant (sauf anciennes dépenses validées sans moyen, où il choisit comme avant) ;
+    // un associé peut les préciser ou les corriger. Les références du moyen sont exigées (l'argent sort).
+    const fige = !decideur && !!d.mode_paiement;
     const regl = await preparerDecaissement(pool, {
-      mode_paiement: b.mode_paiement || d.mode_paiement,
-      compte_id: b.compte_id !== undefined ? b.compte_id : d.compte_id,
+      mode_paiement: fige ? d.mode_paiement : (b.mode_paiement || d.mode_paiement),
+      compte_id: fige ? d.compte_id : (b.compte_id !== undefined ? b.compte_id : d.compte_id),
       references: refsDecaissement,
     }, { exigerReferences: true });
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
@@ -736,12 +851,14 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
     const { rows } = await pool.query(
       `UPDATE depenses SET statut = 'decaissee', decaisse_par = $1, decaisse_le = now(),
               mode_paiement = $3::mode_paiement, compte_id = $4::uuid, references_paiement = $5::jsonb,
-              beneficiaire = COALESCE(beneficiaire, $6)
+              beneficiaire = COALESCE(beneficiaire, $6),
+              ordre_paiement_le = COALESCE(ordre_paiement_le, now()), ordre_paiement_par = COALESCE(ordre_paiement_par, $1::uuid),
+              blocage_motif = NULL, blocage_par = NULL, blocage_le = NULL
        WHERE id = $2 AND statut = 'validee' RETURNING id, statut`,
       [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references), String(v.references.beneficiaire || "").trim().slice(0, 160) || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
-    await notif.traiter("depense_a_decaisser", req.params.id);
+    await notif.traiter(["depense_a_decaisser", "depense_blocage"], req.params.id);
     const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
     await notif.notifier({ type: "depense_decaissee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id });
     res.json(rows[0]);
@@ -757,7 +874,9 @@ router.get("/moyens-paiement", (req, res) => {
 });
 
 // GET /api/depenses/moyens-paiement/:code/comptes — comptes pouvant servir à ce moyen.
-router.get("/moyens-paiement/:code/comptes", async (req, res) => {
+const VOIR_COMPTES = requireAnyPermission(["depenses.decision", "depenses.decaisser", "depenses.engager", "depenses.petite_caisse.doter",
+  "factures.paiement.ajouter", "factures.creer", "fonds_tiers.consulter", "fonds_tiers.enregistrer", "fonds_tiers.reverser"]);
+router.get("/moyens-paiement/:code/comptes", VOIR_COMPTES, async (req, res) => {
   const moyen = DECAISSEMENT_PAR_CODE[req.params.code];
   if (!moyen) return res.status(404).json({ error: "Moyen inconnu" });
   try { res.json(await comptesEligibles(pool, moyen)); }
@@ -765,9 +884,10 @@ router.get("/moyens-paiement/:code/comptes", async (req, res) => {
 });
 
 // GET /api/depenses/comptes
-router.get("/comptes", async (req, res) => {
+router.get("/comptes", VOIR_COMPTES, async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT id, intitule, type, banque, operateur, telephone FROM comptes_bancaires WHERE actif = TRUE ORDER BY intitule");
+    // Seulement l'identité du compte : ni banque, ni opérateur, ni téléphone (aucun écran n'en a besoin ici).
+    const { rows } = await pool.query("SELECT id, intitule, type FROM comptes_bancaires WHERE actif = TRUE ORDER BY intitule");
     res.json(rows);
   } catch (e) {
     console.error(e);

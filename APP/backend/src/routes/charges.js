@@ -461,13 +461,13 @@ async function creerDepenseDeLigne(client, l, montant, v, decideurId) {
   const { rows: [d] } = await client.query(
     `INSERT INTO depenses
        (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id, statut,
-        soumis_par, valide_par, valide_le, cree_par, dossier_id, refacturable_client, beneficiaire)
+        soumis_par, valide_par, valide_le, cree_par, dossier_id, refacturable_client, beneficiaire, ordre_paiement_le, ordre_paiement_par)
      VALUES ($9, $1::type_depense, $2::categorie_depense, $3, $4, current_date, $5::mode_paiement, $6::uuid, 'validee',
-             $7::uuid, $8::uuid, now(), $7::uuid, $10::uuid, $11, $12)
+             $7::uuid, $8::uuid, now(), $7::uuid, $10::uuid, $11, $12, CASE WHEN $13::boolean THEN now() END, CASE WHEN $13::boolean THEN $8::uuid END)
      RETURNING id`,
     [l.type, l.categorie, libelleDepense(l.libelle, libellePeriode(l.periode_debut, l.periode_fin) || libellePeriode(l.mois)), montant,
      v.mode_paiement, v.compte_id, (e && e.prepare_par) || decideurId, decideurId,
-     l.nature || "cabinet", l.nature === "dossier" ? l.dossier_id : null, l.nature === "dossier" ? !!l.refacturable_client : false, l.beneficiaire || null]);
+     l.nature || "cabinet", l.nature === "dossier" ? l.dossier_id : null, l.nature === "dossier" ? !!l.refacturable_client : false, l.beneficiaire || null, !!v.mode_paiement]);
   return d.id;
 }
 

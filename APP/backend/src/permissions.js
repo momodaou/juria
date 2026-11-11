@@ -233,4 +233,20 @@ function requirePermission(actionCode) {
   };
 }
 
-module.exports = { CATALOGUE, CODES_VALIDES, requirePermission, estAutorise };
+// Accès accordé si l'utilisateur détient AU MOINS UNE des actions listées (écrans partagés entre plusieurs métiers).
+function requireAnyPermission(actionCodes) {
+  return async (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Non authentifié" });
+    try {
+      for (const code of actionCodes) {
+        if (await estAutorise(req.user.role, code, req.user.sub)) return next();
+      }
+      return res.status(403).json({ error: "Accès refusé (fonctionnalité non autorisée pour ce rôle)" });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  };
+}
+
+module.exports = { CATALOGUE, CODES_VALIDES, requirePermission, requireAnyPermission, estAutorise };

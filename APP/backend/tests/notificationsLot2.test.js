@@ -37,7 +37,7 @@ beforeEach(() => envoyerEmail.mockClear());
 afterAll(async () => { await pool.end(); });
 
 describe("Dépenses", () => {
-  test("soumise → décideurs (jamais l'auteur) ; décidée → déposant (motif dans la cloche) + à décaisser ; décaissée → déposant", async () => {
+  test("soumise → décideurs (jamais l'auteur) ; décidée avec ordre de paiement → déposant (motif dans la cloche) + à décaisser ; décaissée → déposant", async () => {
     const adminG = await creer("admin_general"), assoc1 = await creer("associe"), assoc2 = await creer("associe");
     const r = await request(app).post("/api/depenses").set(auth(adminG)).send({ type: "ponctuelle", libelle: "Fournitures L2", montant: 25000 });
     expect(r.status).toBe(201);
@@ -48,7 +48,7 @@ describe("Dépenses", () => {
     expect(n1.lien).toBe(`/depenses?depense=${r.body.id}`); // arrivée précise sur la dépense
     expect(await de(adminG, "depense_soumise")).toHaveLength(0);
 
-    const d = await request(app).post(`/api/depenses/${r.body.id}/decision`).set(auth(assoc1)).send({ statut: "validee" });
+    const d = await request(app).post(`/api/depenses/${r.body.id}/decision`).set(auth(assoc1)).send({ statut: "validee", mode_paiement: "especes" });
     expect(d.status).toBe(200);
     expect((await de(assoc2, "depense_soumise"))[0].a_traiter).toBe(false);
     expect((await de(adminG, "depense_decidee"))[0].texte).toBe("Votre dépense a été validée.");

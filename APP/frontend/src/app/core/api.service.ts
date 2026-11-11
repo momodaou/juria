@@ -979,8 +979,15 @@ export class ApiService {
     Object.entries(payload).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     return this.http.get<any[]>(`${this.base}/api/depenses/verifier-doublon?${params.toString()}`);
   }
-  decisionDepense(id: string, payload: { statut: 'validee' | 'rejetee'; motif_rejet?: string }): Observable<any> {
+  decisionDepense(id: string, payload: { statut: 'validee' | 'rejetee'; motif_rejet?: string; mode_paiement?: string; compte_id?: string | null; references?: any }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decision`, payload);
+  }
+  // 11/11/2026 (lot A) : ordre de paiement (associés) et signalement d'un blocage (exécutants).
+  ordrePaiementDepense(id: string, body: { mode_paiement: string; compte_id?: string | null; references?: any }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/ordre-paiement`, body);
+  }
+  blocageDepense(id: string, motif: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/blocage`, { motif });
   }
   decaisserDepense(id: string, body: any = {}): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/decaisser`, body);

@@ -5805,3 +5805,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_regroupement
   ON notifications (destinataire_id, cle_regroupement) WHERE cle_regroupement IS NOT NULL AND lue_le IS NULL;
 
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS notifications_email_actif BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ============================================================
+--  DÉPENSES — ORDRE DE PAIEMENT ET BLOCAGE (11/11/2026, projet « Dépenses & caisses », lot A)
+--  Les associés ORDONNENT le paiement (moyen + compte à débiter, à la validation ou après) ; l'administration générale
+--  et le comptable EXÉCUTENT (références de l'opération seulement). `ordre_paiement_le` = feu vert. Les dépenses déjà
+--  validées ou décaissées au moment de la bascule sont réputées « ordonnées » (elles restent exécutables comme avant).
+--  `blocage_*` : l'exécutant signale un empêchement (solde insuffisant, chèque indisponible…) ; effacé quand l'associé
+--  redonne l'ordre.
+-- ============================================================
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS ordre_paiement_le  TIMESTAMPTZ;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS ordre_paiement_par UUID REFERENCES utilisateurs(id);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS blocage_motif      TEXT;
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS blocage_par        UUID REFERENCES utilisateurs(id);
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS blocage_le         TIMESTAMPTZ;
+UPDATE depenses SET ordre_paiement_le = COALESCE(valide_le, cree_le, now())
+ WHERE statut IN ('validee','decaissee') AND ordre_paiement_le IS NULL;

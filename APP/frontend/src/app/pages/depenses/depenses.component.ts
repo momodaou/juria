@@ -82,8 +82,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="beneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="form.montant" name="montant" /></div>
           <div><label>Date</label><input class="in" type="date" [(ngModel)]="form.date_depense" name="date" /></div>
-          <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
-                              [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
+          @if (auth.peut('depenses.decision')) {
+            <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
+                                [modele]="form" [catalogue]="catalogue()"></app-reglement-form>
+          }
           <div class="col2">
             <label>Nature de la charge</label>
             <select class="in" [(ngModel)]="form.nature" name="nature">
@@ -173,25 +175,61 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
-              <td>@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatut(d.statut) }}</span> }
+              <td>@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatutDepense(d) }}</span> }
+                @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { {{ ' ' }}<span class="tag haute" [title]="d.blocage_motif || ''">Bloquée</span> }
                 @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { {{ ' ' }}<span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
                 @if (d.apres_coup_statut === 'validee') { {{ ' ' }}<span class="tag ok">Validée après coup</span> }
                 @if (d.apres_coup_statut === 'contestee') { {{ ' ' }}<span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
               </td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
+            @if (panneauId() === d.id) {
+              <tr class="edition">
+                <td colspan="8">
+                  @if (panneauMode() === 'rejeter') {
+                    <b>Rejeter — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
+                    <p class="muted">Le motif est obligatoire : il est communiqué à la personne qui a déposé la dépense.</p>
+                    <textarea class="in" rows="2" maxlength="300" [(ngModel)]="panneauMotif" name="panMotif"></textarea>
+                  } @else {
+                    <b>{{ panneauMode() === 'ordre' ? 'Ordre de paiement' : 'Valider' }} — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
+                    <p class="muted">{{ panneauAide() }}</p>
+                    <div class="grid2">
+                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
+                                          [modele]="panModele" [catalogue]="catalogue()" (validite)="panValide.set($event)"></app-reglement-form>
+                    </div>
+                  }
+                  <div class="btns-ligne">
+                    <button class="btn" (click)="confirmerPanneau(d)" [disabled]="!panneauPret() || panneauEnCours()">{{ panneauEnCours() ? 'Enregistrement…' : libelleBoutonPanneau() }}</button>
+                    <button class="lien" (click)="panneauId.set(null)">Annuler</button>
+                  </div>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
+                </td>
+              </tr>
+            }
             @if (decaissementId() === d.id) {
               <tr class="edition">
                 <td colspan="8">
                   <b>Décaisser — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
-                  <p class="muted">Précisez le moyen de paiement et ses références : l'argent sort maintenant.</p>
-                  <div class="grid2">
-                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="decModele" [catalogue]="catalogue()" (validite)="decValide.set($event)"></app-reglement-form>
-                  </div>
+                  @if (decSimple(d)) {
+                    <p class="muted">Paiement ordonné par les associés. Effectuez-le, puis renseignez ici les références de l'opération.</p>
+                    <p><b>Moyen :</b> {{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · <b>Compte :</b> {{ d.compte }} }</p>
+                    <div class="grid2">
+                      @for (c of champsMoyen(d.mode_paiement); track c.cle) {
+                        <div><label>{{ c.libelle }}@if (c.requis) { <span> *</span> }</label>
+                          <input class="in" [type]="c.type === 'date' ? 'date' : 'text'" [(ngModel)]="decModele.references[c.cle]" [name]="'decref_' + c.cle" /></div>
+                      }
+                    </div>
+                  } @else {
+                    <p class="muted">Précisez le moyen de paiement et ses références : l'argent sort maintenant.</p>
+                    <div class="grid2">
+                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="decModele" [catalogue]="catalogue()" (validite)="decValide.set($event)"></app-reglement-form>
+                    </div>
+                  }
                   <div class="btns-ligne">
-                    <button class="btn" (click)="confirmerDecaissement(d)" [disabled]="!decValide() || decEnCours()">{{ decEnCours() ? 'Décaissement…' : 'Confirmer le décaissement' }}</button>
+                    <button class="btn" (click)="confirmerDecaissement(d)" [disabled]="(decSimple(d) ? !refsExecutantOk(d) : !decValide()) || decEnCours()">{{ decEnCours() ? 'Décaissement…' : 'Confirmer le décaissement' }}</button>
                     <button class="lien" (click)="decaissementId.set(null)">Annuler</button>
                   </div>
+                  @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
               </tr>
             }
@@ -217,8 +255,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="editForm.beneficiaire" name="edBeneficiaire" /></div>
                     <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
                     <div><label>Date</label><input class="in" type="date" [(ngModel)]="editForm.date_depense" name="edDate" /></div>
-                    <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
-                                        [modele]="editForm" [catalogue]="catalogue()"></app-reglement-form>
+                    @if (auth.peut('depenses.decision') || editionEngagee()) {
+                      <app-reglement-form sens="decaissement" cleMode="mode_paiement" [exigerReferences]="false" [masquerReferences]="true" [exigerMoyen]="false"
+                                          [modele]="editForm" [catalogue]="catalogue()"></app-reglement-form>
+                    }
                     <div class="col2">
                       <label>Nature de la charge</label>
                       <select class="in" [(ngModel)]="editForm.nature" name="edNature">
@@ -517,7 +557,6 @@ export class DepensesComponent implements OnInit {
     this.filtreStatut = params.get('statut') ?? '';
     this.depenseCible = params.get('depense');
     this.charger();
-    this.api.comptesBancaires().subscribe({ next: (c) => this.comptes.set(c) });
     this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
     this.chargerCaisse();
     if (this.auth.peut('depenses.petite_caisse.doter')) { this.chargerRapprochements(); this.chargerDotations(); }
@@ -560,7 +599,11 @@ export class DepensesComponent implements OnInit {
   // Tuile « à décaisser » : dépenses validées (états approuvés compris) qui attendent leur paiement.
   chargerADecaisser(): void {
     this.api.depenses({ statut: 'validee' }).subscribe({
-      next: (l) => this.aDecaisser.set({ nb: l.length, total: l.reduce((s, d) => s + Number(d.montant), 0) }),
+      next: (l) => {
+        // Un exécutant ne compte que les dépenses dont l'ordre de paiement est donné (les autres ne dépendent pas de lui).
+        const a = this.auth.peut('depenses.decision') ? l : l.filter((d: any) => d.ordre_paiement_le);
+        this.aDecaisser.set({ nb: a.length, total: a.reduce((s: number, d: any) => s + Number(d.montant), 0) });
+      },
       error: () => {},
     });
   }
@@ -617,12 +660,19 @@ export class DepensesComponent implements OnInit {
       items.push({ label: 'Valider après coup', action: () => this.validerApresCoup(d, 'validee') });
       items.push({ label: 'Contester', action: () => this.validerApresCoup(d, 'contestee'), danger: true });
     }
-    if (d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
-      items.push({ label: 'Valider', action: () => this.decision(d, 'validee') });
-      items.push({ label: 'Rejeter', action: () => this.decision(d, 'rejetee'), danger: true });
+    const decideur = this.auth.peut('depenses.decision');
+    if (d.statut === 'soumise' && decideur) {
+      items.push({ label: 'Valider', action: () => this.ouvrirPanneau(d, 'valider') });
+      items.push({ label: 'Rejeter', action: () => this.ouvrirPanneau(d, 'rejeter'), danger: true });
     }
-    if (d.statut === 'validee' && this.auth.peut('depenses.decaisser')) {
+    if (d.statut === 'validee' && !d.annulee_le && decideur) {
+      items.push({ label: d.ordre_paiement_le && d.moyen_defini ? "Modifier l'ordre de paiement" : "Donner l'ordre de paiement", action: () => this.ouvrirPanneau(d, 'ordre') });
+    }
+    if (d.statut === 'validee' && this.auth.peut('depenses.decaisser') && (decideur || (d.ordre_paiement_le && !d.blocage_le))) {
       items.push({ label: 'Décaisser', action: () => this.ouvrirDecaissement(d) });
+    }
+    if (d.statut === 'validee' && !decideur && this.auth.peut('depenses.decaisser') && d.ordre_paiement_le && !d.blocage_le) {
+      items.push({ label: 'Signaler un blocage', action: () => this.signalerBlocage(d), danger: true });
     }
     if (this.auth.peut('depenses.decision') && (d.statut === 'validee' || d.statut === 'decaissee') && !d.annulee_le && !d.facture_id) {
       items.push({ label: 'Annuler (avec motif)', action: () => this.annulerDepense(d), danger: true });
@@ -806,11 +856,68 @@ export class DepensesComponent implements OnInit {
     });
   }
 
-  decision(d: any, statut: 'validee' | 'rejetee'): void {
-    this.api.decisionDepense(d.id, { statut }).subscribe({
-      next: () => this.charger(),
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Décision impossible (rôle gérant requis).'),
+  // Valider / rejeter / donner l'ordre de paiement (11/11/2026, lot A) : un panneau s'ouvre sous la ligne.
+  readonly panneauId = signal<string | null>(null);
+  readonly panneauMode = signal<'valider' | 'rejeter' | 'ordre'>('valider');
+  readonly panneauEnCours = signal(false);
+  readonly panValide = signal(true);
+  panModele: any = {};
+  panneauMotif = '';
+  ouvrirPanneau(d: any, mode: 'valider' | 'rejeter' | 'ordre'): void {
+    this.erreur.set('');
+    this.panneauMotif = '';
+    this.panModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: {} };
+    this.panValide.set(true);
+    this.panneauMode.set(mode);
+    this.panneauId.set(d.id);
+  }
+  panneauAide(): string {
+    return this.panneauMode() === 'ordre'
+      ? "Indiquez le moyen de paiement et le compte à débiter : c'est le feu vert donné à l'administration pour exécuter le paiement."
+      : "Vous pouvez donner dès maintenant l'ordre de paiement (moyen et compte à débiter). Sans cela, la dépense reste validée, en attente d'ordre de paiement.";
+  }
+  panneauPret(): boolean {
+    if (this.panneauMode() === 'rejeter') return !!this.panneauMotif.trim();
+    if (this.panneauMode() === 'ordre') return !!this.panModele.mode_paiement && this.panValide();
+    return this.panValide();
+  }
+  libelleBoutonPanneau(): string {
+    return this.panneauMode() === 'rejeter' ? 'Rejeter la dépense' : this.panneauMode() === 'ordre' ? "Donner l'ordre de paiement"
+      : (this.panModele.mode_paiement ? "Valider et donner l'ordre de paiement" : "Valider sans ordre de paiement");
+  }
+  confirmerPanneau(d: any): void {
+    if (this.panneauEnCours() || !this.panneauPret()) return;
+    this.erreur.set('');
+    this.panneauEnCours.set(true);
+    const m = this.panModele;
+    const reglement = { mode_paiement: m.mode_paiement, compte_id: m.compte_id || null, references: m.references };
+    const appel = this.panneauMode() === 'rejeter' ? this.api.decisionDepense(d.id, { statut: 'rejetee', motif_rejet: this.panneauMotif.trim() })
+      : this.panneauMode() === 'ordre' ? this.api.ordrePaiementDepense(d.id, reglement)
+      : this.api.decisionDepense(d.id, m.mode_paiement ? { statut: 'validee', ...reglement } : { statut: 'validee' });
+    appel.subscribe({
+      next: () => { this.panneauEnCours.set(false); this.panneauId.set(null); this.charger(); this.chargerADecaisser(); },
+      error: (e) => { this.panneauEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Opération impossible (droit de décision requis).'); },
     });
+  }
+  libelleStatutDepense(d: any): string {
+    if (d.statut === 'validee') return d.ordre_paiement_le ? 'Validée — à décaisser' : 'Validée — ordre de paiement à donner';
+    return this.libelleStatut(d.statut);
+  }
+  signalerBlocage(d: any): void {
+    const motif = window.prompt(`Signaler un blocage pour « ${d.libelle} ».\nMotif (obligatoire) : solde insuffisant, chèque indisponible…`);
+    if (!motif || !motif.trim()) return;
+    this.erreur.set('');
+    this.api.blocageDepense(d.id, motif.trim()).subscribe({
+      next: () => this.charger(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Signalement impossible.'),
+    });
+  }
+  // Exécutant : moyen et compte sont ceux de l'ordre, il ne saisit que les références.
+  decSimple(d: any): boolean { return !this.auth.peut('depenses.decision') && !!d.mode_paiement; }
+  champsMoyen(code: string): any[] { return this.catalogue().find((x) => x.code === code)?.champs ?? []; }
+  refsExecutantOk(d: any): boolean {
+    const refs = this.decModele?.references ?? {};
+    return this.champsMoyen(d.mode_paiement).every((c: any) => !c.requis || String(refs[c.cle] ?? '').trim() !== '');
   }
 
   // Décaissement (20/10/2026) : le moyen, le compte et les références sont précisés
@@ -822,6 +929,7 @@ export class DepensesComponent implements OnInit {
   ouvrirDecaissement(d: any): void {
     this.erreur.set('');
     this.decModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: { ...(d.beneficiaire ? { beneficiaire: d.beneficiaire } : {}), ...(d.references_paiement ?? {}) } };
+    this.panneauId.set(null);
     this.decaissementId.set(d.id);
   }
   confirmerDecaissement(d: any): void {
@@ -829,7 +937,8 @@ export class DepensesComponent implements OnInit {
     this.erreur.set('');
     this.decEnCours.set(true);
     const m = this.decModele;
-    this.api.decaisserDepense(d.id, { mode_paiement: m.mode_paiement, compte_id: m.compte_id || null, references: m.references }).subscribe({
+    const corps = this.decSimple(d) ? { references: m.references } : { mode_paiement: m.mode_paiement, compte_id: m.compte_id || null, references: m.references };
+    this.api.decaisserDepense(d.id, corps).subscribe({
       next: () => { this.decEnCours.set(false); this.decaissementId.set(null); this.charger(); this.chargerCaisse(); },
       error: (e) => { this.decEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Décaissement impossible.'); },
     });
