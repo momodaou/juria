@@ -4830,3 +4830,8 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - **Sélecteur de natures compact** (Seuils) : colonnes de cases à cocher, texte normal et petit, plus de gras ni de pastilles ; compteur, « Tout cocher / décocher / valeurs par défaut » conservés.
 - Vérifications : tests backend 983/983 (91 suites, base neuve, en série ; nouveau `cataloguesCaisses.test.js`) ; build Angular OK ; captures Playwright (Seuils compact, formulaire d engagement avec précision de greffe).
 - Migrations (à importer dans cet ordre, fichiers temporaires à la racine, jamais committés) : `migration_catalogues_1_enum.sql` (ENUM) puis `migration_catalogues_2_suite.sql` (colonne, plafond par défaut, listes enregistrées mises à jour). **Déploiement non fait : accord explicite de l utilisateur attendu.**
+
+### Déploiement catalogues par caisse (11/11/2026, soir)
+- Migrations appliquées en production dans l ordre : `migration_catalogues_1_enum.sql` (10 valeurs d ENUM) puis `migration_catalogues_2_suite.sql` (colonne `precision_nature`, plafond 25 000 par défaut, listes de natures). Fichiers temporaires supprimés.
+- Révisions : API `juria-00236-vnd`, frontend `juria-web-00310-q78`. Vérifications : `/health` = 200, `/` = 200.
+- Reste à la charge de l utilisateur : vérifier le plafond de la petite caisse en production (25 000), rejeter la dépense d achat de vignettes du mois, saisir la dotation de la caisse frais de justice.
