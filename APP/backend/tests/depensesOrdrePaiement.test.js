@@ -156,3 +156,27 @@ describe("Comptes : garde de consultation", () => {
     expect((await request(app).get("/api/depenses/moyens-paiement/orange_money/comptes").set(auth(assoc))).status).toBe(200);
   });
 });
+
+describe("Pièces à toute étape (lot C)", () => {
+  const joindre = (u, id, type, nom = "piece.pdf") =>
+    request(app).post(`/api/depenses/${id}/pieces`).set(auth(u)).field("type", type).attach("fichier", Buffer.from(nom), { filename: nom, contentType: "application/pdf" });
+
+  test("le déposant, l'exécutant et l'associé joignent des pièces après le paiement ; un tiers non ; retrait après décision réservé à l'associé ou à l'auteur", async () => {
+    const adminG = await creer("admin_general"), comptable = await creer("comptable"), assoc = await creer("associe"), archiviste = await creer("archiviste");
+    const id = await deposer(adminG);
+    await post(assoc, `/api/depenses/${id}/decision`, { statut: "validee", mode_paiement: "especes" });
+    expect((await post(comptable, `/api/depenses/${id}/decaisser`, {})).status).toBe(200);
+    // après paiement : devis, facture, preuve acceptés
+    expect((await joindre(adminG, id, "devis")).status).toBe(201);
+    expect((await joindre(adminG, id, "facture", "facture.pdf")).status).toBe(201);
+    const preuve = await joindre(comptable, id, "preuve_paiement", "preuve.pdf");
+    expect(preuve.status).toBe(201);
+    expect((await joindre(archiviste, id, "facture")).status).toBe(403);
+    // l'exécutant retire sa propre pièce, pas celle d'un autre ; l'associé retire tout
+    const pieces = (await request(app).get(`/api/depenses/${id}/pieces`).set(auth(assoc))).body;
+    const dAdmin = pieces.find((p) => p.type === "facture");
+    expect((await request(app).delete(`/api/depenses/${id}/pieces/${dAdmin.id}`).set(auth(comptable))).status).toBe(404);
+    expect((await request(app).delete(`/api/depenses/${id}/pieces/${preuve.body.id}`).set(auth(comptable))).status).toBe(204);
+    expect((await request(app).delete(`/api/depenses/${id}/pieces/${dAdmin.id}`).set(auth(assoc))).status).toBe(204);
+  });
+});

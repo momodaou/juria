@@ -710,16 +710,17 @@ router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
 // Pièces d'une dépense (16/10/2026) : devis (plusieurs possibles, soumis
 // pour choix), facture, preuve de paiement. Un devis n'est jamais
 // obligatoire. Seul le valideur (depenses.decision) « retient » un devis.
-// Dépôt de facture / preuve possible à tout moment, y compris après
-// décaissement (justificatif différé) ; un devis seulement tant que la
-// dépense est « soumise » (après décision il n'a plus d'objet).
+// Dépôt de pièces (devis compris) possible À TOUT MOMENT, y compris après
+// le décaissement (lot C, 11/11/2026) : par le déposant, par les associés et
+// par les exécutants du paiement (depenses.decaisser : preuve de paiement,
+// facture). Le choix du devis retenu reste réservé aux associés, avant la décision.
 // ---------------------------------------------------------------------
 async function peutGererPieces(req, depenseId) {
   const { rows: [d] } = await pool.query("SELECT soumis_par, statut FROM depenses WHERE id = $1", [depenseId]);
   if (!d) return { code: 404, erreur: "Dépense introuvable" };
   const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
-  if (d.soumis_par !== req.user.sub && !decideur) {
-    return { code: 403, erreur: "Seul le déposant ou une personne habilitée à décider peut gérer les pièces de cette dépense." };
+  if (d.soumis_par !== req.user.sub && !decideur && !(await estAutorise(req.user.role, "depenses.decaisser", req.user.sub))) {
+    return { code: 403, erreur: "Seul le déposant, un associé ou une personne chargée du décaissement peut gérer les pièces de cette dépense." };
   }
   return { depense: d, decideur };
 }
@@ -728,7 +729,7 @@ router.get("/:id/pieces", requirePermission("depenses.consulter"), async (req, r
   try {
     const { rows } = await pool.query(
       `SELECT p.id, p.type, p.nom, p.type_mime, p.taille_octets, p.retenu, p.retenu_le, p.ajoute_le,
-              u.prenom || ' ' || u.nom AS ajoute_par
+              u.prenom || ' ' || u.nom AS ajoute_par, p.ajoute_par AS ajoute_par_id
        FROM depense_pieces p LEFT JOIN utilisateurs u ON u.id = p.ajoute_par
        WHERE p.depense_id = $1 ORDER BY p.ajoute_le`, [req.params.id]);
     res.json(rows);
@@ -742,9 +743,6 @@ router.post("/:id/pieces", requirePermission("depenses.creer"), upload.single("f
   try {
     const g = await peutGererPieces(req, req.params.id);
     if (g.erreur) return res.status(g.code).json({ error: g.erreur });
-    if (type === "devis" && g.depense.statut !== "soumise") {
-      return res.status(409).json({ error: "Un devis ne peut être ajouté que tant que la dépense n'a pas été traitée." });
-    }
     const dest = `depenses/${req.params.id}/${Date.now()}_${req.file.originalname}`.replace(/\s+/g, "_");
     const chemin = await saveObject(req.file.buffer, dest, req.file.mimetype);
     const { rows } = await pool.query(
@@ -793,11 +791,12 @@ router.delete("/:id/pieces/:pieceId", requirePermission("depenses.creer"), async
   try {
     const g = await peutGererPieces(req, req.params.id);
     if (g.erreur) return res.status(g.code).json({ error: g.erreur });
-    if (g.depense.statut !== "soumise" && !g.decideur) {
-      return res.status(403).json({ error: "Après la décision, seule une personne habilitée à décider peut retirer une pièce." });
-    }
-    const { rows: [p] } = await pool.query("DELETE FROM depense_pieces WHERE id = $1 AND depense_id = $2 RETURNING chemin_storage, nom, type", [req.params.pieceId, req.params.id]);
-    if (!p) return res.status(404).json({ error: "Pièce introuvable" });
+    // Après la décision : un associé, ou la personne qui a ajouté la pièce (erreur de dépôt).
+    const { rows: [p] } = await pool.query(
+      `DELETE FROM depense_pieces WHERE id = $1 AND depense_id = $2 AND ($3::boolean OR $4::boolean OR ajoute_par = $5::uuid)
+       RETURNING chemin_storage, nom, type`,
+      [req.params.pieceId, req.params.id, g.depense.statut === "soumise", g.decideur, req.user.sub]);
+    if (!p) return res.status(404).json({ error: "Pièce introuvable, ou retrait réservé à un associé après la décision." });
     await deleteObject(p.chemin_storage);
     await logAudit({ utilisateurId: req.user.sub, action: "retirer_piece_depense", entite: "depenses", entiteId: req.params.id, details: { nom: p.nom, type: p.type }, ip: req.ip });
     res.status(204).end();

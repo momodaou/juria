@@ -71,12 +71,12 @@ describe("Pièces d'une dépense — plusieurs devis, un seul retenu, par le val
     expect(liste.devis_retenu).toBe(true);
   });
 
-  test("devis facultatif ; facture déposable après décaissement, devis refusé après décision", async () => {
+  test("devis facultatif ; pièces (devis compris) déposables à toute étape, même après décaissement", async () => {
     const dep = await creerDepense(token);
     const id = dep.body.id;
     expect((await request(app).post(`/api/depenses/${id}/decision`).set(auth(token)).send({ statut: "validee" })).status).toBe(200);
     expect((await request(app).post(`/api/depenses/${id}/decaisser`).set(auth(token)).send({ mode_paiement: "virement" })).status).toBe(200);
-    expect((await joindre(token, id, "devis")).status).toBe(409);
+    expect((await joindre(token, id, "devis")).status).toBe(201); // lot C : à toute étape
     const fac = await joindre(token, id, "facture", "facture.pdf");
     expect(fac.status).toBe(201);
     const dl = await request(app).get(`/api/depenses/${id}/pieces/${fac.body.id}/fichier`).set(auth(token));

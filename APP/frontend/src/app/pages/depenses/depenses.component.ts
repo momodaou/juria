@@ -319,11 +319,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                       }
                     </table>
                   } @else { <p class="muted">Aucune pièce.</p> }
+                  @if (peutPieces(d)) {
                   <div class="grid2" style="margin-top:8px">
                     <div>
                       <label>Type de pièce</label>
                       <select class="in" [(ngModel)]="pieceType" name="pieceType">
-                        @if (d.statut === 'soumise') { <option value="devis">Devis</option> }
+                        <option value="devis">Devis</option>
                         <option value="facture">Facture</option>
                         <option value="preuve_paiement">Preuve de paiement</option>
                         <option value="autre">Autre</option>
@@ -332,6 +333,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div><label>Fichier (PDF, image, Word, Excel)</label><input class="in" type="file" (change)="choisirPiece($event)" /></div>
                   </div>
                   <button class="btn" (click)="ajouterPiece(d)" [disabled]="!pieceFichier || pieceEnCours()">{{ pieceEnCours() ? 'Envoi…' : 'Ajouter la pièce' }}</button>
+                  } @else { <p class="muted">Seuls le déposant, les associés et les personnes chargées du décaissement peuvent ajouter des pièces.</p> }
                   <button class="lien" (click)="piecesId.set(null)">Fermer</button>
                   @if (erreur()) { <p class="err">{{ erreur() }}</p> }
                 </td>
@@ -833,6 +835,10 @@ export class DepensesComponent implements OnInit {
       error: (e) => { this.pieceEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
   }
+  // Pièces à toute étape (lot C) : déposant, associés, exécutants du paiement.
+  peutPieces(d: any): boolean {
+    return d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision') || this.auth.peut('depenses.decaisser');
+  }
   actionsPourPiece(d: any, p: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [
       { label: 'Aperçu', action: () => this.preview.ouvrir(p.nom, this.api.telechargerPieceDepense(d.id, p.id)) },
@@ -840,7 +846,7 @@ export class DepensesComponent implements OnInit {
     if (p.type === 'devis' && !p.retenu && d.statut === 'soumise' && this.auth.peut('depenses.decision')) {
       items.push({ label: 'Retenir ce devis', action: () => this.retenirDevis(d, p) });
     }
-    if (d.statut === 'soumise' || this.auth.peut('depenses.decision')) {
+    if (d.statut === 'soumise' || this.auth.peut('depenses.decision') || p.ajoute_par_id === this.auth.utilisateur()?.id) {
       items.push({ label: 'Retirer', danger: true, action: () => this.retirerPiece(d, p) });
     }
     return items;
