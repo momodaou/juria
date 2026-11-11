@@ -36,27 +36,72 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir toutes les dépenses</a></p>
     }
 
+    <div class="onglets" role="tablist">
+      <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'cabinet'" (click)="changerOnglet('cabinet')">
+        Dépenses du cabinet @if (aTraiter('cabinet')) { <span class="pastille">{{ aTraiter('cabinet') }}</span> }
+      </button>
+      <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'caisse'" (click)="changerOnglet('caisse')">
+        Petite caisse @if (aTraiter('petite_caisse')) { <span class="pastille">{{ aTraiter('petite_caisse') }}</span> }
+      </button>
+      <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'tout'" (click)="changerOnglet('tout')">Tout</button>
+    </div>
+
     <div class="kpis">
-      <div class="kpi">
-        <div class="n">{{ caisse()?.dotation ?? 0 | number }}</div>
-        <div class="l">Dotation petite caisse ({{ moisCourant.slice(0,7) }})</div>
-      </div>
-      <div class="kpi amber">
-        <div class="n">{{ caisse()?.depense ?? 0 | number }}</div>
-        <div class="l">Petite caisse dépensée ce mois</div>
-      </div>
-      <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0" [class.green]="(caisse()?.solde ?? 0) >= 0">
-        <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
-        <div class="l">Solde petite caisse</div>
-      </div>
-      <div class="kpi amber" style="cursor:pointer" (click)="voirADecaisser()" title="Afficher les dépenses validées en attente de décaissement">
-        <div class="n">{{ aDecaisser().total | number }}</div>
-        <div class="l">À décaisser — {{ aDecaisser().nb }} dépense(s)</div>
-      </div>
-      <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
-        <div class="n">{{ stockVignettes() }}</div>
-        <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
-      </div>
+      @if (onglet() === 'caisse') {
+        <div class="kpi">
+          <div class="n">{{ caisse()?.dotation ?? 0 | number }}</div>
+          <div class="l">Dotation petite caisse ({{ moisCourant.slice(0,7) }})</div>
+        </div>
+        <div class="kpi amber">
+          <div class="n">{{ caisse()?.depense ?? 0 | number }}</div>
+          <div class="l">Petite caisse dépensée ce mois</div>
+        </div>
+        <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0" [class.green]="(caisse()?.solde ?? 0) >= 0">
+          <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
+          <div class="l">Solde petite caisse</div>
+        </div>
+        @if (auth.peut('depenses.decision')) {
+          <div class="kpi amber cliquable" (click)="voir({ apres_coup: 'a_valider' })" title="Afficher les dépenses engagées à valider après coup">
+            <div class="n">{{ sy('petite_caisse', 'apres_coup').nb }}</div>
+            <div class="l">À valider après coup — {{ sy('petite_caisse', 'apres_coup').total | number }} FCFA</div>
+          </div>
+        }
+        <div class="kpi cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées à décaisser">
+          <div class="n">{{ sy('petite_caisse', 'decaisser').nb }}</div>
+          <div class="l">À décaisser (circuit normal) — {{ sy('petite_caisse', 'decaisser').total | number }} FCFA</div>
+        </div>
+      } @else {
+        @if (auth.peut('depenses.decision')) {
+          <div class="kpi amber cliquable" (click)="voir({ statut: 'soumise' })" title="Afficher les dépenses soumises, à décider">
+            <div class="n">{{ somme('decider').nb }}</div>
+            <div class="l">À décider — {{ somme('decider').total | number }} FCFA</div>
+          </div>
+          <div class="kpi amber cliquable" (click)="voir({ statut: 'validee', ordre: 'sans_ordre' })" title="Afficher les dépenses validées sans ordre de paiement">
+            <div class="n">{{ somme('ordonner').nb }}</div>
+            <div class="l">Ordre de paiement à donner — {{ somme('ordonner').total | number }} FCFA</div>
+          </div>
+        }
+        <div class="kpi amber cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées en attente de décaissement">
+          <div class="n">{{ somme('decaisser').total | number }}</div>
+          <div class="l">À décaisser — {{ somme('decaisser').nb }} dépense(s)</div>
+        </div>
+        <div class="kpi green cliquable" (click)="voir({ statut: 'decaissee' })" title="Afficher les dépenses décaissées">
+          <div class="n">{{ somme('decaisse_mois').total | number }}</div>
+          <div class="l">Décaissé ce mois — {{ somme('decaisse_mois').nb }} dépense(s)</div>
+        </div>
+        @if (onglet() === 'tout') {
+          <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0">
+            <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
+            <div class="l">Solde petite caisse</div>
+          </div>
+        }
+        @if (onglet() === 'cabinet') {
+          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
+            <div class="n">{{ stockVignettes() }}</div>
+            <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
+          </div>
+        }
+      }
     </div>
 
     @if (afficherForm()) {
@@ -144,11 +189,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <option value="cabinet">Charges du cabinet</option>
           <option value="dossier">Liées à un dossier</option>
         </select>
+        @if (onglet() === 'tout') {
         <select class="in filtre" [(ngModel)]="filtreCaisse" (ngModelChange)="charger()">
           <option value="">Toutes sources</option>
           <option value="true">Petite caisse</option>
           <option value="false">Hors petite caisse</option>
         </select>
+        }
         <label class="filtre-date">Du <input class="in" type="date" [(ngModel)]="filtreDu" (ngModelChange)="charger()" /></label>
         <label class="filtre-date">au <input class="in" type="date" [(ngModel)]="filtreAu" (ngModelChange)="charger()" /></label>
         <input class="in filtre" style="min-width:210px" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" (keydown.enter)="rechercherMaintenant()" />
@@ -347,7 +394,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       } @else { <p class="muted">Aucune dépense.</p> }
     </section>
 
-    @if (auth.peut('depenses.petite_caisse.doter')) {
+    @if (onglet() === 'caisse' && auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
         <h3>Petite caisse — dotation mensuelle</h3>
         <p class="muted">Mois en cours ({{ moisCourant.slice(0, 7) }}) : dotation <b>{{ caisse()?.dotation ?? 0 | number }}</b> FCFA · dépensé <b>{{ caisse()?.depense ?? 0 | number }}</b> FCFA · solde <b>{{ caisse()?.solde ?? 0 | number }}</b> FCFA.
@@ -374,7 +421,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (auth.peut('depenses.engager')) {
+    @if (onglet() === 'caisse' && auth.peut('depenses.engager')) {
       <section class="panel">
         <h3>Petite caisse — engager une petite dépense</h3>
         <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
@@ -413,7 +460,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (auth.peut('depenses.petite_caisse.doter')) {
+    @if (onglet() === 'caisse' && auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
         <h3>Petite caisse — rapprochement mensuel</h3>
         <p class="muted">Comparez le solde calculé par JURIA (<b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>) au solde réel du porte-monnaie mobile money (relevé de l'opérateur) ou au comptage des espèces.</p>
@@ -438,6 +485,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
+    @if (onglet() === 'cabinet') {
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
       <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>
@@ -480,8 +528,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         }
       }
     </section>
+    }
   `,
   styles: [`
+    .onglets{display:flex;gap:6px;margin:4px 0 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+    .onglet{background:none;border:none;border-bottom:3px solid transparent;padding:10px 16px;font-size:var(--fs-base);font-weight:600;color:var(--slate);cursor:pointer;display:inline-flex;gap:8px;align-items:center;margin-bottom:-1px}
+    .onglet.actif{color:var(--ink,#1a2740);border-bottom-color:var(--gold,#b08a4b)}
+    .onglet:hover{color:var(--ink,#1a2740)}
+    .pastille{background:#c0392b;color:#fff;border-radius:999px;font-size:var(--fs-2xs);padding:1px 7px;font-weight:700}
+    .kpi.cliquable{cursor:pointer}
     .btns-ligne{display:flex;gap:12px;align-items:center;margin-top:12px}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin:8px 0 0}
     tr.annulee td{color:var(--grey);opacity:.62} tr.annulee td:last-child{opacity:1}
@@ -549,7 +604,8 @@ export class DepensesComponent implements OnInit {
   filtreAu = '';
   filtreRecherche = '';
   masquerAnnulees = false;
-  readonly aDecaisser = signal<{ nb: number; total: number }>({ nb: 0, total: 0 });
+  readonly synthese = signal<any | null>(null);
+  readonly onglet = signal<'cabinet' | 'caisse' | 'tout'>('cabinet');
   private minuteurRecherche: any = null;
   form: any = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
@@ -579,6 +635,13 @@ export class DepensesComponent implements OnInit {
     // 24/10/2026 — lien « À décaisser » de l'état mensuel des charges.
     this.filtreStatut = params.get('statut') ?? '';
     this.depenseCible = params.get('depense');
+    // Onglet de départ : « tout » quand on arrive par un lien précis (dépense, statut, dossier) pour retrouver l'élément quelle que soit sa caisse ;
+    // sinon l'onglet demandé, le dernier utilisé, ou « cabinet ».
+    let memo: string | null = null;
+    try { memo = localStorage.getItem('juria.depenses.onglet'); } catch { /* sans effet */ }
+    const demande = params.get('onglet') ?? (params.get('depense') || params.get('statut') || params.get('dossier') ? 'tout' : memo);
+    this.onglet.set(demande === 'caisse' || demande === 'tout' ? demande : 'cabinet');
+    this.filtreCaisse = this.caisseDeOnglet();
     this.charger();
     this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
     this.chargerCaisse();
@@ -596,10 +659,10 @@ export class DepensesComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.depenses({
       statut: this.filtreStatut, type: this.filtreType, categorie: this.filtreCategorie, nature: this.filtreNature,
-      petite_caisse: this.filtreCaisse, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
+      petite_caisse: this.filtreCaisse, ordre: this.filtreOrdre, apres_coup: this.filtreApresCoup, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
       masquer_annulees: this.masquerAnnulees, ...(dossierId ? { dossier_id: dossierId } : {}),
     }).subscribe({ next: (d) => { this.depenses.set(d); this.viserDepense(); } });
-    this.chargerADecaisser();
+    this.chargerSynthese();
   }
   // Recherche texte : on attend la fin de la frappe avant d'interroger le serveur.
   chargerRecherche(): void {
@@ -608,10 +671,11 @@ export class DepensesComponent implements OnInit {
   }
   rechercherMaintenant(): void { clearTimeout(this.minuteurRecherche); this.charger(); }
   filtresActifs(): boolean {
-    return !!(this.filtreStatut || this.filtreType || this.filtreCategorie || this.filtreNature || this.filtreCaisse || this.filtreDu || this.filtreAu || this.filtreRecherche.trim() || this.masquerAnnulees);
+    return !!(this.filtreStatut || this.filtreOrdre || this.filtreApresCoup || this.filtreType || this.filtreCategorie || this.filtreNature || (this.filtreCaisse !== this.caisseDeOnglet()) || this.filtreDu || this.filtreAu || this.filtreRecherche.trim() || this.masquerAnnulees);
   }
   reinitialiserFiltres(): void {
-    this.filtreStatut = this.filtreType = this.filtreCategorie = this.filtreNature = this.filtreCaisse = this.filtreDu = this.filtreAu = this.filtreRecherche = '';
+    this.filtreStatut = this.filtreType = this.filtreCategorie = this.filtreNature = this.filtreDu = this.filtreAu = this.filtreRecherche = this.filtreOrdre = this.filtreApresCoup = '';
+    this.filtreCaisse = this.caisseDeOnglet();
     this.masquerAnnulees = false;
     this.charger();
   }
@@ -619,18 +683,49 @@ export class DepensesComponent implements OnInit {
   private comptees(): any[] { return this.depenses().filter((d) => !d.annulee_le && d.statut !== 'rejetee'); }
   totalAffiche(): number { return this.comptees().reduce((s, d) => s + Number(d.montant), 0); }
   nbCompte(): number { return this.comptees().length; }
-  // Tuile « à décaisser » : dépenses validées (états approuvés compris) qui attendent leur paiement.
-  chargerADecaisser(): void {
-    this.api.depenses({ statut: 'validee' }).subscribe({
-      next: (l) => {
-        // Un exécutant ne compte que les dépenses dont l'ordre de paiement est donné (les autres ne dépendent pas de lui).
-        const a = this.auth.peut('depenses.decision') ? l : l.filter((d: any) => d.ordre_paiement_le);
-        this.aDecaisser.set({ nb: a.length, total: a.reduce((s: number, d: any) => s + Number(d.montant), 0) });
-      },
-      error: () => {},
-    });
+  // Onglets (lot E, 11/11/2026) : « cabinet » = hors petite caisse, « caisse » = petite caisse, « tout » = vue consolidée.
+  // La comptabilité reste unique : seul l'affichage est séparé.
+  chargerSynthese(): void {
+    this.api.syntheseDepenses().subscribe({ next: (r) => this.synthese.set(r), error: () => {} });
   }
-  voirADecaisser(): void { this.reinitialiserFiltres(); this.filtreStatut = 'validee'; this.charger(); }
+  sy(groupe: 'cabinet' | 'petite_caisse', cle: string): { nb: number; total: number } {
+    return this.synthese()?.[groupe]?.[cle] ?? { nb: 0, total: 0 };
+  }
+  /** Compteur de l'onglet courant : cabinet seul, petite caisse seule, ou les deux (« tout »). */
+  somme(cle: string): { nb: number; total: number } {
+    const a = this.sy('cabinet', cle);
+    if (this.onglet() === 'cabinet') return a;
+    const b = this.sy('petite_caisse', cle);
+    return { nb: a.nb + b.nb, total: a.total + b.total };
+  }
+  /** Pastille de l'onglet : ce qui attend une action de la personne connectée. */
+  aTraiter(groupe: 'cabinet' | 'petite_caisse'): number {
+    if (groupe === 'petite_caisse') return this.sy('petite_caisse', 'apres_coup').nb + this.sy('petite_caisse', 'decider').nb;
+    return this.auth.peut('depenses.decision')
+      ? this.sy('cabinet', 'decider').nb + this.sy('cabinet', 'ordonner').nb
+      : this.sy('cabinet', 'decaisser').nb;
+  }
+  private caisseDeOnglet(): string { return this.onglet() === 'cabinet' ? 'false' : this.onglet() === 'caisse' ? 'true' : ''; }
+  changerOnglet(o: 'cabinet' | 'caisse' | 'tout'): void {
+    if (o === this.onglet()) return;
+    this.onglet.set(o);
+    try { localStorage.setItem('juria.depenses.onglet', o); } catch { /* sans effet */ }
+    this.afficherForm.set(false);
+    this.panneauId.set(null); this.decaissementId.set(null); this.editionId.set(null); this.piecesId.set(null);
+    this.filtreCaisse = this.caisseDeOnglet();
+    this.filtreStatut = ''; this.filtreOrdre = ''; this.filtreApresCoup = '';
+    this.charger();
+  }
+  filtreOrdre = '';
+  filtreApresCoup = '';
+  // Un clic sur une tuile filtre la liste de l'onglet courant.
+  voir(f: { statut?: string; ordre?: string; apres_coup?: string }): void {
+    this.reinitialiserFiltres();
+    this.filtreStatut = f.statut ?? '';
+    this.filtreOrdre = f.ordre ?? '';
+    this.filtreApresCoup = f.apres_coup ?? '';
+    this.charger();
+  }
 
   chargerCaisse(): void {
     this.api.petiteCaisse(this.moisCourant).subscribe({ next: (c) => this.caisse.set(c) });
@@ -924,7 +1019,7 @@ export class DepensesComponent implements OnInit {
       : this.panneauMode() === 'ordre' ? this.api.ordrePaiementDepense(d.id, reglement)
       : this.api.decisionDepense(d.id, m.mode_paiement ? { statut: 'validee', ...reglement } : { statut: 'validee' });
     appel.subscribe({
-      next: () => { this.panneauEnCours.set(false); this.panneauId.set(null); this.charger(); this.chargerADecaisser(); },
+      next: () => { this.panneauEnCours.set(false); this.panneauId.set(null); this.charger(); this.chargerSynthese(); },
       error: (e) => { this.panneauEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Opération impossible (droit de décision requis).'); },
     });
   }

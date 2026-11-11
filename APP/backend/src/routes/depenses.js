@@ -123,6 +123,38 @@ router.get("/:id/voisines", requirePermission("depenses.decision"), async (req, 
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
+// GET /api/depenses/synthese — compteurs des onglets de l'écran (lot E, 11/11/2026) : « cabinet » (hors petite caisse) et
+// « petite_caisse ». À décider, ordre de paiement à donner (réservé aux associés), à décaisser (ordre donné), décaissé ce
+// mois ; à valider après coup. Dépenses annulées et rejetées exclues.
+router.get("/synthese", requirePermission("depenses.consulter"), async (req, res) => {
+  try {
+    const profil = await profilReglement(req);
+    const regles = {
+      decider: "statut = 'soumise'",
+      ordonner: "statut = 'validee' AND ordre_paiement_le IS NULL",
+      decaisser: "statut = 'validee' AND ordre_paiement_le IS NOT NULL",
+      decaisse_mois: "statut = 'decaissee' AND date_trunc('month', decaisse_le) = date_trunc('month', now())",
+      apres_coup: "apres_coup_statut = 'a_valider'",
+    };
+    const colonnes = [];
+    for (const [grp, filtre] of [["cab", "NOT petite_caisse"], ["pc", "petite_caisse"]]) {
+      for (const [cle, sql] of Object.entries(regles)) {
+        colonnes.push(`count(*) FILTER (WHERE ${filtre} AND ${sql})::int AS ${grp}_${cle}_nb`);
+        colonnes.push(`COALESCE(sum(montant) FILTER (WHERE ${filtre} AND ${sql}), 0)::bigint AS ${grp}_${cle}_total`);
+      }
+    }
+    const { rows: [r] } = await pool.query(`SELECT ${colonnes.join(", ")} FROM depenses WHERE annulee_le IS NULL`);
+    const bloc = (grp) => {
+      const o = {};
+      for (const cle of Object.keys(regles)) o[cle] = { nb: r[`${grp}_${cle}_nb`], total: Number(r[`${grp}_${cle}_total`]) };
+      // Réservé aux associés : ce qui reste à décider, à ordonner ou à valider après coup ne regarde pas les exécutants.
+      if (!profil.decideur) for (const k of ["decider", "ordonner", "apres_coup"]) o[k] = { nb: 0, total: 0 };
+      return o;
+    };
+    res.json({ cabinet: bloc("cab"), petite_caisse: bloc("pc") });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 // GET /api/depenses?type=&statut=&dossier_id=&petite_caisse=&a_refacturer=
 // Liste des dépenses du cabinet — donnée financière, pas juste une commodité
 // de suivi personnel (contrairement aux rétrocessions/bulletins, une dépense
@@ -136,7 +168,7 @@ router.get("/:id/voisines", requirePermission("depenses.decision"), async (req, 
 // une autre forme (avance_pour_client/refacture) mais jamais câblé, cf.
 // HISTORY.md).
 router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
-  const { type, statut, dossier_id, petite_caisse, a_refacturer, nature, categorie, q, du, au, masquer_annulees } = req.query;
+  const { type, statut, dossier_id, petite_caisse, a_refacturer, nature, categorie, q, du, au, masquer_annulees, apres_coup } = req.query;
   const params = [];
   const clauses = [];
   if (type) { params.push(type); clauses.push(`d.type = $${params.length}::type_depense`); }
@@ -146,6 +178,10 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   else if (statut === "rejetee") clauses.push("d.statut = 'rejetee'::statut_depense", "d.annulee_le IS NULL");
   else if (statut) { params.push(statut); clauses.push(`d.statut = $${params.length}::statut_depense`); }
   if (masquer_annulees === "true") clauses.push("d.annulee_le IS NULL");
+  if (apres_coup === "a_valider") clauses.push("d.apres_coup_statut = 'a_valider'");
+  // Ordre de paiement (lot E) : « sans_ordre » = validée en attente d'ordre ; « donne » = ordre donné.
+  if (req.query.ordre === "sans_ordre") clauses.push("d.ordre_paiement_le IS NULL");
+  else if (req.query.ordre === "donne") clauses.push("d.ordre_paiement_le IS NOT NULL");
   if (categorie) { params.push(categorie); clauses.push(`d.categorie = $${params.length}::categorie_depense`); }
   if (q && String(q).trim()) { params.push(`%${String(q).trim()}%`); clauses.push(`(d.libelle ILIKE $${params.length} OR d.beneficiaire ILIKE $${params.length})`); }
   if (du && /^\d{4}-\d{2}-\d{2}$/.test(du)) { params.push(du); clauses.push(`d.date_depense >= $${params.length}::date`); }

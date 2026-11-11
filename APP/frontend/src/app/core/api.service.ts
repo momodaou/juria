@@ -960,12 +960,14 @@ export class ApiService {
   }
 
   // Dépenses & caisse
-  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean; categorie?: string; nature?: string; petite_caisse?: string; q?: string; du?: string; au?: string; masquer_annulees?: boolean } = {}): Observable<any[]> {
+  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean; categorie?: string; nature?: string; petite_caisse?: string; q?: string; du?: string; au?: string; masquer_annulees?: boolean; apres_coup?: string; ordre?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<any[]>(`${this.base}/api/depenses${q}`);
   }
+  // Compteurs des onglets de Dépenses & caisse (lot E, 11/11/2026).
+  syntheseDepenses(): Observable<any> { return this.http.get<any>(`${this.base}/api/depenses/synthese`); }
   // Débours décaissés, refacturables au client, pas encore rattachés à une
   // facture (voir "Facturer un dossier" dans l'écran Facturation).
   depensesARefacturer(dossierId: string): Observable<any[]> {
