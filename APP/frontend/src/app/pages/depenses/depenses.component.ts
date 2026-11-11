@@ -73,6 +73,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="n">{{ sy(groupeCaisse(), 'decaisser').nb }}</div>
           <div class="l">À décaisser (circuit normal) — {{ sy(groupeCaisse(), 'decaisser').total | number }} FCFA</div>
         </div>
+        @if (onglet() === 'procedure') {
+          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.amber]="stockVignettes() > seuilVignettes() && nbAAffecter() > 0" [class.blue]="stockVignettes() > seuilVignettes() && nbAAffecter() === 0">
+            <div class="n">{{ nbAAffecter() }}</div>
+            <div class="l">Vignettes à affecter — stock : {{ stockVignettes() }} {{ stockVignettes() <= seuilVignettes() ? '(stock bas, seuil ' + seuilVignettes() + ')' : '' }}</div>
+          </div>
+        }
       } @else {
         @if (auth.peut('depenses.decision')) {
           <div class="kpi amber cliquable" (click)="voir({ statut: 'soumise' })" title="Afficher les dépenses soumises, à décider">
@@ -96,12 +102,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0">
             <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
             <div class="l">Solde petite caisse</div>
-          </div>
-        }
-        @if (onglet() === 'cabinet') {
-          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.amber]="stockVignettes() > seuilVignettes() && nbAAffecter() > 0" [class.blue]="stockVignettes() > seuilVignettes() && nbAAffecter() === 0">
-            <div class="n">{{ nbAAffecter() }}</div>
-            <div class="l">Vignettes à affecter — stock : {{ stockVignettes() }} {{ stockVignettes() <= seuilVignettes() ? '(stock bas, seuil ' + seuilVignettes() + ')' : '' }}</div>
           </div>
         }
       }
@@ -491,7 +491,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (onglet() === 'cabinet' && auth.peut('depenses.vignettes.mouvement')) {
+    @if (onglet() === 'procedure' && auth.peut('depenses.vignettes.mouvement')) {
     <section class="panel">
       <h3>Vignettes à affecter</h3>
       <p class="muted">Chaque procédure contentieuse ouverte attend sa vignette de plaidoirie. JURIA propose le prochain numéro du stock
@@ -518,7 +518,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     </section>
     }
 
-    @if (onglet() === 'cabinet') {
+    @if (onglet() === 'procedure') {
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
       <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>

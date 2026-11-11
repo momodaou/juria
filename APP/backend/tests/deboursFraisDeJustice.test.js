@@ -1,5 +1,5 @@
 // JURIA — « débours et frais de procédure sont des frais de justice » (11/11/2026) : ces catégories ne s'engagent jamais sur la petite
-// caisse (elles relèvent de la caisse « frais de justice & débours » ou du circuit normal) ; les vignettes se paient hors des caisses.
+// caisse (elles relèvent de la caisse « frais de justice & débours » ou du circuit normal) ; les frais de vignette sont des frais de justice (affichés avec eux, sans débiter de caisse).
 jest.mock("../src/mailer", () => ({ envoyerEmail: jest.fn().mockResolvedValue({ envoye: true }) }));
 
 const bcrypt = require("bcryptjs");
@@ -71,17 +71,19 @@ describe("Débours = frais de justice", () => {
     expect((await post(assoc, "/api/depenses", { type: "ponctuelle", libelle: "Huissier", montant: 5000, categorie: "frais_huissier" })).status).toBe(201);
   });
 
-  test("les vignettes se paient hors des caisses : leur dépense reste avec le cabinet et ne débite aucune caisse", async () => {
+  test("les frais de vignette sont des frais de justice : la dépense s'affiche dans cet onglet, mais ne débite aucune caisse", async () => {
     const avantProc = Number((await get(assoc, "/api/depenses/petite-caisse?caisse=procedure")).body.depense);
     const avantPc = Number((await get(assoc, "/api/depenses/petite-caisse")).body.depense);
     const { rows: [dep] } = await pool.query(
       `INSERT INTO depenses (type, categorie, libelle, montant, date_depense, statut, dossier_id, refacturable_client, cree_par)
        VALUES ('ponctuelle','vignette_plaidoirie','Vignette de plaidoirie n°9999999',10000,current_date,'decaissee',$1,TRUE,$2) RETURNING id`, [dossierId, assoc.id]);
     const ids = async (c) => (await get(assoc, `/api/depenses?caisse=${c}`)).body.map((d) => d.id);
-    expect(await ids("cabinet")).toContain(dep.id);
-    expect(await ids("procedure")).not.toContain(dep.id);
+    expect(await ids("procedure")).toContain(dep.id);
+    expect(await ids("cabinet")).not.toContain(dep.id);
     expect(await ids("petite_caisse")).not.toContain(dep.id);
-    expect(Number((await get(assoc, "/api/depenses/petite-caisse?caisse=procedure")).body.depense)).toBe(avantProc);
+    expect(Number((await get(assoc, "/api/depenses/petite-caisse?caisse=procedure")).body.depense)).toBe(avantProc); // aucun solde débité
     expect(Number((await get(assoc, "/api/depenses/petite-caisse")).body.depense)).toBe(avantPc);
+    const s = (await get(assoc, "/api/depenses/synthese")).body;
+    expect(s.procedure.decaisse_mois.nb).toBeGreaterThanOrEqual(1);
   });
 });

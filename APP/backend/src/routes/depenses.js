@@ -160,7 +160,7 @@ router.get("/synthese", requirePermission("depenses.consulter"), async (req, res
       apres_coup: "apres_coup_statut = 'a_valider'",
     };
     const colonnes = [];
-    for (const [grp, filtre] of [["cab", "NOT petite_caisse AND NOT caisse_procedure"], ["pc", "petite_caisse"], ["pr", "caisse_procedure"]]) {
+    for (const [grp, filtre] of [["cab", "NOT petite_caisse AND NOT caisse_procedure AND categorie <> 'vignette_plaidoirie'"], ["pc", "petite_caisse"], ["pr", "(caisse_procedure OR categorie = 'vignette_plaidoirie')"]]) {
       for (const [cle, sql] of Object.entries(regles)) {
         colonnes.push(`count(*) FILTER (WHERE ${filtre} AND ${sql})::int AS ${grp}_${cle}_nb`);
         colonnes.push(`COALESCE(sum(montant) FILTER (WHERE ${filtre} AND ${sql}), 0)::bigint AS ${grp}_${cle}_total`);
@@ -213,10 +213,11 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   if (nature) { params.push(nature); clauses.push(`d.nature = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
   // Caisse (lot D) : « cabinet » = hors petite caisse et hors caisse frais de justice ; « petite_caisse » ; « procedure ».
-  // Les vignettes se paient hors des caisses (stock acheté) : leur dépense reste avec les dépenses du cabinet.
-  if (req.query.caisse === "cabinet") clauses.push("d.petite_caisse = FALSE AND d.caisse_procedure = FALSE");
+  // Les vignettes se paient hors des caisses (stock acheté : aucun solde débité) mais leurs frais sont des frais de justice : la
+  // dépense s'affiche avec la caisse « frais de justice & débours ».
+  if (req.query.caisse === "cabinet") clauses.push("d.petite_caisse = FALSE AND d.caisse_procedure = FALSE AND d.categorie <> 'vignette_plaidoirie'");
   else if (req.query.caisse === "petite_caisse") clauses.push("d.petite_caisse = TRUE");
-  else if (req.query.caisse === "procedure") clauses.push("d.caisse_procedure = TRUE");
+  else if (req.query.caisse === "procedure") clauses.push("(d.caisse_procedure = TRUE OR d.categorie = 'vignette_plaidoirie')");
   if (a_refacturer === "true") {
     clauses.push("d.refacturable_client = TRUE", "d.statut = 'decaissee'", "d.facture_id IS NULL");
   }
