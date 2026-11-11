@@ -521,6 +521,9 @@ import { LibellePipe } from '../../core/libelles';
                         <button class="lien" (click)="enregistrerVignetteInstance(i)">Enregistrer</button>
                         <button class="lien" (click)="annulerVignetteInstance()">Annuler</button>
                       </div>
+                      @if (!d.pro_bono) {
+                        <label class="muted" style="display:block;margin-top:6px"><input type="checkbox" [(ngModel)]="vignetteRefacturee" [name]="'vRef' + i.id" /> À refacturer au client en plus des honoraires (décoché : vignette incluse dans les honoraires)</label>
+                      }
                       @if (numerosVignettesDisponibles().length) {
                         <p class="muted">Numéros connus disponibles (achat avec plage renseignée) : {{ numerosVignettesAffiches() }}</p>
                       }
@@ -1643,6 +1646,7 @@ export class DossierDetailComponent implements OnInit {
   readonly instanceVignetteEnEdition = signal<string | null>(null);
   readonly numerosVignettesDisponibles = signal<number[]>([]);
   vignetteNumeroSaisi: number | null = null;
+  vignetteRefacturee = false;
 
   // Clients additionnels (ajout 18/08/2026) — un dossier peut désormais
   // comporter plusieurs identités clientes. Sélecteur avec recherche
@@ -2095,9 +2099,11 @@ export class DossierDetailComponent implements OnInit {
   affecterProchaineVignette(i: any): void {
     const n = this.prochainNumeroVignette();
     if (n === null) return;
-    if (!window.confirm('Affecter la vignette n° ' + this.pad7(n) + ' à cette procédure ?\n(Vérifiez que c\'est bien le numéro de la vignette que vous collez ; sinon, saisissez le bon numéro.)')) return;
+    // Le numéro proposé est pré-rempli : on vérifie que c'est bien celui de la vignette collée, on choisit la refacturation, on enregistre.
+    this.erreurInstance.set('');
     this.vignetteNumeroSaisi = n;
-    this.enregistrerVignetteInstance(i);
+    this.vignetteRefacturee = false;
+    this.instanceVignetteEnEdition.set(i.id);
   }
   dispenserVignette(i: any, dispensee: boolean): void {
     this.erreurInstance.set('');
@@ -2112,6 +2118,7 @@ export class DossierDetailComponent implements OnInit {
   commencerVignetteInstance(i: any): void {
     this.erreurInstance.set('');
     this.vignetteNumeroSaisi = null;
+    this.vignetteRefacturee = false;
     this.instanceVignetteEnEdition.set(i.id);
   }
 
@@ -2123,7 +2130,7 @@ export class DossierDetailComponent implements OnInit {
   enregistrerVignetteInstance(i: any): void {
     if (!this.vignetteNumeroSaisi) { this.erreurInstance.set('Numéro de vignette requis.'); return; }
     this.erreurInstance.set('');
-    this.api.enregistrerVignetteInstance(this.id, i.id, this.vignetteNumeroSaisi).subscribe({
+    this.api.enregistrerVignetteInstance(this.id, i.id, this.vignetteNumeroSaisi, this.vignetteRefacturee).subscribe({
       next: () => {
         this.instanceVignetteEnEdition.set(null);
         this.vignetteNumeroSaisi = null;

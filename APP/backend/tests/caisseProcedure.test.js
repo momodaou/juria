@@ -73,7 +73,7 @@ describe("Engagement sur la caisse frais de justice & débours", () => {
     expect(ok.status).toBe(201);
   });
 
-  test("débours refacturable par défaut, liée au dossier, jamais en petite caisse ; les soldes restent séparés", async () => {
+  test("débours non refacturé par défaut (inclus dans les honoraires), refacturable si le cabinet le coche, liée au dossier, jamais en petite caisse ; soldes séparés", async () => {
     const av = (await get(adminG, "/api/depenses/petite-caisse?caisse=procedure")).body;
     const avPc = (await get(adminG, "/api/depenses/petite-caisse")).body;
     const r = await engager({ montant: 12000, libelle: "Consignation test" });
@@ -81,7 +81,7 @@ describe("Engagement sur la caisse frais de justice & débours", () => {
     const ligne = (await get(assoc, "/api/depenses")).body.find((d) => d.id === r.body.id);
     expect(ligne.caisse_procedure).toBe(true);
     expect(ligne.petite_caisse).toBe(false);
-    expect(ligne.refacturable_client).toBe(true);
+    expect(ligne.refacturable_client).toBe(false);
     expect(ligne.dossier_id).toBe(dossierId);
     expect(ligne.apres_coup_statut).toBe("a_valider");
     const ap = (await get(adminG, "/api/depenses/petite-caisse?caisse=procedure")).body;
@@ -89,8 +89,8 @@ describe("Engagement sur la caisse frais de justice & débours", () => {
     expect(ap.depense - av.depense).toBe(12000);
     expect(apPc.depense).toBe(avPc.depense);
     // possibilité de décocher le remboursement par le client
-    const nr = await engager({ montant: 5000, refacturable_client: false });
-    expect((await get(assoc, "/api/depenses")).body.find((d) => d.id === nr.body.id).refacturable_client).toBe(false);
+    const nr = await engager({ montant: 5000, refacturable_client: true });
+    expect((await get(assoc, "/api/depenses")).body.find((d) => d.id === nr.body.id).refacturable_client).toBe(true);
   });
 
   test("caisse non dotée pour le mois : refusé", async () => {

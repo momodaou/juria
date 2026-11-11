@@ -170,7 +170,7 @@ describe("Vignettes de plaidoirie — ancrage instance + facturation (08/10/2026
     const res = await request(app)
       .post(`/api/dossiers/${dossierId}/instances/${instanceId}/vignette`)
       .set("Authorization", `Bearer ${token}`)
-      .send({ numero_vignette: 30001 });
+      .send({ numero_vignette: 30001, refacturee: true });
     expect(res.status).toBe(201);
     expect(res.body.numero_vignette).toBe(30001);
     expect(res.body.refacturee).toBe(true);
@@ -236,6 +236,21 @@ describe("Vignettes de plaidoirie — ancrage instance + facturation (08/10/2026
     const dispo = await request(app).get("/api/depenses/vignettes/numeros-disponibles").set("Authorization", `Bearer ${token}`);
     expect(dispo.body).not.toContain(10000);
     expect(dispo.body).toEqual(expect.arrayContaining([10001, 10002, 10003, 10004]));
+  });
+
+  test("par défaut la vignette est incluse dans les honoraires : dépense imputée au dossier, non refacturée en plus", async () => {
+    const dossierId = await creerDossier();
+    const instanceId = await creerInstance(dossierId);
+    const res = await request(app)
+      .post(`/api/dossiers/${dossierId}/instances/${instanceId}/vignette`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ numero_vignette: 50001 });
+    expect(res.status).toBe(201);
+    expect(res.body.refacturee).toBe(false);
+    const { rows: [depense] } = await pool.query("SELECT refacturable_client, dossier_id, montant FROM depenses WHERE id = $1", [res.body.depense_id]);
+    expect(depense.refacturable_client).toBe(false);
+    expect(depense.dossier_id).toBe(dossierId);
+    expect(Number(depense.montant)).toBe(10000);
   });
 
   test("pro bono : la dépense créée n'est pas refacturable au client", async () => {

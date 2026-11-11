@@ -1399,7 +1399,8 @@ router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.v
       await client.query("ROLLBACK");
       return res.status(409).json({ error: "Stock de vignettes épuisé — enregistrez d'abord un approvisionnement (Dépenses & caisse)." });
     }
-    const refacturee = !dossier.pro_bono;
+    // Vignette incluse dans les honoraires par défaut (frais imputé au dossier, non refacturé en plus) ; le cabinet coche « refacturer » au cas par cas.
+    const refacturee = b.refacturee === true && !dossier.pro_bono;
     const { rows: [vignette] } = await client.query(
       `INSERT INTO vignettes_plaidoirie (mouvement, quantite, dossier_id, instance_id, numero_vignette, refacturee, cree_par)
        VALUES ('utilisation', 1, $1, $2, $3, $4, $5)

@@ -7,7 +7,7 @@ import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
-import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_DEPENSE, CategorieDepense, libelleCategorieDepense } from '../../core/categories-depense';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_DEPENSE, CategorieDepense, libelleCategorieDepense, PRECISIONS_GREFFE, libellePrecisionGreffe } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { viserElement } from '../../core/cible-notification';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -123,9 +123,18 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <label>Catégorie</label>
             <select class="in" [(ngModel)]="form.categorie" name="categorie">
               <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
-              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Débours et frais de procédure">@for (c of categoriesDeboursSaisie; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
             </select>
           </div>
+          @if (form.categorie === 'frais_greffe') {
+            <div>
+              <label>Frais de greffe concerné <span style="color:#b13a36">*</span></label>
+              <select class="in" [(ngModel)]="form.precision_nature" name="precisionNature">
+                <option [ngValue]="undefined">— À choisir —</option>
+                @for (p of precisionsGreffe; track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+              </select>
+            </div>
+          }
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="form.libelle" name="libelle" /></div>
           <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="form.beneficiaire" name="beneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="form.montant" name="montant" /></div>
@@ -149,10 +158,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           }
           <div class="col2 checks">
             <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse@if (form.petite_caisse) { <span class="muted"> — natures limitées (voir Seuils)</span> }</label>
-            @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label> }
+            @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> À refacturer au client en plus des honoraires</label> }
           </div>
         </div>
-        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || (form.nature === 'dossier' && !form.dossier_id) || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
+        <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || (form.nature === 'dossier' && !form.dossier_id) || (form.categorie === 'frais_greffe' && !form.precision_nature) || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
         @if (doublonsDepense().length) {
           <div class="doublon">
             <b>⚠ Une dépense très proche existe déjà :</b>
@@ -222,7 +231,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                 @if (d.annulee_le) { <div class="obs">Annulée le {{ d.annulee_le | date:'dd/MM/yyyy' }}@if (d.annulee_par_nom) { par {{ d.annulee_par_nom }} }@if (d.annulation_motif) { — {{ d.annulation_motif }} }</div> }
                 @else if (d.statut === 'rejetee' && d.motif_rejet) { <div class="obs">Rejetée : {{ d.motif_rejet }}</div> }
               </td>
-              <td>{{ libelleCategorie(d.categorie) }}</td>
+              <td>{{ libelleCategorie(d.categorie) }}@if (d.precision_nature) { <span class="muted"> — {{ libellePrecision(d.precision_nature) }}</span> }</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
@@ -320,9 +329,18 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                       <label>Catégorie</label>
                       <select class="in" [(ngModel)]="editForm.categorie" name="edCategorie">
                         <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
-              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Débours et frais de procédure">@for (c of categoriesDeboursSaisie; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
                       </select>
                     </div>
+                    @if (editForm.categorie === 'frais_greffe') {
+                      <div>
+                        <label>Frais de greffe concerné <span style="color:#b13a36">*</span></label>
+                        <select class="in" [(ngModel)]="editForm.precision_nature" name="edPrecisionNature">
+                          <option [ngValue]="null">— À choisir —</option>
+                          @for (p of precisionsGreffe; track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+                        </select>
+                      </div>
+                    }
                     <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="editForm.libelle" name="edLibelle" /></div>
                     <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="editForm.beneficiaire" name="edBeneficiaire" /></div>
                     <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="editForm.montant" name="edMontant" /></div>
@@ -344,7 +362,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     }
                     <div class="col2 checks">
                       <label><input type="checkbox" [(ngModel)]="editForm.petite_caisse" name="edPc" /> Sur petite caisse</label>
-                      <label><input type="checkbox" [(ngModel)]="editForm.refacturable_client" name="edRefact" /> Débours refacturable au client</label>
+                      <label><input type="checkbox" [(ngModel)]="editForm.refacturable_client" name="edRefact" /> À refacturer au client en plus des honoraires</label>
                     </div>
                   </div>
                   <button class="lien" (click)="enregistrerEdition()" [disabled]="editionEnCours()">{{ editionEnCours() ? 'Enregistrement…' : 'Enregistrer' }}</button>
@@ -443,6 +461,15 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               @for (c of categoriesPC(); track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }
             </select>
           </div>
+          @if (engagement.categorie === 'frais_greffe') {
+            <div>
+              <label>Frais de greffe concerné <span style="color:#b13a36">*</span></label>
+              <select class="in" [(ngModel)]="engagement.precision_nature" name="engPrecisionNature">
+                <option [ngValue]="undefined">— À choisir —</option>
+                @for (p of precisionsGreffe; track p.code) { <option [value]="p.code">{{ p.libelle }}</option> }
+              </select>
+            </div>
+          }
           <div><label>Bénéficiaire <span style="color:#b13a36">*</span></label><input class="in" maxlength="160" [(ngModel)]="engagement.beneficiaire" name="engBeneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="engagement" [catalogue]="catalogue()" (validite)="engagementValide.set($event)"></app-reglement-form>
           @if (onglet() !== 'procedure') {
@@ -457,10 +484,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @if (engagement.nature === 'dossier') {
             <div><label>Dossier concerné</label>
               <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
-            <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.refacturable_client" name="engRefact" /> Débours refacturable au client</label></div>
+            <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.refacturable_client" name="engRefact" /> À refacturer au client en plus des honoraires</label></div>
           }
         </div>
-        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || !engagement.categorie || !(engagement.beneficiaire || '').trim() || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
+        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || !engagement.categorie || (engagement.categorie === 'frais_greffe' && !engagement.precision_nature) || !(engagement.beneficiaire || '').trim() || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
         @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
         @if (erreur() && !afficherForm() && !editionId()) { <p class="err">{{ erreur() }}</p> }
       </section>
@@ -769,7 +796,7 @@ export class DepensesComponent implements OnInit {
   nomCaisseMin(): string { return this.onglet() === 'procedure' ? 'frais de justice & débours' : 'petite caisse'; }
   private engagementVide(): any {
     return this.onglet() === 'procedure'
-      ? { nature: 'dossier', mode_paiement: 'especes', refacturable_client: true }
+      ? { nature: 'dossier', mode_paiement: 'especes', refacturable_client: false }
       : { nature: 'cabinet', mode_paiement: 'orange_money' };
   }
   changerOnglet(o: 'cabinet' | 'caisse' | 'procedure' | 'tout'): void {
@@ -805,7 +832,11 @@ export class DepensesComponent implements OnInit {
   // ENUM brut, motif déjà corrigé sur d'autres modules de l'appli.
   readonly categoriesCabinet = CATEGORIES_CABINET;
   readonly categoriesDebours = CATEGORIES_DEBOURS;
+  // Saisie : sans la vignette (sa dépense naît à l'affectation à une instance, jamais saisie à la main).
+  readonly categoriesDeboursSaisie = CATEGORIES_DEBOURS.filter((c) => c.code !== 'vignette_plaidoirie');
+  readonly precisionsGreffe = PRECISIONS_GREFFE;
   libelleCategorie(c: string): string { return libelleCategorieDepense(c); }
+  libellePrecision(c: string): string { return libellePrecisionGreffe(c); }
   private readonly libellesStatut: Record<string, string> = {
     soumise: 'Soumise', validee: 'Validée — à décaisser', rejetee: 'Rejetée', decaissee: 'Décaissée',
   };
@@ -1155,7 +1186,7 @@ export class DepensesComponent implements OnInit {
       date_depense: d.date_depense, compte_id: d.compte_id ?? '', mode_paiement: d.mode_paiement ?? '', references: { ...(d.references_paiement ?? {}) },
       petite_caisse: d.petite_caisse, justificatif: d.justificatif, refacturable_client: d.refacturable_client,
       nature: d.nature ?? (d.dossier_id ? 'dossier' : 'cabinet'), dossier_id: d.dossier_id ?? null,
-      beneficiaire: d.beneficiaire ?? '',
+      beneficiaire: d.beneficiaire ?? '', precision_nature: d.precision_nature ?? null,
     };
     this.editionId.set(d.id);
   }

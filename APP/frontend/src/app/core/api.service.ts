@@ -1072,8 +1072,8 @@ export class ApiService {
   dispenserVignetteInstance(dossierId: string, instanceId: string, dispensee: boolean): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette-dispensee`, { dispensee });
   }
-  enregistrerVignetteInstance(dossierId: string, instanceId: string, numero_vignette: number): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette`, { numero_vignette });
+  enregistrerVignetteInstance(dossierId: string, instanceId: string, numero_vignette: number, refacturee = false): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette`, { numero_vignette, refacturee });
   }
 
   // Rétrocessions d'honoraires

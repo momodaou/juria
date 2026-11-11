@@ -8,7 +8,7 @@ import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { ROLES } from '../../core/roles';
 import { NaturesDepensePickerComponent } from '../../core/natures-depense-picker.component';
-import { NATURES_PETITE_CAISSE_DEFAUT, NATURES_CAISSE_PROCEDURE_DEFAUT } from '../../core/categories-depense';
+import { NATURES_PETITE_CAISSE, NATURES_CAISSE_PROCEDURE, NATURES_PETITE_CAISSE_DEFAUT, NATURES_CAISSE_PROCEDURE_DEFAUT } from '../../core/categories-depense';
 
 @Component({
   selector: 'app-acces',
@@ -197,25 +197,25 @@ import { NATURES_PETITE_CAISSE_DEFAUT, NATURES_CAISSE_PROCEDURE_DEFAUT } from '.
               <h4>Petite caisse</h4>
               <p class="muted">Dépenses courantes réglées tout de suite, validées après coup par un associé. Hors de la liste des natures, la dépense passe par le circuit normal de validation.
                 Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.
-                Les débours et frais de procédure sont des frais de justice : ils relèvent de la caisse ci-dessous.</p>
+                Les frais de justice (greffe, huissier, consignation…) relèvent de la caisse ci-dessous.</p>
               <div class="bloc-plafond">
                 <label>Plafond par dépense (FCFA)</label>
                 <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
               </div>
               <label class="bloc-etiquette">Natures de dépenses acceptées</label>
-              <app-natures-depense-picker [groupesAffiches]="['cabinet']" [selection]="parametresEdit.petite_caisse_categories ?? []" [defaut]="naturesPetiteCaisseDefaut"
+              <app-natures-depense-picker [items]="naturesPetiteCaisse" [selection]="parametresEdit.petite_caisse_categories ?? []" [defaut]="naturesPetiteCaisseDefaut"
                 (selectionChange)="parametresEdit = { ...parametresEdit, petite_caisse_categories: $event }"></app-natures-depense-picker>
             </div>
             <div class="bloc-caisse">
               <h4>Caisse frais de justice &amp; débours</h4>
-              <p class="muted">Frais avancés pour un dossier (greffe, consignation, grosse, expéditions, huissier…) : dossier obligatoire, remboursable par le client par défaut.
+              <p class="muted">Frais avancés pour un dossier (greffe, consignation, grosse, expéditions, huissier…) : dossier obligatoire ; « refacturable au client » se coche à chaque dépense.
                 Au-delà du plafond, la dépense passe par le circuit normal avec ordre de paiement.</p>
               <div class="bloc-plafond">
                 <label>Plafond par dépense (FCFA)</label>
                 <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.caisse_procedure_plafond_depense" name="plafondProcedure" />
               </div>
               <label class="bloc-etiquette">Natures de dépenses acceptées</label>
-              <app-natures-depense-picker premier="debours" [selection]="parametresEdit.caisse_procedure_categories ?? []" [defaut]="naturesProcedureDefaut"
+              <app-natures-depense-picker [items]="naturesProcedure" [selection]="parametresEdit.caisse_procedure_categories ?? []" [defaut]="naturesProcedureDefaut"
                 (selectionChange)="parametresEdit = { ...parametresEdit, caisse_procedure_categories: $event }"></app-natures-depense-picker>
             </div>
           </div>
@@ -420,6 +420,8 @@ export class AccesComponent implements OnInit {
   readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null } | null>(null);
   readonly emailsMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
+  readonly naturesPetiteCaisse = NATURES_PETITE_CAISSE;
+  readonly naturesProcedure = NATURES_CAISSE_PROCEDURE;
   readonly naturesPetiteCaisseDefaut = NATURES_PETITE_CAISSE_DEFAUT;
   readonly naturesProcedureDefaut = NATURES_CAISSE_PROCEDURE_DEFAUT;
   readonly delegations = signal<any[]>([]);

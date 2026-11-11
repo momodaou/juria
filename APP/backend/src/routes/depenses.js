@@ -11,7 +11,7 @@ const { logAudit } = require("../audit");
 const notif = require("../notifications");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, requireAnyPermission, estAutorise } = require("../permissions");
-const { CATEGORIES_DEBOURS, estDebours } = require("../categoriesDepense");
+const { CATEGORIES_DEBOURS, estDebours, CATALOGUE_PETITE_CAISSE, CATALOGUE_PROCEDURE, verifierPrecisionNature } = require("../categoriesDepense");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
@@ -72,8 +72,10 @@ async function plafondCaisse(c, db = pool) {
 async function categoriesCaisse(c, db = pool) {
   const { rows: [r] } = await db.query(`SELECT ${c.categories} AS c FROM parametres_cabinet WHERE id = 1`);
   const liste = (r && r.c) || [];
-  // Les débours et frais de procédure sont des frais de justice : jamais acceptés sur la petite caisse, quoi que contienne la liste.
-  return c.code === "petite_caisse" ? liste.filter((x) => !estDebours(x)) : liste;
+  // Chaque caisse a son catalogue : la petite caisse ne retient que les charges courantes (jamais de frais de justice),
+  // la caisse « frais de justice & débours » que les frais de procédure (pas de charge du cabinet), quoi que contienne la liste.
+  const catalogue = c.code === "petite_caisse" ? CATALOGUE_PETITE_CAISSE : CATALOGUE_PROCEDURE;
+  return liste.filter((x) => catalogue.includes(x));
 }
 const categoriesPetiteCaisse = (db = pool) => categoriesCaisse(CAISSES.petite_caisse, db);
 const msgCategorie = (c) => `Cette nature de dépense n'est pas autorisée sur ${c.nom} (Accès & permissions → Seuils). Soumettez-la au circuit normal de validation.`;
@@ -226,7 +228,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement, d.references_paiement,
               d.petite_caisse, d.caisse_procedure, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
-              d.facture_id, d.dossier_id, d.nature, d.beneficiaire, c.intitule AS compte, d.compte_id,
+              d.facture_id, d.dossier_id, d.nature, d.beneficiaire, d.precision_nature, c.intitule AS compte, d.compte_id,
               d.ordre_paiement_le, d.blocage_motif, d.blocage_le, (d.mode_paiement IS NOT NULL) AS moyen_defini,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id AND p.type = 'devis')::int AS nb_devis,
@@ -296,6 +298,8 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
+  const erreurPrecision = verifierPrecisionNature(b.categorie, b.precision_nature);
+  if (erreurPrecision) return res.status(400).json({ error: erreurPrecision });
   // Moyen, compte compatible et références (non exigées avant le paiement effectif).
   let regl = { valeurs: { mode_paiement: null, compte_id: b.compte_id || null, references: {} } };
   if (b.mode_paiement) {
@@ -307,14 +311,14 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
       `INSERT INTO depenses
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id, recurrente,
-          soumis_par, cree_par, references_paiement, beneficiaire)
+          soumis_par, cree_par, references_paiement, beneficiaire, precision_nature)
        VALUES ($14,$1::type_depense,COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5,current_date),
-               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13,$15::jsonb,$16)
+               $6,$7,COALESCE($8,false),COALESCE($9,false),COALESCE($10,false),$11,COALESCE($12,false),$13,$13,$15::jsonb,$16,$17)
        RETURNING id, nature, type, categorie, libelle, montant, statut`,
       [b.type, b.categorie, b.libelle, b.montant, b.date_depense || null, regl.valeurs.mode_paiement,
        regl.valeurs.compte_id, b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : false,
        n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references),
-       String(b.beneficiaire || '').trim().slice(0, 160) || null]
+       String(b.beneficiaire || '').trim().slice(0, 160) || null, b.categorie === "frais_greffe" ? b.precision_nature : null]
     );
     // Centre de notifications (lot 2) : les décideurs sont prévenus (jamais l'auteur) ; pas de montant dans le texte.
     if (rows[0].statut === "soumise") {
@@ -344,6 +348,8 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
   // Caisse frais de justice & débours : toujours liée à un dossier.
   const n = resoudreNature(c.dossierObligatoire ? { ...b, nature: "dossier" } : b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
+  const erreurPrecision = verifierPrecisionNature(b.categorie, b.precision_nature);
+  if (erreurPrecision) return res.status(400).json({ error: erreurPrecision });
   // Bénéficiaire saisi une seule fois (29/10/2026) : repris dans les références du moyen, et inversement.
   const refs = b.references && typeof b.references === "object" ? { ...b.references } : {};
   const beneficiaire = String(b.beneficiaire || refs.beneficiaire || "").trim().slice(0, 160) || null;
@@ -374,15 +380,16 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id,
           statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement, beneficiaire,
-          ordre_paiement_le, ordre_paiement_par, caisse_procedure)
+          ordre_paiement_le, ordre_paiement_par, caisse_procedure, precision_nature)
        VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
                $14::boolean,COALESCE($8,false),$9,$10,
                'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb,$13,
-               now(),$11,$15::boolean)
+               now(),$11,$15::boolean,$16)
        RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
       [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
-       b.justificatif, n.nature === "dossier" ? (c.code === "procedure" ? b.refacturable_client !== false : !!b.refacturable_client) : false, n.dossierId, req.user.sub,
-       JSON.stringify(regl.valeurs.references), beneficiaire, c.code === "petite_caisse", c.code === "procedure"]
+       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub,
+       JSON.stringify(regl.valeurs.references), beneficiaire, c.code === "petite_caisse", c.code === "procedure",
+       b.categorie === "frais_greffe" ? b.precision_nature : null]
     );
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
       details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde, caisse: c.code }, ip: req.ip });
@@ -452,7 +459,7 @@ router.put("/:id/engagee", async (req, res) => {
   try {
     const { rows: [d] } = await pool.query(
       `SELECT id, nature, dossier_id, libelle, montant, categorie, mode_paiement, compte_id, references_paiement, beneficiaire,
-              justificatif, engagee_par, apres_coup_statut, annulee_le, petite_caisse, caisse_procedure,
+              justificatif, engagee_par, apres_coup_statut, annulee_le, petite_caisse, caisse_procedure, precision_nature,
               to_char(date_depense, 'YYYY-MM-DD') AS date_depense
          FROM depenses WHERE id = $1`, [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
@@ -488,6 +495,10 @@ router.put("/:id/engagee", async (req, res) => {
         plafond: await plafondCaisse(c), exclureId: d.id });
       if (refus) return res.status(409).json({ error: refus });
     }
+    const categorieFinale = b.categorie || d.categorie;
+    const precisionFinale = b.precision_nature !== undefined ? b.precision_nature : d.precision_nature;
+    const erreurPrecision = verifierPrecisionNature(categorieFinale, precisionFinale);
+    if (erreurPrecision) return res.status(400).json({ error: erreurPrecision });
     if (monnaieChange) {
       const plafond = await plafondCaisse(c);
       if (plafond != null && montant > Number(plafond)) {
@@ -505,14 +516,15 @@ router.put("/:id/engagee", async (req, res) => {
       `UPDATE depenses SET libelle = $1, montant = $2, date_depense = $3::date,
               categorie = COALESCE($4::categorie_depense, categorie), mode_paiement = $5::mode_paiement, compte_id = $6,
               references_paiement = $7::jsonb, beneficiaire = $8, justificatif = COALESCE($9, justificatif),
-              nature = $10, dossier_id = $11,
+              nature = $10, dossier_id = $11, precision_nature = $14,
               apres_coup_statut = CASE WHEN apres_coup_statut = 'contestee' THEN 'a_valider' ELSE apres_coup_statut END,
               apres_coup_par = CASE WHEN apres_coup_statut = 'contestee' THEN NULL ELSE apres_coup_par END,
               apres_coup_le = CASE WHEN apres_coup_statut = 'contestee' THEN NULL ELSE apres_coup_le END
         WHERE id = $12 AND apres_coup_statut = $13 AND annulee_le IS NULL
         RETURNING id, libelle, montant, statut, apres_coup_statut`,
       [libelle, montant, dateDepense, b.categorie || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
-       JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id, d.apres_coup_statut]);
+       JSON.stringify(regl.valeurs.references), beneficiaire, b.justificatif ?? null, n.nature, n.dossierId, req.params.id, d.apres_coup_statut,
+       categorieFinale === "frais_greffe" ? precisionFinale : null]);
     if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
     if (d.apres_coup_statut === "contestee") {
       await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
@@ -702,13 +714,17 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
   const b = { ...(req.body || {}) };
   if (!(await profilReglement(req)).decideur) { delete b.mode_paiement; delete b.compte_id; delete b.references; }
   try {
-    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut, nature, dossier_id, petite_caisse, categorie FROM depenses WHERE id = $1", [req.params.id]);
+    const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut, nature, dossier_id, petite_caisse, categorie, precision_nature FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
     const veutPetiteCaisse = b.petite_caisse !== undefined ? !!b.petite_caisse : actuelle.petite_caisse;
     if (veutPetiteCaisse && estDebours(b.categorie || actuelle.categorie)) return res.status(409).json({ error: MSG_DEBOURS });
     if (veutPetiteCaisse && !(await categoriesPetiteCaisse()).includes(b.categorie || actuelle.categorie)) return res.status(409).json({ error: MSG_CATEGORIE });
     const n = resoudreNature(b, actuelle);
     if (n.erreur) return res.status(400).json({ error: n.erreur });
+    const categorieFinale = b.categorie || actuelle.categorie;
+    const precisionFinale = b.precision_nature !== undefined ? b.precision_nature : actuelle.precision_nature;
+    const erreurPrecision = verifierPrecisionNature(categorieFinale, precisionFinale);
+    if (erreurPrecision) return res.status(400).json({ error: erreurPrecision });
     const estDeposant = actuelle.soumis_par === req.user.sub;
     if (!estDeposant && !(await estAutorise(req.user.role, "depenses.decision", req.user.sub))) {
       return res.status(403).json({ error: "Seul le déposant ou une personne habilitée à décider peut corriger cette dépense." });
@@ -738,14 +754,16 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
          refacturable_client = COALESCE($10, refacturable_client),
          nature = $13,
          dossier_id = $11,
-         beneficiaire = CASE WHEN $16::boolean THEN $17 ELSE beneficiaire END
+         beneficiaire = CASE WHEN $16::boolean THEN $17 ELSE beneficiaire END,
+         precision_nature = $18
        WHERE id = $12 AND statut = 'soumise'
        RETURNING id, type, categorie, libelle, montant, statut`,
       [b.type || null, b.categorie || null, b.libelle || null, b.montant ?? null,
        b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
        b.petite_caisse, b.justificatif, n.nature === "dossier" ? b.refacturable_client : (b.refacturable_client === undefined ? undefined : false), n.dossierId, req.params.id, n.nature,
        modeFourni, JSON.stringify(regl.valeurs.references),
-       Object.prototype.hasOwnProperty.call(b, "beneficiaire"), String(b.beneficiaire || "").trim().slice(0, 160) || null]
+       Object.prototype.hasOwnProperty.call(b, "beneficiaire"), String(b.beneficiaire || "").trim().slice(0, 160) || null,
+       categorieFinale === "frais_greffe" ? precisionFinale : null]
     );
     if (!rows[0]) return res.status(409).json({ error: "Dépense déjà traitée entre-temps — non modifiable." });
     res.json(rows[0]);

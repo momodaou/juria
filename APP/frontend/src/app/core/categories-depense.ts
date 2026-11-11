@@ -19,14 +19,19 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
   { code: 'deplacement', libelle: 'Déplacement (billets)', groupe: 'cabinet' },
   { code: 'hebergement', libelle: 'Hébergement', groupe: 'cabinet' },
   { code: 'restauration', libelle: 'Restauration', groupe: 'cabinet' },
-  { code: 'fournitures', libelle: 'Fournitures de bureau', groupe: 'cabinet' },
+  { code: 'frais_reception', libelle: 'Frais de réception / visiteurs', groupe: 'cabinet' },
+  { code: 'boissons', libelle: 'Eau potable et boissons du cabinet', groupe: 'cabinet' },
+  { code: 'produits_entretien', libelle: 'Produits d’entretien et de nettoyage', groupe: 'cabinet' },
+  { code: 'desodorisants', libelle: 'Désodorisants et déodorants', groupe: 'cabinet' },
+  { code: 'entretien_vehicule', libelle: 'Entretien du véhicule (lavage, petites pièces)', groupe: 'cabinet' },
+  { code: 'fournitures', libelle: 'Petites fournitures de bureau', groupe: 'cabinet' },
   { code: 'papeterie', libelle: 'Papeterie', groupe: 'cabinet' },
-  { code: 'petit_materiel', libelle: 'Petit matériel et fournitures', groupe: 'cabinet' },
-  { code: 'consommables', libelle: 'Consommables', groupe: 'cabinet' },
+  { code: 'petit_materiel', libelle: 'Petits matériels et autres fournitures', groupe: 'cabinet' },
+  { code: 'consommables', libelle: 'Consommables de bureau', groupe: 'cabinet' },
   { code: 'impressions', libelle: 'Impressions et photocopies', groupe: 'cabinet' },
-  { code: 'encres', libelle: 'Encres et toners', groupe: 'cabinet' },
+  { code: 'encres', libelle: 'Cartouches d’encre et toners', groupe: 'cabinet' },
   { code: 'maintenance_informatique', libelle: 'Maintenance informatique', groupe: 'cabinet' },
-  { code: 'reparation', libelle: 'Réparation', groupe: 'cabinet' },
+  { code: 'reparation', libelle: 'Entretien et réparations diverses', groupe: 'cabinet' },
   { code: 'entretien', libelle: 'Entretien', groupe: 'cabinet' },
   { code: 'abonnements', libelle: 'Abonnements et documentation', groupe: 'cabinet' },
   { code: 'assurance', libelle: 'Assurances', groupe: 'cabinet' },
@@ -40,6 +45,11 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
   { code: 'extrait_plumitif', libelle: 'Extrait de plumitif', groupe: 'debours' },
   { code: 'frais_diligences', libelle: 'Frais de diligences', groupe: 'debours' },
   { code: 'frais_huissier', libelle: 'Frais d’huissier', groupe: 'debours' },
+  { code: 'frais_greffe', libelle: 'Frais de greffe', groupe: 'debours' },
+  { code: 'timbres_enregistrement', libelle: 'Timbres fiscaux et droits d’enregistrement', groupe: 'debours' },
+  { code: 'extraits_pieces', libelle: 'Extraits RCCM, casier judiciaire, état civil', groupe: 'debours' },
+  { code: 'traduction', libelle: 'Traduction assermentée', groupe: 'debours' },
+  { code: 'annonces_legales', libelle: 'Annonces légales et publications', groupe: 'debours' },
   { code: 'autre', libelle: 'Autre (à préciser)', groupe: 'cabinet' },
 ];
 
@@ -48,9 +58,32 @@ export const CATEGORIES_DEBOURS = CATEGORIES_DEPENSE.filter((c) => c.groupe === 
 export const estDebours = (code: string): boolean => CATEGORIES_DEBOURS.some((c) => c.code === code);
 export const libelleCategorieDepense = (code: string): string => CATEGORIES_DEPENSE.find((c) => c.code === code)?.libelle ?? code;
 
-// Listes proposées par « Valeurs par défaut » dans Accès & permissions → Seuils (copie des valeurs par défaut de schema.sql, 11/11/2026).
-export const NATURES_PETITE_CAISSE_DEFAUT: string[] = [
-  'transport', 'deplacement', 'carburant', 'restauration', 'fournitures', 'papeterie', 'petit_materiel', 'consommables',
-  'impressions', 'encres', 'reparation', 'entretien', 'nettoyage', 'credit_telephonique'];
-export const NATURES_CAISSE_PROCEDURE_DEFAUT: string[] = [
-  'frais_procedure', 'frais_consignation', 'frais_grosse', 'frais_expedition', 'extrait_plumitif', 'frais_diligences', 'frais_huissier'];
+// Catalogues par caisse (11/11/2026) : chaque caisse a le sien, sans mélange (miroir de backend/src/categoriesDepense.js).
+// Les listes cochables dans Accès & permissions → Seuils sont limitées à ces catalogues ; la vignette de plaidoirie n'y figure pas
+// (sa dépense naît à l'affectation à une instance).
+export const CATALOGUE_PETITE_CAISSE: string[] = [
+  'transport', 'deplacement', 'carburant', 'restauration', 'frais_reception', 'boissons', 'fournitures', 'consommables',
+  'papeterie', 'impressions', 'encres', 'petit_materiel', 'reparation', 'produits_entretien', 'desodorisants',
+  'credit_telephonique', 'entretien_vehicule'];
+export const CATALOGUE_PROCEDURE: string[] = [
+  'frais_greffe', 'frais_grosse', 'frais_consignation', 'extrait_plumitif', 'frais_huissier', 'frais_diligences',
+  'frais_procedure', 'frais_expedition', 'timbres_enregistrement', 'extraits_pieces', 'traduction', 'annonces_legales'];
+const enCatalogue = (codes: string[]): CategorieDepense[] => codes.map((c) => CATEGORIES_DEPENSE.find((x) => x.code === c)!).filter(Boolean);
+export const NATURES_PETITE_CAISSE: CategorieDepense[] = enCatalogue(CATALOGUE_PETITE_CAISSE);
+export const NATURES_CAISSE_PROCEDURE: CategorieDepense[] = enCatalogue(CATALOGUE_PROCEDURE);
+// Listes « valeurs par défaut » : tout le catalogue de la caisse.
+export const NATURES_PETITE_CAISSE_DEFAUT: string[] = [...CATALOGUE_PETITE_CAISSE];
+export const NATURES_CAISSE_PROCEDURE_DEFAUT: string[] = [...CATALOGUE_PROCEDURE];
+
+// Frais de greffe : on précise lequel (choix obligatoire ; la liste s'enrichit au fil de l'eau).
+export const PRECISIONS_GREFFE: { code: string; libelle: string }[] = [
+  { code: 'expedition_simple', libelle: 'Expédition simple' },
+  { code: 'acte_appel', libelle: 'Acte d’appel' },
+  { code: 'proces_verbal_enquete', libelle: 'Procès-verbal d’enquête' },
+  { code: 'cedule_citation', libelle: 'Cédule de citation' },
+  { code: 'permis_citer', libelle: 'Permis de citer' },
+  { code: 'copies', libelle: 'Copies' },
+  { code: 'certificats', libelle: 'Certificats' },
+  { code: 'autre', libelle: 'Autre (à préciser dans le libellé)' },
+];
+export const libellePrecisionGreffe = (code?: string | null): string => PRECISIONS_GREFFE.find((p) => p.code === code)?.libelle ?? '';

@@ -21,7 +21,7 @@ const { requirePermission } = require("../permissions");
 const { validerCompte, TYPES_ACTIFS } = require("../comptesCabinet");
 const { etatSuspension } = require("../suspensionEmails");
 const { logAudit } = require("../audit");
-const { estDebours } = require("../categoriesDepense");
+const { estDebours, CATALOGUE_PETITE_CAISSE, CATALOGUE_PROCEDURE } = require("../categoriesDepense");
 const router = express.Router();
 
 // GET /api/parametres/honoraires — lecture ouverte à tout utilisateur
@@ -66,8 +66,16 @@ router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), a
     if (pc.valeur && pc.valeur.some((c) => estDebours(c))) {
       return res.status(400).json({ error: "Les débours et frais de procédure sont des frais de justice : ils ne peuvent pas être acceptés sur la petite caisse." });
     }
+    if (pc.valeur) {
+      const horsCatalogue = pc.valeur.find((c) => !CATALOGUE_PETITE_CAISSE.includes(c));
+      if (horsCatalogue) return res.status(400).json({ error: "Cette nature n'est pas proposée sur la petite caisse (charges courantes du cabinet) : elle relève du circuit normal de validation." });
+    }
     const proc = listeCategories(b.caisse_procedure_categories, "la caisse frais de justice & débours");
     if (proc.erreur) return res.status(400).json({ error: proc.erreur });
+    if (proc.valeur) {
+      const horsCatalogue = proc.valeur.find((c) => !CATALOGUE_PROCEDURE.includes(c));
+      if (horsCatalogue) return res.status(400).json({ error: "Seuls les frais de procédure (débours) s'engagent sur la caisse « frais de justice & débours » : les charges du cabinet relèvent de la petite caisse ou du circuit normal." });
+    }
     const categories = pc.valeur;
     const plafondProc = b.caisse_procedure_plafond_depense === undefined || b.caisse_procedure_plafond_depense === null || b.caisse_procedure_plafond_depense === "" ? null : Number(b.caisse_procedure_plafond_depense);
     if (plafondProc !== null && !(plafondProc >= 0)) return res.status(400).json({ error: "Plafond invalide." });

@@ -54,11 +54,11 @@ describe("Natures autorisées", () => {
   test("les associés règlent la liste (catégorie inconnue ou liste vide refusées) ; elle est servie avec la caisse", async () => {
     expect((await request(app).put("/api/parametres/honoraires").set(auth(assoc)).send({ petite_caisse_categories: [] })).status).toBe(400);
     expect((await request(app).put("/api/parametres/honoraires").set(auth(assoc)).send({ petite_caisse_categories: ["inconnue"] })).status).toBe(400);
-    const ok = await request(app).put("/api/parametres/honoraires").set(auth(assoc)).send({ petite_caisse_categories: ["fournitures", "transport", "autre"] });
+    const ok = await request(app).put("/api/parametres/honoraires").set(auth(assoc)).send({ petite_caisse_categories: ["fournitures", "transport", "boissons"] });
     expect(ok.status).toBe(200);
-    expect((await engager({ categorie: "autre", beneficiaire: "Divers" })).status).toBe(201);
+    expect((await engager({ categorie: "boissons", beneficiaire: "Divers" })).status).toBe(201);
     const caisse = await request(app).get("/api/depenses/petite-caisse").set(auth(adminG));
-    expect(caisse.body.categories_autorisees.sort()).toEqual(["autre", "fournitures", "transport"]);
+    expect(caisse.body.categories_autorisees.sort()).toEqual(["boissons", "fournitures", "transport"]);
     await request(app).put("/api/parametres/honoraires").set(auth(assoc)).send({ petite_caisse_categories: ["fournitures", "transport", "papeterie"] });
   });
 });

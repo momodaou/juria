@@ -5873,3 +5873,52 @@ UPDATE parametres_cabinet SET petite_caisse_categories = ARRAY(
   SELECT c FROM unnest(petite_caisse_categories) AS c
    WHERE c NOT IN ('vignette_plaidoirie','frais_procedure','frais_consignation','frais_grosse','frais_expedition','extrait_plumitif','frais_diligences','frais_huissier'))
  WHERE id = 1;
+
+-- ============================================================
+--  CATALOGUES DE NATURES PAR CAISSE (11/11/2026, observations de l'utilisateur)
+--  (a) VALEURS D'ENUM — à importer SEPARÉMENT en production (ALTER TYPE ADD VALUE, 1er import) :
+--      petite caisse : frais de réception, boissons du cabinet, désodorisants, produits d'entretien, entretien du véhicule ;
+--      frais de justice : frais de greffe, timbres et droits d'enregistrement, extraits de pièces (RCCM, casier, état civil),
+--      traduction, annonces légales.
+-- ============================================================
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_reception';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'boissons';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'desodorisants';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'produits_entretien';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'entretien_vehicule';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_greffe';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'timbres_enregistrement';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'extraits_pieces';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'traduction';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'annonces_legales';
+-- ============ FIN CATALOGUES : VALEURS D'ENUM ============
+
+-- ============================================================
+--  CATALOGUES DE NATURES PAR CAISSE — suite (2e import)
+--  (b) Chaque caisse a son catalogue, sans mélange (petite caisse = charges courantes ; frais de justice = frais de procédure,
+--      dossier obligatoire). Plafond par dépense : 25 000 FCFA pour les deux caisses (valeur par défaut de la petite caisse
+--      posée seulement si rien n'était réglé). Frais de greffe : on précise lequel (`precision_nature`).
+--      La dépense d'une vignette naît à l'affectation à une instance (plus de dépense saisie à l'achat du lot).
+-- ============================================================
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS precision_nature VARCHAR(40);
+ALTER TABLE parametres_cabinet ALTER COLUMN petite_caisse_plafond_depense SET DEFAULT 25000;
+UPDATE parametres_cabinet SET petite_caisse_plafond_depense = 25000 WHERE id = 1 AND petite_caisse_plafond_depense IS NULL;
+ALTER TABLE parametres_cabinet ALTER COLUMN petite_caisse_categories SET DEFAULT ARRAY[
+  'transport','deplacement','carburant','restauration','frais_reception','boissons','fournitures','consommables',
+  'papeterie','impressions','encres','petit_materiel','reparation','produits_entretien','desodorisants',
+  'credit_telephonique','entretien_vehicule'];
+ALTER TABLE parametres_cabinet ALTER COLUMN caisse_procedure_categories SET DEFAULT ARRAY[
+  'frais_greffe','frais_grosse','frais_consignation','extrait_plumitif','frais_huissier','frais_diligences',
+  'frais_procedure','frais_expedition','timbres_enregistrement','extraits_pieces','traduction','annonces_legales'];
+-- Listes déjà enregistrées : on garde ce qui reste au catalogue et on ajoute les nouvelles natures validées.
+UPDATE parametres_cabinet SET petite_caisse_categories = ARRAY(
+  SELECT DISTINCT c FROM unnest(petite_caisse_categories || ARRAY['frais_reception','boissons','desodorisants','produits_entretien','entretien_vehicule']) AS c
+   WHERE c IN ('transport','deplacement','carburant','restauration','frais_reception','boissons','fournitures','consommables',
+               'papeterie','impressions','encres','petit_materiel','reparation','produits_entretien','desodorisants',
+               'credit_telephonique','entretien_vehicule'))
+ WHERE id = 1;
+UPDATE parametres_cabinet SET caisse_procedure_categories = ARRAY(
+  SELECT DISTINCT c FROM unnest(caisse_procedure_categories || ARRAY['frais_greffe','timbres_enregistrement','extraits_pieces','traduction','annonces_legales']) AS c
+   WHERE c IN ('frais_greffe','frais_grosse','frais_consignation','extrait_plumitif','frais_huissier','frais_diligences',
+               'frais_procedure','frais_expedition','timbres_enregistrement','extraits_pieces','traduction','annonces_legales'))
+ WHERE id = 1;
