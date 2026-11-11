@@ -5848,3 +5848,14 @@ ALTER TABLE dotations_petite_caisse ADD COLUMN IF NOT EXISTS caisse VARCHAR(20) 
 ALTER TABLE dotations_petite_caisse DROP CONSTRAINT IF EXISTS dotations_petite_caisse_mois_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_dotations_caisse_mois ON dotations_petite_caisse (caisse, mois);
 ALTER TABLE rapprochements_petite_caisse ADD COLUMN IF NOT EXISTS caisse VARCHAR(20) NOT NULL DEFAULT 'petite_caisse';
+
+-- ============================================================
+--  VIGNETTES DE PLAIDOIRIE — PROPOSITION AUTOMATIQUE, AFFECTATION MANUELLE (11/11/2026, projet « Dépenses & caisses », lot F)
+--  Une vignette est un objet physique numéroté : JURIA ne décompte donc rien tout seul. À la création d'une instance sur un
+--  dossier contentieux, il signale « vignette à affecter » (notification, tuile, liste) ; la personne affecte la prochaine
+--  vignette du stock en un clic (numéro pré-rempli, confirmé ou corrigé). `instances.vignette_dispensee` : aucune vignette
+--  nécessaire pour cette instance. `vignettes_suivi_depuis` : seules les instances créées à partir de cette date sont suivies
+--  (les anciennes ne sont pas réputées en attente de vignette).
+-- ============================================================
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS vignette_dispensee BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS vignettes_suivi_depuis DATE NOT NULL DEFAULT current_date;

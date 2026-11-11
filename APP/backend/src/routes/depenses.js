@@ -1130,6 +1130,25 @@ router.get("/vignettes/stock", async (req, res) => {
 // individuels connus à l'avance (achat avec plage renseignée) et pas
 // encore consommés ; sert à proposer un numéro plutôt que de le ressaisir
 // à la main quand il est déjà connu.
+// GET /api/depenses/vignettes/a-affecter (lot F, 11/11/2026) — instances de dossiers contentieux, créées depuis le début du suivi
+// (`parametres_cabinet.vignettes_suivi_depuis`), sans vignette enregistrée ni dispense, sur un dossier non clos. Renvoie aussi le
+// prochain numéro connu du stock (proposé, jamais imposé : on le confirme ou on le corrige selon la vignette physique) et le stock.
+router.get("/vignettes/a-affecter", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT i.id AS instance_id, i.dossier_id, d.numero AS dossier_numero, d.intitule, i.degre, i.juridiction, i.cree_le,
+              (d.mode_honoraires IS NOT NULL) AS mode_honoraires_renseigne
+         FROM instances i JOIN dossiers d ON d.id = i.dossier_id
+        WHERE d.pole = 'contentieux' AND d.statut NOT IN ('clos','archive') AND i.vignette_dispensee = FALSE
+          AND i.cree_le::date >= (SELECT vignettes_suivi_depuis FROM parametres_cabinet WHERE id = 1)
+          AND NOT EXISTS (SELECT 1 FROM vignettes_plaidoirie v WHERE v.instance_id = i.id AND v.mouvement = 'utilisation')
+        ORDER BY i.cree_le`);
+    const { rows: [pool1] } = await pool.query("SELECT min(numero) AS prochain FROM vignettes_numeros_stock WHERE disponible = TRUE");
+    const { rows: [st] } = await pool.query("SELECT (SELECT stock::int FROM v_stock_vignettes) AS stock, seuil_alerte_vignettes AS seuil FROM parametres_cabinet WHERE id = 1");
+    res.json({ instances: rows, prochain_numero: pool1 && pool1.prochain != null ? Number(pool1.prochain) : null, stock: st ? st.stock : 0, seuil: st ? st.seuil : 10 });
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 router.get("/vignettes/numeros-disponibles", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
   try {
     const { rows } = await pool.query(

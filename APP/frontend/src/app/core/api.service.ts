@@ -1067,6 +1067,11 @@ export class ApiService {
   numerosVignettesDisponibles(): Observable<number[]> {
     return this.http.get<number[]>(`${this.base}/api/depenses/vignettes/numeros-disponibles`);
   }
+  // 11/11/2026 (lot F) : instances en attente de vignette (avec le prochain numéro proposé) ; dispense.
+  vignettesAAffecter(): Observable<any> { return this.http.get<any>(`${this.base}/api/depenses/vignettes/a-affecter`); }
+  dispenserVignetteInstance(dossierId: string, instanceId: string, dispensee: boolean): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette-dispensee`, { dispensee });
+  }
   enregistrerVignetteInstance(dossierId: string, instanceId: string, numero_vignette: number): Observable<any> {
     return this.http.post<any>(`${this.base}/api/dossiers/${dossierId}/instances/${instanceId}/vignette`, { numero_vignette });
   }

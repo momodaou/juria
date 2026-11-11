@@ -12,7 +12,7 @@ const { etatStock } = require("../stockChemises");
 async function executerJobNotificationsRelances(pool, maintenant = new Date()) {
   const jourSemaine = maintenant.getUTCDay();
   if (jourSemaine === 0 || jourSemaine === 6) return { week_end: true };
-  const bilan = { depenses: 0, apres_coup: 0, etats: 0, taches: 0, escalades: 0, etat_a_soumettre: 0, caisse: 0, stock: 0 };
+  const bilan = { depenses: 0, apres_coup: 0, etats: 0, taches: 0, escalades: 0, etat_a_soumettre: 0, caisse: 0, stock: 0, vignettes: 0 };
   const echu = (depuis) => notif.heuresOuvrees(depuis, maintenant) >= 48;
   const decideurs = await notif.titulairesPermission("depenses.decision");
 
@@ -93,6 +93,21 @@ async function executerJobNotificationsRelances(pool, maintenant = new Date()) {
     if (c.bas && !(await notif.dejaNotifie("stock_bas", c.couleur, 7))) {
       await notif.notifier({ type: "stock_bas", destinataires: gestionnaires, ref: c.couleur, charge: { couleur: c.couleur } });
       bilan.stock++;
+    }
+  }
+  // 8. Vignettes de plaidoirie toujours pas affectées après 3 jours ouvrés (un rappel par instance, jamais de décompte automatique)
+  const { rows: vignettes } = await pool.query(
+    `SELECT i.id, i.dossier_id, d.numero, i.cree_le
+       FROM instances i JOIN dossiers d ON d.id = i.dossier_id
+      WHERE d.pole = 'contentieux' AND d.statut NOT IN ('clos','archive') AND i.vignette_dispensee = FALSE
+        AND i.cree_le::date >= (SELECT vignettes_suivi_depuis FROM parametres_cabinet WHERE id = 1)
+        AND i.cree_le < now() - interval '72 hours'
+        AND NOT EXISTS (SELECT 1 FROM vignettes_plaidoirie v WHERE v.instance_id = i.id AND v.mouvement = 'utilisation')`);
+  const gestionnairesVignettes = await notif.titulairesPermission("depenses.vignettes.mouvement");
+  for (const v of vignettes) {
+    if (notif.heuresOuvrees(v.cree_le, maintenant) >= 72 && !(await notif.dejaNotifie("vignette_rappel", v.id))) {
+      await notif.notifier({ type: "vignette_rappel", destinataires: gestionnairesVignettes, ref: v.id, aTraiter: true, charge: { dossier: v.numero, dossier_id: v.dossier_id } });
+      bilan.vignettes++;
     }
   }
   return bilan;

@@ -526,7 +526,7 @@ router.get("/:id", async (req, res) => {
     // ci-dessous — au plus une par instance (contrainte d'unicité en base).
     const instances = await pool.query(
       `SELECT i.id, i.degre, i.juridiction, i.numero_role, i.date_debut, i.decision, i.statut_partie, i.statut_partie_precision,
-              v.numero_vignette
+              i.vignette_dispensee, v.numero_vignette
        FROM instances i
        LEFT JOIN vignettes_plaidoirie v ON v.instance_id = i.id AND v.mouvement = 'utilisation'
        WHERE i.dossier_id = $1 ORDER BY i.date_debut NULLS LAST, i.cree_le`,
@@ -1264,6 +1264,13 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
       utilisateurId: req.user.sub, action: "creer_instance", entite: "dossier_instances", entiteId: rows[0].id,
       details: { dossier_id: req.params.id, instance: rows[0] }, ip: req.ip,
     });
+    // Vignette de plaidoirie (lot F) : une procédure contentieuse qui s'ouvre attend sa vignette. Proposition seulement, jamais de
+    // décompte automatique (objet physique numéroté) ; une notification par instance (action sur un objet précis).
+    const { rows: [dos] } = await pool.query("SELECT pole, numero FROM dossiers WHERE id = $1", [req.params.id]);
+    if (dos && dos.pole === "contentieux") {
+      await notif.notifier({ type: "vignette_a_affecter", destinataires: await notif.titulairesPermission("depenses.vignettes.mouvement"),
+        auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, charge: { dossier: dos.numero, dossier_id: req.params.id } });
+    }
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -1414,6 +1421,15 @@ router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.v
     );
     await client.query("UPDATE vignettes_plaidoirie SET depense_id = $1 WHERE id = $2", [depense.id, vignette.id]);
     await client.query("COMMIT");
+    await notif.traiter(["vignette_a_affecter", "vignette_rappel"], req.params.instanceId);
+    // Stock bas (une fois par mois) : le seuil d'alerte est celui des réglages.
+    try {
+      const { rows: [st] } = await pool.query("SELECT (SELECT stock::int FROM v_stock_vignettes) AS stock, seuil_alerte_vignettes AS seuil FROM parametres_cabinet WHERE id = 1");
+      const moisCle = "stock:" + new Date().toISOString().slice(0, 7);
+      if (st && st.stock <= Number(st.seuil) && !(await notif.dejaNotifie("vignette_stock_bas", moisCle, 31))) {
+        await notif.notifier({ type: "vignette_stock_bas", destinataires: await notif.titulairesPermissions(["depenses.vignettes.mouvement", "depenses.decision"]), ref: moisCle });
+      }
+    } catch (e) { console.error("Alerte de stock de vignettes non créée :", e.message); }
     res.status(201).json({ id: vignette.id, numero_vignette: numero, depense_id: depense.id, refacturee });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -1422,6 +1438,25 @@ router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.v
   } finally {
     client.release();
   }
+});
+
+// POST /api/dossiers/:id/instances/:instanceId/vignette-dispensee  { dispensee: true|false }  (lot F, 11/11/2026)
+// Aucune vignette n'est nécessaire pour cette instance (ou on revient dessus) : elle sort des « vignettes à affecter ». Refusé si une
+// vignette est déjà enregistrée. Tracé dans le journal d'audit.
+router.post("/:id/instances/:instanceId/vignette-dispensee", requirePermission("depenses.vignettes.mouvement"), async (req, res) => {
+  const dispensee = (req.body || {}).dispensee !== false;
+  try {
+    const { rows: [i] } = await pool.query(
+      `SELECT i.id, (SELECT 1 FROM vignettes_plaidoirie v WHERE v.instance_id = i.id AND v.mouvement = 'utilisation') AS a_vignette
+         FROM instances i WHERE i.id = $1 AND i.dossier_id = $2`, [req.params.instanceId, req.params.id]);
+    if (!i) return res.status(404).json({ error: "Instance introuvable" });
+    if (i.a_vignette) return res.status(409).json({ error: "Une vignette est déjà enregistrée pour cette instance." });
+    await pool.query("UPDATE instances SET vignette_dispensee = $1 WHERE id = $2", [dispensee, req.params.instanceId]);
+    await logAudit({ utilisateurId: req.user.sub, action: dispensee ? "dispenser_vignette_instance" : "retablir_vignette_instance", entite: "dossier_instances",
+      entiteId: req.params.instanceId, details: { dossier_id: req.params.id }, ip: req.ip });
+    if (dispensee) await notif.traiter(["vignette_a_affecter", "vignette_rappel"], req.params.instanceId);
+    res.json({ id: req.params.instanceId, vignette_dispensee: dispensee });
+  } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });
 
 // POST/PUT/DELETE /api/dossiers/:id/parties — rectifier les parties adverses

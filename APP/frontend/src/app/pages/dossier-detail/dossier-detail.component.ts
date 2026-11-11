@@ -500,7 +500,17 @@ import { LibellePipe } from '../../core/libelles';
                   <td>{{ i.numero_role || '—' }}</td>
                   <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
                   <td>{{ i.decision || '—' }}</td>
-                  <td>{{ i.numero_vignette ? 'N° ' + pad7(i.numero_vignette) : '—' }}</td>
+                  <td>
+                    @if (i.numero_vignette) { N° {{ pad7(i.numero_vignette) }} }
+                    @else if (i.vignette_dispensee) { <span class="muted">Sans vignette</span> }
+                    @else if (d.pole === 'contentieux') {
+                      <span class="tag attente">À affecter</span>
+                      @if (auth.peut('depenses.vignettes.mouvement')) {
+                        @if (prochainNumeroVignette() !== null) { <button class="lien" (click)="affecterProchaineVignette(i)">Affecter la n° {{ pad7(prochainNumeroVignette() ?? 0) }}</button> }
+                        @else { <button class="lien" (click)="commencerVignetteInstance(i)">Saisir le n°</button> }
+                      }
+                    } @else { — }
+                  </td>
                   <td><app-menu-actions [actions]="actionsPourInstance(i)" /></td>
                 </tr>
                 @if (instanceVignetteEnEdition() === i.id) {
@@ -2063,8 +2073,12 @@ export class DossierDetailComponent implements OnInit {
   // Menu "⋮" (19/09/2026 ; vignette ajoutée le 08/10/2026).
   actionsPourInstance(i: any): ActionMenuItem[] {
     const items: ActionMenuItem[] = [];
-    if (!i.numero_vignette && this.auth.peut('depenses.vignettes.mouvement')) {
+    if (!i.numero_vignette && !i.vignette_dispensee && this.auth.peut('depenses.vignettes.mouvement')) {
       items.push({ label: 'Enregistrer la vignette', action: () => this.commencerVignetteInstance(i) });
+      if (this.dossier()?.pole === 'contentieux') items.push({ label: 'Pas de vignette nécessaire', action: () => this.dispenserVignette(i, true) });
+    }
+    if (i.vignette_dispensee && !i.numero_vignette && this.auth.peut('depenses.vignettes.mouvement')) {
+      items.push({ label: 'Rétablir : vignette à affecter', action: () => this.dispenserVignette(i, false) });
     }
     if (this.auth.peut('dossiers.instances.gerer')) {
       items.push({ label: 'Modifier', action: () => this.commencerEditionInstance(i) });
@@ -2073,6 +2087,25 @@ export class DossierDetailComponent implements OnInit {
     return items;
   }
 
+  // Lot F (11/11/2026) : la prochaine vignette du stock est PROPOSÉE (jamais décomptée toute seule) ; on la confirme ou on saisit le n° collé.
+  prochainNumeroVignette(): number | null {
+    const l = this.numerosVignettesDisponibles();
+    return l.length ? Math.min(...l) : null;
+  }
+  affecterProchaineVignette(i: any): void {
+    const n = this.prochainNumeroVignette();
+    if (n === null) return;
+    if (!window.confirm('Affecter la vignette n° ' + this.pad7(n) + ' à cette procédure ?\n(Vérifiez que c\'est bien le numéro de la vignette que vous collez ; sinon, saisissez le bon numéro.)')) return;
+    this.vignetteNumeroSaisi = n;
+    this.enregistrerVignetteInstance(i);
+  }
+  dispenserVignette(i: any, dispensee: boolean): void {
+    this.erreurInstance.set('');
+    this.api.dispenserVignetteInstance(this.id, i.id, dispensee).subscribe({
+      next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
+      error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Opération impossible.'),
+    });
+  }
   numerosVignettesAffiches(): string { return this.numerosVignettesDisponibles().map((n) => this.pad7(n)).join(', '); }
   pad7(n: number): string { return String(n).padStart(7, '0'); }
 

@@ -74,9 +74,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="l">À décaisser (circuit normal) — {{ sy(groupeCaisse(), 'decaisser').total | number }} FCFA</div>
         </div>
         @if (onglet() === 'procedure') {
-          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
-            <div class="n">{{ stockVignettes() }}</div>
-            <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
+          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.amber]="stockVignettes() > seuilVignettes() && nbAAffecter() > 0" [class.blue]="stockVignettes() > seuilVignettes() && nbAAffecter() === 0">
+            <div class="n">{{ nbAAffecter() }}</div>
+            <div class="l">Vignettes à affecter — stock : {{ stockVignettes() }} {{ stockVignettes() <= seuilVignettes() ? '(stock bas, seuil ' + seuilVignettes() + ')' : '' }}</div>
           </div>
         }
       } @else {
@@ -491,6 +491,33 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
+    @if (onglet() === 'procedure' && auth.peut('depenses.vignettes.mouvement')) {
+    <section class="panel">
+      <h3>Vignettes à affecter</h3>
+      <p class="muted">Chaque procédure contentieuse ouverte attend sa vignette de plaidoirie. JURIA propose le prochain numéro du stock
+        ({{ vignettesAAffecter()?.prochain_numero != null ? pad7(vignettesAAffecter()?.prochain_numero) : 'aucun numéro connu : saisissez-le depuis la fiche du dossier' }}) ;
+        vous le confirmez selon la vignette physique que vous collez.</p>
+      @if (vignettesAAffecter()?.instances?.length) {
+        <table>
+          <tr><th>Dossier</th><th>Procédure</th><th>Ouverte le</th><th></th></tr>
+          @for (v of vignettesAAffecter()?.instances; track v.instance_id) {
+            <tr>
+              <td><a class="lien" [routerLink]="['/dossiers', v.dossier_id]">{{ v.dossier_numero }}</a><span class="muted"> — {{ v.intitule }}</span></td>
+              <td>{{ libelleDegreVignette(v.degre) }}{{ v.juridiction ? ' · ' + v.juridiction : '' }}</td>
+              <td>{{ v.cree_le | date:'dd/MM/yyyy' }}</td>
+              <td>
+                @if (!v.mode_honoraires_renseigne) { <span class="muted">Renseignez d'abord le mode d'honoraires du dossier</span> }
+                @else if (vignettesAAffecter()?.prochain_numero != null) { <button class="lien" (click)="affecterVignette(v)">Affecter la n° {{ pad7(vignettesAAffecter()?.prochain_numero) }}</button> }
+                @else { <a class="lien" [routerLink]="['/dossiers', v.dossier_id]">Saisir le n° depuis le dossier</a> }
+              </td>
+            </tr>
+          }
+        </table>
+      } @else { <p class="muted">Aucune procédure n'attend de vignette.</p> }
+      @if (erreur() && !afficherForm() && !editionId()) { <p class="err">{{ erreur() }}</p> }
+    </section>
+    }
+
     @if (onglet() === 'procedure') {
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
@@ -657,8 +684,27 @@ export class DepensesComponent implements OnInit {
     this.chargerAchatsVignettes();
     this.chargerUtilisationsVignettes();
     this.chargerStockVignettes();
+    this.chargerVignettesAAffecter();
   }
 
+  // Vignettes à affecter (lot F, 11/11/2026) : proposition, jamais de décompte automatique.
+  readonly vignettesAAffecter = signal<any | null>(null);
+  nbAAffecter(): number { return this.vignettesAAffecter()?.instances?.length ?? 0; }
+  libelleDegreVignette(d: string): string { return ({ premiere_instance: '1re instance', appel: 'Appel', cassation: 'Cassation / CCJA' } as Record<string, string>)[d] ?? d; }
+  chargerVignettesAAffecter(): void {
+    if (!this.auth.peut('depenses.vignettes.mouvement')) return;
+    this.api.vignettesAAffecter().subscribe({ next: (r) => this.vignettesAAffecter.set(r), error: () => {} });
+  }
+  affecterVignette(v: any): void {
+    const n = this.vignettesAAffecter()?.prochain_numero;
+    if (n == null) return;
+    if (!window.confirm('Affecter la vignette n° ' + this.pad7(n) + ' au dossier ' + v.dossier_numero + ' ?\n(Vérifiez que c\'est bien le numéro de la vignette que vous collez.)')) return;
+    this.erreur.set('');
+    this.api.enregistrerVignetteInstance(v.dossier_id, v.instance_id, n).subscribe({
+      next: () => { this.chargerVignettesAAffecter(); this.chargerStockVignettes(); this.chargerAchatsVignettes(); this.chargerUtilisationsVignettes(); this.charger(); },
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Affectation impossible.'),
+    });
+  }
   chargerStockVignettes(): void {
     this.api.stockVignettes().subscribe({ next: (v) => { this.stockVignettes.set(v.stock); this.seuilVignettes.set(v.seuil); } });
   }
@@ -866,7 +912,7 @@ export class DepensesComponent implements OnInit {
   chargerUtilisationsVignettes(): void {
     if (this.auth.peut('depenses.vignettes.mouvement')) this.api.utilisationsVignettes().subscribe({ next: (r) => this.utilisationsVignettes.set(r), error: () => {} });
   }
-  pad7(n: number): string { return String(n).padStart(7, '0'); }
+  pad7(n: number | null | undefined): string { return String(n ?? 0).padStart(7, '0'); }
   annulerUtilisation(u: any): void {
     const num = u.numero_vignette ? ' n°' + this.pad7(u.numero_vignette) : '';
     if (!confirm(`Annuler l’utilisation de la vignette${num} ? Elle sera remise en stock et la dépense correspondante supprimée.`)) return;
