@@ -27,7 +27,7 @@ afterAll(async () => { await pool.end(); });
 
 async function depenseDecaissee(extra = {}) {
   const dep = (await request(app).post("/api/depenses").set(auth(associe))
-    .send({ type: "ponctuelle", libelle: "À annuler", montant: 30000, petite_caisse: true, ...extra })).body;
+    .send({ type: "ponctuelle", libelle: "À annuler", montant: 30000, categorie: "fournitures", petite_caisse: true, ...extra })).body;
   await request(app).post(`/api/depenses/${dep.id}/decision`).set(auth(associe)).send({ statut: "validee" });
   return dep.id;
 }

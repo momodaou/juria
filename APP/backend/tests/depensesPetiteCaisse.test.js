@@ -35,7 +35,7 @@ afterAll(async () => { await pool.end(); });
 
 const engager = (t, extra = {}) =>
   request(app).post("/api/depenses/engager").set(auth(t))
-    .send({ libelle: "Eau de bureau", montant: 12000, mode_paiement: "orange_money", references: { id_transaction: "MP260101.0001" }, ...extra });
+    .send({ libelle: "Eau de bureau", montant: 12000, categorie: "fournitures", beneficiaire: "Papeterie " + Math.random().toString(36).slice(2, 8), mode_paiement: "orange_money", references: { id_transaction: "MP260101.0001" }, ...extra });
 
 describe("Engagement sur la petite caisse", () => {
   test("administrateur général et associé peuvent engager ; un collaborateur non", async () => {

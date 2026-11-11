@@ -75,7 +75,7 @@ describe("Moyens de décaissement", () => {
   });
 
   test("engagement petite caisse : références exigées", async () => {
-    const eng = (extra) => request(app).post("/api/depenses/engager").set(auth()).send({ libelle: "Eau", montant: 3000, ...extra });
+    const eng = (extra) => request(app).post("/api/depenses/engager").set(auth()).send({ libelle: "Eau", montant: 3000, categorie: "fournitures", beneficiaire: "Papeterie", ...extra });
     expect((await eng({ mode_paiement: "orange_money" })).status).toBe(400);
     expect((await eng({ mode_paiement: "orange_money", references: { id_transaction: "MP1" } })).status).toBeLessThan(500);
   });

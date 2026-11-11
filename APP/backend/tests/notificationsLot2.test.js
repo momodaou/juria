@@ -90,7 +90,7 @@ describe("Petite caisse", () => {
     const mois = new Date().toISOString().slice(0, 8) + "01";
     await request(app).post("/api/depenses/petite-caisse").set(auth(assoc1)).send({ mois, montant_alloue: 100000000 });
     const e = await request(app).post("/api/depenses/engager").set(auth(adminG))
-      .send({ libelle: "Eau L2", montant: 12000, mode_paiement: "orange_money", references: { id_transaction: "MP260101.0099" } });
+      .send({ libelle: "Eau L2", montant: 12000, categorie: "fournitures", beneficiaire: "Papeterie L2", mode_paiement: "orange_money", references: { id_transaction: "MP260101.0099" } });
     expect(e.status).toBe(201);
     expect((await de(assoc1, "depense_apres_coup"))[0].a_traiter).toBe(true);
     expect(await de(adminG, "depense_apres_coup")).toHaveLength(0);

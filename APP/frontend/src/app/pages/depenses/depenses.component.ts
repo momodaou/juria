@@ -7,7 +7,7 @@ import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
-import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, libelleCategorieDepense } from '../../core/categories-depense';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_DEPENSE, CategorieDepense, libelleCategorieDepense } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { viserElement } from '../../core/cible-notification';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -100,7 +100,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             </div>
           }
           <div class="col2 checks">
-            <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse</label>
+            <label><input type="checkbox" [(ngModel)]="form.petite_caisse" name="pc" /> Sur petite caisse@if (form.petite_caisse) { <span class="muted"> — natures limitées (voir Seuils)</span> }</label>
             @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> Débours refacturable au client</label> }
           </div>
         </div>
@@ -186,7 +186,28 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             @if (panneauId() === d.id) {
               <tr class="edition">
                 <td colspan="8">
-                  @if (panneauMode() === 'rejeter') {
+                  @if (panneauMode() === 'apres_valider' || panneauMode() === 'apres_contester') {
+                    <b>{{ panneauMode() === 'apres_valider' ? 'Valider après coup' : 'Contester' }} — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
+                    @if (voisines(); as v) {
+                      @if (v.voisines.length) {
+                        <p class="muted">Dépenses rapprochées sur la petite caisse (autour du {{ d.date_depense | date:'dd/MM/yyyy' }}, {{ v.fenetre_jours }} jours) : même bénéficiaire, même dossier, ou même engageur et même nature.</p>
+                        <table>
+                          <tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Engagée par</th><th></th></tr>
+                          @for (x of v.voisines; track x.id) {
+                            <tr>
+                              <td>{{ x.date_depense | date:'dd/MM/yyyy' }}</td><td>{{ x.libelle }}</td><td>{{ x.montant | number }} FCFA</td><td>{{ x.engageur || '—' }}</td>
+                              <td>@if (x.meme_beneficiaire) { <span class="tag attente">même bénéficiaire</span> } @if (x.meme_dossier) { <span class="tag attente">même dossier</span> }</td>
+                            </tr>
+                          }
+                        </table>
+                        <p [class.err]="v.plafond != null && v.cumul_meme_nature_beneficiaire > v.plafond">Cumul même nature et même bénéficiaire : <b>{{ v.cumul_meme_nature_beneficiaire | number }} FCFA</b>@if (v.plafond != null) { (plafond par dépense : {{ v.plafond | number }} FCFA) }@if (v.plafond != null && v.cumul_meme_nature_beneficiaire > v.plafond) { — fractionnement possible }</p>
+                      } @else { <p class="muted">Aucune dépense rapprochée sur la petite caisse.</p> }
+                    }
+                    @if (panneauMode() === 'apres_contester') {
+                      <p class="muted">Le motif est obligatoire : il est communiqué à la personne qui a engagé la dépense.</p>
+                      <textarea class="in" rows="2" maxlength="300" [(ngModel)]="panneauMotif" name="panMotifApres"></textarea>
+                    }
+                  } @else if (panneauMode() === 'rejeter') {
                     <b>Rejeter — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
                     <p class="muted">Le motif est obligatoire : il est communiqué à la personne qui a déposé la dépense.</p>
                     <textarea class="in" rows="2" maxlength="300" [(ngModel)]="panneauMotif" name="panMotif"></textarea>
@@ -356,20 +377,20 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         <h3>Petite caisse — engager une petite dépense</h3>
         <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
           Plafond par dépense : <b>{{ caisse()?.plafond_depense != null ? (caisse()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
-          solde du mois : <b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).</p>
+          solde du mois : <b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).
+          Natures acceptées : {{ libellesPC() }}. Le plafond s'applique au cumul sur {{ caisse()?.fenetre_jours ?? 7 }} jours (même bénéficiaire, même nature, même dossier).</p>
         <div class="grid2" appRaccourcis (entree)="engager()"
-             [entreeActive]="!!engagement.libelle && !!engagement.montant && !(engagement.nature === 'dossier' && !engagement.dossier_id) && !engagementEnCours() && engagementValide()">
+             [entreeActive]="!!engagement.libelle && !!engagement.montant && !!engagement.categorie && !!(engagement.beneficiaire || '').trim() && !(engagement.nature === 'dossier' && !engagement.dossier_id) && !engagementEnCours() && engagementValide()">
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
           <div><label>Montant (FCFA)</label><input class="in" type="number" [(ngModel)]="engagement.montant" name="engMontant" /></div>
           <div>
             <label>Catégorie</label>
             <select class="in" [(ngModel)]="engagement.categorie" name="engCategorie">
               <option value="">— À choisir —</option>
-              <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
-              <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              @for (c of categoriesPC(); track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }
             </select>
           </div>
-          <div><label>Bénéficiaire (facultatif)</label><input class="in" maxlength="160" [(ngModel)]="engagement.beneficiaire" name="engBeneficiaire" placeholder="Fournisseur ou personne payée" /></div>
+          <div><label>Bénéficiaire <span style="color:#b13a36">*</span></label><input class="in" maxlength="160" [(ngModel)]="engagement.beneficiaire" name="engBeneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="engagement" [catalogue]="catalogue()" (validite)="engagementValide.set($event)"></app-reglement-form>
           <div>
             <label>Nature</label>
@@ -384,7 +405,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             <div class="cases"><label><input type="checkbox" [(ngModel)]="engagement.refacturable_client" name="engRefact" /> Débours refacturable au client</label></div>
           }
         </div>
-        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
+        <button class="btn" (click)="engager()" [disabled]="!engagement.libelle || !engagement.montant || !engagement.categorie || !(engagement.beneficiaire || '').trim() || (engagement.nature === 'dossier' && !engagement.dossier_id) || engagementEnCours() || !engagementValide()">{{ engagementEnCours() ? 'Enregistrement…' : 'Engager la dépense' }}</button>
         @if (engagementMessage()) { <p class="ok-msg">{{ engagementMessage() }}</p> }
         @if (erreur() && !afficherForm() && !editionId()) { <p class="err">{{ erreur() }}</p> }
       </section>
@@ -657,8 +678,8 @@ export class DepensesComponent implements OnInit {
     const items: ActionMenuItem[] = [];
     items.push({ label: d.nb_pieces ? `Pièces (${d.nb_pieces})` : 'Pièces / devis', action: () => this.ouvrirPieces(d) });
     if (d.apres_coup_statut === 'a_valider' && this.auth.peut('depenses.decision') && d.engagee_par_id !== this.auth.utilisateur()?.id) {
-      items.push({ label: 'Valider après coup', action: () => this.validerApresCoup(d, 'validee') });
-      items.push({ label: 'Contester', action: () => this.validerApresCoup(d, 'contestee'), danger: true });
+      items.push({ label: 'Valider après coup', action: () => this.ouvrirPanneau(d, 'apres_valider') });
+      items.push({ label: 'Contester', action: () => this.ouvrirPanneau(d, 'apres_contester'), danger: true });
     }
     const decideur = this.auth.peut('depenses.decision');
     if (d.statut === 'soumise' && decideur) {
@@ -761,18 +782,12 @@ export class DepensesComponent implements OnInit {
       error: (e) => { this.engagementEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Engagement impossible.'); },
     });
   }
-  validerApresCoup(d: any, decision: 'validee' | 'contestee'): void {
-    let motif: string | undefined;
-    if (decision === 'contestee') {
-      motif = window.prompt('Motif de la contestation (obligatoire) :') || undefined;
-      if (!motif) return;
-    }
-    this.erreur.set('');
-    this.api.validerDepenseApresCoup(d.id, decision, motif).subscribe({
-      next: () => this.charger(),
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Action impossible.'),
-    });
+  // Natures acceptées sur la petite caisse (lot B, 11/11/2026) : liste réglée par les associés, servie avec la caisse.
+  categoriesPC(): CategorieDepense[] {
+    const ok = this.caisse()?.categories_autorisees as string[] | undefined;
+    return ok ? CATEGORIES_DEPENSE.filter((c) => ok.includes(c.code)) : [];
   }
+  libellesPC(): string { return this.categoriesPC().map((c) => c.libelle).join(', ') || 'aucune (à régler dans Accès & permissions → Seuils)'; }
   readonly rapprochements = signal<any[]>([]);
   rapSoldeReel: number | null = null;
   rapNote = '';
@@ -858,13 +873,16 @@ export class DepensesComponent implements OnInit {
 
   // Valider / rejeter / donner l'ordre de paiement (11/11/2026, lot A) : un panneau s'ouvre sous la ligne.
   readonly panneauId = signal<string | null>(null);
-  readonly panneauMode = signal<'valider' | 'rejeter' | 'ordre'>('valider');
+  readonly panneauMode = signal<'valider' | 'rejeter' | 'ordre' | 'apres_valider' | 'apres_contester'>('valider');
+  readonly voisines = signal<any | null>(null);
   readonly panneauEnCours = signal(false);
   readonly panValide = signal(true);
   panModele: any = {};
   panneauMotif = '';
-  ouvrirPanneau(d: any, mode: 'valider' | 'rejeter' | 'ordre'): void {
+  ouvrirPanneau(d: any, mode: 'valider' | 'rejeter' | 'ordre' | 'apres_valider' | 'apres_contester'): void {
     this.erreur.set('');
+    this.voisines.set(null);
+    if (mode === 'apres_valider' || mode === 'apres_contester') this.api.voisinesDepense(d.id).subscribe({ next: (v) => this.voisines.set(v), error: () => this.voisines.set({ voisines: [], fenetre_jours: 7, cumul_meme_nature_beneficiaire: Number(d.montant), plafond: null }) });
     this.panneauMotif = '';
     this.panModele = { mode_paiement: d.mode_paiement ?? '', compte_id: d.compte_id ?? '', references: {} };
     this.panValide.set(true);
@@ -877,11 +895,14 @@ export class DepensesComponent implements OnInit {
       : "Vous pouvez donner dès maintenant l'ordre de paiement (moyen et compte à débiter). Sans cela, la dépense reste validée, en attente d'ordre de paiement.";
   }
   panneauPret(): boolean {
-    if (this.panneauMode() === 'rejeter') return !!this.panneauMotif.trim();
+    if (this.panneauMode() === 'apres_valider') return true;
+    if (this.panneauMode() === 'rejeter' || this.panneauMode() === 'apres_contester') return !!this.panneauMotif.trim();
     if (this.panneauMode() === 'ordre') return !!this.panModele.mode_paiement && this.panValide();
     return this.panValide();
   }
   libelleBoutonPanneau(): string {
+    if (this.panneauMode() === 'apres_valider') return 'Valider après coup';
+    if (this.panneauMode() === 'apres_contester') return 'Contester la dépense';
     return this.panneauMode() === 'rejeter' ? 'Rejeter la dépense' : this.panneauMode() === 'ordre' ? "Donner l'ordre de paiement"
       : (this.panModele.mode_paiement ? "Valider et donner l'ordre de paiement" : "Valider sans ordre de paiement");
   }
@@ -891,7 +912,9 @@ export class DepensesComponent implements OnInit {
     this.panneauEnCours.set(true);
     const m = this.panModele;
     const reglement = { mode_paiement: m.mode_paiement, compte_id: m.compte_id || null, references: m.references };
-    const appel = this.panneauMode() === 'rejeter' ? this.api.decisionDepense(d.id, { statut: 'rejetee', motif_rejet: this.panneauMotif.trim() })
+    const appel = this.panneauMode() === 'apres_valider' ? this.api.validerDepenseApresCoup(d.id, 'validee')
+      : this.panneauMode() === 'apres_contester' ? this.api.validerDepenseApresCoup(d.id, 'contestee', this.panneauMotif.trim())
+      : this.panneauMode() === 'rejeter' ? this.api.decisionDepense(d.id, { statut: 'rejetee', motif_rejet: this.panneauMotif.trim() })
       : this.panneauMode() === 'ordre' ? this.api.ordrePaiementDepense(d.id, reglement)
       : this.api.decisionDepense(d.id, m.mode_paiement ? { statut: 'validee', ...reglement } : { statut: 'validee' });
     appel.subscribe({

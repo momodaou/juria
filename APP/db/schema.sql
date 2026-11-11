@@ -5821,3 +5821,13 @@ ALTER TABLE depenses ADD COLUMN IF NOT EXISTS blocage_par        UUID REFERENCES
 ALTER TABLE depenses ADD COLUMN IF NOT EXISTS blocage_le         TIMESTAMPTZ;
 UPDATE depenses SET ordre_paiement_le = COALESCE(valide_le, cree_le, now())
  WHERE statut IN ('validee','decaissee') AND ordre_paiement_le IS NULL;
+
+-- ============================================================
+--  PETITE CAISSE — NATURES AUTORISÉES (11/11/2026, projet « Dépenses & caisses », lot B)
+--  Liste des catégories de dépenses acceptées sur la petite caisse (réglée par les associés dans Accès & permissions →
+--  Seuils). Par défaut : petites dépenses courantes (transport, fournitures, entretien, courrier…) ; hors liste : loyers,
+--  salaires, impôts, honoraires, charges récurrentes, « autre ». Hors liste = circuit normal de validation.
+-- ============================================================
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS petite_caisse_categories TEXT[] NOT NULL DEFAULT ARRAY[
+  'transport','deplacement','carburant','restauration','fournitures','papeterie','petit_materiel','consommables',
+  'impressions','encres','reparation','entretien','nettoyage','credit_telephonique','frais_expedition'];

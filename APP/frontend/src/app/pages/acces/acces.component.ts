@@ -7,6 +7,7 @@ import { CourrierReglagesComponent } from '../../core/courrier-reglages.componen
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { ROLES } from '../../core/roles';
+import { CATEGORIES_DEPENSE } from '../../core/categories-depense';
 
 @Component({
   selector: 'app-acces',
@@ -188,6 +189,15 @@ import { ROLES } from '../../core/roles';
             <div>
               <label>Plafond par dépense — petite caisse (FCFA)</label>
               <input class="in" type="number" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
+            </div>
+            <div style="grid-column:1 / -1">
+              <label>Natures de dépenses acceptées sur la petite caisse</label>
+              <p class="muted" style="margin:2px 0 6px">Hors de cette liste, la dépense passe par le circuit normal de validation. Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 18px">
+                @for (c of categoriesDepense; track c.code) {
+                  <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" [checked]="categorieCochee(c.code)" (change)="basculerCategorie(c.code)" /> {{ c.libelle }}</label>
+                }
+              </div>
             </div>
             <div>
               <label>Justificatif exigé avant décaissement à partir de (FCFA)</label>
@@ -390,6 +400,12 @@ export class AccesComponent implements OnInit {
   readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null } | null>(null);
   readonly emailsMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
+  readonly categoriesDepense = CATEGORIES_DEPENSE;
+  categorieCochee(code: string): boolean { return (this.parametresEdit.petite_caisse_categories ?? []).includes(code); }
+  basculerCategorie(code: string): void {
+    const l = this.parametresEdit.petite_caisse_categories ?? [];
+    this.parametresEdit = { ...this.parametresEdit, petite_caisse_categories: l.includes(code) ? l.filter((c) => c !== code) : [...l, code] };
+  }
   readonly delegations = signal<any[]>([]);
   // 09/10/2026 — catalogue des 80 actions pour le sélecteur "Action
   // déléguée" (route dédiée, distincte de GET /api/acces/permissions qui expose

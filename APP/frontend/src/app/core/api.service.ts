@@ -156,6 +156,7 @@ export interface ParametresHonoraires {
   seuil_alerte_vignettes: number;
   petite_caisse_plafond_depense: number | null;
   seuil_justificatif_decaissement: number;
+  petite_caisse_categories: string[];
 }
 
 // Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
@@ -1035,6 +1036,8 @@ export class ApiService {
 
   // Petite caisse renforcée (17/10/2026)
   engagerDepense(payload: any): Observable<any> { return this.http.post<any>(`${this.base}/api/depenses/engager`, payload); }
+  // 11/11/2026 (lot B) : dépenses rapprochées d'une dépense engagée sur la petite caisse (validation après coup).
+  voisinesDepense(id: string): Observable<any> { return this.http.get<any>(`${this.base}/api/depenses/${id}/voisines`); }
   validerDepenseApresCoup(id: string, decision: 'validee' | 'contestee', motif?: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/valider-apres-coup`, { decision, motif });
   }
