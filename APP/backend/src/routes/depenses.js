@@ -54,47 +54,64 @@ async function verifierOrdre(b) {
 // même bénéficiaire, même dossier) : une prestation découpée en deux dépenses ne passe plus sous le plafond.
 // ---------------------------------------------------------------------
 const FENETRE_JOURS = 6; // 7 jours calendaires : le jour même + les 6 autres
-async function categoriesPetiteCaisse(db = pool) {
-  const { rows: [r] } = await db.query("SELECT petite_caisse_categories AS c FROM parametres_cabinet WHERE id = 1");
+
+// Deux caisses sur le même moteur (lot D, 11/11/2026) : la petite caisse et la caisse « frais de justice & débours »
+// (dossier obligatoire, débours refacturable). Les noms de colonnes viennent de cette table fixe (jamais de l'utilisateur).
+const CAISSES = {
+  petite_caisse: { code: "petite_caisse", nom: "la petite caisse", flag: "petite_caisse", plafond: "petite_caisse_plafond_depense", categories: "petite_caisse_categories", dossierObligatoire: false },
+  procedure: { code: "procedure", nom: "la caisse frais de justice & débours", flag: "caisse_procedure", plafond: "caisse_procedure_plafond_depense", categories: "caisse_procedure_categories", dossierObligatoire: true },
+};
+const caisseDe = (v) => (v === "procedure" ? CAISSES.procedure : CAISSES.petite_caisse);
+const maj = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const caisseDeLigne = (d) => (d && d.caisse_procedure ? CAISSES.procedure : CAISSES.petite_caisse);
+async function plafondCaisse(c, db = pool) {
+  const { rows: [r] } = await db.query(`SELECT ${c.plafond} AS plafond FROM parametres_cabinet WHERE id = 1`);
+  return r ? r.plafond : null;
+}
+async function categoriesCaisse(c, db = pool) {
+  const { rows: [r] } = await db.query(`SELECT ${c.categories} AS c FROM parametres_cabinet WHERE id = 1`);
   return (r && r.c) || [];
 }
-const MSG_CATEGORIE = "Cette nature de dépense n'est pas autorisée sur la petite caisse (Accès & permissions → Seuils). Soumettez-la au circuit normal de validation.";
+const categoriesPetiteCaisse = (db = pool) => categoriesCaisse(CAISSES.petite_caisse, db);
+const msgCategorie = (c) => `Cette nature de dépense n'est pas autorisée sur ${c.nom} (Accès & permissions → Seuils). Soumettez-la au circuit normal de validation.`;
+const MSG_CATEGORIE = msgCategorie(CAISSES.petite_caisse);
 
 // Renvoie un message d'erreur, ou null si l'engagement est acceptable.
-async function controlerPetiteCaisse({ categorie, beneficiaire, dossierId, montant, date, plafond, exclureId = null }) {
-  if (!categorie) return "Choisissez la catégorie de la dépense : la petite caisse n'accepte que certaines natures de dépenses.";
-  if (!(await categoriesPetiteCaisse()).includes(categorie)) return MSG_CATEGORIE;
-  if (!beneficiaire) return "Le bénéficiaire est obligatoire sur la petite caisse (la personne ou le fournisseur payé).";
+async function controlerCaisse(c, { categorie, beneficiaire, dossierId, montant, date, plafond, exclureId = null }) {
+  if (!categorie) return `Choisissez la catégorie de la dépense : ${c.nom} n'accepte que certaines natures de dépenses.`;
+  if (!(await categoriesCaisse(c)).includes(categorie)) return msgCategorie(c);
+  if (c.dossierObligatoire && !dossierId) return `Une dépense sur ${c.nom} doit être rattachée à un dossier.`;
+  if (!beneficiaire) return `Le bénéficiaire est obligatoire sur ${c.nom} (la personne ou l'organisme payé).`;
   if (plafond != null) {
-    const { rows: [c] } = await pool.query(
+    const { rows: [r] } = await pool.query(
       `SELECT COALESCE(SUM(montant) FILTER (WHERE date_depense BETWEEN d.j - ${FENETRE_JOURS} AND d.j), 0) AS avant,
               COALESCE(SUM(montant) FILTER (WHERE date_depense BETWEEN d.j AND d.j + ${FENETRE_JOURS}), 0) AS apres
          FROM depenses, (SELECT COALESCE($4::date, current_date) AS j) d
-        WHERE petite_caisse = TRUE AND statut <> 'rejetee' AND categorie = $1::categorie_depense
+        WHERE ${c.flag} = TRUE AND statut <> 'rejetee' AND categorie = $1::categorie_depense
           AND lower(btrim(COALESCE(beneficiaire, ''))) = lower(btrim($2::text))
           AND dossier_id IS NOT DISTINCT FROM $3::uuid
           AND ($5::uuid IS NULL OR id <> $5::uuid)`,
       [categorie, beneficiaire, dossierId || null, date || null, exclureId]);
-    const cumul = Math.max(Number(c.avant), Number(c.apres));
+    const cumul = Math.max(Number(r.avant), Number(r.apres));
     if (cumul > 0 && cumul + montant > Number(plafond)) {
       return `Cette dépense, ajoutée à celles déjà engagées pour le même bénéficiaire, la même nature et le même dossier sur 7 jours (${cumul.toLocaleString("fr-FR")} FCFA), `
-        + `atteindrait ${(cumul + montant).toLocaleString("fr-FR")} FCFA, au-delà du plafond de la petite caisse (${Number(plafond).toLocaleString("fr-FR")}). Soumettez-la au circuit normal de validation.`;
+        + `atteindrait ${(cumul + montant).toLocaleString("fr-FR")} FCFA, au-delà du plafond de ${c.nom} (${Number(plafond).toLocaleString("fr-FR")}). Soumettez-la au circuit normal de validation.`;
     }
   }
   return null;
 }
 
 // Alerte aux associés : le même engageur a engagé d'autres petites dépenses rapprochées (même bénéficiaire ou même dossier).
-async function signalerFractionnement(id, engageurId, beneficiaire, dossierId, date) {
+async function signalerFractionnement(c, id, engageurId, beneficiaire, dossierId, date) {
   const { rows: [r] } = await pool.query(
     `SELECT count(*)::int AS n FROM depenses
-      WHERE petite_caisse = TRUE AND statut <> 'rejetee' AND id <> $1::uuid AND engagee_par = $2::uuid
+      WHERE ${c.flag} = TRUE AND statut <> 'rejetee' AND id <> $1::uuid AND engagee_par = $2::uuid
         AND date_depense BETWEEN COALESCE($5::date, current_date) - ${FENETRE_JOURS} AND COALESCE($5::date, current_date) + ${FENETRE_JOURS}
         AND (lower(btrim(COALESCE(beneficiaire, ''))) = lower(btrim($3::text)) OR (dossier_id IS NOT NULL AND dossier_id = $4::uuid))`,
     [id, engageurId, beneficiaire, dossierId || null, date || null]);
   if (r.n > 0) {
     await notif.notifier({ type: "caisse_fractionnement", destinataires: await notif.titulairesPermission("depenses.decision"),
-      auteurId: engageurId, ref: id, cle: "fractionnement" });
+      auteurId: engageurId, ref: id, cle: "fractionnement:" + c.code, charge: { caisse: c.code } });
   }
 }
 
@@ -103,21 +120,22 @@ router.get("/:id/voisines", requirePermission("depenses.decision"), async (req, 
   if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: "Identifiant invalide" });
   try {
     const { rows: [d] } = await pool.query(
-      "SELECT id, montant, categorie, beneficiaire, dossier_id, engagee_par, date_depense FROM depenses WHERE id = $1", [req.params.id]);
+      "SELECT id, montant, categorie, beneficiaire, dossier_id, engagee_par, date_depense, caisse_procedure FROM depenses WHERE id = $1", [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    const c = caisseDeLigne(d);
     const { rows } = await pool.query(
       `SELECT v.id, v.libelle, v.montant, v.date_depense, v.categorie, v.beneficiaire, v.apres_coup_statut, u.prenom || ' ' || u.nom AS engageur,
               (lower(btrim(COALESCE(v.beneficiaire, ''))) = lower(btrim(COALESCE($3::text, ''))) AND COALESCE($3::text, '') <> '') AS meme_beneficiaire,
               (v.dossier_id IS NOT NULL AND v.dossier_id = $4::uuid) AS meme_dossier
          FROM depenses v LEFT JOIN utilisateurs u ON u.id = v.engagee_par
-        WHERE v.petite_caisse = TRUE AND v.statut <> 'rejetee' AND v.id <> $1::uuid
+        WHERE v.${c.flag} = TRUE AND v.statut <> 'rejetee' AND v.id <> $1::uuid
           AND v.date_depense BETWEEN $2::date - ${FENETRE_JOURS} AND $2::date + ${FENETRE_JOURS}
           AND ((COALESCE($3::text, '') <> '' AND lower(btrim(COALESCE(v.beneficiaire, ''))) = lower(btrim($3::text)))
                OR (v.dossier_id IS NOT NULL AND v.dossier_id = $4::uuid)
                OR (v.engagee_par = $5::uuid AND v.categorie = $6::categorie_depense))
         ORDER BY v.date_depense DESC, v.cree_le DESC LIMIT 20`,
       [d.id, d.date_depense, d.beneficiaire, d.dossier_id, d.engagee_par, d.categorie]);
-    const { rows: [par] } = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
+    const par = { plafond: await plafondCaisse(c) };
     const cumul = rows.filter((v) => v.categorie === d.categorie && v.meme_beneficiaire).reduce((s, v) => s + Number(v.montant), Number(d.montant));
     res.json({ voisines: rows, cumul_meme_nature_beneficiaire: cumul, plafond: par && par.plafond != null ? Number(par.plafond) : null, fenetre_jours: FENETRE_JOURS + 1 });
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
@@ -137,7 +155,7 @@ router.get("/synthese", requirePermission("depenses.consulter"), async (req, res
       apres_coup: "apres_coup_statut = 'a_valider'",
     };
     const colonnes = [];
-    for (const [grp, filtre] of [["cab", "NOT petite_caisse"], ["pc", "petite_caisse"]]) {
+    for (const [grp, filtre] of [["cab", "NOT petite_caisse AND NOT caisse_procedure"], ["pc", "petite_caisse"], ["pr", "caisse_procedure"]]) {
       for (const [cle, sql] of Object.entries(regles)) {
         colonnes.push(`count(*) FILTER (WHERE ${filtre} AND ${sql})::int AS ${grp}_${cle}_nb`);
         colonnes.push(`COALESCE(sum(montant) FILTER (WHERE ${filtre} AND ${sql}), 0)::bigint AS ${grp}_${cle}_total`);
@@ -151,7 +169,7 @@ router.get("/synthese", requirePermission("depenses.consulter"), async (req, res
       if (!profil.decideur) for (const k of ["decider", "ordonner", "apres_coup"]) o[k] = { nb: 0, total: 0 };
       return o;
     };
-    res.json({ cabinet: bloc("cab"), petite_caisse: bloc("pc") });
+    res.json({ cabinet: bloc("cab"), petite_caisse: bloc("pc"), procedure: bloc("pr") });
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
@@ -189,6 +207,10 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   if (dossier_id) { params.push(dossier_id); clauses.push(`d.dossier_id = $${params.length}`); }
   if (nature) { params.push(nature); clauses.push(`d.nature = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
+  // Caisse (lot D) : « cabinet » = hors petite caisse et hors caisse frais de justice ; « petite_caisse » ; « procedure ».
+  if (req.query.caisse === "cabinet") clauses.push("d.petite_caisse = FALSE AND d.caisse_procedure = FALSE");
+  else if (req.query.caisse === "petite_caisse") clauses.push("d.petite_caisse = TRUE");
+  else if (req.query.caisse === "procedure") clauses.push("d.caisse_procedure = TRUE");
   if (a_refacturer === "true") {
     clauses.push("d.refacturable_client = TRUE", "d.statut = 'decaissee'", "d.facture_id IS NULL");
   }
@@ -196,7 +218,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.type, d.categorie, d.libelle, d.montant, d.date_depense, d.mode_paiement, d.references_paiement,
-              d.petite_caisse, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
+              d.petite_caisse, d.caisse_procedure, d.justificatif, d.refacturable_client, d.statut, d.recurrente,
               d.facture_id, d.dossier_id, d.nature, d.beneficiaire, c.intitule AS compte, d.compte_id,
               d.ordre_paiement_le, d.blocage_motif, d.blocage_le, (d.mode_paiement IS NOT NULL) AS moyen_defini,
               (SELECT COUNT(*) FROM depense_pieces p WHERE p.depense_id = d.id)::int AS nb_pieces,
@@ -307,10 +329,12 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
 // ---------------------------------------------------------------------
 router.post("/engager", requirePermission("depenses.engager"), async (req, res) => {
   const b = req.body || {};
+  const c = caisseDe(b.caisse);
   const montant = Math.round(Number(b.montant));
   if (!b.libelle || !(montant > 0)) return res.status(400).json({ error: "libelle et montant positif requis" });
   if (!b.mode_paiement) return res.status(400).json({ error: "Moyen de paiement requis (mobile money recommandé)." });
-  const n = resoudreNature(b, null);
+  // Caisse frais de justice & débours : toujours liée à un dossier.
+  const n = resoudreNature(c.dossierObligatoire ? { ...b, nature: "dossier" } : b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
   // Bénéficiaire saisi une seule fois (29/10/2026) : repris dans les références du moyen, et inversement.
   const refs = b.references && typeof b.references === "object" ? { ...b.references } : {};
@@ -320,20 +344,19 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
   const regl = await preparerDecaissement(pool, { ...b, references: refs }, { exigerReferences: true });
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
   try {
-    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
-    const plafond = par.rows[0]?.plafond;
+    const plafond = await plafondCaisse(c);
     if (plafond == null) {
-      return res.status(409).json({ error: "Le plafond par dépense de la petite caisse n'est pas encore défini (Accès & permissions → Seuils). Passez par le circuit normal de validation." });
+      return res.status(409).json({ error: `Le plafond par dépense de ${c.nom} n'est pas encore défini (Accès & permissions → Seuils). Passez par le circuit normal de validation.` });
     }
     if (montant > Number(plafond)) {
-      return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}). Soumettez la dépense au circuit normal de validation.` });
+      return res.status(409).json({ error: `Montant supérieur au plafond de ${c.nom} (${Number(plafond)}). Soumettez la dépense au circuit normal de validation.` });
     }
-    const refus = await controlerPetiteCaisse({ categorie: b.categorie, beneficiaire, dossierId: n.dossierId, montant, date: b.date_depense, plafond });
+    const refus = await controlerCaisse(c, { categorie: b.categorie, beneficiaire, dossierId: n.dossierId, montant, date: b.date_depense, plafond });
     if (refus) return res.status(409).json({ error: refus });
     const mois = premierDuMois(b.date_depense ? new Date(b.date_depense) : new Date());
-    const caisse = await soldePetiteCaisse(mois);
+    const caisse = await soldePetiteCaisse(mois, c);
     if (!caisse.dotee) {
-      return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
+      return res.status(409).json({ error: `${maj(c.nom)} n'est pas dotée pour ce mois.` });
     }
     if (montant > caisse.solde) {
       return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${caisse.solde}).`, solde: caisse.solde });
@@ -343,25 +366,26 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
          (nature, type, categorie, libelle, montant, date_depense, mode_paiement, compte_id,
           petite_caisse, justificatif, refacturable_client, dossier_id,
           statut, soumis_par, cree_par, engagee_par, engagee_le, decaisse_par, decaisse_le, apres_coup_statut, references_paiement, beneficiaire,
-          ordre_paiement_le, ordre_paiement_par)
+          ordre_paiement_le, ordre_paiement_par, caisse_procedure)
        VALUES ($1,'ponctuelle',COALESCE($2::categorie_depense,'autre'),$3,$4,COALESCE($5::date,current_date),$6::mode_paiement,$7,
-               TRUE,COALESCE($8,false),$9,$10,
+               $14::boolean,COALESCE($8,false),$9,$10,
                'decaissee',$11,$11,$11,now(),$11,now(),'a_valider',$12::jsonb,$13,
-               now(),$11)
+               now(),$11,$15::boolean)
        RETURNING id, nature, libelle, montant, statut, apres_coup_statut`,
       [n.nature, b.categorie || null, b.libelle, montant, b.date_depense || null, regl.valeurs.mode_paiement, regl.valeurs.compte_id,
-       b.justificatif, n.nature === "dossier" ? !!b.refacturable_client : false, n.dossierId, req.user.sub, JSON.stringify(regl.valeurs.references), beneficiaire]
+       b.justificatif, n.nature === "dossier" ? (c.code === "procedure" ? b.refacturable_client !== false : !!b.refacturable_client) : false, n.dossierId, req.user.sub,
+       JSON.stringify(regl.valeurs.references), beneficiaire, c.code === "petite_caisse", c.code === "procedure"]
     );
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
-      details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde }, ip: req.ip });
+      details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde, caisse: c.code }, ip: req.ip });
     // Centre de notifications (lot 2) : un autre associé doit valider après coup (jamais l'engageur) ; solde bas (20 %).
     await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
-      auteurId: req.user.sub, ref: rows[0].id, aTraiter: true });
-    await signalerFractionnement(rows[0].id, req.user.sub, beneficiaire, n.dossierId, b.date_depense);
-    const refMois = "solde_bas:" + mois.slice(0, 7);
+      auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, charge: { caisse: c.code } });
+    await signalerFractionnement(c, rows[0].id, req.user.sub, beneficiaire, n.dossierId, b.date_depense);
+    const refMois = (c.code === "procedure" ? "solde_bas_proc:" : "solde_bas:") + mois.slice(0, 7);
     if (caisse.dotation > 0 && caisse.solde - montant <= caisse.dotation * 0.2 && !(await notif.dejaNotifie("caisse_alerte", refMois))) {
       await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
-        auteurId: req.user.sub, ref: refMois, charge: { sujet: "solde_bas" } });
+        auteurId: req.user.sub, ref: refMois, charge: { sujet: "solde_bas", caisse: c.code } });
     }
     res.status(201).json({ ...rows[0], solde_restant: caisse.solde - montant });
   } catch (e) {
@@ -420,11 +444,12 @@ router.put("/:id/engagee", async (req, res) => {
   try {
     const { rows: [d] } = await pool.query(
       `SELECT id, nature, dossier_id, libelle, montant, categorie, mode_paiement, compte_id, references_paiement, beneficiaire,
-              justificatif, engagee_par, apres_coup_statut, annulee_le, petite_caisse,
+              justificatif, engagee_par, apres_coup_statut, annulee_le, petite_caisse, caisse_procedure,
               to_char(date_depense, 'YYYY-MM-DD') AS date_depense
          FROM depenses WHERE id = $1`, [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
-    if (!d.petite_caisse || !d.engagee_par) return res.status(409).json({ error: "Cette dépense n'a pas été engagée sur la petite caisse." });
+    if ((!d.petite_caisse && !d.caisse_procedure) || !d.engagee_par) return res.status(409).json({ error: "Cette dépense n'a pas été engagée sur une caisse." });
+    const c = caisseDeLigne(d);
     const decideur = await estAutorise(req.user.role, "depenses.decision", req.user.sub);
     const engageur = d.engagee_par === req.user.sub && await estAutorise(req.user.role, "depenses.engager", req.user.sub);
     if (!decideur && !engageur) return res.status(403).json({ error: "Seul l'engageur de la dépense ou un associé peut la corriger." });
@@ -451,21 +476,19 @@ router.put("/:id/engagee", async (req, res) => {
     if (regl.erreur) return res.status(400).json({ error: regl.erreur });
 
     if (!validee) {
-      const parP = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
-      const refus = await controlerPetiteCaisse({ categorie: b.categorie || d.categorie, beneficiaire, dossierId: n.dossierId, montant, date: dateDepense,
-        plafond: parP.rows[0]?.plafond ?? null, exclureId: d.id });
+      const refus = await controlerCaisse(c, { categorie: b.categorie || d.categorie, beneficiaire, dossierId: n.dossierId, montant, date: dateDepense,
+        plafond: await plafondCaisse(c), exclureId: d.id });
       if (refus) return res.status(409).json({ error: refus });
     }
     if (monnaieChange) {
-      const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
-      const plafond = par.rows[0]?.plafond;
+      const plafond = await plafondCaisse(c);
       if (plafond != null && montant > Number(plafond)) {
-        return res.status(409).json({ error: `Montant supérieur au plafond de la petite caisse (${Number(plafond)}).` });
+        return res.status(409).json({ error: `Montant supérieur au plafond de ${c.nom} (${Number(plafond)}).` });
       }
       const moisNouveau = premierDuMois(new Date(dateDepense));
       const moisAncien = premierDuMois(new Date(d.date_depense));
-      const caisse = await soldePetiteCaisse(moisNouveau);
-      if (!caisse.dotee) return res.status(409).json({ error: "La petite caisse n'est pas dotée pour ce mois." });
+      const caisse = await soldePetiteCaisse(moisNouveau, c);
+      if (!caisse.dotee) return res.status(409).json({ error: `${maj(c.nom)} n'est pas dotée pour ce mois.` });
       const disponible = caisse.solde + (moisNouveau === moisAncien ? Number(d.montant) : 0);
       if (montant > disponible) return res.status(409).json({ error: `Solde de la petite caisse insuffisant (reste ${disponible}).`, solde: disponible });
     }
@@ -485,7 +508,7 @@ router.put("/:id/engagee", async (req, res) => {
     if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
     if (d.apres_coup_statut === "contestee") {
       await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
-        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
+        auteurId: req.user.sub, ref: req.params.id, aTraiter: true, charge: { caisse: c.code } });
     }
     await logAudit({ utilisateurId: req.user.sub, action: "corriger_depense_engagee", entite: "depenses", entiteId: req.params.id,
       details: { par_engageur: d.engagee_par === req.user.sub, statut_apres_coup_avant: d.apres_coup_statut,
@@ -504,18 +527,19 @@ router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_c
   const b = req.body || {};
   if (b.solde_reel == null || isNaN(Number(b.solde_reel))) return res.status(400).json({ error: "solde_reel requis" });
   try {
+    const c = caisseDe(b.caisse);
     const mois = (b.mois && moisNormalise(b.mois)) || premierDuMois();
-    const { solde } = await soldePetiteCaisse(mois);
+    const { solde } = await soldePetiteCaisse(mois, c);
     const reel = Math.round(Number(b.solde_reel));
     const { rows } = await pool.query(
-      `INSERT INTO rapprochements_petite_caisse (mois, solde_calcule, solde_reel, ecart, note, fait_par)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, mois, solde_calcule, solde_reel, ecart, note, fait_le`,
-      [mois, solde, reel, reel - solde, b.note || null, req.user.sub]
+      `INSERT INTO rapprochements_petite_caisse (mois, solde_calcule, solde_reel, ecart, note, fait_par, caisse)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, mois, solde_calcule, solde_reel, ecart, note, fait_le`,
+      [mois, solde, reel, reel - solde, b.note || null, req.user.sub, c.code]
     );
-    await logAudit({ utilisateurId: req.user.sub, action: "rapprochement_petite_caisse", entite: "depenses", entiteId: rows[0].id, details: { mois, ecart: rows[0].ecart }, ip: req.ip });
+    await logAudit({ utilisateurId: req.user.sub, action: "rapprochement_petite_caisse", entite: "depenses", entiteId: rows[0].id, details: { mois, ecart: rows[0].ecart, caisse: c.code }, ip: req.ip });
     if (Number(rows[0].ecart) !== 0) {
       await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
-        auteurId: req.user.sub, ref: "ecart:" + rows[0].id, charge: { sujet: "ecart" } });
+        auteurId: req.user.sub, ref: "ecart:" + rows[0].id, charge: { sujet: "ecart", caisse: c.code } });
     }
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
@@ -526,7 +550,8 @@ router.get("/petite-caisse/rapprochements", requirePermission("depenses.consulte
     const { rows } = await pool.query(
       `SELECT r.id, r.mois, r.solde_calcule, r.solde_reel, r.ecart, r.note, r.fait_le, u.prenom || ' ' || u.nom AS fait_par
        FROM rapprochements_petite_caisse r LEFT JOIN utilisateurs u ON u.id = r.fait_par
-       ORDER BY r.fait_le DESC LIMIT 24`);
+       WHERE r.caisse = $1
+       ORDER BY r.fait_le DESC LIMIT 24`, [caisseDe(req.query.caisse).code]);
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
@@ -575,7 +600,8 @@ router.get("/petite-caisse/dotations", requirePermission("depenses.petite_caisse
     const { rows } = await pool.query(
       `SELECT d.mois, d.montant_alloue, d.cree_le, u.prenom || ' ' || u.nom AS par
        FROM dotations_petite_caisse d LEFT JOIN utilisateurs u ON u.id = d.administrateur_id
-       ORDER BY d.mois DESC LIMIT 24`);
+       WHERE d.caisse = $1
+       ORDER BY d.mois DESC LIMIT 24`, [caisseDe(req.query.caisse).code]);
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
@@ -1025,15 +1051,15 @@ function moisNormalise(v) {
   return `${m[1]}-${m[2]}-01`;
 }
 
-async function soldePetiteCaisse(mois) {
+async function soldePetiteCaisse(mois, c = CAISSES.petite_caisse) {
   // Dotation du mois : tolère une ancienne ligne enregistrée un autre jour du mois (avant la normalisation du 29/10/2026 :
   // le champ date acceptait n'importe quel jour et le solde cherchait le 1er) ; la ligne datée du 1er prime, sinon la plus récente.
   const dotation = await pool.query(
-    `SELECT montant_alloue FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', $1::date)
-     ORDER BY (mois = date_trunc('month', $1::date)::date) DESC, cree_le DESC LIMIT 1`, [mois]);
+    `SELECT montant_alloue FROM dotations_petite_caisse WHERE caisse = $2 AND date_trunc('month', mois) = date_trunc('month', $1::date)
+     ORDER BY (mois = date_trunc('month', $1::date)::date) DESC, cree_le DESC LIMIT 1`, [mois, c.code]);
   const depense = await pool.query(
     `SELECT COALESCE(SUM(montant),0) AS total FROM depenses
-     WHERE petite_caisse = TRUE AND statut <> 'rejetee' AND date_trunc('month', date_depense) = $1::date`,
+     WHERE ${c.flag} = TRUE AND statut <> 'rejetee' AND date_trunc('month', date_depense) = $1::date`,
     [mois]
   );
   const alloue = Number(dotation.rows[0]?.montant_alloue ?? 0);
@@ -1046,9 +1072,9 @@ const premierDuMois = (d = new Date()) => d.toISOString().slice(0, 8) + "01";
 router.get("/petite-caisse", async (req, res) => {
   const mois = (req.query.mois && moisNormalise(req.query.mois)) || premierDuMois();
   try {
-    const { dotation, depense, solde } = await soldePetiteCaisse(mois);
-    const par = await pool.query("SELECT petite_caisse_plafond_depense AS plafond FROM parametres_cabinet WHERE id = 1");
-    res.json({ mois, dotation, depense, solde, plafond_depense: par.rows[0]?.plafond ?? null, categories_autorisees: await categoriesPetiteCaisse(), fenetre_jours: FENETRE_JOURS + 1 });
+    const c = caisseDe(req.query.caisse);
+    const { dotation, depense, solde } = await soldePetiteCaisse(mois, c);
+    res.json({ mois, caisse: c.code, dotation, depense, solde, plafond_depense: (await plafondCaisse(c)) ?? null, categories_autorisees: await categoriesCaisse(c), fenetre_jours: FENETRE_JOURS + 1 });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
@@ -1058,6 +1084,7 @@ router.get("/petite-caisse", async (req, res) => {
 // POST /api/depenses/petite-caisse  { mois, montant_alloue }  (administrateur)
 router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"), async (req, res) => {
   const { mois: moisBrut, montant_alloue } = req.body || {};
+  const c = caisseDe((req.body || {}).caisse);
   if (!moisBrut || montant_alloue == null || montant_alloue === "") return res.status(400).json({ error: "mois et montant_alloue requis" });
   const mois = moisNormalise(moisBrut);
   if (!mois) return res.status(400).json({ error: "Mois invalide (AAAA-MM)." });
@@ -1066,17 +1093,17 @@ router.post("/petite-caisse", requirePermission("depenses.petite_caisse.doter"),
   try {
     // Une ligne existe-t-elle déjà pour ce mois (même enregistrée un autre jour du mois) ? On la corrige au lieu d'en créer une 2e.
     const { rows: [avant] } = await pool.query(
-      `SELECT id, montant_alloue, mois FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', $1::date)
-       ORDER BY (mois = $1::date) DESC, cree_le DESC LIMIT 1`, [mois]);
+      `SELECT id, montant_alloue, mois FROM dotations_petite_caisse WHERE caisse = $2 AND date_trunc('month', mois) = date_trunc('month', $1::date)
+       ORDER BY (mois = $1::date) DESC, cree_le DESC LIMIT 1`, [mois, c.code]);
     const { rows } = avant
       ? await pool.query(
         `UPDATE dotations_petite_caisse SET mois = $1::date, montant_alloue = $2, administrateur_id = $3 WHERE id = $4
          RETURNING mois::text AS mois, montant_alloue`, [mois, montant, req.user.sub, avant.id])
       : await pool.query(
-        `INSERT INTO dotations_petite_caisse (mois, montant_alloue, administrateur_id) VALUES ($1::date,$2,$3)
-         RETURNING mois::text AS mois, montant_alloue`, [mois, montant, req.user.sub]);
+        `INSERT INTO dotations_petite_caisse (mois, montant_alloue, administrateur_id, caisse) VALUES ($1::date,$2,$3,$4)
+         RETURNING mois::text AS mois, montant_alloue`, [mois, montant, req.user.sub, c.code]);
     await logAudit({ utilisateurId: req.user.sub, action: avant ? "corriger_dotation_petite_caisse" : "doter_petite_caisse", entite: "dotations_petite_caisse",
-      details: { mois, avant: avant ? Number(avant.montant_alloue) : null, apres: montant }, ip: req.ip });
+      details: { mois, avant: avant ? Number(avant.montant_alloue) : null, apres: montant, caisse: c.code }, ip: req.ip });
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);

@@ -5831,3 +5831,20 @@ UPDATE depenses SET ordre_paiement_le = COALESCE(valide_le, cree_le, now())
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS petite_caisse_categories TEXT[] NOT NULL DEFAULT ARRAY[
   'transport','deplacement','carburant','restauration','fournitures','papeterie','petit_materiel','consommables',
   'impressions','encres','reparation','entretien','nettoyage','credit_telephonique','frais_expedition'];
+
+-- ============================================================
+--  CAISSE « FRAIS DE JUSTICE & DÉBOURS » (11/11/2026, projet « Dépenses & caisses », lot D)
+--  Deuxième caisse, sur le moteur de la petite caisse : dotation mensuelle et solde propres, plafond par dépense
+--  (25 000 FCFA par défaut), natures autorisées propres (frais de procédure, consignations, grosse, expéditions,
+--  plumitif, diligences, huissier), dossier OBLIGATOIRE, débours refacturable au client par défaut. Les gros montants
+--  restent au circuit normal (validation + ordre de paiement). `depenses.caisse_procedure` : dépense de cette caisse
+--  (jamais en même temps que `petite_caisse`). Dotations et rapprochements portent la caisse concernée.
+-- ============================================================
+ALTER TABLE depenses ADD COLUMN IF NOT EXISTS caisse_procedure BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS caisse_procedure_plafond_depense NUMERIC(14,0) NOT NULL DEFAULT 25000;
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS caisse_procedure_categories TEXT[] NOT NULL DEFAULT ARRAY[
+  'frais_procedure','frais_consignation','frais_grosse','frais_expedition','extrait_plumitif','frais_diligences','frais_huissier'];
+ALTER TABLE dotations_petite_caisse ADD COLUMN IF NOT EXISTS caisse VARCHAR(20) NOT NULL DEFAULT 'petite_caisse';
+ALTER TABLE dotations_petite_caisse DROP CONSTRAINT IF EXISTS dotations_petite_caisse_mois_key;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_dotations_caisse_mois ON dotations_petite_caisse (caisse, mois);
+ALTER TABLE rapprochements_petite_caisse ADD COLUMN IF NOT EXISTS caisse VARCHAR(20) NOT NULL DEFAULT 'petite_caisse';

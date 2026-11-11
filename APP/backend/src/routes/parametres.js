@@ -29,7 +29,8 @@ const router = express.Router();
 router.get("/honoraires", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories
+      `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories,
+              caisse_procedure_plafond_depense, caisse_procedure_categories
        FROM parametres_cabinet WHERE id = 1`
     );
     res.json(rows[0]);
@@ -49,18 +50,23 @@ router.get("/honoraires", async (req, res) => {
 router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), async (req, res) => {
   const b = req.body || {};
   try {
-    // Natures de dépenses acceptées sur la petite caisse (11/11/2026) : des catégories connues, au moins une.
-    let categories = null;
-    if (b.petite_caisse_categories !== undefined && b.petite_caisse_categories !== null) {
-      if (!Array.isArray(b.petite_caisse_categories) || !b.petite_caisse_categories.length) {
-        return res.status(400).json({ error: "Choisissez au moins une catégorie de dépense pour la petite caisse." });
-      }
-      const { rows: valides } = await pool.query("SELECT unnest(enum_range(NULL::categorie_depense))::text AS c");
-      const connues = new Set(valides.map((r) => r.c));
-      const inconnue = b.petite_caisse_categories.find((c) => !connues.has(c));
-      if (inconnue) return res.status(400).json({ error: `Catégorie inconnue : ${inconnue}.` });
-      categories = [...new Set(b.petite_caisse_categories)];
-    }
+    // Natures de dépenses acceptées sur les caisses (11/11/2026) : des catégories connues, au moins une.
+    const { rows: valides } = await pool.query("SELECT unnest(enum_range(NULL::categorie_depense))::text AS c");
+    const connues = new Set(valides.map((r) => r.c));
+    const listeCategories = (valeur, nom) => {
+      if (valeur === undefined || valeur === null) return { valeur: null };
+      if (!Array.isArray(valeur) || !valeur.length) return { erreur: `Choisissez au moins une catégorie de dépense pour ${nom}.` };
+      const inconnue = valeur.find((c) => !connues.has(c));
+      if (inconnue) return { erreur: `Catégorie inconnue : ${inconnue}.` };
+      return { valeur: [...new Set(valeur)] };
+    };
+    const pc = listeCategories(b.petite_caisse_categories, "la petite caisse");
+    if (pc.erreur) return res.status(400).json({ error: pc.erreur });
+    const proc = listeCategories(b.caisse_procedure_categories, "la caisse frais de justice & débours");
+    if (proc.erreur) return res.status(400).json({ error: proc.erreur });
+    const categories = pc.valeur;
+    const plafondProc = b.caisse_procedure_plafond_depense === undefined || b.caisse_procedure_plafond_depense === null || b.caisse_procedure_plafond_depense === "" ? null : Number(b.caisse_procedure_plafond_depense);
+    if (plafondProc !== null && !(plafondProc >= 0)) return res.status(400).json({ error: "Plafond invalide." });
     const { rows } = await pool.query(
       `UPDATE parametres_cabinet SET
          frais_procedure_pro_bono_min_xof = COALESCE($1, frais_procedure_pro_bono_min_xof),
@@ -68,10 +74,13 @@ router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), a
          seuil_alerte_vignettes = COALESCE($3, seuil_alerte_vignettes),
          petite_caisse_plafond_depense = COALESCE($4, petite_caisse_plafond_depense),
          seuil_justificatif_decaissement = COALESCE($5, seuil_justificatif_decaissement),
-         petite_caisse_categories = COALESCE($6::text[], petite_caisse_categories)
+         petite_caisse_categories = COALESCE($6::text[], petite_caisse_categories),
+         caisse_procedure_plafond_depense = COALESCE($7::numeric, caisse_procedure_plafond_depense),
+         caisse_procedure_categories = COALESCE($8::text[], caisse_procedure_categories)
        WHERE id = 1
-       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories`,
-      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null, b.seuil_justificatif_decaissement ?? null, categories]
+       RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories,
+                 caisse_procedure_plafond_depense, caisse_procedure_categories`,
+      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null, b.seuil_justificatif_decaissement ?? null, categories, plafondProc, proc.valeur]
     );
     res.json(rows[0]);
   } catch (e) {

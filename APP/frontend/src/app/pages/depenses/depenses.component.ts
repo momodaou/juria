@@ -43,33 +43,42 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'caisse'" (click)="changerOnglet('caisse')">
         Petite caisse @if (aTraiter('petite_caisse')) { <span class="pastille">{{ aTraiter('petite_caisse') }}</span> }
       </button>
+      <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'procedure'" (click)="changerOnglet('procedure')">
+        Frais de justice &amp; débours @if (aTraiter('procedure')) { <span class="pastille">{{ aTraiter('procedure') }}</span> }
+      </button>
       <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'tout'" (click)="changerOnglet('tout')">Tout</button>
     </div>
 
     <div class="kpis">
-      @if (onglet() === 'caisse') {
+      @if (onglet() === 'caisse' || onglet() === 'procedure') {
         <div class="kpi">
-          <div class="n">{{ caisse()?.dotation ?? 0 | number }}</div>
-          <div class="l">Dotation petite caisse ({{ moisCourant.slice(0,7) }})</div>
+          <div class="n">{{ caisseActive()?.dotation ?? 0 | number }}</div>
+          <div class="l">Dotation {{ nomCaisseMin() }} ({{ moisCourant.slice(0,7) }})</div>
         </div>
         <div class="kpi amber">
-          <div class="n">{{ caisse()?.depense ?? 0 | number }}</div>
-          <div class="l">Petite caisse dépensée ce mois</div>
+          <div class="n">{{ caisseActive()?.depense ?? 0 | number }}</div>
+          <div class="l">{{ nomCaisse() }} : dépensé ce mois</div>
         </div>
-        <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0" [class.green]="(caisse()?.solde ?? 0) >= 0">
-          <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
-          <div class="l">Solde petite caisse</div>
+        <div class="kpi" [class.red]="(caisseActive()?.solde ?? 0) < 0" [class.green]="(caisseActive()?.solde ?? 0) >= 0">
+          <div class="n">{{ caisseActive()?.solde ?? 0 | number }}</div>
+          <div class="l">Solde {{ nomCaisseMin() }}</div>
         </div>
         @if (auth.peut('depenses.decision')) {
           <div class="kpi amber cliquable" (click)="voir({ apres_coup: 'a_valider' })" title="Afficher les dépenses engagées à valider après coup">
-            <div class="n">{{ sy('petite_caisse', 'apres_coup').nb }}</div>
-            <div class="l">À valider après coup — {{ sy('petite_caisse', 'apres_coup').total | number }} FCFA</div>
+            <div class="n">{{ sy(groupeCaisse(), 'apres_coup').nb }}</div>
+            <div class="l">À valider après coup — {{ sy(groupeCaisse(), 'apres_coup').total | number }} FCFA</div>
           </div>
         }
         <div class="kpi cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées à décaisser">
-          <div class="n">{{ sy('petite_caisse', 'decaisser').nb }}</div>
-          <div class="l">À décaisser (circuit normal) — {{ sy('petite_caisse', 'decaisser').total | number }} FCFA</div>
+          <div class="n">{{ sy(groupeCaisse(), 'decaisser').nb }}</div>
+          <div class="l">À décaisser (circuit normal) — {{ sy(groupeCaisse(), 'decaisser').total | number }} FCFA</div>
         </div>
+        @if (onglet() === 'procedure') {
+          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
+            <div class="n">{{ stockVignettes() }}</div>
+            <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
+          </div>
+        }
       } @else {
         @if (auth.peut('depenses.decision')) {
           <div class="kpi amber cliquable" (click)="voir({ statut: 'soumise' })" title="Afficher les dépenses soumises, à décider">
@@ -93,12 +102,6 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0">
             <div class="n">{{ caisse()?.solde ?? 0 | number }}</div>
             <div class="l">Solde petite caisse</div>
-          </div>
-        }
-        @if (onglet() === 'cabinet') {
-          <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.blue]="stockVignettes() > seuilVignettes()">
-            <div class="n">{{ stockVignettes() }}</div>
-            <div class="l">Vignettes en stock {{ stockVignettes() <= seuilVignettes() ? '— stock bas (seuil ' + seuilVignettes() + ')' : '' }}</div>
           </div>
         }
       }
@@ -192,8 +195,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         @if (onglet() === 'tout') {
         <select class="in filtre" [(ngModel)]="filtreCaisse" (ngModelChange)="charger()">
           <option value="">Toutes sources</option>
-          <option value="true">Petite caisse</option>
-          <option value="false">Hors petite caisse</option>
+          <option value="cabinet">Dépenses du cabinet</option>
+          <option value="petite_caisse">Petite caisse</option>
+          <option value="procedure">Frais de justice &amp; débours</option>
         </select>
         }
         <label class="filtre-date">Du <input class="in" type="date" [(ngModel)]="filtreDu" (ngModelChange)="charger()" /></label>
@@ -213,7 +217,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @for (d of depenses(); track d.id) {
             <tr [id]="'depense-' + d.id" [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
-              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }
+              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.caisse_procedure) { <span class="tag">frais de justice</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }
                 @if (d.etat_mois) { <span class="tag">État {{ d.etat_mois | date:'MM/yyyy' }}</span> }
                 @if (d.annulee_le) { <div class="obs">Annulée le {{ d.annulee_le | date:'dd/MM/yyyy' }}@if (d.annulee_par_nom) { par {{ d.annulee_par_nom }} }@if (d.annulation_motif) { — {{ d.annulation_motif }} }</div> }
                 @else if (d.statut === 'rejetee' && d.motif_rejet) { <div class="obs">Rejetée : {{ d.motif_rejet }}</div> }
@@ -237,7 +241,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <b>{{ panneauMode() === 'apres_valider' ? 'Valider après coup' : 'Contester' }} — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
                     @if (voisines(); as v) {
                       @if (v.voisines.length) {
-                        <p class="muted">Dépenses rapprochées sur la petite caisse (autour du {{ d.date_depense | date:'dd/MM/yyyy' }}, {{ v.fenetre_jours }} jours) : même bénéficiaire, même dossier, ou même engageur et même nature.</p>
+                        <p class="muted">Dépenses rapprochées sur la caisse (autour du {{ d.date_depense | date:'dd/MM/yyyy' }}, {{ v.fenetre_jours }} jours) : même bénéficiaire, même dossier, ou même engageur et même nature.</p>
                         <table>
                           <tr><th>Date</th><th>Libellé</th><th>Montant</th><th>Engagée par</th><th></th></tr>
                           @for (x of v.voisines; track x.id) {
@@ -248,7 +252,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                           }
                         </table>
                         <p [class.err]="v.plafond != null && v.cumul_meme_nature_beneficiaire > v.plafond">Cumul même nature et même bénéficiaire : <b>{{ v.cumul_meme_nature_beneficiaire | number }} FCFA</b>@if (v.plafond != null) { (plafond par dépense : {{ v.plafond | number }} FCFA) }@if (v.plafond != null && v.cumul_meme_nature_beneficiaire > v.plafond) { — fractionnement possible }</p>
-                      } @else { <p class="muted">Aucune dépense rapprochée sur la petite caisse.</p> }
+                      } @else { <p class="muted">Aucune dépense rapprochée sur la caisse.</p> }
                     }
                     @if (panneauMode() === 'apres_contester') {
                       <p class="muted">Le motif est obligatoire : il est communiqué à la personne qui a engagé la dépense.</p>
@@ -394,10 +398,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       } @else { <p class="muted">Aucune dépense.</p> }
     </section>
 
-    @if (onglet() === 'caisse' && auth.peut('depenses.petite_caisse.doter')) {
+    @if ((onglet() === 'caisse' || onglet() === 'procedure') && auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
-        <h3>Petite caisse — dotation mensuelle</h3>
-        <p class="muted">Mois en cours ({{ moisCourant.slice(0, 7) }}) : dotation <b>{{ caisse()?.dotation ?? 0 | number }}</b> FCFA · dépensé <b>{{ caisse()?.depense ?? 0 | number }}</b> FCFA · solde <b>{{ caisse()?.solde ?? 0 | number }}</b> FCFA.
+        <h3>{{ nomCaisse() }} — dotation mensuelle</h3>
+        <p class="muted">Mois en cours ({{ moisCourant.slice(0, 7) }}) : dotation <b>{{ caisseActive()?.dotation ?? 0 | number }}</b> FCFA · dépensé <b>{{ caisseActive()?.depense ?? 0 | number }}</b> FCFA · solde <b>{{ caisseActive()?.solde ?? 0 | number }}</b> FCFA.
           Chaque mois est indépendant : le solde non dépensé n'est pas reporté sur le mois suivant.</p>
         <div class="upload" id="formDotation" appRaccourcis (entree)="definirDotation()"
              [entreeActive]="dotationMontant !== null && dotationMontant !== undefined && !dotationEnCours()">
@@ -421,13 +425,13 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (onglet() === 'caisse' && auth.peut('depenses.engager')) {
+    @if ((onglet() === 'caisse' || onglet() === 'procedure') && auth.peut('depenses.engager')) {
       <section class="panel">
-        <h3>Petite caisse — engager une petite dépense</h3>
+        <h3>{{ nomCaisse() }} — engager une dépense</h3>
         <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
-          Plafond par dépense : <b>{{ caisse()?.plafond_depense != null ? (caisse()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
-          solde du mois : <b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).
-          Natures acceptées : {{ libellesPC() }}. Le plafond s'applique au cumul sur {{ caisse()?.fenetre_jours ?? 7 }} jours (même bénéficiaire, même nature, même dossier).</p>
+          Plafond par dépense : <b>{{ caisseActive()?.plafond_depense != null ? (caisseActive()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
+          solde du mois : <b>{{ caisseActive()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).
+          Natures acceptées : {{ libellesPC() }}. Le plafond s'applique au cumul sur {{ caisseActive()?.fenetre_jours ?? 7 }} jours (même bénéficiaire, même nature, même dossier).</p>
         <div class="grid2" appRaccourcis (entree)="engager()"
              [entreeActive]="!!engagement.libelle && !!engagement.montant && !!engagement.categorie && !!(engagement.beneficiaire || '').trim() && !(engagement.nature === 'dossier' && !engagement.dossier_id) && !engagementEnCours() && engagementValide()">
           <div class="col2"><label>Libellé</label><input class="in" [(ngModel)]="engagement.libelle" name="engLibelle" /></div>
@@ -441,6 +445,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           </div>
           <div><label>Bénéficiaire <span style="color:#b13a36">*</span></label><input class="in" maxlength="160" [(ngModel)]="engagement.beneficiaire" name="engBeneficiaire" placeholder="Fournisseur ou personne payée" /></div>
           <app-reglement-form sens="decaissement" cleMode="mode_paiement" [modele]="engagement" [catalogue]="catalogue()" (validite)="engagementValide.set($event)"></app-reglement-form>
+          @if (onglet() !== 'procedure') {
           <div>
             <label>Nature</label>
             <select class="in" [(ngModel)]="engagement.nature" name="engNature">
@@ -448,6 +453,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <option value="dossier">Charge liée à un dossier</option>
             </select>
           </div>
+          }
           @if (engagement.nature === 'dossier') {
             <div><label>Dossier concerné</label>
               <app-dossier-picker [valeur]="engagement.dossier_id" (valeurChange)="engagement.dossier_id = $event"></app-dossier-picker></div>
@@ -460,10 +466,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (onglet() === 'caisse' && auth.peut('depenses.petite_caisse.doter')) {
+    @if ((onglet() === 'caisse' || onglet() === 'procedure') && auth.peut('depenses.petite_caisse.doter')) {
       <section class="panel">
-        <h3>Petite caisse — rapprochement mensuel</h3>
-        <p class="muted">Comparez le solde calculé par JURIA (<b>{{ caisse()?.solde ?? 0 | number }} FCFA</b>) au solde réel du porte-monnaie mobile money (relevé de l'opérateur) ou au comptage des espèces.</p>
+        <h3>{{ nomCaisse() }} — rapprochement mensuel</h3>
+        <p class="muted">Comparez le solde calculé par JURIA (<b>{{ caisseActive()?.solde ?? 0 | number }} FCFA</b>) au solde réel du porte-monnaie mobile money (relevé de l'opérateur) ou au comptage des espèces.</p>
         <div class="upload" appRaccourcis (entree)="rapprocher()" [entreeActive]="rapSoldeReel !== null && !rapEnCours()">
           <input class="sel" type="number" [(ngModel)]="rapSoldeReel" name="rapSoldeReel" placeholder="Solde réel constaté (FCFA)" style="min-width:220px" />
           <input class="sel" [(ngModel)]="rapNote" name="rapNote" placeholder="Note (facultatif)" style="min-width:240px" />
@@ -485,7 +491,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </section>
     }
 
-    @if (onglet() === 'cabinet') {
+    @if (onglet() === 'procedure') {
     <section class="panel">
       <h3>Vignettes de plaidoirie</h3>
       <p class="muted">Approvisionnement du stock uniquement — la consommation d'une vignette se fait désormais depuis l'instance concernée (fiche dossier → Instances), avec traçabilité (numéro, mode d'honoraires renseigné).</p>
@@ -605,7 +611,8 @@ export class DepensesComponent implements OnInit {
   filtreRecherche = '';
   masquerAnnulees = false;
   readonly synthese = signal<any | null>(null);
-  readonly onglet = signal<'cabinet' | 'caisse' | 'tout'>('cabinet');
+  readonly onglet = signal<'cabinet' | 'caisse' | 'procedure' | 'tout'>('cabinet');
+  readonly caisseProc = signal<any | null>(null);
   private minuteurRecherche: any = null;
   form: any = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
   moisCourant = new Date().toISOString().slice(0, 8) + '01';
@@ -640,7 +647,8 @@ export class DepensesComponent implements OnInit {
     let memo: string | null = null;
     try { memo = localStorage.getItem('juria.depenses.onglet'); } catch { /* sans effet */ }
     const demande = params.get('onglet') ?? (params.get('depense') || params.get('statut') || params.get('dossier') ? 'tout' : memo);
-    this.onglet.set(demande === 'caisse' || demande === 'tout' ? demande : 'cabinet');
+    this.onglet.set(demande === 'caisse' || demande === 'procedure' || demande === 'tout' ? demande : 'cabinet');
+    this.engagement = this.engagementVide();
     this.filtreCaisse = this.caisseDeOnglet();
     this.charger();
     this.api.moyensDecaissement().subscribe({ next: (m) => this.catalogue.set(m), error: () => {} });
@@ -659,7 +667,7 @@ export class DepensesComponent implements OnInit {
     const dossierId = this.filtreDossierId();
     this.api.depenses({
       statut: this.filtreStatut, type: this.filtreType, categorie: this.filtreCategorie, nature: this.filtreNature,
-      petite_caisse: this.filtreCaisse, ordre: this.filtreOrdre, apres_coup: this.filtreApresCoup, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
+      caisse: this.filtreCaisse, ordre: this.filtreOrdre, apres_coup: this.filtreApresCoup, du: this.filtreDu, au: this.filtreAu, q: this.filtreRecherche.trim(),
       masquer_annulees: this.masquerAnnulees, ...(dossierId ? { dossier_id: dossierId } : {}),
     }).subscribe({ next: (d) => { this.depenses.set(d); this.viserDepense(); } });
     this.chargerSynthese();
@@ -688,7 +696,7 @@ export class DepensesComponent implements OnInit {
   chargerSynthese(): void {
     this.api.syntheseDepenses().subscribe({ next: (r) => this.synthese.set(r), error: () => {} });
   }
-  sy(groupe: 'cabinet' | 'petite_caisse', cle: string): { nb: number; total: number } {
+  sy(groupe: 'cabinet' | 'petite_caisse' | 'procedure', cle: string): { nb: number; total: number } {
     return this.synthese()?.[groupe]?.[cle] ?? { nb: 0, total: 0 };
   }
   /** Compteur de l'onglet courant : cabinet seul, petite caisse seule, ou les deux (« tout »). */
@@ -696,17 +704,29 @@ export class DepensesComponent implements OnInit {
     const a = this.sy('cabinet', cle);
     if (this.onglet() === 'cabinet') return a;
     const b = this.sy('petite_caisse', cle);
-    return { nb: a.nb + b.nb, total: a.total + b.total };
+    const c = this.sy('procedure', cle);
+    return { nb: a.nb + b.nb + c.nb, total: a.total + b.total + c.total };
   }
   /** Pastille de l'onglet : ce qui attend une action de la personne connectée. */
-  aTraiter(groupe: 'cabinet' | 'petite_caisse'): number {
-    if (groupe === 'petite_caisse') return this.sy('petite_caisse', 'apres_coup').nb + this.sy('petite_caisse', 'decider').nb;
+  aTraiter(groupe: 'cabinet' | 'petite_caisse' | 'procedure'): number {
+    if (groupe !== 'cabinet') return this.sy(groupe, 'apres_coup').nb + this.sy(groupe, 'decider').nb;
     return this.auth.peut('depenses.decision')
       ? this.sy('cabinet', 'decider').nb + this.sy('cabinet', 'ordonner').nb
       : this.sy('cabinet', 'decaisser').nb;
   }
-  private caisseDeOnglet(): string { return this.onglet() === 'cabinet' ? 'false' : this.onglet() === 'caisse' ? 'true' : ''; }
-  changerOnglet(o: 'cabinet' | 'caisse' | 'tout'): void {
+  private caisseDeOnglet(): string { return this.onglet() === 'cabinet' ? 'cabinet' : this.onglet() === 'caisse' ? 'petite_caisse' : this.onglet() === 'procedure' ? 'procedure' : ''; }
+  // Caisse affichée dans l'onglet courant (lot D) : « petite_caisse » ou « procedure » (frais de justice & débours).
+  caisseCode(): string { return this.onglet() === 'procedure' ? 'procedure' : 'petite_caisse'; }
+  groupeCaisse(): 'petite_caisse' | 'procedure' { return this.onglet() === 'procedure' ? 'procedure' : 'petite_caisse'; }
+  caisseActive(): any | null { return this.onglet() === 'procedure' ? this.caisseProc() : this.caisse(); }
+  nomCaisse(): string { return this.onglet() === 'procedure' ? 'Frais de justice & débours' : 'Petite caisse'; }
+  nomCaisseMin(): string { return this.onglet() === 'procedure' ? 'frais de justice & débours' : 'petite caisse'; }
+  private engagementVide(): any {
+    return this.onglet() === 'procedure'
+      ? { nature: 'dossier', mode_paiement: 'especes', refacturable_client: true }
+      : { nature: 'cabinet', mode_paiement: 'orange_money' };
+  }
+  changerOnglet(o: 'cabinet' | 'caisse' | 'procedure' | 'tout'): void {
     if (o === this.onglet()) return;
     this.onglet.set(o);
     try { localStorage.setItem('juria.depenses.onglet', o); } catch { /* sans effet */ }
@@ -714,6 +734,9 @@ export class DepensesComponent implements OnInit {
     this.panneauId.set(null); this.decaissementId.set(null); this.editionId.set(null); this.piecesId.set(null);
     this.filtreCaisse = this.caisseDeOnglet();
     this.filtreStatut = ''; this.filtreOrdre = ''; this.filtreApresCoup = '';
+    this.engagement = this.engagementVide();
+    this.engagementMessage.set('');
+    if (this.auth.peut('depenses.petite_caisse.doter')) { this.chargerRapprochements(); this.chargerDotations(); }
     this.charger();
   }
   filtreOrdre = '';
@@ -729,6 +752,7 @@ export class DepensesComponent implements OnInit {
 
   chargerCaisse(): void {
     this.api.petiteCaisse(this.moisCourant).subscribe({ next: (c) => this.caisse.set(c) });
+    this.api.petiteCaisse(this.moisCourant, 'procedure').subscribe({ next: (c) => this.caisseProc.set(c), error: () => {} });
   }
 
   // 28/09/2026 — audit menu par menu : catégorie/statut affichés en code
@@ -822,7 +846,7 @@ export class DepensesComponent implements OnInit {
     });
   }
   readonly dotations = signal<any[]>([]);
-  chargerDotations(): void { this.api.dotationsPetiteCaisse().subscribe({ next: (r) => this.dotations.set(r), error: () => {} }); }
+  chargerDotations(): void { this.api.dotationsPetiteCaisse(this.caisseCode()).subscribe({ next: (r) => this.dotations.set(r), error: () => {} }); }
   readonly dotationCorrection = signal('');
   corrigerDotation(dt: any): void {
     this.dotationMois = String(dt.mois).slice(0, 7);
@@ -869,19 +893,19 @@ export class DepensesComponent implements OnInit {
     if (this.engagementEnCours()) return;
     this.erreur.set(''); this.engagementMessage.set('');
     this.engagementEnCours.set(true);
-    this.api.engagerDepense(this.engagement).subscribe({
+    this.api.engagerDepense({ ...this.engagement, caisse: this.caisseCode() }).subscribe({
       next: (r) => {
         this.engagementEnCours.set(false);
         this.engagementMessage.set(`Dépense engagée — solde restant : ${Number(r.solde_restant).toLocaleString('fr-FR')} FCFA. Elle doit être validée par un autre associé.`);
-        this.engagement = { nature: 'cabinet', mode_paiement: this.engagement.mode_paiement };
-        this.charger(); this.chargerCaisse();
+        this.engagement = { ...this.engagementVide(), mode_paiement: this.engagement.mode_paiement };
+        this.charger(); this.chargerCaisse(); this.chargerSynthese();
       },
       error: (e) => { this.engagementEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Engagement impossible.'); },
     });
   }
   // Natures acceptées sur la petite caisse (lot B, 11/11/2026) : liste réglée par les associés, servie avec la caisse.
   categoriesPC(): CategorieDepense[] {
-    const ok = this.caisse()?.categories_autorisees as string[] | undefined;
+    const ok = this.caisseActive()?.categories_autorisees as string[] | undefined;
     return ok ? CATEGORIES_DEPENSE.filter((c) => ok.includes(c.code)) : [];
   }
   libellesPC(): string { return this.categoriesPC().map((c) => c.libelle).join(', ') || 'aucune (à régler dans Accès & permissions → Seuils)'; }
@@ -890,12 +914,12 @@ export class DepensesComponent implements OnInit {
   rapNote = '';
   readonly rapEnCours = signal(false);
   chargerRapprochements(): void {
-    this.api.rapprochementsPetiteCaisse().subscribe({ next: (r) => this.rapprochements.set(r), error: () => {} });
+    this.api.rapprochementsPetiteCaisse(this.caisseCode()).subscribe({ next: (r) => this.rapprochements.set(r), error: () => {} });
   }
   rapprocher(): void {
     if (this.rapSoldeReel === null || this.rapEnCours()) return;
     this.rapEnCours.set(true);
-    this.api.rapprocherPetiteCaisse({ solde_reel: this.rapSoldeReel, note: this.rapNote || undefined }).subscribe({
+    this.api.rapprocherPetiteCaisse({ solde_reel: this.rapSoldeReel, note: this.rapNote || undefined, caisse: this.caisseCode() }).subscribe({
       next: () => { this.rapEnCours.set(false); this.rapSoldeReel = null; this.rapNote = ''; this.chargerRapprochements(); },
       error: (e) => { this.rapEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Enregistrement impossible.'); },
     });
@@ -1113,7 +1137,7 @@ export class DepensesComponent implements OnInit {
     if (this.dotationMontant === null || this.dotationMontant === undefined || (this.dotationMontant as any) === '' || this.dotationEnCours()) return;
     this.erreur.set('');
     this.dotationEnCours.set(true);
-    this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant).subscribe({
+    this.api.definirDotationCaisse(this.dotationMois, this.dotationMontant, this.caisseCode()).subscribe({
       next: () => { this.dotationEnCours.set(false); this.dotationMontant = null; this.dotationCorrection.set(''); this.chargerCaisse(); this.chargerDotations(); },
       error: (e) => { this.dotationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Dotation impossible.'); },
     });

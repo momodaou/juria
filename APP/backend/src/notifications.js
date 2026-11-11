@@ -9,6 +9,10 @@ const bus = require("./messagerie-bus");
 
 // Catalogue : niveau par défaut, délai du repli par e-mail (en jours ouvrés × 24 h : voir heuresOuvrees), texte et lien.
 // repliHeures = null : jamais d'e-mail de repli pour ce type.
+// Nom de la deuxième caisse (lot D) : un seul endroit à changer.
+const NOM_CAISSE_PROCEDURE = "la caisse frais de justice & débours";
+const laCaisse = (c) => (c && c.caisse === "procedure" ? NOM_CAISSE_PROCEDURE : "la petite caisse");
+
 const CATALOGUE = {
   diligence_assignee: { niveau: "action", repliHeures: 4, texte: (c) => `Une diligence vous est confiée${c.date ? " (le " + jourFr(c.date) + ")" : ""}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/role-audience?diligence=${c.ref}` : "/role-audience") },
   diligence_modifiee: { niveau: "information", repliHeures: null, texte: (c) => `Une diligence qui vous est confiée est ${c.statut === "annule" ? "annulée" : "reportée"}${c.dossier ? " — dossier " + c.dossier : ""}.`, lien: (c) => (c.ref ? `/role-audience?diligence=${c.ref}` : "/role-audience") },
@@ -26,12 +30,12 @@ const CATALOGUE = {
   depenses_a_decaisser: { niveau: "action", repliHeures: 24, texte: (c, n) => (n > 1 ? `${n} dépenses validées sont à décaisser.` : "Une dépense validée est à décaisser."), lien: () => "/depenses?statut=validee" },
   depense_decaissee: { niveau: "information", repliHeures: null, texte: () => "Votre dépense a été décaissée.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
   depense_blocage: { niveau: "action", repliHeures: null, texte: (c) => `Le décaissement d'une dépense est bloqué${c.motif ? " : « " + c.motif + " »." : "."} Un nouvel ordre de paiement est attendu.`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
-  caisse_fractionnement: { niveau: "action", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} dépenses rapprochées sur la petite caisse font craindre un fractionnement.` : "Des dépenses rapprochées sur la petite caisse font craindre un fractionnement."), lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  caisse_fractionnement: { niveau: "action", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} dépenses rapprochées sur ${laCaisse(c)} font craindre un fractionnement.` : `Des dépenses rapprochées sur ${laCaisse(c)} font craindre un fractionnement.`), lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
   depense_annulee: { niveau: "information", repliHeures: null, texte: (c) => `Une dépense a été annulée${c.motif ? " : « " + c.motif + " »." : "."}`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
-  depense_apres_coup: { niveau: "action", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse attend votre validation après coup.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  depense_apres_coup: { niveau: "action", repliHeures: null, texte: (c) => `Une dépense engagée sur ${laCaisse(c)} attend votre validation après coup.`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
   depense_apres_coup_traitee: { niveau: "information", repliHeures: 24, texte: (c) => (c.decision === "contestee" ? `Votre dépense engagée est contestée${c.motif ? " : « " + c.motif + " »." : "."}` : "Votre dépense engagée a été validée."), lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
-  depense_contestee: { niveau: "information", repliHeures: null, texte: () => "Une dépense engagée sur la petite caisse a été contestée.", lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
-  caisse_alerte: { niveau: "action", repliHeures: 24, texte: (c) => (c.sujet === "solde_bas" ? "Le solde de la petite caisse est bas." : c.sujet === "non_dotee" ? "La petite caisse n'est pas dotée pour ce mois." : "Un écart a été constaté au rapprochement de la petite caisse."), lien: () => "/depenses" },
+  depense_contestee: { niveau: "information", repliHeures: null, texte: (c) => `Une dépense engagée sur ${laCaisse(c)} a été contestée.`, lien: (c) => (c.ref ? `/depenses?depense=${c.ref}` : "/depenses") },
+  caisse_alerte: { niveau: "action", repliHeures: 24, texte: (c) => (c.sujet === "solde_bas" ? `Le solde de ${laCaisse(c)} est bas.` : c.sujet === "non_dotee" ? "La petite caisse n'est pas dotée pour ce mois." : `Un écart a été constaté au rapprochement de ${laCaisse(c)}.`), lien: () => "/depenses" },
   etat_a_soumettre: { niveau: "action", repliHeures: 24, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est à soumettre aux associés.`, lien: (c) => (c.mois ? `/depenses/etat-charges?mois=${String(c.mois).slice(0, 7)}` : "/depenses/etat-charges") },
   etat_soumis: { niveau: "action", repliHeures: null, texte: (c) => `L'état de charges de ${moisFr(c.mois)} est soumis : des lignes attendent votre décision.`, lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },
   etat_lignes_decidees: { niveau: "information", repliHeures: null, texte: (c, n) => (n > 1 ? `${n} lignes de l'état de charges de ${moisFr(c.mois)} ont été décidées.` : `Une ligne de l'état de charges de ${moisFr(c.mois)} a été décidée.`), lien: (c) => (c.ref ? `/depenses/etat-charges?etat=${c.ref}` : "/depenses/etat-charges") },

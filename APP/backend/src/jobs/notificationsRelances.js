@@ -78,8 +78,8 @@ async function executerJobNotificationsRelances(pool, maintenant = new Date()) {
   // 6. Petite caisse non dotée pour le mois (à partir du 3, seulement si elle servait le mois précédent)
   if (jourMois >= 3) {
     const { rows: [dot] } = await pool.query(
-      `SELECT (SELECT count(*) FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', now())) AS courante,
-              (SELECT count(*) FROM dotations_petite_caisse WHERE date_trunc('month', mois) = date_trunc('month', now() - interval '1 month')) AS precedente`);
+      `SELECT (SELECT count(*) FROM dotations_petite_caisse WHERE caisse = 'petite_caisse' AND date_trunc('month', mois) = date_trunc('month', now())) AS courante,
+              (SELECT count(*) FROM dotations_petite_caisse WHERE caisse = 'petite_caisse' AND date_trunc('month', mois) = date_trunc('month', now() - interval '1 month')) AS precedente`);
     if (Number(dot.courante) === 0 && Number(dot.precedente) > 0 && !(await notif.dejaNotifie("caisse_alerte", "non_dotee:" + moisCourant))) {
       const crees = await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
         ref: "non_dotee:" + moisCourant, charge: { sujet: "non_dotee" } });

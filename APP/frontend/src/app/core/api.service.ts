@@ -157,6 +157,8 @@ export interface ParametresHonoraires {
   petite_caisse_plafond_depense: number | null;
   seuil_justificatif_decaissement: number;
   petite_caisse_categories: string[];
+  caisse_procedure_plafond_depense: number;
+  caisse_procedure_categories: string[];
 }
 
 // Identité du cabinet (en-tête facture/acte) — 28/08/2026, facture PDF enrichie.
@@ -960,7 +962,7 @@ export class ApiService {
   }
 
   // Dépenses & caisse
-  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean; categorie?: string; nature?: string; petite_caisse?: string; q?: string; du?: string; au?: string; masquer_annulees?: boolean; apres_coup?: string; ordre?: string } = {}): Observable<any[]> {
+  depenses(filtres: { type?: string; statut?: string; dossier_id?: string; a_refacturer?: boolean; categorie?: string; nature?: string; petite_caisse?: string; caisse?: string; q?: string; du?: string; au?: string; masquer_annulees?: boolean; apres_coup?: string; ordre?: string } = {}): Observable<any[]> {
     const params = new URLSearchParams();
     Object.entries(filtres).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
     const q = params.toString() ? `?${params.toString()}` : '';
@@ -1030,7 +1032,7 @@ export class ApiService {
   seuilsChemises(seuils: Record<string, number>): Observable<any> { return this.http.put<any>(`${this.base}/api/stock-chemises/seuils`, seuils); }
   apercuRegularisationChemises(): Observable<any> { return this.http.get<any>(`${this.base}/api/stock-chemises/regularisation`); }
   appliquerRegularisationChemises(exclure: string[]): Observable<any> { return this.http.post<any>(`${this.base}/api/stock-chemises/regularisation`, { exclure }); }
-  dotationsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/dotations`); }
+  dotationsPetiteCaisse(caisse = 'petite_caisse'): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/dotations?caisse=${caisse}`); }
   achatsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/achats`); }
   utilisationsVignettes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/vignettes/utilisations`); }
   annulerUtilisationVignette(id: string): Observable<any> { return this.http.delete(`${this.base}/api/depenses/vignettes/utilisations/${id}`); }
@@ -1043,16 +1045,16 @@ export class ApiService {
   validerDepenseApresCoup(id: string, decision: 'validee' | 'contestee', motif?: string): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/valider-apres-coup`, { decision, motif });
   }
-  rapprocherPetiteCaisse(payload: { solde_reel: number; note?: string; mois?: string }): Observable<any> {
+  rapprocherPetiteCaisse(payload: { solde_reel: number; note?: string; mois?: string; caisse?: string }): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/petite-caisse/rapprochement`, payload);
   }
-  rapprochementsPetiteCaisse(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/rapprochements`); }
-  petiteCaisse(mois?: string): Observable<any> {
-    const q = mois ? `?mois=${mois}` : '';
-    return this.http.get<any>(`${this.base}/api/depenses/petite-caisse${q}`);
+  rapprochementsPetiteCaisse(caisse = 'petite_caisse'): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/depenses/petite-caisse/rapprochements?caisse=${caisse}`); }
+  // 11/11/2026 (lot D) : « caisse » = 'petite_caisse' (défaut) ou 'procedure' (frais de justice & débours).
+  petiteCaisse(mois?: string, caisse = 'petite_caisse'): Observable<any> {
+    return this.http.get<any>(`${this.base}/api/depenses/petite-caisse?caisse=${caisse}${mois ? '&mois=' + mois : ''}`);
   }
-  definirDotationCaisse(mois: string, montant_alloue: number): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/depenses/petite-caisse`, { mois, montant_alloue });
+  definirDotationCaisse(mois: string, montant_alloue: number, caisse = 'petite_caisse'): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/petite-caisse`, { mois, montant_alloue, caisse });
   }
   stockVignettes(): Observable<{ stock: number; seuil: number }> {
     return this.http.get<{ stock: number; seuil: number }>(`${this.base}/api/depenses/vignettes/stock`);

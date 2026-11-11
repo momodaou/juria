@@ -190,6 +190,18 @@ import { CATEGORIES_DEPENSE } from '../../core/categories-depense';
               <label>Plafond par dépense — petite caisse (FCFA)</label>
               <input class="in" type="number" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
             </div>
+            <div>
+              <label>Plafond par dépense — caisse frais de justice &amp; débours (FCFA)</label>
+              <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.caisse_procedure_plafond_depense" name="plafondProcedure" />
+            </div>
+            <div style="grid-column:1 / -1">
+              <label>Natures de dépenses acceptées sur la caisse frais de justice &amp; débours</label>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:6px">
+                @for (c of categoriesDepense; track c.code) {
+                  <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" [checked]="categorieProcCochee(c.code)" (change)="basculerCategorieProc(c.code)" /> {{ c.libelle }}</label>
+                }
+              </div>
+            </div>
             <div style="grid-column:1 / -1">
               <label>Natures de dépenses acceptées sur la petite caisse</label>
               <p class="muted" style="margin:2px 0 6px">Hors de cette liste, la dépense passe par le circuit normal de validation. Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.</p>
@@ -402,6 +414,11 @@ export class AccesComponent implements OnInit {
   parametresEdit: Partial<ParametresHonoraires> = {};
   readonly categoriesDepense = CATEGORIES_DEPENSE;
   categorieCochee(code: string): boolean { return (this.parametresEdit.petite_caisse_categories ?? []).includes(code); }
+  categorieProcCochee(code: string): boolean { return (this.parametresEdit.caisse_procedure_categories ?? []).includes(code); }
+  basculerCategorieProc(code: string): void {
+    const l = this.parametresEdit.caisse_procedure_categories ?? [];
+    this.parametresEdit = { ...this.parametresEdit, caisse_procedure_categories: l.includes(code) ? l.filter((c) => c !== code) : [...l, code] };
+  }
   basculerCategorie(code: string): void {
     const l = this.parametresEdit.petite_caisse_categories ?? [];
     this.parametresEdit = { ...this.parametresEdit, petite_caisse_categories: l.includes(code) ? l.filter((c) => c !== code) : [...l, code] };
