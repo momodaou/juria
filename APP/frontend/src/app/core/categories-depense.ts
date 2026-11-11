@@ -47,3 +47,10 @@ export const CATEGORIES_CABINET = CATEGORIES_DEPENSE.filter((c) => c.groupe === 
 export const CATEGORIES_DEBOURS = CATEGORIES_DEPENSE.filter((c) => c.groupe === 'debours');
 export const estDebours = (code: string): boolean => CATEGORIES_DEBOURS.some((c) => c.code === code);
 export const libelleCategorieDepense = (code: string): string => CATEGORIES_DEPENSE.find((c) => c.code === code)?.libelle ?? code;
+
+// Listes proposées par « Valeurs par défaut » dans Accès & permissions → Seuils (copie des valeurs par défaut de schema.sql, 11/11/2026).
+export const NATURES_PETITE_CAISSE_DEFAUT: string[] = [
+  'transport', 'deplacement', 'carburant', 'restauration', 'fournitures', 'papeterie', 'petit_materiel', 'consommables',
+  'impressions', 'encres', 'reparation', 'entretien', 'nettoyage', 'credit_telephonique', 'frais_expedition'];
+export const NATURES_CAISSE_PROCEDURE_DEFAUT: string[] = [
+  'frais_procedure', 'frais_consignation', 'frais_grosse', 'frais_expedition', 'extrait_plumitif', 'frais_diligences', 'frais_huissier'];

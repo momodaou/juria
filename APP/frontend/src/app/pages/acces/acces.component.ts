@@ -7,12 +7,13 @@ import { CourrierReglagesComponent } from '../../core/courrier-reglages.componen
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { ROLES } from '../../core/roles';
-import { CATEGORIES_DEPENSE } from '../../core/categories-depense';
+import { NaturesDepensePickerComponent } from '../../core/natures-depense-picker.component';
+import { NATURES_PETITE_CAISSE_DEFAUT, NATURES_CAISSE_PROCEDURE_DEFAUT } from '../../core/categories-depense';
 
 @Component({
   selector: 'app-acces',
   standalone: true,
-  imports: [DatePipe, FormsModule, MenuActionsComponent, ComptesCabinetComponent, CourrierReglagesComponent],
+  imports: [DatePipe, FormsModule, MenuActionsComponent, ComptesCabinetComponent, CourrierReglagesComponent, NaturesDepensePickerComponent],
   template: `
     <header class="page-head">
       <div>
@@ -187,33 +188,34 @@ import { CATEGORIES_DEPENSE } from '../../core/categories-depense';
               <input class="in" type="number" [(ngModel)]="parametresEdit.seuil_alerte_vignettes" name="seuilVignettes" />
             </div>
             <div>
-              <label>Plafond par dépense — petite caisse (FCFA)</label>
-              <input class="in" type="number" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
-            </div>
-            <div>
-              <label>Plafond par dépense — caisse frais de justice &amp; débours (FCFA)</label>
-              <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.caisse_procedure_plafond_depense" name="plafondProcedure" />
-            </div>
-            <div style="grid-column:1 / -1">
-              <label>Natures de dépenses acceptées sur la caisse frais de justice &amp; débours</label>
-              <div style="display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:6px">
-                @for (c of categoriesDepense; track c.code) {
-                  <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" [checked]="categorieProcCochee(c.code)" (change)="basculerCategorieProc(c.code)" /> {{ c.libelle }}</label>
-                }
-              </div>
-            </div>
-            <div style="grid-column:1 / -1">
-              <label>Natures de dépenses acceptées sur la petite caisse</label>
-              <p class="muted" style="margin:2px 0 6px">Hors de cette liste, la dépense passe par le circuit normal de validation. Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.</p>
-              <div style="display:flex;flex-wrap:wrap;gap:6px 18px">
-                @for (c of categoriesDepense; track c.code) {
-                  <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" [checked]="categorieCochee(c.code)" (change)="basculerCategorie(c.code)" /> {{ c.libelle }}</label>
-                }
-              </div>
-            </div>
-            <div>
               <label>Justificatif exigé avant décaissement à partir de (FCFA)</label>
               <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.seuil_justificatif_decaissement" name="seuilJustificatif" placeholder="0 = non exigé" />
+            </div>
+          </div>
+          <div class="caisses-reglages">
+            <div class="bloc-caisse">
+              <h4>Petite caisse</h4>
+              <p class="muted">Dépenses courantes réglées tout de suite, validées après coup par un associé. Hors de la liste des natures, la dépense passe par le circuit normal de validation.
+                Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.</p>
+              <div class="bloc-plafond">
+                <label>Plafond par dépense (FCFA)</label>
+                <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
+              </div>
+              <label class="bloc-etiquette">Natures de dépenses acceptées</label>
+              <app-natures-depense-picker [selection]="parametresEdit.petite_caisse_categories ?? []" [defaut]="naturesPetiteCaisseDefaut"
+                (selectionChange)="parametresEdit = { ...parametresEdit, petite_caisse_categories: $event }"></app-natures-depense-picker>
+            </div>
+            <div class="bloc-caisse">
+              <h4>Caisse frais de justice &amp; débours</h4>
+              <p class="muted">Frais avancés pour un dossier (greffe, consignation, grosse, expéditions, huissier…) : dossier obligatoire, remboursable par le client par défaut.
+                Au-delà du plafond, la dépense passe par le circuit normal avec ordre de paiement.</p>
+              <div class="bloc-plafond">
+                <label>Plafond par dépense (FCFA)</label>
+                <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.caisse_procedure_plafond_depense" name="plafondProcedure" />
+              </div>
+              <label class="bloc-etiquette">Natures de dépenses acceptées</label>
+              <app-natures-depense-picker premier="debours" [selection]="parametresEdit.caisse_procedure_categories ?? []" [defaut]="naturesProcedureDefaut"
+                (selectionChange)="parametresEdit = { ...parametresEdit, caisse_procedure_categories: $event }"></app-natures-depense-picker>
             </div>
           </div>
           <button class="btn" (click)="enregistrerParametres()">Enregistrer</button>
@@ -317,6 +319,11 @@ import { CATEGORIES_DEPENSE } from '../../core/categories-depense';
     }
   `,
   styles: [`
+    .caisses-reglages{display:grid;grid-template-columns:1fr;gap:16px;margin:18px 0 14px}
+    .bloc-caisse{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fbfcfd}
+    .bloc-caisse h4{margin:0 0 4px;font-size:var(--fs-lg);color:var(--navy)}
+    .bloc-plafond{max-width:320px;margin:10px 0 14px}
+    .bloc-etiquette{display:block;margin-bottom:8px}
     /* 09/10/2026 — filtres du journal d'audit. */
     .audit-filtres{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
     /* 26/09/2026 — audit doublons, même style que clients.component.ts. */
@@ -412,17 +419,8 @@ export class AccesComponent implements OnInit {
   readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null } | null>(null);
   readonly emailsMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
-  readonly categoriesDepense = CATEGORIES_DEPENSE;
-  categorieCochee(code: string): boolean { return (this.parametresEdit.petite_caisse_categories ?? []).includes(code); }
-  categorieProcCochee(code: string): boolean { return (this.parametresEdit.caisse_procedure_categories ?? []).includes(code); }
-  basculerCategorieProc(code: string): void {
-    const l = this.parametresEdit.caisse_procedure_categories ?? [];
-    this.parametresEdit = { ...this.parametresEdit, caisse_procedure_categories: l.includes(code) ? l.filter((c) => c !== code) : [...l, code] };
-  }
-  basculerCategorie(code: string): void {
-    const l = this.parametresEdit.petite_caisse_categories ?? [];
-    this.parametresEdit = { ...this.parametresEdit, petite_caisse_categories: l.includes(code) ? l.filter((c) => c !== code) : [...l, code] };
-  }
+  readonly naturesPetiteCaisseDefaut = NATURES_PETITE_CAISSE_DEFAUT;
+  readonly naturesProcedureDefaut = NATURES_CAISSE_PROCEDURE_DEFAUT;
   readonly delegations = signal<any[]>([]);
   // 09/10/2026 — catalogue des 80 actions pour le sélecteur "Action
   // déléguée" (route dédiée, distincte de GET /api/acces/permissions qui expose
