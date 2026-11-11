@@ -196,13 +196,14 @@ import { NATURES_PETITE_CAISSE_DEFAUT, NATURES_CAISSE_PROCEDURE_DEFAUT } from '.
             <div class="bloc-caisse">
               <h4>Petite caisse</h4>
               <p class="muted">Dépenses courantes réglées tout de suite, validées après coup par un associé. Hors de la liste des natures, la dépense passe par le circuit normal de validation.
-                Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.</p>
+                Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.
+                Les débours et frais de procédure sont des frais de justice : ils relèvent de la caisse ci-dessous.</p>
               <div class="bloc-plafond">
                 <label>Plafond par dépense (FCFA)</label>
                 <input class="in" type="number" min="0" [(ngModel)]="parametresEdit.petite_caisse_plafond_depense" name="plafondPetiteCaisse" placeholder="non défini : engagement impossible" />
               </div>
               <label class="bloc-etiquette">Natures de dépenses acceptées</label>
-              <app-natures-depense-picker [selection]="parametresEdit.petite_caisse_categories ?? []" [defaut]="naturesPetiteCaisseDefaut"
+              <app-natures-depense-picker [groupesAffiches]="['cabinet']" [selection]="parametresEdit.petite_caisse_categories ?? []" [defaut]="naturesPetiteCaisseDefaut"
                 (selectionChange)="parametresEdit = { ...parametresEdit, petite_caisse_categories: $event }"></app-natures-depense-picker>
             </div>
             <div class="bloc-caisse">

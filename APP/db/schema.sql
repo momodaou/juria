@@ -5859,3 +5859,17 @@ ALTER TABLE rapprochements_petite_caisse ADD COLUMN IF NOT EXISTS caisse VARCHAR
 -- ============================================================
 ALTER TABLE instances ADD COLUMN IF NOT EXISTS vignette_dispensee BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS vignettes_suivi_depuis DATE NOT NULL DEFAULT current_date;
+
+-- ============================================================
+--  DÉBOURS = FRAIS DE JUSTICE (11/11/2026) : les catégories « débours et frais de procédure » ne sont plus acceptées sur la petite
+--  caisse (elles relèvent de la caisse « frais de justice & débours » ou du circuit normal). La liste par défaut de la petite caisse
+--  perd « frais d'expédition » ; les listes déjà enregistrées sont nettoyées. La dépense d'une vignette affectée reste sans caisse
+--  (l'argent est sorti à l'achat du stock) mais s'affiche dans l'onglet « frais de justice & débours ».
+-- ============================================================
+ALTER TABLE parametres_cabinet ALTER COLUMN petite_caisse_categories SET DEFAULT ARRAY[
+  'transport','deplacement','carburant','restauration','fournitures','papeterie','petit_materiel','consommables',
+  'impressions','encres','reparation','entretien','nettoyage','credit_telephonique'];
+UPDATE parametres_cabinet SET petite_caisse_categories = ARRAY(
+  SELECT c FROM unnest(petite_caisse_categories) AS c
+   WHERE c NOT IN ('vignette_plaidoirie','frais_procedure','frais_consignation','frais_grosse','frais_expedition','extrait_plumitif','frais_diligences','frais_huissier'))
+ WHERE id = 1;

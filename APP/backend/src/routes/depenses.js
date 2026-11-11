@@ -11,6 +11,7 @@ const { logAudit } = require("../audit");
 const notif = require("../notifications");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, requireAnyPermission, estAutorise } = require("../permissions");
+const { CATEGORIES_DEBOURS, estDebours } = require("../categoriesDepense");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 }, fileFilter: filtreTypeFichier });
 const router = express.Router();
 
@@ -70,15 +71,19 @@ async function plafondCaisse(c, db = pool) {
 }
 async function categoriesCaisse(c, db = pool) {
   const { rows: [r] } = await db.query(`SELECT ${c.categories} AS c FROM parametres_cabinet WHERE id = 1`);
-  return (r && r.c) || [];
+  const liste = (r && r.c) || [];
+  // Les débours et frais de procédure sont des frais de justice : jamais acceptés sur la petite caisse, quoi que contienne la liste.
+  return c.code === "petite_caisse" ? liste.filter((x) => !estDebours(x)) : liste;
 }
 const categoriesPetiteCaisse = (db = pool) => categoriesCaisse(CAISSES.petite_caisse, db);
 const msgCategorie = (c) => `Cette nature de dépense n'est pas autorisée sur ${c.nom} (Accès & permissions → Seuils). Soumettez-la au circuit normal de validation.`;
 const MSG_CATEGORIE = msgCategorie(CAISSES.petite_caisse);
+const MSG_DEBOURS = "Les débours et frais de procédure sont des frais de justice : ils s'engagent sur la caisse « frais de justice & débours » (ou par le circuit normal de validation), pas sur la petite caisse.";
 
 // Renvoie un message d'erreur, ou null si l'engagement est acceptable.
 async function controlerCaisse(c, { categorie, beneficiaire, dossierId, montant, date, plafond, exclureId = null }) {
   if (!categorie) return `Choisissez la catégorie de la dépense : ${c.nom} n'accepte que certaines natures de dépenses.`;
+  if (c.code === "petite_caisse" && estDebours(categorie)) return MSG_DEBOURS;
   if (!(await categoriesCaisse(c)).includes(categorie)) return msgCategorie(c);
   if (c.dossierObligatoire && !dossierId) return `Une dépense sur ${c.nom} doit être rattachée à un dossier.`;
   if (!beneficiaire) return `Le bénéficiaire est obligatoire sur ${c.nom} (la personne ou l'organisme payé).`;
@@ -208,6 +213,7 @@ router.get("/", requirePermission("depenses.consulter"), async (req, res) => {
   if (nature) { params.push(nature); clauses.push(`d.nature = $${params.length}`); }
   if (petite_caisse !== undefined) { params.push(petite_caisse === "true"); clauses.push(`d.petite_caisse = $${params.length}`); }
   // Caisse (lot D) : « cabinet » = hors petite caisse et hors caisse frais de justice ; « petite_caisse » ; « procedure ».
+  // Les vignettes se paient hors des caisses (stock acheté) : leur dépense reste avec les dépenses du cabinet.
   if (req.query.caisse === "cabinet") clauses.push("d.petite_caisse = FALSE AND d.caisse_procedure = FALSE");
   else if (req.query.caisse === "petite_caisse") clauses.push("d.petite_caisse = TRUE");
   else if (req.query.caisse === "procedure") clauses.push("d.caisse_procedure = TRUE");
@@ -284,6 +290,7 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   const b = { ...(req.body || {}) };
   // Le moyen et le compte relèvent de l'ordre de paiement des associés : ignorés pour les autres déposants.
   if (!(await profilReglement(req)).decideur) { delete b.mode_paiement; delete b.compte_id; delete b.references; }
+  if (b.petite_caisse && estDebours(b.categorie)) return res.status(409).json({ error: MSG_DEBOURS });
   if (b.petite_caisse && !(await categoriesPetiteCaisse()).includes(b.categorie || "autre")) return res.status(409).json({ error: MSG_CATEGORIE });
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
   const n = resoudreNature(b, null);
@@ -697,6 +704,7 @@ router.put("/:id", requirePermission("depenses.creer"), async (req, res) => {
     const { rows: [actuelle] } = await pool.query("SELECT soumis_par, statut, nature, dossier_id, petite_caisse, categorie FROM depenses WHERE id = $1", [req.params.id]);
     if (!actuelle) return res.status(404).json({ error: "Dépense introuvable" });
     const veutPetiteCaisse = b.petite_caisse !== undefined ? !!b.petite_caisse : actuelle.petite_caisse;
+    if (veutPetiteCaisse && estDebours(b.categorie || actuelle.categorie)) return res.status(409).json({ error: MSG_DEBOURS });
     if (veutPetiteCaisse && !(await categoriesPetiteCaisse()).includes(b.categorie || actuelle.categorie)) return res.status(409).json({ error: MSG_CATEGORIE });
     const n = resoudreNature(b, actuelle);
     if (n.erreur) return res.status(400).json({ error: n.erreur });

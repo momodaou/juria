@@ -21,6 +21,7 @@ const { requirePermission } = require("../permissions");
 const { validerCompte, TYPES_ACTIFS } = require("../comptesCabinet");
 const { etatSuspension } = require("../suspensionEmails");
 const { logAudit } = require("../audit");
+const { estDebours } = require("../categoriesDepense");
 const router = express.Router();
 
 // GET /api/parametres/honoraires — lecture ouverte à tout utilisateur
@@ -62,6 +63,9 @@ router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), a
     };
     const pc = listeCategories(b.petite_caisse_categories, "la petite caisse");
     if (pc.erreur) return res.status(400).json({ error: pc.erreur });
+    if (pc.valeur && pc.valeur.some((c) => estDebours(c))) {
+      return res.status(400).json({ error: "Les débours et frais de procédure sont des frais de justice : ils ne peuvent pas être acceptés sur la petite caisse." });
+    }
     const proc = listeCategories(b.caisse_procedure_categories, "la caisse frais de justice & débours");
     if (proc.erreur) return res.status(400).json({ error: proc.erreur });
     const categories = pc.valeur;

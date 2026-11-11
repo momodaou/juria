@@ -12,7 +12,7 @@ interface Groupe { cle: string; titre: string; items: CategorieDepense[]; }
   template: `
     <div class="cp">
       <div class="cp-tete">
-        <span class="cp-compteur"><b>{{ selection.length }}</b> nature{{ selection.length > 1 ? 's' : '' }} retenue{{ selection.length > 1 ? 's' : '' }} sur {{ total() }}</span>
+        <span class="cp-compteur"><b>{{ nbRetenues() }}</b> nature{{ nbRetenues() > 1 ? 's' : '' }} retenue{{ nbRetenues() > 1 ? 's' : '' }} sur {{ total() }}</span>
         @if (defaut.length) { <button type="button" class="cp-lien" (click)="selectionChange.emit([...defaut])">Valeurs par défaut</button> }
       </div>
       @for (g of groupes(); track g.cle) {
@@ -63,13 +63,19 @@ export class NaturesDepensePickerComponent {
   @Input() defaut: string[] = [];
   /** Groupe affiché en premier. */
   @Input() premier: 'cabinet' | 'debours' = 'cabinet';
+  /** Groupes proposés (la petite caisse n'affiche pas les débours : frais de justice). */
+  @Input() groupesAffiches: ('cabinet' | 'debours')[] = ['cabinet', 'debours'];
   @Output() selectionChange = new EventEmitter<string[]>();
 
   private readonly cabinet: Groupe = { cle: 'cabinet', titre: 'Charges du cabinet', items: CATEGORIES_CABINET };
   private readonly debours: Groupe = { cle: 'debours', titre: 'Débours et frais de procédure', items: CATEGORIES_DEBOURS };
 
-  groupes(): Groupe[] { return this.premier === 'debours' ? [this.debours, this.cabinet] : [this.cabinet, this.debours]; }
-  total(): number { return CATEGORIES_CABINET.length + CATEGORIES_DEBOURS.length; }
+  groupes(): Groupe[] {
+    const tous = this.premier === 'debours' ? [this.debours, this.cabinet] : [this.cabinet, this.debours];
+    return tous.filter((g) => this.groupesAffiches.includes(g.cle as 'cabinet' | 'debours'));
+  }
+  total(): number { return this.groupes().reduce((n, g) => n + g.items.length, 0); }
+  nbRetenues(): number { return this.groupes().reduce((n, g) => n + this.nbChoisies(g), 0); }
   coche(code: string): boolean { return this.selection.includes(code); }
   nbChoisies(g: Groupe): number { return g.items.filter((c) => this.coche(c.code)).length; }
   basculer(code: string): void {
