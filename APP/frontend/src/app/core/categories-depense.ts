@@ -36,7 +36,7 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
   { code: 'frais_procedure', libelle: 'Frais de procédure', groupe: 'debours' },
   { code: 'frais_consignation', libelle: 'Frais de consignation', groupe: 'debours' },
   { code: 'frais_grosse', libelle: 'Frais de grosse de jugement', groupe: 'debours' },
-  { code: 'frais_expedition', libelle: 'Frais d’expédition (courrier, actes, jugements)', groupe: 'debours' },
+  { code: 'frais_expedition', libelle: 'Courrier, affranchissement et expéditions (actes, jugements)', groupe: 'debours' },
   { code: 'extrait_plumitif', libelle: 'Extrait de plumitif', groupe: 'debours' },
   { code: 'frais_diligences', libelle: 'Frais de diligences', groupe: 'debours' },
   { code: 'frais_huissier', libelle: 'Frais d’huissier', groupe: 'debours' },
