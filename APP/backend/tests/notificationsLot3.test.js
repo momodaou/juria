@@ -21,6 +21,10 @@ async function creer(role) {
     [`T${sfx.slice(0, 7)}`, `test.l3.${sfx}@jfcavocats-mali.com`, hash, role]);
   return { id: rows[0].id, role, email: `test.l3.${sfx}@jfcavocats-mali.com`, token: jwt.sign({ sub: rows[0].id, role, nom: "Test L3" }, SECRET, { expiresIn: "1h" }) };
 }
+// Réglages personnels (12/11/2026) : les récaps du matin et du soir sont désactivés par défaut ; la personne les active.
+const accepterRecapsQuotidiens = (...us) => Promise.all(us.map((u) => pool.query(
+  `INSERT INTO preferences_notifications (utilisateur_id, recap_lundi, recap_quotidien, email_urgence) VALUES ($1, true, true, true)
+   ON CONFLICT (utilisateur_id) DO UPDATE SET recap_quotidien = true`, [u.id])));
 const interrupteur = (v) => pool.query("UPDATE parametres_cabinet SET notifications_email_actif = $1 WHERE id = 1", [v]);
 const vers = (u) => envoyerEmail.mock.calls.map((c) => c[0]).filter((m) => m.to === u.email);
 const mercredi = new Date("2026-11-11T08:00:00Z"), lundi = new Date("2026-11-09T07:00:00Z"), samedi = new Date("2026-11-14T08:00:00Z");
@@ -44,6 +48,9 @@ describe("Récapitulatif du matin (dépenses)", () => {
     const adminG = await creer("admin_general"), assoc = await creer("associe");
     await request(app).post("/api/depenses").set(auth(adminG)).send({ type: "ponctuelle", libelle: "Secret fournisseur L3", montant: 987654 });
     await interrupteur(true);
+    await executerRecapMatin(pool, mercredi);
+    expect(vers(assoc)).toHaveLength(0); // par défaut : pas de récap du matin tant que la personne ne l'a pas demandé
+    await accepterRecapsQuotidiens(assoc);
     const r = await executerRecapMatin(pool, mercredi);
     expect(r.envoyes).toBeGreaterThanOrEqual(1);
     const m = vers(assoc);
@@ -90,6 +97,7 @@ describe("Création de dossier : récapitulatif du soir à la place de l'e-mail 
     const collab = await creer("collaborateur"), assoc = await creer("associe"), adminG = await creer("admin_general");
     await pool.query("UPDATE utilisateurs SET actif = FALSE WHERE id <> ALL($1::uuid[]) AND role IN ('associe','admin_general')", [[assoc.id, adminG.id]]);
     await interrupteur(true);
+    await accepterRecapsQuotidiens(assoc, adminG);
     const dossier = await creerDossier(collab, assoc);
     expect(envoyerEmail).not.toHaveBeenCalled();
     const r = await executerRecapCreations(pool, mercredi);

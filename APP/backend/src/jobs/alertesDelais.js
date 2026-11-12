@@ -5,6 +5,7 @@
 // Cloud Scheduler) — même logique, deux façons de la déclencher.
 const notif = require("../notifications");
 const mailer = require("../mailer");
+const prefs = require("../preferencesNotifications");
 
 async function executerJobAlertesDelais(pool) {
   // Centre de notifications (07/11/2026) : une notification n'est plus « à traiter » quand le délai n'est plus à venir.
@@ -41,9 +42,11 @@ async function executerJobAlertesDelais(pool) {
       // E-mail « tout de suite » seulement aux jalons J-15, J-7, J-1 et le jour même, et seulement si l'interrupteur
       // général des e-mails de notification est activé (désactivé par défaut). Texte minimal : référence du dossier seule.
       if (emailsActifs && ["alerte_j15", "alerte_j7", "alerte_j1", "alerte_j0"].includes(col)) {
-        const { rows: dest } = await pool.query(
-          "SELECT email, prenom FROM utilisateurs WHERE actif AND id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''",
+        const { rows: tous } = await pool.query(
+          "SELECT id, role, email, prenom FROM utilisateurs WHERE actif AND id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''",
           [[...new Set([e.responsable_id, e.dossier_responsable_id].filter(Boolean))]]);
+        // Réglages personnels (12/11/2026) : l'e-mail d'urgence se coupe, sauf pour les avocats (verrou).
+        const dest = await prefs.filtrer(tous, "email_urgence", pool);
         const base = process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
         for (const u of dest) {
           await mailer.envoyerEmail({

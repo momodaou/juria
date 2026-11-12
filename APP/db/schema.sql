@@ -5922,3 +5922,16 @@ UPDATE parametres_cabinet SET caisse_procedure_categories = ARRAY(
    WHERE c IN ('frais_greffe','frais_grosse','frais_consignation','extrait_plumitif','frais_huissier','frais_diligences',
                'frais_procedure','frais_expedition','timbres_enregistrement','extraits_pieces','traduction','annonces_legales'))
  WHERE id = 1;
+
+-- ============================================================
+--  RÉGLAGES PERSONNELS DE NOTIFICATION (12/11/2026)
+--  Trois cases par personne, qui ne décident que de recevoir EN PLUS un e-mail (la cloche, le bandeau et la bulle restent pour tous).
+--  Sans ligne : valeurs par défaut du rôle (voir backend/src/preferencesNotifications.js).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS preferences_notifications (
+  utilisateur_id  UUID PRIMARY KEY REFERENCES utilisateurs(id) ON DELETE CASCADE,
+  recap_lundi     BOOLEAN NOT NULL,
+  recap_quotidien BOOLEAN NOT NULL,
+  email_urgence   BOOLEAN NOT NULL,
+  modifie_le      TIMESTAMPTZ NOT NULL DEFAULT now()
+);

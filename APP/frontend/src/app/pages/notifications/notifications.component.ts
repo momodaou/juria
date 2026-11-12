@@ -1,7 +1,8 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { NotificationsService, FiltreNotifications } from '../../core/notifications.service';
+import { ApiService } from '../../core/api.service';
 
 // Écran « Notifications » (07/11/2026) : le centre de notifications en grand format, comme les autres menus. Mêmes données que la
 // cloche du menu (qui n'est plus qu'un raccourci avec sa pastille) : filtres, marquer comme lu, « Voir plus », activation des
@@ -68,6 +69,24 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
       }
     </section>
 
+    <section class="panel nt-prefs">
+      <h3>Mes préférences d'e-mail</h3>
+      <p class="muted">Ces réglages ne décident que de recevoir un e-mail <b>en plus</b>. Vos notifications arrivent toujours dans la cloche, le bandeau des urgences et, si vous les avez activées, les alertes du navigateur : elles ne se désactivent pas.</p>
+      @if (prefs(); as p) {
+        @if (!p.emails_actifs_cabinet) {
+          <p class="nt-note">Les e-mails de notification ne sont pas encore activés pour le cabinet : vos choix sont enregistrés et s'appliqueront à l'activation.</p>
+        }
+        <label class="nt-pref"><input type="checkbox" [checked]="p.valeurs.recap_lundi" (change)="changer('recap_lundi', $any($event.target).checked)" />
+          <span><b>Le point du lundi</b> : un e-mail le lundi matin avec vos tâches, vos diligences et, selon votre rôle, les retards à suivre.</span></label>
+        <label class="nt-pref"><input type="checkbox" [checked]="p.valeurs.recap_quotidien" (change)="changer('recap_quotidien', $any($event.target).checked)" />
+          <span><b>Les récapitulatifs du matin et du soir</b> (jours ouvrés) : dépenses en attente de décision le matin, dossiers créés dans la journée le soir, selon votre rôle.</span></label>
+        <label class="nt-pref"><input type="checkbox" [checked]="p.valeurs.email_urgence" [disabled]="p.verrouille.email_urgence" (change)="changer('email_urgence', $any($event.target).checked)" />
+          <span><b>L'e-mail d'urgence</b> : un délai de procédure qui approche, un état de charges soumis à votre décision.
+            @if (p.verrouille.email_urgence) { <i>Non modifiable pour les avocats : un délai de procédure ne doit jamais passer inaperçu.</i> }</span></label>
+        @if (messagePrefs()) { <p class="nt-ok">{{ messagePrefs() }}</p> }
+      }
+    </section>
+
     @if (svc.plusAnciennes()) {
       <p class="nt-plus"><button type="button" class="btn" [disabled]="svc.chargement()" (click)="svc.chargerPlus()">Voir les notifications plus anciennes</button></p>
     }
@@ -81,6 +100,12 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
     .nt-alertes { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--info-bg); border: 1px solid var(--line);
       border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: var(--fs-base); color: var(--info); }
     .nt-liste { padding: 0; overflow: hidden; }
+    .nt-prefs { margin-top: 18px; display: grid; gap: 10px; }
+    .nt-prefs h3 { margin: 0; }
+    .nt-pref { display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-base); cursor: pointer; }
+    .nt-pref input { margin-top: 3px; }
+    .nt-note { background: var(--light); border-radius: 8px; padding: 8px 12px; font-size: var(--fs-sm); color: var(--slate); margin: 0; }
+    .nt-ok { color: var(--green, #2f7d54); font-size: var(--fs-sm); margin: 0; }
     .nt-rangee { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: #fff; }
     .nt-rangee .nt-ligne { flex: 1; min-width: 0; border-bottom: none; }
     .nt-traitee { flex: 0 0 auto; background: none; border: none; border-left: 1px solid var(--line); padding: 0 14px; font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--gold); cursor: pointer; }
@@ -106,7 +131,16 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
 })
 export class NotificationsComponent implements OnInit {
   readonly svc = inject(NotificationsService);
+  private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  readonly prefs = signal<any | null>(null);
+  readonly messagePrefs = signal('');
+  changer(cle: 'recap_lundi' | 'recap_quotidien' | 'email_urgence', valeur: boolean): void {
+    this.api.enregistrerPreferencesNotifications({ [cle]: valeur }).subscribe({
+      next: (r) => { this.prefs.set(r); this.messagePrefs.set('Préférence enregistrée.'); },
+      error: () => this.messagePrefs.set('Enregistrement impossible, réessayez.'),
+    });
+  }
   readonly filtres: { code: FiltreNotifications; label: string }[] = [
     { code: 'tout', label: 'Toutes' }, { code: 'non_lues', label: 'Non lues' }, { code: 'a_traiter', label: 'À traiter' },
   ];
@@ -115,5 +149,6 @@ export class NotificationsComponent implements OnInit {
     const f = this.route.snapshot.queryParamMap.get('filtre');
     this.svc.charger(f === 'a_traiter' || f === 'non_lues' ? f : 'tout');
     this.svc.rafraichirCompteur();
+    this.api.preferencesNotifications().subscribe({ next: (r) => this.prefs.set(r), error: () => {} });
   }
 }

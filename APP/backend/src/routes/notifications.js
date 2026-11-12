@@ -4,6 +4,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { presenter } = require("../notifications");
 const bus = require("../messagerie-bus");
+const prefs = require("../preferencesNotifications");
 
 const router = express.Router();
 
@@ -40,6 +41,24 @@ router.get("/compteur", async (req, res) => {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// GET/PUT /api/notifications/preferences — MES réglages d'e-mail (jamais ceux d'un autre). Ils ne portent que sur l'e-mail en plus :
+// la cloche, le bandeau des urgences et la bulle du navigateur ne se coupent pas. Un champ verrouillé reste vrai quoi qu'on envoie.
+async function reponsePrefs(user) {
+  const { rows: [l] } = await pool.query("SELECT * FROM preferences_notifications WHERE utilisateur_id = $1", [user.sub]);
+  const { rows: [g] } = await pool.query("SELECT notifications_email_actif AS actif FROM parametres_cabinet WHERE id = 1");
+  return { valeurs: prefs.effectif(user.role, l), verrouille: prefs.verrouille(user.role), emails_actifs_cabinet: !!(g && g.actif) };
+}
+router.get("/preferences", async (req, res) => {
+  try { res.json(await reponsePrefs(req.user)); }
+  catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+router.put("/preferences", async (req, res) => {
+  try {
+    await prefs.enregistrer(req.user.sub, req.user.role, req.body || {});
+    res.json(await reponsePrefs(req.user));
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // POST /api/notifications/tout-lire

@@ -783,8 +783,9 @@ async function envoyerEtatParEmail(etat, auteurId) {
   try {
     if (!(await notif.emailsActifs())) return;
     const ids = (await notif.titulairesPermission("depenses.decision")).filter((i) => i !== auteurId);
-    const { rows: dest } = await pool.query(
-      "SELECT prenom, email FROM utilisateurs WHERE actif AND id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''", [ids]);
+    const { rows: tous } = await pool.query(
+      "SELECT id, role, prenom, email FROM utilisateurs WHERE actif AND id = ANY($1::uuid[]) AND email IS NOT NULL AND email <> ''", [ids]);
+    const dest = await require("../preferencesNotifications").filtrer(tous, "email_urgence", pool);
     if (!dest.length) return;
     const { rows: [c] } = await pool.query("SELECT raison_sociale FROM parametres_cabinet WHERE id = 1");
     const pdf = await genererEtatChargesPdf({ etat, lignes: etat.lignes, raisonSociale: c && c.raison_sociale });

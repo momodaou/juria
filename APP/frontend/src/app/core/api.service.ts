@@ -832,6 +832,11 @@ export class ApiService {
   relancerAssociesConflit(id: string, email = false): Observable<any> {
     return this.http.post<any>(`${this.base}/api/conflict-checks/${id}/relancer-associes`, { email });
   }
+  // Réglages personnels de notification (12/11/2026) : l'e-mail en plus seulement, jamais la cloche.
+  preferencesNotifications(): Observable<any> { return this.http.get<any>(`${this.base}/api/notifications/preferences`); }
+  enregistrerPreferencesNotifications(v: { recap_lundi?: boolean; recap_quotidien?: boolean; email_urgence?: boolean }): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/notifications/preferences`, v);
+  }
   relancerAssociesDepense(id: string, email = false): Observable<any> {
     return this.http.post<any>(`${this.base}/api/depenses/${id}/relancer-associes`, { email });
   }

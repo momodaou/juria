@@ -10,6 +10,7 @@
 const mailer = require("../mailer");
 const { envoiSuspendu } = require("../suspensionEmails");
 const notif = require("../notifications");
+const prefs = require("../preferencesNotifications");
 const { STATUT_FACTURATION_EXPR, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
 
 const base = () => process.env.FRONTEND_URL || "https://juria-web-552099340909.europe-west1.run.app";
@@ -25,17 +26,18 @@ async function envoyer(u, sujet, corps, lienLibelle, lien) {
 
 const ouvre = (maintenant) => ![0, 6].includes(maintenant.getUTCDay());
 
-async function personnes(pool, ids) {
+async function personnes(pool, ids, canal = null) {
   if (!ids.length) return [];
   const { rows } = await pool.query("SELECT id, prenom, email, role FROM utilisateurs WHERE actif AND id = ANY($1::uuid[])", [ids]);
-  return rows;
+  // Réglages personnels (12/11/2026) : on n'écrit qu'à ceux qui ont accepté ce récap.
+  return canal ? prefs.filtrer(rows, canal, pool) : rows;
 }
 
 // --- Matin : dépenses en attente ---------------------------------------------------------------
 async function executerRecapMatin(pool, maintenant = new Date()) {
   if (!(await notif.emailsActifs(pool))) return { actif: false, envoyes: 0 };
   if (!ouvre(maintenant)) return { actif: true, week_end: true, envoyes: 0 };
-  const decideurs = await personnes(pool, await notif.titulairesPermission("depenses.decision", pool));
+  const decideurs = await personnes(pool, await notif.titulairesPermission("depenses.decision", pool), "recap_quotidien");
   const { rows: [s] } = await pool.query("SELECT count(*)::int AS n FROM depenses WHERE statut = 'soumise'");
   const { rows: engagees } = await pool.query("SELECT engagee_par FROM depenses WHERE apres_coup_statut = 'a_valider' AND annulee_le IS NULL");
   let envoyes = 0;
@@ -74,7 +76,7 @@ async function executerRecapLundi(pool, maintenant = new Date()) {
   const { rows: direction } = await pool.query("SELECT id FROM utilisateurs WHERE actif AND role = ANY($1::role_utilisateur[])", [facturationRoles]);
   direction.forEach((r) => ids.add(r.id));
   let envoyes = 0;
-  for (const u of await personnes(pool, [...ids])) {
+  for (const u of await personnes(pool, [...ids], "recap_lundi")) {
     const sections = [];
     const d = dil.find((r) => r.id === u.id), t = tac.find((r) => r.id === u.id);
     if (d) sections.push(`<li>${pluriel(d.n, "diligence à faire", "diligences à faire")}</li>`);
@@ -99,7 +101,8 @@ async function executerRecapCreations(pool, maintenant = new Date()) {
     `SELECT d.numero, d.cree_par, u.role AS createur_role FROM dossiers d LEFT JOIN utilisateurs u ON u.id = d.cree_par
      WHERE d.cree_le >= date_trunc('day', now()) ORDER BY d.cree_le`);
   if (!dossiers.length) return { actif: true, envoyes: 0 };
-  const { rows: dests } = await pool.query("SELECT id, prenom, email, role FROM utilisateurs WHERE actif AND role IN ('associe','admin_general')");
+  const { rows: tousDests } = await pool.query("SELECT id, prenom, email, role FROM utilisateurs WHERE actif AND role IN ('associe','admin_general')");
+  const dests = await prefs.filtrer(tousDests, "recap_quotidien", pool);
   let envoyes = 0;
   for (const u of dests) {
     // Mêmes règles que l'e-mail par création : un associé n'est pas prévenu des dossiers créés par un associé ; jamais ses propres créations.
