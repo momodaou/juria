@@ -4839,3 +4839,6 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 ### 12/11/2026 — Précisions de l utilisateur : plafond et plafonds particuliers (réserve)
 - Plafond de la petite caisse confirmé par l utilisateur : **25 000 FCFA maximum par dépense** (même valeur que la caisse frais de justice).
 - **En réserve** : possibilité de fixer un **plafond particulier par nature** de dépense (colonne « Plafond particulier » du fichier Excel des catalogues). Rien codé : seul le plafond par dépense de la caisse existe. À reprendre uniquement sur demande de l utilisateur. Catalogues arrêtés : expertise et notaire au circuit normal, extrait de plumitif gardé, frais de greffe fusionnés en une nature.
+
+### 12/11/2026 — Trois vérifications de production mises en réserve
+- À la demande de l utilisateur, restent **en réserve** (à rappeler plus tard, rien à faire maintenant) : (1) rejeter/annuler la dépense d achat de vignettes de novembre (requête de lecture seule fournie) ; (2) dotation mensuelle de la caisse frais de justice à saisir par les associés ; (3) vérification de la Matrice de production (`depenses.decision` aux seuls associés, `depenses.decaisser`).
