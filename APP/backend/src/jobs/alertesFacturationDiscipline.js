@@ -63,7 +63,7 @@ async function executerAlerteImpaye(pool, dests, emailsActifs) {
       AND (current_date - f.date_echeance) > 60
   `);
 
-  let notifies = 0;
+  let notifies = 0, nouveaux = 0;
   for (const f of factures) {
     const jours = Number(f.jours_retard);
     let palier = null;
@@ -71,14 +71,16 @@ async function executerAlerteImpaye(pool, dests, emailsActifs) {
     else if (jours > 60 && !f.alerte_impaye_j60) palier = "j60";
     if (!palier) continue;
 
+    nouveaux++;
     const colonnes = palier === "j90" ? ["alerte_impaye_j60", "alerte_impaye_j90"] : ["alerte_impaye_j60"];
     await pool.query(`UPDATE factures SET ${colonnes.map((c) => `${c} = TRUE`).join(", ")} WHERE id = $1`, [f.id]);
 
     const seuil = palier === "j90" ? "90 jours" : "60 jours";
     // Centre de notifications (lot 3) : la cloche regroupe (« N éléments de facturation à suivre ») ; quand l'interrupteur des
     // e-mails de notification est allumé, le récapitulatif du lundi remplace les e-mails par facture.
-    await notif.notifier({ type: "facturation_a_suivre", destinataires: dests.map((x) => x.id), cle: "facturation_a_suivre" });
-    for (const d of emailsActifs ? [] : dests) {
+    // Revue du 12/11/2026 : plus d'e-mail par facture ni par dossier (même interrupteur éteint) ; la cloche porte deux lignes
+    // regroupées (voir majFacturationCloche) et le récapitulatif du lundi est le seul canal e-mail.
+    for (const d of []) {
       const resultat = await envoyerEmail({
         to: d.email,
         subject: `Facture impayée depuis plus de ${seuil} — ${f.numero}`,
@@ -90,7 +92,7 @@ async function executerAlerteImpaye(pool, dests, emailsActifs) {
       if (resultat.envoye) notifies++;
     }
   }
-  return { factures_concernees: factures.length, mails_envoyes: notifies };
+  return { factures_concernees: factures.length, mails_envoyes: notifies, nouveaux };
 }
 
 // ---------------------------------------------------------------------
@@ -106,19 +108,19 @@ async function executerAlerteEnAttenteFacturation(pool, dests, emailsActifs) {
     WHERE (${STATUT_FACTURATION_EXPR}) IS NOT NULL
   `);
 
-  let notifies = 0;
+  let notifies = 0, nouveaux = 0;
   for (const d of dossiers) {
     let palier = null;
     if (d.statut_facturation === "toujours_pas" && !d.alerte_facturation_j60) palier = "j60";
     else if (d.statut_facturation === "en_attente" && !d.alerte_facturation_j30) palier = "j30";
     if (!palier) continue;
 
+    nouveaux++;
     const colonnes = palier === "j60" ? ["alerte_facturation_j30", "alerte_facturation_j60"] : ["alerte_facturation_j30"];
     await pool.query(`UPDATE dossiers SET ${colonnes.map((c) => `${c} = TRUE`).join(", ")} WHERE id = $1`, [d.id]);
 
     const libelle = palier === "j60" ? "Toujours pas facturé" : "En attente de facturation";
-    await notif.notifier({ type: "facturation_a_suivre", destinataires: dests.map((x) => x.id), cle: "facturation_a_suivre" });
-    for (const dest of emailsActifs ? [] : dests) {
+    for (const dest of []) {
       const resultat = await envoyerEmail({
         to: dest.email,
         subject: `${libelle} — ${d.numero}`,
@@ -130,7 +132,33 @@ async function executerAlerteEnAttenteFacturation(pool, dests, emailsActifs) {
       if (resultat.envoye) notifies++;
     }
   }
-  return { dossiers_concernes: dossiers.length, mails_envoyes: notifies };
+  return { dossiers_concernes: dossiers.length, mails_envoyes: notifies, nouveaux };
+}
+
+// Cloche (revue du 12/11/2026) : DEUX lignes regroupées, impayés et dossiers à facturer, avec montant et gravité dans le texte.
+// Chaque ligne est remise en tête seulement quand un nouveau palier est franchi ; sinon elle est mise à jour sans bruit.
+async function majFacturationCloche(pool, dests, nouveauxImpayes, nouveauxDossiers) {
+  const ids = dests.map((x) => x.id);
+  const { rows: [imp] } = await pool.query(
+    `SELECT count(*)::int AS n, COALESCE(sum(montant_ttc), 0)::numeric AS montant,
+            count(*) FILTER (WHERE (current_date - date_echeance) > 90)::int AS j90
+       FROM factures WHERE statut IN ('emise','partielle','impayee') AND date_echeance IS NOT NULL AND (current_date - date_echeance) > 60`);
+  const { rows: [dos] } = await pool.query(
+    `SELECT count(*) FILTER (WHERE s IS NOT NULL)::int AS n, count(*) FILTER (WHERE s = 'toujours_pas')::int AS toujours_pas
+       FROM (SELECT (${STATUT_FACTURATION_EXPR}) AS s FROM dossiers d ${JOIN_STATUT_FACTURATION}) x`);
+  const lignes = [
+    { type: "facturation_impayes", cle: "facturation_impayes", n: imp.n, charge: { n: imp.n, montant: Number(imp.montant), j90: imp.j90 }, nouveau: nouveauxImpayes },
+    { type: "facturation_a_facturer", cle: "facturation_a_facturer", n: dos.n, charge: { n: dos.n, toujours_pas: dos.toujours_pas }, nouveau: nouveauxDossiers },
+  ];
+  for (const l of lignes) {
+    if (!l.n) { await notif.fermerParCle(l.cle, ids); continue; }
+    const base = { type: l.type, destinataires: ids, cle: l.cle, charge: l.charge, aTraiter: true };
+    if (l.nouveau) await notif.notifier({ ...base, mode: "remplacer" });
+    else {
+      const maj = await notif.notifier({ ...base, mode: "maj" });
+      if (!maj.length) await notif.notifier({ ...base, mode: "remplacer" });
+    }
+  }
 }
 
 async function executerJobAlertesFacturationDiscipline(pool) {
@@ -138,6 +166,7 @@ async function executerJobAlertesFacturationDiscipline(pool) {
   const emailsActifs = await notif.emailsActifs(pool);
   const impaye = await executerAlerteImpaye(pool, dests, emailsActifs);
   const enAttenteFacturation = await executerAlerteEnAttenteFacturation(pool, dests, emailsActifs);
+  await majFacturationCloche(pool, dests, impaye.nouveaux > 0, enAttenteFacturation.nouveaux > 0);
   return { destinataires: dests.length, impaye, en_attente_facturation: enAttenteFacturation };
 }
 

@@ -108,6 +108,7 @@ describe("Engagement sur la caisse frais de justice & débours", () => {
 
 describe("Séparation dans les listes et la synthèse", () => {
   test("filtre par caisse ; la synthèse a son bloc ; l'alerte parle de la bonne caisse", async () => {
+    await pool.query("UPDATE depenses SET apres_coup_statut = 'validee' WHERE apres_coup_statut = 'a_valider'"); // isolement du décompte
     const avS = (await get(assoc, "/api/depenses/synthese")).body;
     const r = await engager({ montant: 7000, libelle: "Séparation test" });
     expect(r.status).toBe(201);

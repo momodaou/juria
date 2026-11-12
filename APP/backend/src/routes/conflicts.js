@@ -181,7 +181,7 @@ router.post("/", requirePermission("conflits.soumettre"), async (req, res) => {
       // seuls les titulaires de conflits.decision (donc pas l'associé-fondateur) sont prévenus.
       await notif.notifier({
         type: "conflit_a_decider", destinataires: await notif.titulairesPermission("conflits.decision"),
-        auteurId: req.user.sub, ref: ins.rows[0].id, aTraiter: true,
+        auteurId: req.user.sub, ref: ins.rows[0].id, aTraiter: true, cle: "conflit:" + ins.rows[0].id,
       });
     }
 
@@ -310,6 +310,24 @@ router.get("/:id", async (req, res) => {
 
 // POST /api/conflict-checks/:id/decision  (réservé aux associés)
 // body : { decision: 'accepte'|'refuse'|'oriente', motif }
+// POST /api/conflits/:id/relancer-associes { email? } — « Relancer les associés » : le CRÉATEUR du contrôle seul, tant qu'il est en
+// attente de décision. Renvoie la notification aux titulaires de conflits.decision (la relance remplace la ligne d'origine),
+// texte générique sans noms ; case e-mail décochée par défaut ; une relance toutes les 4 heures au plus ; tracée à l'audit.
+router.post("/:id/relancer-associes", async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const { rows: [c] } = await pool.query("SELECT cree_par, decision FROM conflict_checks WHERE id = $1", [req.params.id]);
+    if (!c) return res.status(404).json({ error: "Contrôle introuvable" });
+    if (c.cree_par !== req.user.sub) return res.status(403).json({ error: "Seul le créateur du contrôle peut relancer les associés." });
+    if (c.decision !== "en_attente") return res.status(409).json({ error: "Ce contrôle est déjà tranché." });
+    const r = await notif.relancerAssocies({
+      type: "conflit_a_decider", ref: req.params.id, cle: "conflit:" + req.params.id, destinataires: await notif.titulairesPermission("conflits.decision"),
+      user: req.user, ip: req.ip, email: !!(req.body || {}).email, entite: "conflict_checks",
+    });
+    res.status(r.statut).json(r.corps);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 router.post("/:id/decision", requirePermission("conflits.decision"), async (req, res) => {
   const { decision, motif } = req.body || {};
   const permis = ["accepte", "refuse", "oriente"];
@@ -334,10 +352,10 @@ router.post("/:id/decision", requirePermission("conflits.decision"), async (req,
     // décision elle-même, déjà enregistrée.
     await notifierDecisionConflit(req.params.id, decision);
     // Centre de notifications : la demande n'est plus « à traiter » pour les autres décideurs ; le demandeur apprend la décision.
-    await notif.traiter("conflit_a_decider", req.params.id);
+    await notif.traiter("conflit_a_decider", req.params.id, undefined, { par: notif.nomAffiche(req.user), par_id: req.user.sub, decision });
     const { rows: [demandeur] } = await pool.query("SELECT cree_par FROM conflict_checks WHERE id = $1", [req.params.id]);
     if (demandeur && demandeur.cree_par) {
-      await notif.notifier({ type: "conflit_tranche", destinataires: [demandeur.cree_par], auteurId: req.user.sub, ref: req.params.id, charge: { decision } });
+      await notif.notifier({ type: "conflit_tranche", destinataires: [demandeur.cree_par], auteurId: req.user.sub, ref: req.params.id, charge: { decision, par: notif.nomAffiche(req.user) } });
     }
     res.json(rows[0]);
   } catch (e) {

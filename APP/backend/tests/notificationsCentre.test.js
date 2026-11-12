@@ -81,13 +81,13 @@ describe("notifier() et lecture", () => {
 
   test("filtre par niveau : la bannière ne reçoit que les urgences encore « à traiter »", async () => {
     const a = await creer("associe");
-    await notif.notifier({ type: "conflit_a_decider", destinataires: [a.id], ref: "u1", aTraiter: true });
+    await notif.notifier({ type: "tache_retard_escalade", destinataires: [a.id], ref: "u1", aTraiter: true });
     await notif.notifier({ type: "tache_assignee", destinataires: [a.id], ref: "u2", aTraiter: true });
     await notif.notifier({ type: "diligence_modifiee", destinataires: [a.id], charge: { statut: "annule" } });
     const urgences = await liste(a, "?filtre=a_traiter&niveau=critique");
     expect(urgences).toHaveLength(1);
-    expect(urgences[0].type).toBe("conflit_a_decider");
-    await notif.traiter("conflit_a_decider", "u1");
+    expect(urgences[0].type).toBe("tache_retard_escalade");
+    await notif.traiter("tache_retard_escalade", "u1");
     expect(await liste(a, "?filtre=a_traiter&niveau=critique")).toHaveLength(0);
   });
 
@@ -170,12 +170,15 @@ describe("Conflits d'intérêts", () => {
     expect(c.body.resultat).toBe("potentiel");
     const n = (await liste(decideur)).find((m) => m.type === "conflit_a_decider");
     expect(n).toBeTruthy();
-    expect(n.niveau).toBe("critique");
+    expect(n.niveau).toBe("action"); // revue du 12/11/2026 : plus critique (ni bannière, ni rappel à 48 h)
     expect(n.lien).toBe(`/conflits?id=${c.body.id}`);
+    expect(n.texte_bulle).toMatch(/conflit/); // bulle du système avec un texte neutre
     expect(await liste(demandeur)).toHaveLength(0); // jamais l'auteur
     const d = await request(app).post(`/api/conflict-checks/${c.body.id}/decision`).set(auth(decideur)).send({ decision: "accepte" });
     expect(d.status).toBe(200);
-    expect((await liste(decideur)).find((m) => m.type === "conflit_a_decider").a_traiter).toBe(false);
+    const apres = (await liste(decideur)).find((m) => m.type === "conflit_a_decider");
+    expect(apres.a_traiter).toBe(false);
+    expect(apres.texte).toMatch(/^Tranché par vous : accepté/); // la ligne se transforme pour celui qui a décidé
     expect((await liste(demandeur))[0].texte).toMatch(/accepté/);
   });
 });
@@ -252,7 +255,19 @@ describe("E-mail de repli", () => {
     expect(envoyerEmail).not.toHaveBeenCalled();
   });
 
-  test("allumé : un seul e-mail groupé par personne, seulement pour le non lu échu ; jamais deux fois", async () => {
+  test("revue du 12/11/2026 : aucun type n'a plus d'e-mail de repli automatique, même interrupteur allumé", async () => {
+    expect(Object.values(notif.CATALOGUE).filter((d) => d.repliHeures != null)).toHaveLength(0);
+    const u = await creer("collaborateur");
+    await pool.query("UPDATE parametres_cabinet SET notifications_email_actif = TRUE WHERE id = 1");
+    await notif.notifier({ type: "tache_assignee", destinataires: [u.id], ref: "rp0b", aTraiter: true });
+    await pool.query("UPDATE notifications SET cree_le = '2026-11-10T00:00:00Z' WHERE destinataire_id = $1", [u.id]);
+    expect((await executerJobNotificationsRepli(pool, mercredi)).envoyes).toBe(0);
+    expect(envoyerEmail).not.toHaveBeenCalled();
+    await pool.query("UPDATE parametres_cabinet SET notifications_email_actif = FALSE WHERE id = 1");
+  });
+
+  test("mécanisme de repli conservé (dormant) : un seul e-mail groupé par personne, seulement pour le non lu échu ; jamais deux fois", async () => {
+    notif.CATALOGUE.tache_assignee.repliHeures = 4; notif.CATALOGUE.diligence_assignee.repliHeures = 4; // réarmé le temps du test
     const u = await creer("collaborateur"), v = await creer("collaborateur");
     await pool.query("UPDATE parametres_cabinet SET notifications_email_actif = TRUE WHERE id = 1");
     // isolement : les notifications des autres tests de la base ne comptent pas ici
@@ -274,5 +289,6 @@ describe("E-mail de repli", () => {
     // pas d'e-mail le week-end
     expect(await executerJobNotificationsRepli(pool, new Date("2026-11-14T12:00:00Z"))).toMatchObject({ week_end: true, envoyes: 0 });
     await pool.query("UPDATE parametres_cabinet SET notifications_email_actif = FALSE WHERE id = 1");
+    delete notif.CATALOGUE.tache_assignee.repliHeures; delete notif.CATALOGUE.diligence_assignee.repliHeures;
   });
 });

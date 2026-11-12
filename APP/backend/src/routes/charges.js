@@ -14,6 +14,7 @@ const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteCon
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit, diffChamps } = require("../audit");
 const notif = require("../notifications");
+const notifD = require("../notificationsDepenses");
 const mailer = require("../mailer");
 const { preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, estAutorise } = require("../permissions");
@@ -143,6 +144,9 @@ router.get("/modeles", requirePermission("depenses.consulter"), async (req, res)
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
+// Revue du 12/11/2026 : les charges fiscales et sociales se paient depuis la rubrique « Charges fiscales et sociales à payer » de
+// Dépenses & caisse (échéances administratives) ; elles ne passent pas par l'état mensuel, pour ne créer aucun lien ni doublon.
+const MSG_FISCALES = "Les charges fiscales et sociales se paient depuis la rubrique « Charges fiscales et sociales à payer » de Dépenses & caisse, pas par l'état mensuel.";
 async function ecrireModele(req, res, id) {
   const b = req.body || {};
   const montant = entier(b.montant_habituel ?? 0);
@@ -155,6 +159,7 @@ async function ecrireModele(req, res, id) {
   if (periodicite !== "mensuelle" && !(moisEch >= 1 && moisEch <= 12)) return res.status(400).json({ error: "Précisez le mois d'échéance (1 à 12) pour une charge trimestrielle ou annuelle." });
   const regl = await reglement(b);
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+  if (b.categorie === "charges_fiscales_sociales") return res.status(409).json({ error: MSG_FISCALES });
   const prec = preciserAutre(b.categorie, b.precision_autre);
   if (prec.erreur) return res.status(400).json({ error: prec.erreur });
   const benef = preciserBeneficiaire(b.beneficiaire);
@@ -327,6 +332,7 @@ router.post("/etats/:id/lignes", requirePermission("depenses.creer"), async (req
   if (!montantValide(montant)) return res.status(400).json({ error: "Montant invalide (entier en FCFA)." });
   const regl = await reglement(b);
   if (regl.erreur) return res.status(400).json({ error: regl.erreur });
+  if (b.categorie === "charges_fiscales_sociales") return res.status(409).json({ error: MSG_FISCALES });
   const prec = preciserAutre(b.categorie, b.precision_autre);
   if (prec.erreur) return res.status(400).json({ error: prec.erreur });
   const benef = preciserBeneficiaire(b.beneficiaire);
@@ -373,6 +379,7 @@ router.put("/etats/:id/lignes/:ligneId", requirePermission("depenses.consulter")
     const libelle = prepa && b.libelle !== undefined ? String(b.libelle).trim() : l.libelle;
     if (!libelle) return res.status(400).json({ error: "Le libellé est requis." });
     if (libelleTropLong(libelle)) return res.status(400).json({ error: MESSAGE_LIBELLE });
+    if (prepa && b.categorie === "charges_fiscales_sociales" && l.categorie !== "charges_fiscales_sociales") return res.status(409).json({ error: MSG_FISCALES });
     const categorie = prepa && b.categorie ? b.categorie : l.categorie;
     let precision = l.precision_autre;
     if (prepa) {
@@ -432,8 +439,13 @@ router.post("/etats/:id/soumettre", requirePermission("depenses.creer"), async (
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_soumis", entite: "etat_charges", entiteId: req.params.id });
     const etat = await chargerEtat(req.params.id);
     // Centre de notifications (lot 2) : la soumission est l'événement principal ; les décideurs sont prévenus tout de suite.
+    // L'état est soumis : le rappel « à soumettre » se ferme tout seul chez le préparateur, l'administration générale et le comptable.
+    const { rows: execs } = await pool.query("SELECT id FROM utilisateurs WHERE actif AND role IN ('admin_general','comptable')");
+    await notif.fermerParCle("etat_a_soumettre:" + String(etat.mois).slice(0, 7), [etat.prepare_par, ...execs.map((r) => r.id)].filter(Boolean));
+    const c0 = await compterEtat(req.params.id);
     await notif.notifier({ type: "etat_soumis", destinataires: await notif.titulairesPermission("depenses.decision"), auteurId: req.user.sub,
-      ref: req.params.id, aTraiter: true, charge: { mois: etat.mois } });
+      ref: req.params.id, aTraiter: true, cle: "etat_soumis:" + req.params.id, mode: "remplacer",
+      charge: { mois: etat.mois, total: c0.total, montant: c0.montant_total, decidees: 0 } });
     await envoyerEtatParEmail(etat, req.user.sub);
     res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
@@ -792,16 +804,36 @@ async function envoyerEtatParEmail(etat, auteurId) {
 
 // Centre de notifications (lot 2) : le préparateur apprend les décisions (regroupées : « N lignes décidées ») et les
 // personnes qui décaissent apprennent que des dépenses validées les attendent (regroupées par état).
+// Décompte d'un état : total, décidées, approuvées/rejetées/reportées, montants (pour les textes d'avancement).
+async function compterEtat(etatId, db = pool) {
+  const { rows: [r] } = await db.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE decision <> 'en_attente')::int AS decidees,
+            count(*) FILTER (WHERE decision = 'approuvee')::int AS approuvees,
+            count(*) FILTER (WHERE decision = 'rejetee')::int AS rejetees,
+            count(*) FILTER (WHERE decision = 'reportee')::int AS reportees,
+            COALESCE(sum(montant), 0)::numeric AS montant_total,
+            COALESCE(sum(montant) FILTER (WHERE decision = 'approuvee'), 0)::numeric AS montant_approuve
+       FROM etats_charges_lignes WHERE etat_id = $1::uuid`, [etatId]);
+  return { ...r, montant_total: Number(r.montant_total), montant_approuve: Number(r.montant_approuve) };
+}
+
+// Centre de notifications (revue du 12/11/2026) : le préparateur voit l'avancement des décisions sur UNE ligne (« Novembre : 9 lignes
+// décidées sur 14 (6 approuvées, 2 rejetées, 1 reportée) », sans le nom de l'associé, pastille rouge s'il y a un rejet ; quand tout est
+// décidé : niveau Action, l'état peut être clos). Les autres associés voient la ligne « état soumis » avancer, sans être relancés.
 async function notifierDecisionLigne(etatId, mois, approuvee, decideurId) {
   try {
     const { rows: [e] } = await pool.query("SELECT prepare_par, mois::text AS mois FROM etats_charges WHERE id = $1::uuid", [etatId]);
     if (!e) return;
+    const c = await compterEtat(etatId);
+    const fini = c.total > 0 && c.decidees >= c.total;
     await notif.notifier({ type: "etat_lignes_decidees", destinataires: [e.prepare_par], auteurId: decideurId, ref: etatId,
-      cle: "etat_decisions:" + etatId, charge: { mois: e.mois } });
-    if (approuvee) {
-      await notif.notifier({ type: "depenses_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"), auteurId: decideurId,
-        ref: etatId, cle: "etat_a_decaisser:" + etatId, charge: {} });
-    }
+      cle: "etat_decisions:" + etatId, mode: "remplacer", niveau: fini ? "action" : "information", aTraiter: fini,
+      charge: { mois: e.mois, total: c.total, decidees: c.decidees, approuvees: c.approuvees, rejetees: c.rejetees, reportees: c.reportees, rouge: c.rejetees > 0 } });
+    const decideurs = (await notif.titulairesPermission("depenses.decision")).filter((id) => id !== decideurId);
+    await notif.notifier({ type: "etat_soumis", destinataires: decideurs, ref: etatId, cle: "etat_soumis:" + etatId, mode: "maj", aTraiter: true,
+      charge: { mois: e.mois, total: c.total, montant: c.montant_total, decidees: c.decidees } });
+    if (approuvee) await notifD.majADecaisser(pool);
   } catch (e) { console.error("Notification de décision de ligne impossible :", e.message); }
 }
 
@@ -868,8 +900,12 @@ router.post("/etats/:id/cloturer", requirePermission("depenses.decision"), async
     if (!rowCount) return res.status(409).json({ error: "L'état n'est pas soumis aux associés." });
     await logAudit({ utilisateurId: req.user.sub, action: "etat_charges_clos", entite: "etat_charges", entiteId: req.params.id });
     const etat = await chargerEtat(req.params.id);
-    await notif.traiter(["etat_soumis", "etat_en_attente"], req.params.id);
-    await notif.notifier({ type: "etat_clos", destinataires: [etat.prepare_par], auteurId: req.user.sub, ref: req.params.id, charge: { mois: etat.mois } });
+    await notif.traiter(["etat_soumis", "etat_en_attente", "etat_lignes_decidees"], req.params.id);
+    // Bilan au préparateur ET à l'administration générale et au comptable (ils exécutent les décaissements) ; sans le nom de qui clôt.
+    const bilan = await compterEtat(req.params.id);
+    const { rows: exec } = await pool.query("SELECT id FROM utilisateurs WHERE actif AND role IN ('admin_general','comptable')");
+    await notif.notifier({ type: "etat_clos", destinataires: [etat.prepare_par, ...exec.map((r) => r.id)], auteurId: req.user.sub, ref: req.params.id,
+      charge: { mois: etat.mois, total: bilan.total, approuvees: bilan.approuvees, rejetees: bilan.rejetees, reportees: bilan.reportees, montant: bilan.montant_approuve } });
     res.json(etat);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });

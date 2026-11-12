@@ -1,5 +1,6 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { Observable, Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from './auth.service';
@@ -51,6 +52,7 @@ const DELAI_MIN_ENTRE_ENVOIS_FRAPPE_MS = 3000;
 export class MessagerieService {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   private readonly base = environment.apiUrl;
 
   private source: EventSource | null = null;
@@ -129,7 +131,32 @@ export class MessagerieService {
     } else if (message.auteur_id !== this.auth.utilisateur()?.id) {
       this.nonLus.update((n) => n + 1);
     }
+    this.bulleMessage(message);
     this.rafraichirConversations();
+  }
+
+  // Bulle du système (revue du 12/11/2026) : TOUT message reçu d'un autre (important ou non, direct ou de groupe) déclenche une bulle,
+  // sauf s'il arrive dans la conversation actuellement ouverte à l'écran (fenêtre visible ET au premier plan). La bulle reste neutre :
+  // l'expéditeur seul, jamais le contenu. Regroupée par conversation (même tag) : « N nouveaux messages » remplace la bulle précédente.
+  private readonly bullesEnAttente = new Map<string, number>();
+  private bulleMessage(message: Message): void {
+    if (message.auteur_id === this.auth.utilisateur()?.id) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || typeof document === 'undefined') return;
+    const cid = message.conversation_id;
+    if (!cid) return;
+    const visible = !document.hidden && document.hasFocus();
+    if (visible && cid === this.conversationActiveId()) { this.bullesEnAttente.delete(cid); return; }
+    const n = (this.bullesEnAttente.get(cid) ?? 0) + 1;
+    this.bullesEnAttente.set(cid, n);
+    try {
+      const bulle = new Notification('JURIA', { body: `${message.auteur} : ${n > 1 ? n + ' nouveaux messages' : 'nouveau message'}`, tag: 'msg-' + cid });
+      bulle.onclick = () => {
+        window.focus();
+        this.bullesEnAttente.delete(cid);
+        this.router.navigateByUrl('/messagerie').then(() => this.ouvrirConversation(cid));
+        bulle.close();
+      };
+    } catch { /* bulle indisponible : sans effet */ }
   }
 
   private recevoirLecture(evenement: { conversation_id: string; utilisateur_id: string; lu_le: string }): void {

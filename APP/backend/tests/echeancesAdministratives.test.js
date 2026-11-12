@@ -191,9 +191,17 @@ describe("Échéances administratives du cabinet — traitement + lien Dépenses
     expect(traite.body.prochaine_date).toBeNull();
   });
 
-  test("traiter avec montant_decaisse crée la dépense (catégorie dédiée, déjà décaissée) et la lie", async () => {
+  test("charge fiscale ou sociale : traiter avec montant_decaisse est refusé (409) : on passe par « Payer » dans Dépenses & caisse", async () => {
     const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
-      .send({ libelle: "Test lien dépense", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
+      .send({ libelle: "Test fiscale sans décaissement direct", categorie: "fiscale", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
+    const refus = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`).send({ montant_decaisse: 1000 });
+    expect(refus.status).toBe(409);
+    expect(refus.body.error).toMatch(/Payer/);
+  });
+
+  test("traiter avec montant_decaisse crée la dépense (catégorie dédiée, déjà décaissée) et la lie — échéances non fiscales/sociales (assurance…)", async () => {
+    const creation = await request(app).post("/api/echeances-administratives").set("Authorization", `Bearer ${token}`)
+      .send({ libelle: "Test lien dépense", categorie: "assurance", periodicite: "ponctuelle", prochaine_date: "2026-01-15" });
     const traite = await request(app).post(`/api/echeances-administratives/${creation.body.id}/traiter`).set("Authorization", `Bearer ${token}`)
       .send({ montant_decaisse: 123456 });
     expect(traite.status).toBe(200);

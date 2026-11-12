@@ -98,8 +98,8 @@ router.post("/", requirePermission("audiences.diligence.gerer"), async (req, res
     // Centre de notifications (07/11/2026) : le membre assigné est prévenu tout de suite (jamais l'auteur de l'assignation).
     if (rows[0].membre_id) {
       await notif.notifier({
-        type: "diligence_assignee", destinataires: [rows[0].membre_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true,
-        charge: { date: rows[0].date_diligence, dossier: await numeroDossier(rows[0].dossier_id) },
+        type: "diligence_assignee", destinataires: [rows[0].membre_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, cle: "action:" + rows[0].id, mode: "remplacer",
+        charge: { date: rows[0].date_diligence, dossier: await numeroDossier(rows[0].dossier_id), par: notif.nomAffiche(req.user) },
       });
     }
     res.status(201).json(rows[0]);
@@ -150,8 +150,8 @@ router.put("/:id/statut", requirePermission("audiences.diligence.gerer"), async 
       if (statut !== "a_faire") await notif.traiter("diligence_assignee", req.params.id);
       if ((statut === "reporte" || statut === "annule") && actuelle.membre_id) {
         await notif.notifier({
-          type: "diligence_modifiee", destinataires: [actuelle.membre_id], auteurId: req.user.sub, ref: req.params.id,
-          charge: { statut, dossier: await numeroDossier(actuelle.dossier_id) },
+          type: "diligence_modifiee", destinataires: [actuelle.membre_id], auteurId: req.user.sub, ref: req.params.id, cle: "diligences_modifiees",
+          charge: { statut, dossier: await numeroDossier(actuelle.dossier_id), par: notif.nomAffiche(req.user) },
         });
       }
       await logAudit({
@@ -174,7 +174,7 @@ router.post("/:id/relancer", requirePermission("audiences.diligence.gerer"), asy
        FROM diligences dl LEFT JOIN dossiers d ON d.id = dl.dossier_id WHERE dl.id = $1`, [req.params.id]);
     if (!dl) return res.status(404).json({ error: "Diligence introuvable" });
     const r = await notif.relancer({
-      cible: "diligence", id: req.params.id, mot: (req.body || {}).mot, user: req.user, ip: req.ip,
+      cible: "diligence", id: req.params.id, mot: (req.body || {}).mot, email: !!(req.body || {}).email, user: req.user, ip: req.ip,
       action: { ...dl, termine: ["fait", "annule"].includes(dl.statut) },
     });
     res.status(r.statut).json(r.corps);

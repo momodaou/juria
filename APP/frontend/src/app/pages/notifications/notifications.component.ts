@@ -5,7 +5,8 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
 
 // Écran « Notifications » (07/11/2026) : le centre de notifications en grand format, comme les autres menus. Mêmes données que la
 // cloche du menu (qui n'est plus qu'un raccourci avec sa pastille) : filtres, marquer comme lu, « Voir plus », activation des
-// alertes du navigateur. Les textes sont composés par le serveur (aucun montant, aucun nom de client).
+// alertes du navigateur. Les textes sont composés par le serveur ; depuis la revue du 12/11/2026 ils peuvent porter un montant ou
+// un nom d'avocat (la bulle du système reste neutre). « Marquer comme traitée » : niveau Action seulement.
 @Component({
   selector: 'app-notifications',
   standalone: true,
@@ -33,22 +34,35 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
         <button type="button" class="btn" (click)="svc.activerAlertes()">Activer les alertes du navigateur</button>
       </div>
     } @else if (svc.permissionAlertes() === 'denied') {
-      <p class="muted">Les alertes du navigateur sont bloquées : autorisez-les dans les réglages du site pour les recevoir.</p>
+      <div class="nt-aide">
+        <b>Les alertes du navigateur sont bloquées.</b>
+        <ul>
+          <li><b>Safari :</b> menu Safari, Réglages, Sites web, Notifications ; cochez « Autoriser les sites web à demander l'autorisation d'envoyer des notifications », autorisez JURIA, puis rechargez la page.</li>
+          <li><b>Chrome :</b> icône à gauche de l'adresse, Notifications, Autoriser.</li>
+          <li><b>Mac :</b> vérifiez aussi Réglages Système, Notifications, votre navigateur (et que le mode Concentration ne les masque pas).</li>
+        </ul>
+      </div>
     } @else if (svc.permissionAlertes() === 'granted') {
-      <p class="muted">Alertes du navigateur activées.</p>
+      <p class="muted">Alertes du navigateur activées : une bulle neutre vous prévient des urgences et des messages quand JURIA n'est pas devant vous.
+        <button type="button" class="nt-test" (click)="svc.testerAlerte()">Tester l'alerte</button></p>
     }
 
     <section class="panel nt-liste">
       @for (n of svc.liste(); track n.id) {
-        <button type="button" class="nt-ligne" [class.nt-nonlue]="!n.lue_le" (click)="svc.ouvrirDepuisPage(n)">
-          <span class="nt-pt" [class.nt-critique]="n.niveau === 'critique'" [class.nt-action]="n.niveau === 'action'" [class.nt-info]="n.niveau === 'information'"></span>
-          <span class="nt-texte">{{ n.texte }}</span>
-          <span class="nt-etiquettes">
-            @if (n.a_traiter) { <span class="tag attente">À traiter</span> }
-            @if (n.niveau === 'critique' && n.a_traiter) { <span class="tag haute">Urgent</span> }
-          </span>
-          <span class="nt-date">{{ n.cree_le | date: 'dd/MM/yyyy HH:mm' }}</span>
-        </button>
+        <div class="nt-rangee">
+          <button type="button" class="nt-ligne" [class.nt-nonlue]="!n.lue_le" (click)="svc.ouvrirDepuisPage(n)">
+            <span class="nt-pt" [class.nt-critique]="n.niveau === 'critique'" [class.nt-action]="n.niveau === 'action'" [class.nt-info]="n.niveau === 'information'" [class.nt-rouge]="n.rouge"></span>
+            <span class="nt-texte">{{ n.texte }}</span>
+            <span class="nt-etiquettes">
+              @if (n.a_traiter) { <span class="tag attente">À traiter</span> }
+              @if (n.niveau === 'critique' && n.a_traiter) { <span class="tag haute">Urgent</span> }
+            </span>
+            <span class="nt-date">{{ n.cree_le | date: 'dd/MM/yyyy HH:mm' }}</span>
+          </button>
+          @if (n.a_traiter && n.niveau === 'action') {
+            <button type="button" class="nt-traitee" (click)="svc.marquerTraitee(n)">Marquer comme traitée</button>
+          }
+        </div>
       } @empty {
         <p class="muted nt-vide">@if (svc.chargement()) { Chargement… } @else { Rien à signaler. }</p>
       }
@@ -67,6 +81,14 @@ import { NotificationsService, FiltreNotifications } from '../../core/notificati
     .nt-alertes { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--info-bg); border: 1px solid var(--line);
       border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: var(--fs-base); color: var(--info); }
     .nt-liste { padding: 0; overflow: hidden; }
+    .nt-rangee { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: #fff; }
+    .nt-rangee .nt-ligne { flex: 1; min-width: 0; border-bottom: none; }
+    .nt-traitee { flex: 0 0 auto; background: none; border: none; border-left: 1px solid var(--line); padding: 0 14px; font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--gold); cursor: pointer; }
+    .nt-traitee:hover { background: var(--light); }
+    .nt-pt.nt-rouge { background: var(--red); box-shadow: 0 0 0 2px rgba(190,60,60,.25); }
+    .nt-aide { background: var(--vigilance-bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: var(--fs-base); color: #6b4a00; }
+    .nt-aide ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+    .nt-test { background: none; border: none; padding: 0 0 0 8px; font: inherit; font-weight: 600; color: var(--gold); cursor: pointer; }
     .nt-ligne { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: #fff; color: #22303f; border: none; border-bottom: 1px solid var(--line);
       padding: 13px 16px; cursor: pointer; font: inherit; font-size: var(--fs-md); }
     .nt-ligne:last-child { border-bottom: none; }

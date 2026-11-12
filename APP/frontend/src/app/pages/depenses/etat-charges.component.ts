@@ -462,7 +462,8 @@ export class EtatChargesComponent implements OnInit {
   readonly messageCible = signal('');
 
   readonly seuil = 2;
-  readonly categoriesCabinet = CATEGORIES_CABINET;
+  // Revue du 12/11/2026 : les charges fiscales et sociales se paient depuis la rubrique dédiée de Dépenses & caisse, pas par l'état mensuel.
+  readonly categoriesCabinet = CATEGORIES_CABINET.filter((c) => c.code !== 'charges_fiscales_sociales');
   readonly categoriesDebours = CATEGORIES_DEBOURS;
   readonly mois12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   readonly etats = signal<any[]>([]);

@@ -822,11 +822,18 @@ export class ApiService {
   }
 
   // Bouton « Relancer » (07/11/2026) : notifie la personne chargée de l'action (centre de notifications)
-  relancerTache(id: string, mot?: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/taches/${id}/relancer`, { mot });
+  relancerTache(id: string, mot?: string, email = false): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/taches/${id}/relancer`, { mot, email });
   }
-  relancerDiligence(id: string, mot?: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/api/diligences/${id}/relancer`, { mot });
+  relancerDiligence(id: string, mot?: string, email = false): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/diligences/${id}/relancer`, { mot, email });
+  }
+  // « Relancer les associés » (revue du 12/11/2026) : le créateur seul ; une relance remplace la ligne ; case e-mail décochée par défaut.
+  relancerAssociesConflit(id: string, email = false): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/conflict-checks/${id}/relancer-associes`, { email });
+  }
+  relancerAssociesDepense(id: string, email = false): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/depenses/${id}/relancer-associes`, { email });
   }
 
   // Registre du courrier

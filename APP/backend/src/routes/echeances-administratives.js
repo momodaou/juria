@@ -61,7 +61,8 @@ router.get("/", requirePermission("echeances_admin.consulter"), async (req, res)
               e.dernier_traite_le, e.prochaine_date, e.montant_estime, e.statut,
               e.reference_ext, e.observations, e.responsable_id, e.depense_id,
               u.prenom || ' ' || u.nom AS responsable,
-              dep.montant AS depense_montant, dep.date_depense AS depense_date
+              dep.montant AS depense_montant, dep.date_depense AS depense_date,
+              CASE WHEN dep.statut IN ('soumise','validee') AND dep.annulee_le IS NULL THEN dep.statut::text END AS paiement_en_cours
        FROM echeances_administratives e
        LEFT JOIN utilisateurs u ON u.id = e.responsable_id
        LEFT JOIN depenses dep ON dep.id = e.depense_id
@@ -223,6 +224,14 @@ router.delete("/:id", requirePermission("echeances_admin.gerer"), async (req, re
 // paiement déjà effectué, pas une demande à instruire.
 router.post("/:id/traiter", requirePermission("echeances_admin.gerer"), async (req, res) => {
   const b = req.body || {};
+  // Revue du 12/11/2026 : une charge fiscale ou sociale se paie par « Payer » dans Dépenses & caisse (circuit normal : les associés
+  // ordonnent, l'administration ou le comptable décaisse) ; « Marquer traité » ne crée plus de dépense déjà décaissée pour elles.
+  if (b.montant_decaisse) {
+    const { rows: [cat] } = await pool.query("SELECT categorie FROM echeances_administratives WHERE id = $1", [req.params.id]);
+    if (cat && ["fiscale", "sociale"].includes(cat.categorie)) {
+      return res.status(409).json({ error: "Une charge fiscale ou sociale se paie depuis « Payer » dans Dépenses & caisse (circuit normal de validation)." });
+    }
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -274,7 +283,26 @@ router.post("/:id/traiter", requirePermission("echeances_admin.gerer"), async (r
   }
 });
 
+// Clôture l'occurrence d'une échéance quand la dépense qui lui est liée est décaissée (revue du 12/11/2026) : même effet que
+// « Marquer traité » (récurrente : dernier_traite_le avance et la période suivante apparaît ; ponctuelle : payée), sans créer de dépense.
+async function cloturerEcheanceLiee(depenseId, db = pool) {
+  try {
+    const { rows: [e] } = await db.query(
+      `SELECT id, periodicite, jour_echeance, mois_echeance, dernier_traite_le, prochaine_date
+         FROM echeances_administratives WHERE depense_id = $1 AND actif = TRUE`, [depenseId]);
+    if (!e) return false;
+    const aujourdHui = new Date().toISOString().slice(0, 10);
+    const calculee = calculerProchaineEcheance(e, aujourdHui);
+    const echeanceCloturee = calculee || versDateISO(e.prochaine_date);
+    await db.query(
+      `UPDATE echeances_administratives SET dernier_traite_le = $2, statut = CASE WHEN $3 THEN 'a_faire' ELSE 'paye' END WHERE id = $1`,
+      [e.id, echeanceCloturee, calculee !== null]);
+    return true;
+  } catch (err) { console.error("Clôture de l'échéance liée impossible (non bloquant) :", err.message); return false; }
+}
+
 module.exports = router;
+module.exports.cloturerEcheanceLiee = cloturerEcheanceLiee;
 // Exposée pour un test unitaire déterministe (dates figées, indépendant du
 // jour d'exécution réel des tests) — voir tests/echeancesAdministratives.test.js.
 module.exports.calculerProchaineEcheance = calculerProchaineEcheance;

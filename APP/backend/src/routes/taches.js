@@ -117,8 +117,8 @@ router.post("/", requirePermission("taches.creer"), async (req, res) => {
     });
     // Centre de notifications (07/11/2026) : prévenu tout de suite si la tâche est confiée à quelqu'un d'autre.
     await notif.notifier({
-      type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true,
-      charge: { dossier: await notif.numeroDossier(rows[0].dossier_id) },
+      type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, cle: "action:" + rows[0].id, mode: "remplacer",
+      charge: { dossier: await notif.numeroDossier(rows[0].dossier_id), par: notif.nomAffiche(req.user) },
     });
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -232,8 +232,8 @@ router.put("/:id/details", requirePermission("taches.creer"), async (req, res) =
         // Réaffectation : l'ancienne notification n'est plus « à traiter » ; le nouveau responsable est prévenu.
         await notif.traiter(["tache_assignee", "tache_retard", "tache_retard_escalade"], req.params.id);
         await notif.notifier({
-          type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: req.params.id, aTraiter: true,
-          charge: { dossier: await notif.numeroDossier(rows[0].dossier_id) },
+          type: "tache_assignee", destinataires: [rows[0].responsable_id], auteurId: req.user.sub, ref: req.params.id, aTraiter: true, cle: "action:" + req.params.id, mode: "remplacer",
+          charge: { dossier: await notif.numeroDossier(rows[0].dossier_id), par: notif.nomAffiche(req.user) },
         });
       }
       if (Object.keys(changements).length) {
@@ -288,7 +288,7 @@ router.post("/:id/relancer", requirePermission("taches.statut.modifier"), async 
        FROM taches t LEFT JOIN dossiers d ON d.id = t.dossier_id WHERE t.id = $1`, [req.params.id]);
     if (!t) return res.status(404).json({ error: "Tâche introuvable" });
     const r = await notif.relancer({
-      cible: "tache", id: req.params.id, mot: (req.body || {}).mot, user: req.user, ip: req.ip,
+      cible: "tache", id: req.params.id, mot: (req.body || {}).mot, email: !!(req.body || {}).email, user: req.user, ip: req.ip,
       action: { ...t, termine: ["termine", "annule"].includes(t.statut) },
     });
     res.status(r.statut).json(r.corps);

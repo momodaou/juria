@@ -3,6 +3,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { presenter } = require("../notifications");
+const bus = require("../messagerie-bus");
 
 const router = express.Router();
 
@@ -59,6 +60,23 @@ router.post("/:id/lue", async (req, res) => {
     const r = await pool.query(
       "UPDATE notifications SET lue_le = COALESCE(lue_le, now()) WHERE id = $1 AND destinataire_id = $2 RETURNING id", [req.params.id, req.user.sub]);
     if (!r.rows[0]) return res.status(404).json({ error: "Notification introuvable" });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/notifications/:id/traitee — « Marquer comme traitée » : seulement une notification d'ACTION qui est la mienne
+// (jamais le niveau critique, qui se ferme seul quand la situation est réglée ; pas d'« Ignorer »).
+router.post("/:id/traitee", async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const { rows: [n] } = await pool.query("SELECT niveau, a_traiter, traitee_le FROM notifications WHERE id = $1 AND destinataire_id = $2", [req.params.id, req.user.sub]);
+    if (!n) return res.status(404).json({ error: "Notification introuvable" });
+    if (n.niveau !== "action") return res.status(409).json({ error: "Seule une notification d'action peut être marquée comme traitée." });
+    await pool.query("UPDATE notifications SET traitee_le = COALESCE(traitee_le, now()), lue_le = COALESCE(lue_le, now()) WHERE id = $1", [req.params.id]);
+    await bus.publier(pool, [req.user.sub], { type: "notification_traitee", id: req.params.id });
     res.json({ ok: true });
   } catch (e) {
     console.error(e);

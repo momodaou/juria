@@ -22,6 +22,7 @@ import { LibellePipe } from '../../core/libelles';
       <section class="panel mes-controles">
         <h3>Vos contrôles de conflit</h3>
         <p class="hint">Vos propres contrôles encore en attente ou tout juste décidés — reprenez-en un ci-dessous, ou masquez-le si vous l'avez déjà traité autrement.</p>
+        @if (infoRelanceControle()) { <p class="hint">{{ infoRelanceControle() }}</p> }
         @for (c of mesControles(); track c.id) {
           <div class="mc-ligne">
             <div class="mc-info">
@@ -33,6 +34,7 @@ import { LibellePipe } from '../../core/libelles';
             </div>
             <div class="mc-actions">
               <button class="lien" (click)="reprendreControle(c)">Reprendre</button>
+              @if (c.decision === 'en_attente') { <button class="lien" (click)="relancerAssocies(c)">Relancer les associés</button> }
               <button class="lien mc-masquer" (click)="masquerControle(c)">Masquer</button>
             </div>
           </div>
@@ -820,6 +822,16 @@ export class OuvertureComponent implements OnInit {
   reprendreControle(c: any): void {
     this.appliquerControle(c);
     document.getElementById('etape-conflit')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // « Relancer les associés » : créateur seul, tant que le contrôle est en attente ; une relance toutes les 4 h ; e-mail décoché par défaut.
+  readonly infoRelanceControle = signal('');
+  relancerAssocies(c: any): void {
+    const email = confirm('Envoyer aussi la relance par e-mail ?\n\nOK : oui. Annuler : non (cloche seulement).');
+    this.api.relancerAssociesConflit(c.id, email).subscribe({
+      next: () => this.infoRelanceControle.set('Les associés ont été relancés.'),
+      error: (e) => this.infoRelanceControle.set(e?.error?.error ?? 'Relance impossible.'),
+    });
   }
 
   masquerControle(c: any): void {

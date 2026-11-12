@@ -17,6 +17,10 @@ export interface Notification {
   cree_le: string;
   lue_le: string | null;
   traitee_le: string | null;
+  /** Texte NEUTRE de la bulle du système (jamais de montant ni de contenu) ; null = pas de bulle pour ce type. */
+  texte_bulle?: string | null;
+  /** Pastille rouge (rejet, contestation, rejets dans un état). */
+  rouge?: boolean;
 }
 
 export type FiltreNotifications = 'tout' | 'non_lues' | 'a_traiter';
@@ -134,25 +138,46 @@ export class NotificationsService {
   fermer(): void { this.ouvert.set(false); }
 
   private recevoir(n: Notification): void {
-    // Remplace la ligne si elle existe déjà (notification regroupée mise à jour), sinon l'ajoute en tête.
-    this.liste.update((l) => [n, ...l.filter((x) => x.id !== n.id)]);
+    const existante = this.liste().find((x) => x.id === n.id);
+    // Mise à jour silencieuse (même date : l'avancement d'une ligne ouverte) : ni toast, ni bulle.
+    const silencieuse = !!existante && existante.cree_le === n.cree_le;
+    // Remplace la ligne si elle existe déjà (notification regroupée mise à jour), sinon l'ajoute en tête (les plus récentes d'abord).
+    this.liste.update((l) => [n, ...l.filter((x) => x.id !== n.id)].sort((a, b) => b.cree_le.localeCompare(a.cree_le)));
     this.rafraichirCompteur();
     this.chargerUrgences();
-    // Une notification regroupée déjà annoncée ne refait pas de toast (« 5 dossiers » ne clignote pas 5 fois).
-    if (n.nombre <= 1) {
-      this.afficherToast(n);
-      this.alerteNavigateur(n);
-    }
+    if (silencieuse) return;
+    // Toast : niveau Action seulement (l'information reste dans la cloche, le critique dans la bannière des urgences).
+    if (n.niveau === 'action') this.afficherToast(n);
+    this.alerteNavigateur(n);
   }
 
-  // Bulle du système pour les situations graves, seulement si la personne l'a accordée et que JURIA n'est pas à l'écran.
+  /** Une personne est « absente de JURIA » quand l'onglet est caché OU que la fenêtre n'a plus le focus (une autre application est devant). */
+  private absent(): boolean {
+    return typeof document === 'undefined' || document.hidden || !document.hasFocus();
+  }
+
+  // Bulle du système (texte NEUTRE fourni par le serveur) pour les situations graves, seulement si la personne l'a accordée et
+  // qu'elle n'est pas devant JURIA.
   private alerteNavigateur(n: Notification): void {
-    const grave = n.niveau === 'critique' || ['delai_procedure', 'conflit_a_decider', 'depense_soumise'].includes(n.type);
-    if (!grave || this.permissionAlertes() !== 'granted' || typeof document === 'undefined' || !document.hidden) return;
+    if (!n.texte_bulle || this.permissionAlertes() !== 'granted' || !this.absent()) return;
     try {
-      const bulle = new Notification('JURIA', { body: n.texte, tag: n.id });
+      const bulle = new Notification('JURIA', { body: n.texte_bulle, tag: n.id });
       bulle.onclick = () => { window.focus(); this.ouvrir(n); bulle.close(); };
     } catch { /* alerte indisponible : sans effet */ }
+  }
+
+  /** Bouton « Tester l'alerte » : une bulle immédiate pour vérifier que les réglages du navigateur et du système laissent passer. */
+  testerAlerte(): void {
+    if (this.permissionAlertes() !== 'granted') return;
+    try { new Notification('JURIA', { body: 'Les alertes du navigateur fonctionnent.', tag: 'test-alerte' }); } catch { /* sans effet */ }
+  }
+
+  /** « Marquer comme traitée » (notifications d'action seulement). */
+  marquerTraitee(n: Notification): void {
+    this.http.post(`${this.base}/${n.id}/traitee`, {}).subscribe({
+      next: () => this.marquerTraiteeLocalement(n.id),
+      error: () => {},
+    });
   }
 
   private marquerTraiteeLocalement(id: string): void {
@@ -167,6 +192,13 @@ export class NotificationsService {
     clearTimeout(this.minuteries.get(n.id));
     // Les notifications critiques restent plus longtemps à l'écran.
     this.minuteries.set(n.id, setTimeout(() => this.fermerToast(n.id), n.niveau === 'critique' ? 15000 : 7000));
+  }
+
+  /** Le toast reste affiché tant que la souris ou le clavier est dessus (critère d'accessibilité : laisser le temps de lire). */
+  suspendreToast(id: string): void { clearTimeout(this.minuteries.get(id)); }
+  reprendreToast(id: string): void {
+    clearTimeout(this.minuteries.get(id));
+    this.minuteries.set(id, setTimeout(() => this.fermerToast(id), 7000));
   }
 
   fermerToast(id: string): void {

@@ -17,6 +17,7 @@ const { deduireChemise, ajusterChemiseDossier } = require("../stockChemises");
 const { CHAMPS_PARTIE, clausesMaj, selectChamps } = require("../identiteActes");
 const { envoiSuspendu } = require("../suspensionEmails");
 const notif = require("../notifications");
+const notifD = require("../notificationsDepenses");
 const router = express.Router();
 
 // Traçabilité procédurale (09/10/2026, voir CLAUDE.md) : champs dont une
@@ -149,9 +150,12 @@ async function notifierAssociesNouveauDossier(dossierId, numero, intitule, creat
   try {
     const { rows: ds } = await pool.query(
       "SELECT id FROM utilisateurs WHERE actif = TRUE AND role = ANY($1::role_utilisateur[])", [rolesDestinataires]);
+    // Nom du créateur (tout créateur, quel que soit son statut) dans le texte d'un dossier seul ; regroupé par jour tant que non lue.
+    const { rows: [cr] } = await pool.query("SELECT prenom, nom, role FROM utilisateurs WHERE id = $1", [createurId]);
     await notif.notifier({
       type: "dossier_cree", destinataires: ds.map((r) => r.id), auteurId: createurId,
-      cle: "dossiers_crees:" + new Date().toISOString().slice(0, 10), charge: { dossier: numero, dossier_id: dossierId },
+      cle: "dossiers_crees:" + new Date().toISOString().slice(0, 10),
+      charge: { dossier: numero, dossier_id: dossierId, par: cr ? notif.nomAffiche({ nom: [cr.prenom, cr.nom].filter(Boolean).join(" "), role: cr.role }) : undefined },
     });
   } catch (e) {
     console.error("Notification interne de nouveau dossier échouée (non bloquant) :", e.message);
@@ -1268,8 +1272,7 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
     // décompte automatique (objet physique numéroté) ; une notification par instance (action sur un objet précis).
     const { rows: [dos] } = await pool.query("SELECT pole, numero FROM dossiers WHERE id = $1", [req.params.id]);
     if (dos && dos.pole === "contentieux") {
-      await notif.notifier({ type: "vignette_a_affecter", destinataires: await notif.titulairesPermission("depenses.vignettes.mouvement"),
-        auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, charge: { dossier: dos.numero, dossier_id: req.params.id } });
+      await notifD.majVignettes(pool);
     }
     res.status(201).json(rows[0]);
   } catch (e) {
@@ -1422,13 +1425,15 @@ router.post("/:id/instances/:instanceId/vignette", requirePermission("depenses.v
     );
     await client.query("UPDATE vignettes_plaidoirie SET depense_id = $1 WHERE id = $2", [depense.id, vignette.id]);
     await client.query("COMMIT");
-    await notif.traiter(["vignette_a_affecter", "vignette_rappel"], req.params.instanceId);
+    await notifD.majVignettes(pool);
     // Stock bas (une fois par mois) : le seuil d'alerte est celui des réglages.
     try {
       const { rows: [st] } = await pool.query("SELECT (SELECT stock::int FROM v_stock_vignettes) AS stock, seuil_alerte_vignettes AS seuil FROM parametres_cabinet WHERE id = 1");
       const moisCle = "stock:" + new Date().toISOString().slice(0, 7);
       if (st && st.stock <= Number(st.seuil) && !(await notif.dejaNotifie("vignette_stock_bas", moisCle, 31))) {
-        await notif.notifier({ type: "vignette_stock_bas", destinataires: await notif.titulairesPermissions(["depenses.vignettes.mouvement", "depenses.decision"]), ref: moisCle });
+        // Chiffre dans le texte ; Action quand le stock tombe à zéro (plus d'affectation possible) ; une fois par mois, ligne remplacée.
+        await notif.notifier({ type: "vignette_stock_bas", destinataires: await notif.titulairesPermissions(["depenses.vignettes.mouvement", "depenses.decision"]), ref: moisCle,
+          cle: "vignettes_stock_bas", mode: "remplacer", niveau: Number(st.stock) <= 0 ? "action" : "information", aTraiter: Number(st.stock) <= 0, charge: { stock: Number(st.stock), seuil: Number(st.seuil) } });
       }
     } catch (e) { console.error("Alerte de stock de vignettes non créée :", e.message); }
     res.status(201).json({ id: vignette.id, numero_vignette: numero, depense_id: depense.id, refacturee });
@@ -1455,7 +1460,7 @@ router.post("/:id/instances/:instanceId/vignette-dispensee", requirePermission("
     await pool.query("UPDATE instances SET vignette_dispensee = $1 WHERE id = $2", [dispensee, req.params.instanceId]);
     await logAudit({ utilisateurId: req.user.sub, action: dispensee ? "dispenser_vignette_instance" : "retablir_vignette_instance", entite: "dossier_instances",
       entiteId: req.params.instanceId, details: { dossier_id: req.params.id }, ip: req.ip });
-    if (dispensee) await notif.traiter(["vignette_a_affecter", "vignette_rappel"], req.params.instanceId);
+    if (dispensee) await notifD.majVignettes(pool);
     res.json({ id: req.params.instanceId, vignette_dispensee: dispensee });
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });

@@ -102,7 +102,7 @@ describe("Alerte et dépenses voisines", () => {
     expect(a.status).toBe(201); expect(c.status).toBe(201);
     const liste = (await request(app).get("/api/notifications").set(auth(assoc))).body.filter((n) => n.type === "caisse_fractionnement");
     expect(liste.length).toBeGreaterThan(0);
-    expect(liste[0].texte).toMatch(/fractionnement/);
+    expect(liste[0].texte).toMatch(/dépenses rapprochées .* à examiner/); // l'engageur est nommé aux associés
     const v = await request(app).get(`/api/depenses/${c.body.id}/voisines`).set(auth(assoc));
     expect(v.status).toBe(200);
     expect(v.body.voisines.map((x) => x.id)).toContain(a.body.id);

@@ -62,13 +62,14 @@ describe("Soumission et masquage", () => {
 
 describe("Ordre de paiement et exécution", () => {
   test("validée sans ordre : exécution impossible, pas de notification « à décaisser » ; l'ordre la débloque", async () => {
+    await pool.query("UPDATE depenses SET statut = 'decaissee'::statut_depense WHERE statut = 'validee'"); // isolement du décompte
     const adminG = await creer("admin_general"), comptable = await creer("comptable"), assoc = await creer("associe");
     const id = await deposer(adminG);
     const v = await post(assoc, `/api/depenses/${id}/decision`, { statut: "validee" });
     expect(v.status).toBe(200);
     expect(v.body.ordre_donne).toBe(false);
-    expect(await notifs(adminG, "depense_a_decaisser")).toHaveLength(0);
-    expect(await notifs(comptable, "depense_a_decaisser")).toHaveLength(0);
+    expect(await notifs(adminG, "depenses_a_decaisser")).toHaveLength(0);
+    expect(await notifs(comptable, "depenses_a_decaisser")).toHaveLength(0);
     const refus = await post(adminG, `/api/depenses/${id}/decaisser`, { mode_paiement: "especes" });
     expect(refus.status).toBe(409);
     expect(refus.body.error).toMatch(/ordre de paiement/);
@@ -79,8 +80,8 @@ describe("Ordre de paiement et exécution", () => {
     expect((await post(assoc, `/api/depenses/${id}/ordre-paiement`, { mode_paiement: "orange_money" })).status).toBe(400);
     const o = await post(assoc, `/api/depenses/${id}/ordre-paiement`, { mode_paiement: "orange_money", compte_id: compteMobile });
     expect(o.status).toBe(200);
-    expect((await notifs(adminG, "depense_a_decaisser"))[0].a_traiter).toBe(true);
-    expect((await notifs(comptable, "depense_a_decaisser"))).toHaveLength(1);
+    expect((await notifs(adminG, "depenses_a_decaisser"))[0].a_traiter).toBe(true);
+    expect((await notifs(comptable, "depenses_a_decaisser"))).toHaveLength(1);
     // l'exécutant voit maintenant le moyen et l'intitulé du compte (jamais les références avant paiement)
     const vue = await ligne(adminG, id);
     expect(vue.mode_paiement).toBe("orange_money");
@@ -94,15 +95,16 @@ describe("Ordre de paiement et exécution", () => {
     expect(fin.statut).toBe("decaissee");
     expect(fin.mode_paiement).toBe("orange_money"); // le moyen de l'ordre a été conservé
     expect(fin.references_paiement.id_transaction).toBe("MP261111.0001");
-    expect((await notifs(comptable, "depense_a_decaisser"))[0].a_traiter).toBe(false);
+    expect((await notifs(comptable, "depenses_a_decaisser"))[0].a_traiter).toBe(false);
   });
 
   test("validation avec ordre d'un coup : les exécutants sont prévenus tout de suite", async () => {
+    await pool.query("UPDATE depenses SET statut = 'decaissee'::statut_depense WHERE statut = 'validee'"); // isolement du décompte
     const adminG = await creer("admin_general"), assoc = await creer("associe");
     const id = await deposer(adminG);
     const v = await post(assoc, `/api/depenses/${id}/decision`, { statut: "validee", mode_paiement: "especes" });
     expect(v.body.ordre_donne).toBe(true);
-    expect(await notifs(adminG, "depense_a_decaisser")).toHaveLength(1);
+    expect(await notifs(adminG, "depenses_a_decaisser")).toHaveLength(1);
     expect((await post(adminG, `/api/depenses/${id}/decaisser`, {})).status).toBe(200);
   });
 

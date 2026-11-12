@@ -909,8 +909,10 @@ export class RoleAudienceComponent implements OnInit {
   relancerDiligence(dl: any): void {
     const mot = prompt('Un mot pour la personne (facultatif) :', '');
     if (mot === null) return; // annulé
+    // Case « Envoyer aussi par e-mail » : décochée par défaut (OK = oui, Annuler = cloche seulement) ; l'e-mail respecte l'interrupteur général.
+    const email = confirm('Envoyer aussi cette relance par e-mail ?\n\nOK : oui. Annuler : non (cloche seulement).');
     this.erreur.set('');
-    this.api.relancerDiligence(dl.id, mot || undefined).subscribe({
+    this.api.relancerDiligence(dl.id, mot || undefined, email).subscribe({
       next: () => alert('Relance envoyée.'),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Relance impossible.'),
     });

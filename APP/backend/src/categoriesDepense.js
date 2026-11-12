@@ -33,6 +33,57 @@ function verifierPrecisionNature(categorie, precision) {
   return null;
 }
 
+// Libellés des natures (miroir du frontend), pour les textes de notification.
+const LIBELLES_CATEGORIES = {
+ "loyer": "Loyer",
+ "eau": "Eau",
+ "electricite": "Électricité",
+ "nettoyage": "Nettoyage",
+ "telephonie": "Téléphonie",
+ "telephonie_fixe": "Téléphonie fixe",
+ "credit_telephonique": "Crédit téléphonique",
+ "internet": "Internet",
+ "carburant": "Carburant",
+ "transport": "Transport",
+ "deplacement": "Déplacement (billets)",
+ "hebergement": "Hébergement",
+ "restauration": "Restauration",
+ "frais_reception": "Frais de réception / visiteurs",
+ "boissons": "Eau potable et boissons du cabinet",
+ "produits_entretien": "Produits d'entretien et de nettoyage",
+ "desodorisants": "Désodorisants et déodorants",
+ "entretien_vehicule": "Entretien du véhicule (lavage, petites pièces)",
+ "fournitures": "Petites fournitures de bureau",
+ "papeterie": "Papeterie",
+ "petit_materiel": "Petits matériels et autres fournitures",
+ "consommables": "Consommables de bureau",
+ "impressions": "Impressions et photocopies",
+ "encres": "Cartouches d'encre et toners",
+ "maintenance_informatique": "Maintenance informatique",
+ "reparation": "Entretien et réparations diverses",
+ "entretien": "Entretien",
+ "abonnements": "Abonnements et documentation",
+ "assurance": "Assurances",
+ "frais_bancaires": "Frais bancaires",
+ "charges_fiscales_sociales": "Charges fiscales et sociales",
+ "vignette_plaidoirie": "Vignette de plaidoirie",
+ "frais_procedure": "Frais de procédure",
+ "frais_consignation": "Frais de consignation",
+ "frais_grosse": "Frais de grosse de jugement",
+ "frais_expedition": "Courrier, affranchissement et expéditions (actes, jugements)",
+ "extrait_plumitif": "Extrait de plumitif",
+ "frais_diligences": "Frais de diligences",
+ "frais_huissier": "Frais d'huissier",
+ "frais_greffe": "Frais de greffe",
+ "timbres_enregistrement": "Timbres fiscaux et droits d'enregistrement",
+ "extraits_pieces": "Extraits RCCM, casier judiciaire, état civil",
+ "traduction": "Traduction assermentée",
+ "annonces_legales": "Annonces légales et publications",
+ "autre": "Autre (à préciser)"
+};
+const libelleCategorie = (code) => LIBELLES_CATEGORIES[code] || code;
+
 module.exports = {
+  LIBELLES_CATEGORIES, libelleCategorie,
   CATEGORIES_DEBOURS, estDebours, CATALOGUE_PETITE_CAISSE, CATALOGUE_PROCEDURE, PRECISIONS_GREFFE, verifierPrecisionNature,
 };

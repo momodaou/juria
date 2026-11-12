@@ -35,7 +35,7 @@ async function executerJobAlertesDelais(pool) {
       // Responsable du délai et du dossier ; à partir de J-7, escalade aux associés (le plus proche = le plus critique).
       const destinataires = [e.responsable_id, e.dossier_responsable_id, ...(j <= 7 ? associes : [])];
       await notif.notifier({
-        type: "delai_procedure", destinataires, ref: e.id, aTraiter: true, niveau: j <= 1 ? "critique" : "action",
+        type: "delai_procedure", destinataires, ref: e.id, aTraiter: true, niveau: j <= 1 ? "critique" : "action", cle: "delai:" + e.id, mode: "remplacer",
         charge: { jours: j, dossier: e.dossier_numero, dossier_id: e.dossier_id, seuil: col },
       });
       // E-mail « tout de suite » seulement aux jalons J-15, J-7, J-1 et le jour même, et seulement si l'interrupteur

@@ -50,6 +50,9 @@ const COLONNES = [
       </div>
     </header>
 
+    @if (filtreRetard()) {
+      <p class="bandeau-filtre">Seules les tâches du cabinet <b>en retard</b> sont affichées — <a class="lien" routerLink="." [queryParams]="{}" (click)="filtreRetard.set(false)">voir tout le plan d'action</a></p>
+    }
     @if (filtreDossierNumero()) {
       <p class="bandeau-filtre">Filtré sur le dossier <b>{{ filtreDossierNumero() }}</b> — <a class="lien" routerLink="." [queryParams]="{}">voir tout le plan d'action</a></p>
     }
@@ -265,8 +268,11 @@ export class PlanActionComponent implements OnInit {
     this.charger();
   }
 
+  // Filtre « en retard » (lien de la notification « N tâches du cabinet en retard depuis plus de 48 h »).
+  readonly filtreRetard = signal(false);
+  private enRetard(t: any): boolean { return !!t.echeance && String(t.echeance).slice(0, 10) < new Date().toISOString().slice(0, 10) && !['termine', 'annule'].includes(t.statut); }
   parStatut(statut: string): any[] {
-    return this.taches().filter((t) => t.statut === statut);
+    return this.taches().filter((t) => t.statut === statut && (!this.filtreRetard() || this.enRetard(t)));
   }
 
   // 14/10/2026 — libellé français + catégorie (technique/administratif)
@@ -335,11 +341,12 @@ export class PlanActionComponent implements OnInit {
     this.tacheCible = params.get('tache');
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    this.filtreRetard.set(params.get('filtre') === 'retard');
     // 14/10/2026 — vue par défaut : tout le cabinet pour qui peut déléguer
     // librement (avocats), "Mes tâches" pour les autres (dont le juriste,
     // au droit de délégation restreint) — voir le commentaire sur
     // vueFiltre ci-dessus.
-    this.vueFiltre.set(this.estAvocat() ? 'tout' : 'mine');
+    this.vueFiltre.set(this.estAvocat() || this.filtreRetard() ? 'tout' : 'mine');
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
 
@@ -417,8 +424,10 @@ export class PlanActionComponent implements OnInit {
   relancer(t: any): void {
     const mot = prompt('Un mot pour la personne (facultatif) :', '');
     if (mot === null) return; // annulé
+    // Case « Envoyer aussi par e-mail » : décochée par défaut (OK = oui, Annuler = cloche seulement) ; l'e-mail respecte l'interrupteur général.
+    const email = confirm('Envoyer aussi cette relance par e-mail ?\n\nOK : oui. Annuler : non (cloche seulement).');
     this.erreur.set('');
-    this.api.relancerTache(t.id, mot || undefined).subscribe({
+    this.api.relancerTache(t.id, mot || undefined, email).subscribe({
       next: () => alert('Relance envoyée.'),
       error: (e) => this.erreur.set(e?.error?.error ?? 'Relance impossible.'),
     });

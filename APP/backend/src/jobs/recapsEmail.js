@@ -61,7 +61,8 @@ async function executerRecapLundi(pool, maintenant = new Date()) {
      FROM taches WHERE statut NOT IN ('termine','annule') AND responsable_id IS NOT NULL GROUP BY responsable_id`);
   const { rows: [cab] } = await pool.query("SELECT count(*)::int AS n FROM taches WHERE statut NOT IN ('termine','annule') AND echeance < current_date");
   const { rows: [imp] } = await pool.query(
-    `SELECT count(*) FILTER (WHERE (current_date - date_echeance) > 90)::int AS j90,
+    `SELECT COALESCE(sum(montant_ttc), 0)::numeric AS montant,
+            count(*) FILTER (WHERE (current_date - date_echeance) > 90)::int AS j90,
             count(*) FILTER (WHERE (current_date - date_echeance) > 60 AND (current_date - date_echeance) <= 90)::int AS j60
      FROM factures WHERE statut IN ('emise','partielle','impayee') AND date_echeance IS NOT NULL`);
   const { rows: [dos] } = await pool.query(
@@ -80,7 +81,7 @@ async function executerRecapLundi(pool, maintenant = new Date()) {
     if (t) sections.push(`<li>${pluriel(t.n, "tâche en cours", "tâches en cours")}${t.retard ? ` dont ${t.retard} en retard` : ""}</li>`);
     if (associes.includes(u.role) && cab.n) sections.push(`<li>${pluriel(cab.n, "tâche est en retard", "tâches sont en retard")} dans le cabinet</li>`);
     if (facturationRoles.includes(u.role)) {
-      if (imp.j60 + imp.j90) sections.push(`<li>${pluriel(imp.j60 + imp.j90, "facture impayée", "factures impayées")} depuis plus de 60 jours${imp.j90 ? ` (dont ${imp.j90} depuis plus de 90 jours)` : ""}</li>`);
+      if (imp.j60 + imp.j90) sections.push(`<li>${pluriel(imp.j60 + imp.j90, "facture impayée", "factures impayées")} depuis plus de 60 jours${imp.j90 ? ` (dont ${imp.j90} depuis plus de 90 jours)` : ""}, ${Number(imp.montant).toLocaleString("fr-FR")} FCFA au total</li>`);
       if (dos.en_attente + dos.toujours_pas) sections.push(`<li>${pluriel(dos.en_attente + dos.toujours_pas, "dossier jamais facturé", "dossiers jamais facturés")}${dos.toujours_pas ? ` (dont ${dos.toujours_pas} depuis plus de 60 jours)` : ""}</li>`);
     }
     if (!sections.length) continue;

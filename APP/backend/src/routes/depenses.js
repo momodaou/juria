@@ -9,6 +9,9 @@ const { saveObject, readObject, deleteObject, FichierIntrouvableError, enteteCon
 const { filtreTypeFichier } = require("../uploadFilter");
 const { logAudit } = require("../audit");
 const notif = require("../notifications");
+const notifD = require("../notificationsDepenses");
+const { cloturerEcheanceLiee } = require("./echeances-administratives");
+const { libelleCategorie } = require("../categoriesDepense");
 const { DECAISSEMENT, DECAISSEMENT_PAR_CODE, comptesEligibles, preparerDecaissement } = require("../moyensPaiement");
 const { requirePermission, requireAnyPermission, estAutorise } = require("../permissions");
 const { CATEGORIES_DEBOURS, estDebours, CATALOGUE_PETITE_CAISSE, CATALOGUE_PROCEDURE, verifierPrecisionNature } = require("../categoriesDepense");
@@ -111,14 +114,18 @@ async function controlerCaisse(c, { categorie, beneficiaire, dossierId, montant,
 // Alerte aux associés : le même engageur a engagé d'autres petites dépenses rapprochées (même bénéficiaire ou même dossier).
 async function signalerFractionnement(c, id, engageurId, beneficiaire, dossierId, date) {
   const { rows: [r] } = await pool.query(
-    `SELECT count(*)::int AS n FROM depenses
+    `SELECT count(*)::int AS n, COALESCE(sum(montant), 0)::numeric AS total FROM depenses
       WHERE ${c.flag} = TRUE AND statut <> 'rejetee' AND id <> $1::uuid AND engagee_par = $2::uuid
         AND date_depense BETWEEN COALESCE($5::date, current_date) - ${FENETRE_JOURS} AND COALESCE($5::date, current_date) + ${FENETRE_JOURS}
         AND (lower(btrim(COALESCE(beneficiaire, ''))) = lower(btrim($3::text)) OR (dossier_id IS NOT NULL AND dossier_id = $4::uuid))`,
     [id, engageurId, beneficiaire, dossierId || null, date || null]);
   if (r.n > 0) {
+    // Aux associés seuls (jamais à l'engageur) ; l'engageur est nommé : c'est sa conduite qui est examinée. Une ligne par engageur et par caisse.
+    const { rows: [eng] } = await pool.query("SELECT prenom, nom, role FROM utilisateurs WHERE id = $1", [engageurId]);
+    const { rows: [cur] } = await pool.query("SELECT montant FROM depenses WHERE id = $1", [id]);
     await notif.notifier({ type: "caisse_fractionnement", destinataires: await notif.titulairesPermission("depenses.decision"),
-      auteurId: engageurId, ref: id, cle: "fractionnement:" + c.code, charge: { caisse: c.code } });
+      auteurId: engageurId, ref: id, aTraiter: true, cle: "fractionnement:" + engageurId + ":" + c.code, mode: "remplacer",
+      charge: { caisse: c.code, par: notifD.nomDe(eng || {}), n: r.n + 1, total: Number(r.total) + Number((cur || {}).montant || 0) } });
   }
 }
 
@@ -296,6 +303,20 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
   if (b.petite_caisse && estDebours(b.categorie)) return res.status(409).json({ error: MSG_DEBOURS });
   if (b.petite_caisse && !(await categoriesPetiteCaisse()).includes(b.categorie || "autre")) return res.status(409).json({ error: MSG_CATEGORIE });
   if (!b.type || !b.libelle || b.montant == null) return res.status(400).json({ error: "type, libelle et montant requis" });
+  // Paiement d'une charge fiscale ou sociale depuis la rubrique « Payer » : la dépense est liée à l'échéance (confidentielle :
+  // il faut aussi le droit de la consulter) ; un seul paiement en cours par échéance.
+  let echeanceId = null;
+  if (b.echeance_id) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(b.echeance_id))) return res.status(400).json({ error: "Échéance invalide." });
+    if (!(await estAutorise(req.user.role, "echeances_admin.consulter", req.user.sub))) return res.status(403).json({ error: "Vous ne pouvez pas payer une échéance administrative." });
+    const { rows: [ech] } = await pool.query(
+      `SELECT e.id, e.categorie, dep.statut AS statut_lie, dep.annulee_le FROM echeances_administratives e LEFT JOIN depenses dep ON dep.id = e.depense_id
+        WHERE e.id = $1 AND e.actif = TRUE`, [b.echeance_id]);
+    if (!ech || !["fiscale", "sociale"].includes(ech.categorie)) return res.status(404).json({ error: "Échéance fiscale ou sociale introuvable." });
+    if (["soumise", "validee"].includes(ech.statut_lie) && !ech.annulee_le) return res.status(409).json({ error: "Un paiement est déjà en cours pour cette échéance." });
+    echeanceId = ech.id;
+    b.categorie = "charges_fiscales_sociales";
+  }
   const n = resoudreNature(b, null);
   if (n.erreur) return res.status(400).json({ error: n.erreur });
   const erreurPrecision = verifierPrecisionNature(b.categorie, b.precision_nature);
@@ -320,11 +341,9 @@ router.post("/", requirePermission("depenses.creer"), async (req, res) => {
        n.dossierId, b.recurrente, req.user.sub, n.nature, JSON.stringify(regl.valeurs.references),
        String(b.beneficiaire || '').trim().slice(0, 160) || null, b.categorie === "frais_greffe" ? b.precision_nature : null]
     );
-    // Centre de notifications (lot 2) : les décideurs sont prévenus (jamais l'auteur) ; pas de montant dans le texte.
-    if (rows[0].statut === "soumise") {
-      await notif.notifier({ type: "depense_soumise", destinataires: await notif.titulairesPermission("depenses.decision"),
-        auteurId: req.user.sub, ref: rows[0].id, aTraiter: true });
-    }
+    if (echeanceId) await pool.query("UPDATE echeances_administratives SET depense_id = $1 WHERE id = $2", [rows[0].id, echeanceId]);
+    // Centre de notifications : une ligne par décideur « N dépenses attendent votre décision » (jamais ses propres soumissions).
+    if (rows[0].statut === "soumise") await notifD.majADecider(pool);
     res.status(201).json(rows[0]);
   } catch (e) {
     console.error(e);
@@ -394,13 +413,13 @@ router.post("/engager", requirePermission("depenses.engager"), async (req, res) 
     await logAudit({ utilisateurId: req.user.sub, action: "engager_depense", entite: "depenses", entiteId: rows[0].id,
       details: { montant, libelle: b.libelle, mode_paiement: b.mode_paiement, solde_avant: caisse.solde, caisse: c.code }, ip: req.ip });
     // Centre de notifications (lot 2) : un autre associé doit valider après coup (jamais l'engageur) ; solde bas (20 %).
-    await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
-      auteurId: req.user.sub, ref: rows[0].id, aTraiter: true, charge: { caisse: c.code } });
+    await notifD.majApresCoup(pool);
     await signalerFractionnement(c, rows[0].id, req.user.sub, beneficiaire, n.dossierId, b.date_depense);
     const refMois = (c.code === "procedure" ? "solde_bas_proc:" : "solde_bas:") + mois.slice(0, 7);
     if (caisse.dotation > 0 && caisse.solde - montant <= caisse.dotation * 0.2 && !(await notif.dejaNotifie("caisse_alerte", refMois))) {
       await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
-        auteurId: req.user.sub, ref: refMois, charge: { sujet: "solde_bas", caisse: c.code } });
+        auteurId: req.user.sub, ref: refMois, aTraiter: true, cle: "caisse:" + c.code + ":solde_bas", mode: "remplacer",
+        charge: { sujet: "solde_bas", caisse: c.code, solde: Number(caisse.solde) - Number(montant), dotation: Number(caisse.dotation) } });
     }
     res.status(201).json({ ...rows[0], solde_restant: caisse.solde - montant });
   } catch (e) {
@@ -416,7 +435,7 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
   if (!["validee", "contestee"].includes(decision)) return res.status(400).json({ error: "decision : validee ou contestee" });
   if (decision === "contestee" && !motif) return res.status(400).json({ error: "Un motif est requis pour contester une dépense." });
   try {
-    const { rows: [d] } = await pool.query("SELECT engagee_par, apres_coup_statut FROM depenses WHERE id = $1", [req.params.id]);
+    const { rows: [d] } = await pool.query("SELECT engagee_par, apres_coup_statut, montant, categorie FROM depenses WHERE id = $1", [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
     if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Cette dépense n'est pas en attente de validation après coup." });
     if (d.engagee_par === req.user.sub) {
@@ -433,12 +452,18 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
       [decision, req.user.sub, motif || null, req.params.id]
     );
     if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
-    await notif.traiter("depense_apres_coup", req.params.id);
-    await notif.notifier({ type: "depense_apres_coup_traitee", destinataires: [d.engagee_par], auteurId: req.user.sub, ref: req.params.id,
-      niveau: decision === "contestee" ? "action" : "information", charge: { decision, motif: motif || undefined } });
-    if (decision === "contestee") {
-      await notif.notifier({ type: "depense_contestee", destinataires: await notif.titulairesPermission("depenses.decision"),
-        auteurId: req.user.sub, ref: req.params.id });
+    // Les autres associés : leur ligne devient « Déjà validée/contestée par Me X » ; le décompte est recalculé.
+    await notif.traiter("depense_apres_coup", req.params.id, undefined, { par: notif.nomAffiche(req.user), par_id: req.user.sub, decision });
+    await notifD.majApresCoup(pool);
+    // L'engageur : STATUT SEUL, sans le nom de l'associé (décision de contrôle). Validée = information regroupée ;
+    // contestée = action, une ligne par dépense (motif lisible), pastille rouge, correction possible depuis le lien.
+    if (decision === "validee") {
+      await notif.notifier({ type: "depense_apres_coup_traitee", destinataires: [d.engagee_par], auteurId: req.user.sub, ref: req.params.id,
+        cle: "apres_coup_validee", charge: { decision } });
+    } else {
+      await notif.notifier({ type: "depense_apres_coup_traitee", destinataires: [d.engagee_par], auteurId: req.user.sub, ref: req.params.id,
+        niveau: "action", aTraiter: true, cle: "apres_coup_contestee:" + req.params.id, mode: "remplacer",
+        charge: { decision, motif: motif || undefined, montant: Number(d.montant), categorie: libelleCategorie(d.categorie).toLowerCase(), rouge: true } });
     }
     await logAudit({ utilisateurId: req.user.sub, action: decision === "validee" ? "valider_apres_coup" : "contester_depense", entite: "depenses", entiteId: req.params.id, details: { motif: motif || null }, ip: req.ip });
     res.json(rows[0]);
@@ -527,8 +552,9 @@ router.put("/:id/engagee", async (req, res) => {
        categorieFinale === "frais_greffe" ? precisionFinale : null]);
     if (!rows[0]) return res.status(409).json({ error: "Dépense traitée entre-temps — non modifiable." });
     if (d.apres_coup_statut === "contestee") {
-      await notif.notifier({ type: "depense_apres_coup", destinataires: await notif.titulairesPermission("depenses.decision"),
-        auteurId: req.user.sub, ref: req.params.id, aTraiter: true, charge: { caisse: c.code } });
+      // La contestation est levée par la correction : la ligne de l'engageur est fermée, les associés sont de nouveau sollicités.
+      await notif.traiter("depense_apres_coup_traitee", req.params.id);
+      await notifD.majApresCoup(pool);
     }
     await logAudit({ utilisateurId: req.user.sub, action: "corriger_depense_engagee", entite: "depenses", entiteId: req.params.id,
       details: { par_engageur: d.engagee_par === req.user.sub, statut_apres_coup_avant: d.apres_coup_statut,
@@ -558,8 +584,11 @@ router.post("/petite-caisse/rapprochement", requirePermission("depenses.petite_c
     );
     await logAudit({ utilisateurId: req.user.sub, action: "rapprochement_petite_caisse", entite: "depenses", entiteId: rows[0].id, details: { mois, ecart: rows[0].ecart, caisse: c.code }, ip: req.ip });
     if (Number(rows[0].ecart) !== 0) {
-      await notif.notifier({ type: "caisse_alerte", destinataires: await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]),
-        auteurId: req.user.sub, ref: "ecart:" + rows[0].id, charge: { sujet: "ecart", caisse: c.code } });
+      // Aux associés, à ceux qui dotent la caisse et à la personne qui a saisi le rapprochement (pas d'auteur exclu).
+      const dest = await notif.titulairesPermissions(["depenses.petite_caisse.doter", "depenses.decision"]);
+      await notif.notifier({ type: "caisse_alerte", destinataires: [...dest, req.user.sub],
+        ref: "ecart:" + rows[0].id, aTraiter: true, cle: "caisse:" + c.code + ":ecart", mode: "remplacer",
+        charge: { sujet: "ecart", caisse: c.code, ecart: Number(rows[0].ecart), mois } });
     }
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
@@ -606,10 +635,20 @@ router.post("/:id/annuler", requirePermission("depenses.decision"), async (req, 
     );
     if (!rows[0]) return res.status(409).json({ error: "Déjà traitée entre-temps." });
     await logAudit({ utilisateurId: req.user.sub, action: "annuler_depense", entite: "depenses", entiteId: req.params.id, details: { motif, statut_avant: rows[0].statut_avant_annulation }, ip: req.ip });
-    await notif.traiter("depense_a_decaisser", req.params.id);
+    // Plus « à décaisser » : décompte recalculé. Décideurs et soumetteur sont informés SANS le nom de qui annule ; si la dépense était
+    // déjà décaissée, l'administration générale et le comptable le sont aussi, en niveau ACTION (« à régulariser »).
+    await notifD.majADecaisser(pool);
     const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
-    const aPrevenir = [so && so.soumis_par, ...(await notif.titulairesPermission("depenses.decision"))];
-    await notif.notifier({ type: "depense_annulee", destinataires: aPrevenir, auteurId: req.user.sub, ref: req.params.id, charge: { motif } });
+    const apresDecaissement = rows[0].statut_avant_annulation === "decaissee";
+    const decideurs = await notif.titulairesPermission("depenses.decision");
+    if (apresDecaissement) {
+      const { rows: exec } = await pool.query("SELECT id FROM utilisateurs WHERE actif AND role IN ('admin_general','comptable')");
+      await notif.notifier({ type: "depense_annulee", destinataires: [so && so.soumis_par, ...decideurs, ...exec.map((r) => r.id)], auteurId: req.user.sub,
+        ref: req.params.id, niveau: "action", aTraiter: true, charge: { motif, apres_decaissement: true } });
+    } else {
+      await notif.notifier({ type: "depense_annulee", destinataires: [so && so.soumis_par, ...decideurs], auteurId: req.user.sub, ref: req.params.id,
+        cle: "depenses_annulees", charge: { motif } });
+    }
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
@@ -787,7 +826,7 @@ router.delete("/:id", requirePermission("depenses.creer"), async (req, res) => {
     }
     const { rowCount } = await pool.query("DELETE FROM depenses WHERE id = $1 AND statut = 'soumise'", [req.params.id]);
     if (!rowCount) return res.status(409).json({ error: "Dépense déjà traitée — non retirable." });
-    await notif.traiter("depense_soumise", req.params.id);
+    await notifD.majADecider(pool);
     res.status(204).end();
   } catch (e) {
     console.error(e);
@@ -919,15 +958,16 @@ router.post("/:id/decision", requirePermission("depenses.decision"), async (req,
        ordre ? ordre.mode_paiement : null, ordre ? ordre.compte_id : null, JSON.stringify(ordre ? ordre.references : {})]
     );
     if (!rows[0]) return res.status(404).json({ error: "Dépense introuvable ou déjà traitée" });
-    await notif.traiter("depense_soumise", req.params.id);
+    // Les autres décideurs : leur ligne devient « Déjà décidée par Me X » (seule dépense en attente) ; décompte recalculé.
+    await notif.traiter("depense_soumise", req.params.id, undefined, { par: notif.nomAffiche(req.user), par_id: req.user.sub, decision: statut });
+    await notifD.majADecider(pool);
+    // Le soumetteur : STATUT SEUL, sans le nom du décideur ; validées et rejetées regroupées séparément ; rejet en pastille rouge.
     const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
     await notif.notifier({ type: "depense_decidee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id,
-      charge: { decision: statut, motif: statut === "rejetee" ? String(motif_rejet).trim() : undefined } });
+      cle: statut === "validee" ? "depenses_validees" : "depenses_rejetees",
+      charge: { decision: statut, motif: statut === "rejetee" ? String(motif_rejet).trim() : undefined, rouge: statut === "rejetee" } });
     // « À décaisser » ne part vers les exécutants qu'une fois l'ordre de paiement donné.
-    if (statut === "validee" && ordre) {
-      await notif.notifier({ type: "depense_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"),
-        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
-    }
+    if (statut === "validee" && ordre) await notifD.majADecaisser(pool);
     res.json({ ...rows[0], ordre_donne: !!ordre });
   } catch (e) {
     console.error(e);
@@ -955,15 +995,33 @@ router.post("/:id/ordre-paiement", requirePermission("depenses.decision"), async
     await logAudit({ utilisateurId: req.user.sub, action: "ordonner_paiement_depense", entite: "depenses", entiteId: req.params.id,
       details: { mode_paiement: v.mode_paiement, premier_ordre: !d.ordre_paiement_le, apres_blocage: !!d.blocage_le }, ip: req.ip });
     await notif.traiter("depense_blocage", req.params.id);
-    if (!d.ordre_paiement_le || d.blocage_le) {
-      await notif.notifier({ type: "depense_a_decaisser", destinataires: await notif.titulairesPermission("depenses.decaisser"),
-        auteurId: req.user.sub, ref: req.params.id, aTraiter: true });
-    }
+    if (!d.ordre_paiement_le || d.blocage_le) await notifD.majADecaisser(pool);
     res.json({ ...rows[0], ordre_donne: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+// POST /api/depenses/:id/relancer-associes { email? } — « Relancer les associés » : le soumetteur d'une dépense en attente de décision,
+// ou l'engageur d'une dépense à valider après coup, seul. La relance remplace la ligne de chaque associé (remise en non lue, en tête) ;
+// case e-mail décochée par défaut ; une relance toutes les 4 heures au plus ; tracée à l'audit ; aucune trace côté relanceur.
+router.post("/:id/relancer-associes", requirePermission("depenses.creer"), async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: "Identifiant invalide" });
+  try {
+    const { rows: [d] } = await pool.query("SELECT soumis_par, engagee_par, statut, apres_coup_statut, annulee_le FROM depenses WHERE id = $1", [req.params.id]);
+    if (!d) return res.status(404).json({ error: "Dépense introuvable" });
+    const apresCoup = d.apres_coup_statut === "a_valider" && !d.annulee_le;
+    const soumise = d.statut === "soumise" && !d.annulee_le;
+    if (!apresCoup && !soumise) return res.status(409).json({ error: "Cette dépense n'attend plus de décision." });
+    if ((apresCoup ? d.engagee_par : d.soumis_par) !== req.user.sub) return res.status(403).json({ error: "Seul l'auteur de la dépense peut relancer les associés." });
+    const r = await notif.relancerAssocies({
+      ref: req.params.id, destinataires: await notif.titulairesPermission("depenses.decision"), user: req.user, ip: req.ip,
+      email: !!(req.body || {}).email, entite: "depenses",
+      miseAJour: () => (apresCoup ? notifD.majApresCoup(pool) : notifD.majADecider(pool)),
+    });
+    res.status(r.statut).json(r.corps);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
 // POST /api/depenses/:id/blocage  { motif }  (exécutants) : signale un empêchement (solde insuffisant, chèque indisponible…).
@@ -977,8 +1035,12 @@ router.post("/:id/blocage", requirePermission("depenses.decaisser"), async (req,
        WHERE id = $3 AND statut = 'validee' AND annulee_le IS NULL RETURNING id`, [motif, req.user.sub, req.params.id]);
     if (!rows[0]) return res.status(409).json({ error: "Le blocage ne se signale que sur une dépense validée, non encore décaissée." });
     await logAudit({ utilisateurId: req.user.sub, action: "signaler_blocage_depense", entite: "depenses", entiteId: req.params.id, details: { motif }, ip: req.ip });
+    // Plus « à décaisser » tant qu'un nouvel ordre n'est pas donné ; les associés voient le montant, le libellé et le motif (sans le nom du signaleur).
+    await notifD.majADecaisser(pool);
+    const { rows: [dep] } = await pool.query("SELECT montant, libelle FROM depenses WHERE id = $1", [req.params.id]);
     await notif.notifier({ type: "depense_blocage", destinataires: await notif.titulairesPermission("depenses.decision"),
-      auteurId: req.user.sub, ref: req.params.id, aTraiter: true, charge: { motif: motif.slice(0, 140) } });
+      auteurId: req.user.sub, ref: req.params.id, aTraiter: true, cle: "blocage:" + req.params.id, mode: "remplacer",
+      charge: { motif: motif.slice(0, 140), montant: dep ? Number(dep.montant) : undefined, libelle: dep ? String(dep.libelle).slice(0, 60) : undefined } });
     res.json({ id: req.params.id, bloquee: true });
   } catch (e) {
     console.error(e);
@@ -1033,9 +1095,13 @@ router.post("/:id/decaisser", requirePermission("depenses.decaisser"), async (re
       [req.user.sub, req.params.id, v.mode_paiement, v.compte_id, JSON.stringify(v.references), String(v.references.beneficiaire || "").trim().slice(0, 160) || null]
     );
     if (!rows[0]) return res.status(404).json({ error: "La dépense doit être validée avant décaissement" });
-    await notif.traiter(["depense_a_decaisser", "depense_blocage"], req.params.id);
+    await notif.traiter("depense_blocage", req.params.id);
+    await notifD.majADecaisser(pool);
+    await cloturerEcheanceLiee(req.params.id); // charge fiscale ou sociale : l'échéance passe à « payée » et la suivante se recalcule
+    // Le soumetteur : regroupé (« N de vos dépenses ont été décaissées »), nom de celui qui a décaissé pour une seule ; pas de mode de paiement.
     const { rows: [so] } = await pool.query("SELECT soumis_par FROM depenses WHERE id = $1", [req.params.id]);
-    await notif.notifier({ type: "depense_decaissee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id });
+    await notif.notifier({ type: "depense_decaissee", destinataires: [so && so.soumis_par], auteurId: req.user.sub, ref: req.params.id,
+      cle: "depenses_decaissees", charge: { par: notif.nomAffiche(req.user) } });
     res.json(rows[0]);
   } catch (e) {
     console.error(e);

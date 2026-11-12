@@ -5,6 +5,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { libelleRole } from '../../core/roles';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-cabinet',
@@ -349,6 +350,7 @@ import { libelleRole } from '../../core/roles';
 })
 export class CabinetComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly router = inject(Router);
   readonly auth = inject(AuthService);
   readonly libelleRole = libelleRole;
   readonly equipe = signal<any[]>([]);
@@ -584,8 +586,12 @@ export class CabinetComponent implements OnInit {
   // Menu "⋮" (19/09/2026).
   actionsPourEcheanceAdmin(e: any): ActionMenuItem[] {
     if (!this.auth.peut('echeances_admin.gerer')) return [];
+    const fiscaleOuSociale = ['fiscale', 'sociale'].includes(e.categorie);
     return [
-      { label: 'Marquer traité', action: () => this.traiterEcheanceAdmin(e) },
+      // Charge fiscale ou sociale : « Payer » ouvre le formulaire prérempli dans Dépenses & caisse (circuit normal de validation) ;
+      // « Marquer traité » ne crée plus de dépense déjà décaissée pour elles (déjà payée ailleurs : clôture simple).
+      ...(fiscaleOuSociale && this.auth.peut('depenses.creer') ? [{ label: 'Payer dans Dépenses & caisse', action: () => this.router.navigate(['/depenses'], { queryParams: { onglet: 'cabinet', payer: e.id } }) }] : []),
+      { label: fiscaleOuSociale ? 'Marquer traité (déjà payé)' : 'Marquer traité', action: () => this.traiterEcheanceAdmin(e) },
       { label: 'Modifier', action: () => this.modifierEcheanceAdmin(e) },
       { label: 'Supprimer', action: () => this.supprimerEcheanceAdmin(e), danger: true },
     ];
@@ -636,7 +642,8 @@ export class CabinetComponent implements OnInit {
   // 3 liens d'action dans une cellule étroite (12/09/2026).
   traiterEcheanceAdmin(e: any): void {
     this.erreurEcheanceAdmin.set('');
-    const saisie = prompt('Montant réellement décaissé (FCFA) — laisser vide si non applicable :', '');
+    const fiscaleOuSociale = ['fiscale', 'sociale'].includes(e.categorie);
+    const saisie = fiscaleOuSociale ? '' : prompt('Montant réellement décaissé (FCFA) — laisser vide si non applicable :', '');
     if (saisie === null) return; // annulé
     const montant = saisie.trim() ? Number(saisie.trim()) : null;
     if (saisie.trim() && (!Number.isFinite(montant) || (montant as number) <= 0)) {

@@ -45,6 +45,7 @@ afterAll(async () => { await pool.end(); });
 describe("Vignette à affecter", () => {
   test("une instance sur un dossier contentieux est proposée ; sur un dossier de conseil, non", async () => {
     const gestionnaire = await creerUtilisateur("assistante"); // reçoit l'alerte (depenses.vignettes.mouvement) sans l'avoir créée
+    await pool.query("UPDATE instances SET vignette_dispensee = TRUE WHERE vignette_dispensee = FALSE"); // isolement du décompte
     const dossier = await creerDossier("contentieux");
     const inst = await creerInstance(dossier);
     expect(inst.status).toBe(201);
@@ -106,9 +107,12 @@ describe("Rappel et suivi", () => {
     await pool.query("UPDATE instances SET cree_le = $2::timestamptz WHERE id = $1", [inst.body.id, new Date(mercredi.getTime() - 10 * 86400000).toISOString()]);
     const b1 = await executerJobNotificationsRelances(pool, mercredi);
     expect(b1.vignettes).toBeGreaterThanOrEqual(1);
-    expect((await notifs(gestionnaire.token, "vignette_rappel")).length).toBeGreaterThanOrEqual(1);
-    const b2 = await executerJobNotificationsRelances(pool, mercredi);
-    expect(b2.vignettes).toBe(0); // un seul rappel par instance
+    // le rappel est fusionné dans la ligne « N procédures attendent leur vignette, dont N depuis plus de 3 jours » (jamais une 2e ligne)
+    const ligne1 = await notifs(gestionnaire.token, "vignette_a_affecter");
+    expect(ligne1).toHaveLength(1);
+    expect(ligne1[0].texte).toMatch(/depuis plus de 3 jours/);
+    await executerJobNotificationsRelances(pool, mercredi);
+    expect(await notifs(gestionnaire.token, "vignette_a_affecter")).toHaveLength(1);
     await pool.query("UPDATE parametres_cabinet SET vignettes_suivi_depuis = $1 WHERE id = 1", [avant.rows[0].vignettes_suivi_depuis]);
     // antérieure au suivi : ignorée
     const ancien = await creerInstance(await creerDossier());

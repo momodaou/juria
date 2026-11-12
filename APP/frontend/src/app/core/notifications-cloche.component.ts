@@ -4,8 +4,9 @@ import { Router, NavigationEnd } from '@angular/router';
 import { NotificationsService, FiltreNotifications, Notification } from './notifications.service';
 
 // Cloche du centre de notifications (lot 1, 07/11/2026) : rangée en tête du menu latéral (visible aussi menu replié),
-// panneau flottant à droite du menu, toasts discrets en haut à droite de l'écran. Les textes sont composés par le serveur
-// (aucun montant, aucun nom de client).
+// panneau flottant à droite du menu, toasts discrets en bas à droite de l'écran. Les textes sont composés par le serveur ;
+// depuis la revue du 12/11/2026 ils peuvent porter un montant ou un nom d'avocat (la bulle du système, elle, reste neutre).
+// Toast : niveau Action seulement ; « Marquer comme traitée » : niveau Action seulement (jamais le critique, jamais d'« Ignorer »).
 @Component({
   selector: 'app-notifications-cloche',
   standalone: true,
@@ -39,20 +40,27 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
         @if (svc.permissionAlertes() === 'default') {
           <button type="button" class="nc-alertes" (click)="svc.activerAlertes()">🔔 Activer les alertes du navigateur (urgences quand JURIA est en arrière-plan)</button>
         } @else if (svc.permissionAlertes() === 'denied') {
-          <p class="nc-alertes-info">Les alertes du navigateur sont bloquées : autorisez-les dans les réglages du site pour les recevoir.</p>
+          <p class="nc-alertes-info">Les alertes du navigateur sont bloquées. Safari : menu Safari, Réglages, Sites web, Notifications ; cochez « Autoriser les sites web à demander l'autorisation d'envoyer des notifications », autorisez JURIA, puis rechargez la page. Chrome : icône à gauche de l'adresse, Notifications, Autoriser. Sur Mac, vérifiez aussi Réglages Système, Notifications, votre navigateur.</p>
+        } @else if (svc.permissionAlertes() === 'granted') {
+          <button type="button" class="nc-lien nc-test" (click)="svc.testerAlerte()">Tester l'alerte du navigateur</button>
         }
         <div class="nc-liste">
           @for (n of svc.liste(); track n.id) {
-            <button type="button" class="nc-item" [class.nc-nonlue]="!n.lue_le" (click)="svc.ouvrir(n)">
-              <span class="nc-pt" [class.nc-critique]="n.niveau === 'critique'" [class.nc-action]="n.niveau === 'action'" [class.nc-info]="n.niveau === 'information'" aria-hidden="true"></span>
-              <span class="nc-corps">
-                <span class="nc-texte">{{ n.texte }}</span>
-                <span class="nc-meta">
-                  {{ n.cree_le | date: 'dd/MM/yyyy HH:mm' }}
-                  @if (n.a_traiter) { <span class="nc-trait">À traiter</span> }
+            <div class="nc-ligne">
+              <button type="button" class="nc-item" [class.nc-nonlue]="!n.lue_le" [class.nc-avec-action]="n.a_traiter && n.niveau === 'action'" (click)="svc.ouvrir(n)">
+                <span class="nc-pt" [class.nc-critique]="n.niveau === 'critique'" [class.nc-action]="n.niveau === 'action'" [class.nc-info]="n.niveau === 'information'" [class.nc-rouge]="n.rouge" aria-hidden="true"></span>
+                <span class="nc-corps">
+                  <span class="nc-texte">{{ n.texte }}</span>
+                  <span class="nc-meta">
+                    {{ n.cree_le | date: 'dd/MM/yyyy HH:mm' }}
+                    @if (n.a_traiter) { <span class="nc-trait">À traiter</span> }
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              @if (n.a_traiter && n.niveau === 'action') {
+                <button type="button" class="nc-traitee" (click)="svc.marquerTraitee(n)">Marquer comme traitée</button>
+              }
+            </div>
           } @empty {
             <p class="nc-vide">@if (svc.chargement()) { Chargement… } @else { Rien à signaler. }</p>
           }
@@ -91,6 +99,12 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
     .nc-alertes { display: block; width: calc(100% - 28px); margin: 8px 14px 0; text-align: left; background: var(--info-bg); color: var(--info); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: var(--fs-sm); cursor: pointer; }
     .nc-alertes-info { margin: 8px 14px 0; font-size: var(--fs-xs); color: var(--grey); }
     .nc-liste { overflow-y: auto; min-height: 0; flex: 1; }
+    .nc-ligne { position: relative; }
+    .nc-item.nc-avec-action { padding-bottom: 30px; }
+    .nc-traitee { position: absolute; right: 12px; bottom: 7px; background: none; border: none; padding: 0; font: inherit; font-size: var(--fs-xs); font-weight: 600; color: var(--gold); cursor: pointer; }
+    .nc-traitee:hover { text-decoration: underline; }
+    .nc-test { margin: 8px 14px 0; }
+    .nc-pt.nc-rouge { background: var(--red); box-shadow: 0 0 0 2px rgba(190,60,60,.25); }
     .nc-item { display: flex; gap: 10px; width: 100%; text-align: left; background: #fff; color: #22303f; border: none; border-bottom: 1px solid var(--line);
       padding: 10px 14px; cursor: pointer; font: inherit; }
     .nc-item:hover { background: var(--light); }
@@ -142,7 +156,8 @@ export class NotificationsClocheComponent {
   template: `
     <div class="nt-pile" aria-live="polite">
       @for (t of svc.toasts(); track t.id) {
-        <div class="nt-toast" [class.nt-critique]="t.niveau === 'critique'" [class.nt-action]="t.niveau === 'action'" role="status">
+        <div class="nt-toast" [class.nt-critique]="t.niveau === 'critique'" [class.nt-action]="t.niveau === 'action'" role="status"
+             (mouseenter)="svc.suspendreToast(t.id)" (mouseleave)="svc.reprendreToast(t.id)" (focusin)="svc.suspendreToast(t.id)" (focusout)="svc.reprendreToast(t.id)" (keydown.escape)="svc.fermerToast(t.id)">
           <button type="button" class="nt-texte" (click)="svc.ouvrirToast(t)">{{ t.texte }}</button>
           <button type="button" class="nt-x" aria-label="Fermer" (click)="svc.fermerToast(t.id)">×</button>
         </div>

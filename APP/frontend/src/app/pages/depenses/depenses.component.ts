@@ -25,7 +25,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;white-space:nowrap">
         <a class="btn ghost" routerLink="/depenses/etat-charges">État mensuel des charges</a>
         @if (auth.peut('depenses.creer')) {
-          <button class="btn" (click)="afficherForm.set(!afficherForm())">
+          <button class="btn" (click)="basculerForm()">
             {{ afficherForm() ? 'Annuler' : '+ Nouvelle dépense' }}
           </button>
         }
@@ -48,6 +48,42 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
       </button>
       <button type="button" class="onglet" role="tab" [class.actif]="onglet() === 'tout'" (click)="changerOnglet('tout')">Tout</button>
     </div>
+
+    @if (peutVoirRubriqueFiscale()) {
+      <section class="rubrique-fiscale">
+        <button type="button" class="rf-titre" (click)="rubriqueFiscaleOuverte.set(!rubriqueFiscaleOuverte())" [attr.aria-expanded]="rubriqueFiscaleOuverte()">
+          <span class="rf-chev" aria-hidden="true">{{ rubriqueFiscaleOuverte() ? '▾' : '▸' }}</span>
+          <span class="rf-nom">Charges fiscales et sociales à payer</span>
+          <span class="muted">{{ echeancesFiscales().length ? echeancesFiscales().length + ' dans les 30 jours' : 'aucune dans les 30 jours' }}</span>
+          @if (nbFiscalesEnRetard()) { <span class="pastille">{{ nbFiscalesEnRetard() }} en retard</span> }
+        </button>
+        @if (rubriqueFiscaleOuverte()) {
+          <div class="rf-corps">
+            <p class="muted">Échéances fiscales et sociales du cabinet, dépassées ou à venir dans les 30 jours. « Payer » prépare la dépense dans le circuit habituel : les associés ordonnent le paiement, l’administration générale ou le comptable le décaisse.</p>
+            @if (echeancesFiscales().length) {
+              <table>
+                <tr><th>Échéance</th><th>Catégorie</th><th>Libellé</th><th>Périodicité</th><th>Montant estimé</th><th>Alerte</th><th>Dépense</th><th></th></tr>
+                @for (e of echeancesFiscales(); track e.id) {
+                  <tr>
+                    <td>{{ e.prochaine_date | date:'dd/MM/yyyy' }}</td>
+                    <td>{{ e.categorie === 'sociale' ? 'Sociale' : 'Fiscale' }}</td>
+                    <td>{{ e.libelle }}</td>
+                    <td>{{ libellePeriodiciteEcheance(e.periodicite) }}</td>
+                    <td>@if (e.montant_estime) { {{ e.montant_estime | number }} FCFA } @else { — }</td>
+                    <td><span class="tag" [class.haute]="e.jours_restants <= 7">{{ e.jours_restants < 0 ? 'dépassé' : 'J-' + e.jours_restants }}</span></td>
+                    <td>@if (e.paiement_en_cours) { <span class="tag attente">{{ e.paiement_en_cours === 'validee' ? 'Validée — à décaisser' : 'Soumise' }}</span> } @else { <span class="muted">Aucune demande</span> }</td>
+                    <td>
+                      @if (e.paiement_en_cours) { <button type="button" class="lien" (click)="voirDepenseLiee(e)">Voir la dépense</button> }
+                      @else if (auth.peut('depenses.creer')) { <button type="button" class="btn sm" (click)="payerEcheance(e)">Payer</button> }
+                    </td>
+                  </tr>
+                }
+              </table>
+            } @else { <p class="muted">Aucune échéance fiscale ou sociale dans les 30 jours.</p> }
+          </div>
+        }
+      </section>
+    }
 
     <div class="kpis">
       @if (onglet() === 'caisse' || onglet() === 'procedure') {
@@ -126,6 +162,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <optgroup label="Débours et frais de procédure">@for (c of categoriesDeboursSaisie; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
             </select>
           </div>
+          @if (form.categorie === 'charges_fiscales_sociales' && !form.echeance_id && auth.peut('echeances_admin.consulter')) {
+            <p class="muted col2">Pour une échéance connue (TVA, INPS, ITS, acomptes d’IS…), utilisez « Payer » dans la rubrique Charges fiscales et sociales à payer, en haut de cet onglet.</p>
+          }
           @if (form.categorie === 'frais_greffe') {
             <div>
               <label>Frais de greffe concerné <span style="color:#b13a36">*</span></label>
@@ -161,6 +200,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
             @if (form.nature === 'dossier') { <label><input type="checkbox" [(ngModel)]="form.refacturable_client" name="refact" /> À refacturer au client en plus des honoraires</label> }
           </div>
         </div>
+        @if (echeanceEnCours(); as ech) {
+          <p class="muted">Échéance liée : {{ ech.libelle }}. Saisissez le montant réel déclaré par le comptable (JURIA ne calcule pas l’impôt).
+            @if (ech.depense_montant && !ech.paiement_en_cours) { Repère : dernier montant payé {{ ech.depense_montant | number }} FCFA. }</p>
+        }
         <button class="btn" (click)="creer()" [disabled]="!form.libelle || !form.montant || (form.nature === 'dossier' && !form.dossier_id) || (form.categorie === 'frais_greffe' && !form.precision_nature) || creationEnCours()">{{ creationEnCours() ? 'Soumission…' : 'Soumettre' }}</button>
         @if (doublonsDepense().length) {
           <div class="doublon">
@@ -595,6 +638,12 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .onglet{background:none;border:none;border-bottom:3px solid transparent;padding:10px 16px;font-size:var(--fs-base);font-weight:600;color:var(--slate);cursor:pointer;display:inline-flex;gap:8px;align-items:center;margin-bottom:-1px}
     .onglet.actif{color:var(--ink,#1a2740);border-bottom-color:var(--gold,#b08a4b)}
     .onglet:hover{color:var(--ink,#1a2740)}
+    .rubrique-fiscale{border:1px solid var(--line);border-left:3px solid var(--gold,#b08a4b);border-radius:8px;background:#fff;margin:0 0 14px}
+    .rf-titre{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;text-align:left;background:none;border:none;padding:12px 14px;cursor:pointer;font:inherit;font-size:var(--fs-base);color:var(--ink,#1a2740)}
+    .rf-nom{font-weight:600}
+    .rf-chev{color:var(--gold,#b08a4b);font-size:12px}
+    .rf-corps{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+    .pastille{background:var(--red,#b13a36);color:#fff;font-size:var(--fs-xs);font-weight:700;border-radius:999px;padding:2px 8px}
     .pastille{background:#c0392b;color:#fff;border-radius:999px;font-size:var(--fs-2xs);padding:1px 7px;font-weight:700}
     .kpi.cliquable{cursor:pointer}
     .btns-ligne{display:flex;gap:12px;align-items:center;margin-top:12px}
@@ -645,6 +694,53 @@ export class DepensesComponent implements OnInit {
   readonly stockVignettes = signal(0);
   readonly seuilVignettes = signal(10);
   readonly afficherForm = signal(false);
+
+  // Rubrique « Charges fiscales et sociales à payer » (revue du 12/11/2026) : alimentée par les échéances administratives fiscales et
+  // sociales (dépassées ou à venir dans les 30 jours) ; « Payer » ouvre le formulaire prérempli, lié à l'échéance, circuit normal.
+  readonly echeancesFiscales = signal<any[]>([]);
+  readonly rubriqueFiscaleOuverte = signal(false);
+  readonly echeanceEnCours = signal<any | null>(null);
+  private payerDemande: string | null = null;
+  peutVoirRubriqueFiscale(): boolean { return this.onglet() === 'cabinet' && this.auth.peut('echeances_admin.consulter') && this.auth.peut('depenses.consulter'); }
+  nbFiscalesEnRetard(): number { return this.echeancesFiscales().filter((e) => e.jours_restants < 0).length; }
+  libellePeriodiciteEcheance(p: string): string {
+    return ({ mensuelle: 'Mensuelle', trimestrielle: 'Trimestrielle', semestrielle: 'Semestrielle', annuelle: 'Annuelle', ponctuelle: 'Ponctuelle' } as Record<string, string>)[p] ?? p;
+  }
+  chargerEcheancesFiscales(): void {
+    if (!this.auth.peut('echeances_admin.consulter')) return;
+    this.api.echeancesAdministratives().subscribe({
+      next: (l) => {
+        this.echeancesFiscales.set(l.filter((e) => ['fiscale', 'sociale'].includes(e.categorie) && e.jours_restants <= 30));
+        const id = this.payerDemande;
+        if (id) {
+          this.payerDemande = null;
+          const cible = l.find((e) => e.id === id);
+          if (cible && !cible.paiement_en_cours) this.payerEcheance(cible);
+        }
+      },
+      error: () => {},
+    });
+  }
+  payerEcheance(e: any): void {
+    const d = String(e.prochaine_date).slice(0, 10).split('-').reverse().join('/');
+    this.echeanceEnCours.set(e);
+    this.form = {
+      type: e.periodicite === 'ponctuelle' ? 'ponctuelle' : 'fixe', categorie: 'charges_fiscales_sociales', nature: 'cabinet',
+      libelle: `${e.libelle} — échéance ${d}`, echeance_id: e.id,
+    };
+    this.afficherForm.set(true);
+    setTimeout(() => document.querySelector('.grid2')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+  }
+  voirDepenseLiee(e: any): void {
+    if (!e.depense_id) return;
+    this.depenseCible = e.depense_id;
+    this.charger();
+  }
+  /** Le bouton d'en-tête ouvre un formulaire neuf : un formulaire déjà lié à une échéance ne se réutilise jamais pour une dépense ordinaire. */
+  basculerForm(): void {
+    if (!this.afficherForm() && this.form.echeance_id) { this.form = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' }; this.echeanceEnCours.set(null); }
+    this.afficherForm.set(!this.afficherForm());
+  }
   readonly erreur = signal('');
   // 26/09/2026 — audit doublons : garde anti-double-clic + avertissement de
   // ressaisie, même patron que clients.component.ts.
@@ -696,6 +792,8 @@ export class DepensesComponent implements OnInit {
     // 24/10/2026 — lien « À décaisser » de l'état mensuel des charges.
     this.filtreStatut = params.get('statut') ?? '';
     this.depenseCible = params.get('depense');
+    this.payerDemande = params.get('payer');
+    this.filtreApresCoup = params.get('apres_coup') ?? '';
     // Onglet de départ : « tout » quand on arrive par un lien précis (dépense, statut, dossier) pour retrouver l'élément quelle que soit sa caisse ;
     // sinon l'onglet demandé, le dernier utilisé, ou « cabinet ».
     let memo: string | null = null;
@@ -712,6 +810,8 @@ export class DepensesComponent implements OnInit {
     this.chargerUtilisationsVignettes();
     this.chargerStockVignettes();
     this.chargerVignettesAAffecter();
+    this.chargerEcheancesFiscales();
+    if (this.payerDemande) this.rubriqueFiscaleOuverte.set(true);
   }
 
   // Vignettes à affecter (lot F, 11/11/2026) : proposition, jamais de décompte automatique.
@@ -863,9 +963,11 @@ export class DepensesComponent implements OnInit {
         this.creationEnCours.set(false);
         this.afficherForm.set(false);
         this.form = { type: 'ponctuelle', categorie: 'autre', nature: 'cabinet' };
+        this.echeanceEnCours.set(null);
         this.doublonsDepense.set([]);
         this.charger();
         this.chargerCaisse();
+        this.chargerEcheancesFiscales();
       },
       error: (e) => { this.creationEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Soumission impossible.'); },
     });
@@ -905,11 +1007,24 @@ export class DepensesComponent implements OnInit {
         items.push({ label: d.apres_coup_statut === 'validee' ? 'Corriger la forme' : 'Corriger', action: () => this.commencerEdition(d, true) });
       }
     }
+    // « Relancer les associés » : l'auteur seul (soumetteur d'une dépense en attente de décision, ou engageur d'une dépense à valider après coup).
+    const moi = this.auth.utilisateur()?.id;
+    if (!d.annulee_le && ((d.statut === 'soumise' && d.soumis_par_id === moi) || (d.apres_coup_statut === 'a_valider' && d.engagee_par_id === moi))) {
+      items.push({ label: 'Relancer les associés', action: () => this.relancerAssocies(d) });
+    }
     if (d.statut === 'soumise' && (d.soumis_par_id === this.auth.utilisateur()?.id || this.auth.peut('depenses.decision'))) {
       items.push({ label: 'Modifier', action: () => this.commencerEdition(d) });
       items.push({ label: 'Retirer', action: () => this.retirer(d), danger: true });
     }
     return items;
+  }
+
+  relancerAssocies(d: any): void {
+    const email = confirm('Envoyer aussi la relance par e-mail ?\n\nOK : oui. Annuler : non (cloche seulement).');
+    this.api.relancerAssociesDepense(d.id, email).subscribe({
+      next: () => alert('Les associés ont été relancés.'),
+      error: (e) => alert(e?.error?.error ?? 'Relance impossible.'),
+    });
   }
 
   // Annulation, dotations, achats de vignettes (17/10/2026).

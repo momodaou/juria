@@ -340,7 +340,7 @@ router.post("/", requirePermission("courriers.creer"), async (req, res) => {
     }
     await client.query("COMMIT");
     if (rappel) {
-      await notif.notifier({ type: "tache_assignee", destinataires: [courrier.destinataire_id], auteurId: req.user.sub, ref: rappel.id, aTraiter: true });
+      await notif.notifier({ type: "tache_assignee", destinataires: [courrier.destinataire_id], auteurId: req.user.sub, ref: rappel.id, aTraiter: true, charge: { par: notif.nomAffiche(req.user) }, cle: "action:" + rappel.id, mode: "remplacer" });
     }
     res.status(201).json({ ...courrier, declenchement, rappel });
   } catch (e) {
@@ -420,7 +420,7 @@ router.post("/acte-audience", requirePermission("courriers.acte_audience.deposer
        `Acte reçu du client${courrier.audience_indiquee ? ", audience indiquée le " + courrier.audience_indiquee : ""} : rattacher à un dossier (ou ouvrir le dossier) et programmer l'audience au rôle.`,
        courrier.destinataire_id, urgent ? 0 : 2, urgent ? "haute" : "normale", req.user.sub, courrier.id]);
     await client.query("COMMIT");
-    await notif.notifier({ type: "tache_assignee", destinataires: [courrier.destinataire_id], auteurId: req.user.sub, ref: t.rows[0].id, aTraiter: true });
+    await notif.notifier({ type: "tache_assignee", destinataires: [courrier.destinataire_id], auteurId: req.user.sub, ref: t.rows[0].id, aTraiter: true, charge: { par: notif.nomAffiche(req.user) }, cle: "action:" + t.rows[0].id, mode: "remplacer" });
     await logAudit({ utilisateurId: req.user.sub, action: "deposer_acte_audience", entite: "courriers", entiteId: courrier.id,
       details: { reference: courrier.reference, nature, client: correspondant, audience_indiquee: courrier.audience_indiquee, destinataire_id: courrier.destinataire_id }, ip: req.ip });
     res.status(201).json({ ...courrier, jours_restants: joursRestants, urgent, tache: t.rows[0] });
@@ -662,9 +662,9 @@ router.post("/:id/programmer-audience", requirePermission("courriers.acte_audien
     await client.query("COMMIT");
     // Travail confié (parcours « acte reçu avec audience ») : l'avocat chargé de préparer l'audience et la personne à qui un travail est confié.
     const numDossier = await notif.numeroDossier(dossierId);
-    await notif.notifier({ type: "tache_assignee", destinataires: [avocatId || c.destinataire_id], auteurId: req.user.sub, ref: tache.rows[0].id, aTraiter: true, charge: { dossier: numDossier } });
+    await notif.notifier({ type: "tache_assignee", destinataires: [avocatId || c.destinataire_id], auteurId: req.user.sub, ref: tache.rows[0].id, aTraiter: true, cle: "action:" + tache.rows[0].id, mode: "remplacer", charge: { par: notif.nomAffiche(req.user), dossier: numDossier } });
     if (tacheConfiee) {
-      await notif.notifier({ type: "tache_assignee", destinataires: [cf.utilisateur_id], auteurId: req.user.sub, ref: tacheConfiee.id, aTraiter: true, charge: { dossier: numDossier } });
+      await notif.notifier({ type: "tache_assignee", destinataires: [cf.utilisateur_id], auteurId: req.user.sub, ref: tacheConfiee.id, aTraiter: true, cle: "action:" + tacheConfiee.id, mode: "remplacer", charge: { par: notif.nomAffiche(req.user), dossier: numDossier } });
     }
     if (ancienCheminBrut) await deleteObject(ancienCheminBrut);
     await logAudit({ utilisateurId: req.user.sub, action: "programmer_audience_depuis_acte", entite: "courriers", entiteId: c.id,
@@ -954,8 +954,8 @@ router.post("/:id/imputer", requirePermission("courriers.consulter"), async (req
         [b.imputation_id, String(b.instructions).trim(), req.user.sub, c.id]
       );
       await client.query("COMMIT");
-      await notif.notifier({ type: "tache_assignee", destinataires: [b.imputation_id], auteurId: req.user.sub, ref: t.rows[0].id, aTraiter: true,
-        charge: { dossier: await notif.numeroDossier(c.dossier_id) } });
+      await notif.notifier({ type: "tache_assignee", destinataires: [b.imputation_id], auteurId: req.user.sub, ref: t.rows[0].id, aTraiter: true, cle: "action:" + t.rows[0].id, mode: "remplacer",
+        charge: { par: notif.nomAffiche(req.user), dossier: await notif.numeroDossier(c.dossier_id) } });
       await logAudit({ utilisateurId: req.user.sub, action: "imputer_courrier", entite: "courriers", entiteId: c.id,
         details: { imputation_id: b.imputation_id, tache_id: t.rows[0].id, echeance: b.echeance || null }, ip: req.ip });
       res.status(201).json({ courrier_id: c.id, tache: t.rows[0] });
