@@ -197,10 +197,13 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 
     <section class="panel">
       <h3>Factures impayées</h3>
-      @if (impayees().length) {
+      @if (filtreRetard()) {
+        <p class="filtre">Filtre actif : impayées depuis plus de 60 jours après l'échéance ({{ impayeesAffichees().length }} sur {{ impayees().length }}) — <a class="lien" routerLink="." [queryParams]="{}" (click)="filtreRetard.set(false)">voir toutes les impayées</a></p>
+      }
+      @if (impayeesAffichees().length) {
         <table>
           <tr><th>N°</th><th>Client</th><th>Reste dû</th><th>Échéance</th><th>Encaisser</th></tr>
-          @for (f of impayees(); track f.id) {
+          @for (f of impayeesAffichees(); track f.id) {
             <tr>
               <td>{{ f.numero }}</td><td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td>{{ f.reste | number }} {{ dev(f.devise) }}</td>
@@ -534,6 +537,13 @@ export class FacturationComponent implements OnInit {
 
   readonly factures = signal<any[]>([]);
   readonly impayees = signal<any[]>([]);
+  // Lien de la notification « factures impayées » : ?statut=impayees = plus de 60 jours après l'échéance (même règle que l'alerte).
+  readonly filtreRetard = signal(false);
+  readonly impayeesAffichees = computed(() => {
+    const l = this.impayees();
+    if (!this.filtreRetard()) return l;
+    return l.filter((f) => f.date_echeance && (Date.now() - new Date(f.date_echeance).getTime()) / 86400000 > 60);
+  });
   readonly comptes = signal<{ id: string; intitule: string; type: string; banque?: string }[]>([]);
   // Clients contractuels / abonnement (05/10/2026) — voir CLAUDE.md/HISTORY.md.
   readonly abonnements = signal<any[]>([]);
@@ -630,6 +640,7 @@ export class FacturationComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    this.filtreRetard.set(params.get('statut') === 'impayees');
     this.rafraichir();
   }
 

@@ -37,6 +37,7 @@ import { LibellePipe } from '../../core/libelles';
           <option value="pro_bono">Pro bono</option>
           <option value="facture">Facturé</option>
           <option value="a_facturer">À facturer</option>
+          <option value="a_relancer">À facturer en retard (30 j et plus)</option>
           <option value="en_attente">En attente de facturation</option>
           <option value="toujours_pas">Toujours pas facturé</option>
           <option value="abonnement">Abonnement</option>
@@ -109,6 +110,7 @@ export class DossiersComponent implements OnInit {
   readonly filtreHonoraires = signal('');
   readonly affiches = computed(() => {
     const f = this.filtreHonoraires();
+    if (f === 'a_relancer') return this.dossiers().filter((d) => ['en_attente', 'toujours_pas'].includes(this.etatHonoraires(d)?.code ?? ''));
     return f ? this.dossiers().filter((d) => this.etatHonoraires(d)?.code === f) : this.dossiers();
   });
   readonly utilisateurs = signal<any[]>([]);
@@ -129,6 +131,9 @@ export class DossiersComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreClientId.set(params.get('client'));
     this.filtreClientNom.set(params.get('clientLabel'));
+    // Lien de la notification « dossiers à facturer » : ?honoraires=a_relancer (en attente + toujours pas facturé).
+    const h = params.get('honoraires');
+    if (h && ['a_relancer', 'en_attente', 'toujours_pas', 'a_facturer'].includes(h)) this.filtreHonoraires.set(h);
     this.charger();
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }

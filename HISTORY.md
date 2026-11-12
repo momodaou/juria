@@ -4870,3 +4870,6 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Aucune migration SQL. Révisions : API `juria-00237-gpt`, frontend `juria-web-00311-krf`. Vérifications : `/health` = 200, `/` = 200. Tests 93 suites / 1003 ; vérification visuelle locale (rubrique, formulaire Payer, cloche). À confirmer en usage réel : bulle du système Safari (bouton Tester l alerte) et bulle de la messagerie.
 
 - **Essais du bloc (12/11/2026)** : l utilisateur indique que les autres membres du cabinet ont testé (dont les alertes du navigateur) et que c est bon, à son avis. Rappel de rallumage des e-mails : une semaine après la fin des essais, soit autour du 19/11/2026 ; rien rallumé, aucun job Cloud Scheduler créé.
+
+### Filtres de la Facturation et des Dossiers (12/11/2026, codé, non déployé)
+- Notification « factures impayées » : `/facturation?statut=impayees` filtre le tableau des impayées sur les factures à plus de 60 jours après échéance (règle de l alerte), avec bandeau « Filtre actif … voir toutes les impayées ». Notification « dossiers à facturer » : le lien devient `/dossiers?honoraires=a_relancer`, nouvelle option de filtre « À facturer en retard (30 j et plus) » (en attente + toujours pas facturé). Compilation Angular OK ; pas de vérification visuelle ni de déploiement. Artefact de la rubrique fiscale corrigé (Semestrielle).
