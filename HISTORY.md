@@ -4868,3 +4868,5 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement du bloc revue des notifications + rubrique fiscale (12/11/2026)
 - Aucune migration SQL. Révisions : API `juria-00237-gpt`, frontend `juria-web-00311-krf`. Vérifications : `/health` = 200, `/` = 200. Tests 93 suites / 1003 ; vérification visuelle locale (rubrique, formulaire Payer, cloche). À confirmer en usage réel : bulle du système Safari (bouton Tester l alerte) et bulle de la messagerie.
+
+- **Essais du bloc (12/11/2026)** : l utilisateur indique que les autres membres du cabinet ont testé (dont les alertes du navigateur) et que c est bon, à son avis. Rappel de rallumage des e-mails : une semaine après la fin des essais, soit autour du 19/11/2026 ; rien rallumé, aucun job Cloud Scheduler créé.
