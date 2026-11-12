@@ -4835,3 +4835,7 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Migrations appliquées en production dans l ordre : `migration_catalogues_1_enum.sql` (10 valeurs d ENUM) puis `migration_catalogues_2_suite.sql` (colonne `precision_nature`, plafond 25 000 par défaut, listes de natures). Fichiers temporaires supprimés.
 - Révisions : API `juria-00236-vnd`, frontend `juria-web-00310-q78`. Vérifications : `/health` = 200, `/` = 200.
 - Reste à la charge de l utilisateur : vérifier le plafond de la petite caisse en production (25 000), rejeter la dépense d achat de vignettes du mois, saisir la dotation de la caisse frais de justice.
+
+### 12/11/2026 — Précisions de l utilisateur : plafond et plafonds particuliers (réserve)
+- Plafond de la petite caisse confirmé par l utilisateur : **25 000 FCFA maximum par dépense** (même valeur que la caisse frais de justice).
+- **En réserve** : possibilité de fixer un **plafond particulier par nature** de dépense (colonne « Plafond particulier » du fichier Excel des catalogues). Rien codé : seul le plafond par dépense de la caisse existe. À reprendre uniquement sur demande de l utilisateur. Catalogues arrêtés : expertise et notaire au circuit normal, extrait de plumitif gardé, frais de greffe fusionnés en une nature.
