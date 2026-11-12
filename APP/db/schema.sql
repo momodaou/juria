@@ -5935,3 +5935,16 @@ CREATE TABLE IF NOT EXISTS preferences_notifications (
   email_urgence   BOOLEAN NOT NULL,
   modifie_le      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Travaux, équipements et installations (12/11/2026) : nouvelles natures de dépenses (hors caisses).
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'climatisation';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'travaux_electricite';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'travaux_reseau_telecom';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'plomberie';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'amenagement_locaux';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'securite_surete';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'mobilier_agencement';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'materiel_informatique';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'energie_secours';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'honoraires_techniques';
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'vehicule_reparations';

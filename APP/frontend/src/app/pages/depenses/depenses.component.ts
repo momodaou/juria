@@ -7,7 +7,7 @@ import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { AuthService } from '../../core/auth.service';
 import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
-import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_DEPENSE, CategorieDepense, libelleCategorieDepense, PRECISIONS_GREFFE, libellePrecisionGreffe } from '../../core/categories-depense';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_TRAVAUX, CATEGORIES_DEPENSE, CategorieDepense, libelleCategorieDepense, PRECISIONS_GREFFE, libellePrecisionGreffe } from '../../core/categories-depense';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { viserElement } from '../../core/cible-notification';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -158,7 +158,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div>
             <label>Catégorie</label>
             <select class="in" [(ngModel)]="form.categorie" name="categorie">
-              <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+              <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
               <optgroup label="Débours et frais de procédure">@for (c of categoriesDeboursSaisie; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
             </select>
           </div>
@@ -236,7 +236,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         </select>
         <select class="in filtre" [(ngModel)]="filtreCategorie" (ngModelChange)="charger()">
           <option value="">Toutes catégories</option>
-          <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+          <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
           <optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
         </select>
         <select class="in filtre" [(ngModel)]="filtreNature" (ngModelChange)="charger()">
@@ -371,7 +371,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
                     <div>
                       <label>Catégorie</label>
                       <select class="in" [(ngModel)]="editForm.categorie" name="edCategorie">
-                        <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
+                        <optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
               <optgroup label="Débours et frais de procédure">@for (c of categoriesDeboursSaisie; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup>
                       </select>
                     </div>
@@ -932,6 +932,7 @@ export class DepensesComponent implements OnInit {
   // ENUM brut, motif déjà corrigé sur d'autres modules de l'appli.
   readonly categoriesCabinet = CATEGORIES_CABINET;
   readonly categoriesDebours = CATEGORIES_DEBOURS;
+  readonly categoriesTravaux = CATEGORIES_TRAVAUX;
   // Saisie : sans la vignette (sa dépense naît à l'affectation à une instance, jamais saisie à la main).
   readonly categoriesDeboursSaisie = CATEGORIES_DEBOURS.filter((c) => c.code !== 'vignette_plaidoirie');
   readonly precisionsGreffe = PRECISIONS_GREFFE;

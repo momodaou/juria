@@ -2,7 +2,7 @@
 // Les codes correspondent aux valeurs de l'ENUM `categorie_depense` (schema.sql) ; ajouter une catégorie
 // = une valeur d'ENUM (importée à part en production) + une ligne ici. Le groupe « debours » est une aide :
 // ces catégories concernent le plus souvent un dossier précis (rattachement et refacturation au client).
-export type GroupeCategorie = 'cabinet' | 'debours';
+export type GroupeCategorie = 'cabinet' | 'debours' | 'travaux';
 export interface CategorieDepense { code: string; libelle: string; groupe: GroupeCategorie; }
 
 export const CATEGORIES_DEPENSE: CategorieDepense[] = [
@@ -37,6 +37,17 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
   { code: 'assurance', libelle: 'Assurances', groupe: 'cabinet' },
   { code: 'frais_bancaires', libelle: 'Frais bancaires', groupe: 'cabinet' },
   { code: 'charges_fiscales_sociales', libelle: 'Charges fiscales et sociales', groupe: 'cabinet' },
+  { code: 'climatisation', libelle: 'Climatisation (achat, installation, remplacement)', groupe: 'travaux' },
+  { code: 'travaux_electricite', libelle: 'Électricité : travaux et extension de câblage', groupe: 'travaux' },
+  { code: 'travaux_reseau_telecom', libelle: 'Réseau, internet et téléphonie : installation et réparation', groupe: 'travaux' },
+  { code: 'plomberie', libelle: 'Plomberie et sanitaires', groupe: 'travaux' },
+  { code: 'amenagement_locaux', libelle: 'Aménagement et rénovation des locaux', groupe: 'travaux' },
+  { code: 'securite_surete', libelle: 'Sécurité et sûreté (alarme, caméras, extincteurs, serrurerie)', groupe: 'travaux' },
+  { code: 'mobilier_agencement', libelle: 'Mobilier et agencement', groupe: 'travaux' },
+  { code: 'materiel_informatique', libelle: 'Matériel informatique et bureautique', groupe: 'travaux' },
+  { code: 'energie_secours', libelle: 'Énergie de secours (groupe électrogène, onduleurs, solaire)', groupe: 'travaux' },
+  { code: 'honoraires_techniques', libelle: 'Honoraires techniques (architecte, bureau d’études, bureau de contrôle)', groupe: 'travaux' },
+  { code: 'vehicule_reparations', libelle: 'Véhicule : réparations importantes', groupe: 'travaux' },
   { code: 'vignette_plaidoirie', libelle: 'Vignette de plaidoirie', groupe: 'debours' },
   { code: 'frais_procedure', libelle: 'Frais de procédure', groupe: 'debours' },
   { code: 'frais_consignation', libelle: 'Frais de consignation', groupe: 'debours' },
@@ -55,6 +66,8 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
 
 export const CATEGORIES_CABINET = CATEGORIES_DEPENSE.filter((c) => c.groupe === 'cabinet');
 export const CATEGORIES_DEBOURS = CATEGORIES_DEPENSE.filter((c) => c.groupe === 'debours');
+// Travaux, équipements et installations (12/11/2026) : jamais sur les caisses (circuit normal de validation) ; disponibles aussi dans l'état mensuel.
+export const CATEGORIES_TRAVAUX = CATEGORIES_DEPENSE.filter((c) => c.groupe === 'travaux');
 export const estDebours = (code: string): boolean => CATEGORIES_DEBOURS.some((c) => c.code === code);
 export const libelleCategorieDepense = (code: string): string => CATEGORIES_DEPENSE.find((c) => c.code === code)?.libelle ?? code;
 

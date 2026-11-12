@@ -7,7 +7,7 @@ import { AuthService } from '../../core/auth.service';
 import { RaccourcisClavierDirective } from '../../core/raccourcis-clavier.directive';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
-import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, estDebours } from '../../core/categories-depense';
+import { CATEGORIES_CABINET, CATEGORIES_DEBOURS, CATEGORIES_TRAVAUX, estDebours } from '../../core/categories-depense';
 import { ReglementFormComponent } from '../../core/reglement-form.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 
@@ -211,7 +211,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                     <div class="champs">
                       <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="form.libelle" name="el" /></div>
                       <div><label>Catégorie</label>
-                        <select class="in" [(ngModel)]="form.categorie" name="ec"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
+                        <select class="in" [(ngModel)]="form.categorie" name="ec"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
                       @if (form.categorie === 'autre') {
                         <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="form.precision_autre" name="ep" placeholder="Nature de la charge" /></div>
                       }
@@ -279,7 +279,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                [entreeActive]="!enCours() && !!ajout.libelle && !(ajout.categorie === 'autre' && !ajout.precision_autre?.trim()) && !(ajout.nature === 'dossier' && !ajout.dossier_id)">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="ajout.libelle" name="al" /></div>
             <div><label>Catégorie</label>
-              <select class="in" [(ngModel)]="ajout.categorie" name="ac"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
+              <select class="in" [(ngModel)]="ajout.categorie" name="ac"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
             @if (ajout.categorie === 'autre') {
               <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="ajout.precision_autre" name="ap" placeholder="Nature de la charge" /></div>
             }
@@ -329,7 +329,7 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
                [entreeActive]="!enCours() && !!modele.libelle && !(modele.categorie === 'autre' && !modele.precision_autre?.trim())">
             <div class="large"><label>Libellé</label><input class="in" maxlength="240" [(ngModel)]="modele.libelle" name="ml" /></div>
             <div><label>Catégorie</label>
-              <select class="in" [(ngModel)]="modele.categorie" name="mc"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
+              <select class="in" [(ngModel)]="modele.categorie" name="mc"><optgroup label="Charges du cabinet">@for (c of categoriesCabinet; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Travaux, équipements et installations">@for (c of categoriesTravaux; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup><optgroup label="Débours et frais de procédure">@for (c of categoriesDebours; track c.code) { <option [value]="c.code">{{ c.libelle }}</option> }</optgroup></select></div>
             @if (modele.categorie === 'autre') {
               <div class="large"><label>Précisez « Autre » *</label><input class="in" maxlength="120" [(ngModel)]="modele.precision_autre" name="mpa" placeholder="Nature de la charge" /></div>
             }
@@ -465,6 +465,7 @@ export class EtatChargesComponent implements OnInit {
   // Revue du 12/11/2026 : les charges fiscales et sociales se paient depuis la rubrique dédiée de Dépenses & caisse, pas par l'état mensuel.
   readonly categoriesCabinet = CATEGORIES_CABINET.filter((c) => c.code !== 'charges_fiscales_sociales');
   readonly categoriesDebours = CATEGORIES_DEBOURS;
+  readonly categoriesTravaux = CATEGORIES_TRAVAUX;
   readonly mois12 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   readonly etats = signal<any[]>([]);
   readonly detail = signal<any | null>(null);
