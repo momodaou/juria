@@ -4881,3 +4881,5 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement réglages personnels + filtres (12/11/2026)
 - Migration `migration-preferences-notifications.sql` importée (table `preferences_notifications`). Révisions : API `juria-00238-56c`, frontend `juria-web-00312-fkv`. Vérifications : `/health` = 200, `/` = 200, `/api/notifications/preferences` sans jeton = 401 (route présente). Embarque aussi les filtres impayées (Facturation) et « À facturer en retard » (Dossiers). E-mails toujours éteints ; aucun job du centre créé. À confirmer en usage réel : section « Mes préférences d e-mail » et filtres.
+
+- **Aide alertes (12/11/2026, codé, à déployer)** : ligne « Application du Dock » (activer JURIA dans Réglages Système, Notifications, puis Cmd+Q et rouvrir) ajoutée au message d aide de la cloche et de l écran Notifications.

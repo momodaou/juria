@@ -40,7 +40,7 @@ import { NotificationsService, FiltreNotifications, Notification } from './notif
         @if (svc.permissionAlertes() === 'default') {
           <button type="button" class="nc-alertes" (click)="svc.activerAlertes()">🔔 Activer les alertes du navigateur (urgences quand JURIA est en arrière-plan)</button>
         } @else if (svc.permissionAlertes() === 'denied') {
-          <p class="nc-alertes-info">Les alertes du navigateur sont bloquées. Safari : menu Safari, Réglages, Sites web, Notifications ; cochez « Autoriser les sites web à demander l'autorisation d'envoyer des notifications », autorisez JURIA, puis rechargez la page. Chrome : icône à gauche de l'adresse, Notifications, Autoriser. Sur Mac, vérifiez aussi Réglages Système, Notifications, votre navigateur.</p>
+          <p class="nc-alertes-info">Les alertes du navigateur sont bloquées. Safari : menu Safari, Réglages, Sites web, Notifications ; cochez « Autoriser les sites web à demander l'autorisation d'envoyer des notifications », autorisez JURIA, puis rechargez la page. Chrome : icône à gauche de l'adresse, Notifications, Autoriser. Sur Mac, vérifiez aussi Réglages Système, Notifications, votre navigateur. Application du Dock : activez « JURIA » dans Réglages Système, Notifications, puis quittez l'application (Cmd+Q) et rouvrez-la.</p>
         } @else if (svc.permissionAlertes() === 'granted') {
           <button type="button" class="nc-lien nc-test" (click)="svc.testerAlerte()">Tester l'alerte du navigateur</button>
         }

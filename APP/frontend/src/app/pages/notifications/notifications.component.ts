@@ -41,6 +41,7 @@ import { ApiService } from '../../core/api.service';
           <li><b>Safari :</b> menu Safari, Réglages, Sites web, Notifications ; cochez « Autoriser les sites web à demander l'autorisation d'envoyer des notifications », autorisez JURIA, puis rechargez la page.</li>
           <li><b>Chrome :</b> icône à gauche de l'adresse, Notifications, Autoriser.</li>
           <li><b>Mac :</b> vérifiez aussi Réglages Système, Notifications, votre navigateur (et que le mode Concentration ne les masque pas).</li>
+          <li><b>Application du Dock :</b> activez la ligne « JURIA » dans Réglages Système, Notifications, puis quittez l'application (Cmd+Q) et rouvrez-la : l'autorisation n'est relue qu'au démarrage.</li>
         </ul>
       </div>
     } @else if (svc.permissionAlertes() === 'granted') {
