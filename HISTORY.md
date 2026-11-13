@@ -4908,3 +4908,6 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Aucune donnée d'acte réel conservée dans le modèle. Texte cité : loi n° 87-31/AN-RM, art. 77 (date de vérification à renseigner).
 - Migration `APP/db/migration-homologation-protocole.sql` (INSERT idempotent, non committée) à importer AVANT le déploiement du code (le modèle n'a pas d'effet sur le code, seulement sur la base) ; le schéma est aligné.
 - Tests : nouveau `modeleHomologation.test.js` (4). 97 suites / 1025.
+
+### Migration lot B importée (13/11/2026)
+- `migration-homologation-protocole.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Aucun déploiement de code nécessaire. Présence du modèle dans l'Atelier d'actes à confirmer par lecture applicative (règle des imports transactionnels).
