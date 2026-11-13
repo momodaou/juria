@@ -4920,3 +4920,6 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Juridictions au choix : tribunal de commerce de Bamako, TGI d'une commune (I à VI), autre. Textes cités à faire vérifier (`verifie_le` vide) : AUPSRVE art. 54 et suivants, 57, 166 ; Code de procédure pénale art. 148 et suivants.
 - Migration `APP/db/migration-requetes-unilaterales.sql` (INSERT idempotent, non committée) ; schéma aligné. Aucun déploiement de code nécessaire.
 - Tests : `modelesRequetesUnilaterales.test.js` (6). 98 suites / 1031. Questionnaires non vérifiés à l'écran.
+
+### Migration lot C importée (13/11/2026)
+- `migration-requetes-unilaterales.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Aucun déploiement de code nécessaire. Présence des 3 modèles dans l'Atelier d'actes à confirmer par lecture applicative.
