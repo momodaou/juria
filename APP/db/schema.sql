@@ -5948,3 +5948,96 @@ ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'materiel_informatique';
 ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'energie_secours';
 ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'honoraires_techniques';
 ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'vehicule_reparations';
+
+-- Requête conjointe aux fins d'homologation de protocole d'accord transactionnel (13/11/2026), créée « à valider » : à relire et valider par un avocat.
+INSERT INTO modeles_actes (code, nom, categorie, corps, famille, matiere, champs, courrier_depart, textes_cites, statut_validation) VALUES
+($mod$requete_homologation_protocole$mod$, $mod$Requête conjointe d'homologation de protocole transactionnel$mod$, 'conclusions', $mod$REQUETE CONJOINTE AUX FINS D'HOMOLOGATION
+DE PROTOCOLE D'ACCORD TRANSACTIONNEL
+
+À {{destinataire_titre_libelle}} {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}}.
+
+À la demande des soussignés :
+
+{{clients_identification}}
+
+Ayant pour Conseil la SCPA JFC AVOCATS, plaidant par {{avocats_dossier}}, Avocats inscrits au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}}, en l'étude desquels domicile est élu pour les besoins de la présente et de ses suites éventuelles ;
+
+D'une part ;
+
+ET :
+
+{{parties_adverses_identification}}
+{{#si conseil_autre_partie}}
+Ayant pour conseil : {{conseil_autre_partie}}
+{{/si}}
+D'autre part ;
+
+ONT L'HONNEUR DE VOUS EXPOSER :
+
+{{#chaque faits}}
+{{texte}}
+{{#si pieces_texte}}
+{{pieces_texte}}
+{{/si}}
+
+{{/chaque}}
+Dans le but de sauvegarder leurs relations, les parties ont décidé de se rapprocher, sous l'égide de leurs Conseils respectifs, à l'effet de conclure un accord amiable ;
+
+C'est ainsi qu'il fut établi et signé entre elles un protocole d'accord transactionnel en date du {{protocole_date}}, afin d'être homologué par la juridiction de céans ;
+
+Ledit protocole, dont l'homologation est sollicitée, ne contient aucune clause nulle, ne déroge pas à la loi et ne porte pas atteinte aux bonnes mœurs ;
+{{#si entree_en_vigueur}}
+
+Attendu qu'aux termes de l'article {{article_homologation}} dudit protocole, celui-ci n'entre en vigueur qu'après son homologation par un tribunal ;
+{{/si}}
+{{#si chose_jugee}}
+
+Attendu que la transaction ainsi conclue a, entre les parties, l'autorité de la chose jugée, mais qu'elle ne saurait recevoir force exécutoire sans être homologuée par le juge, dont le contrôle porte sur la seule conformité de l'accord à l'ordre public ;
+{{/si}}
+{{#si article_77}}
+
+En vertu de l'article 77 de la loi n° 87-31/AN-RM portant Régime Général des Obligations au Mali, le contrat est la loi des parties, d'où il est important pour elles d'en assurer l'exécution effective ;
+{{/si}}
+
+En conséquence, les parties sollicitent qu'il vous plaise, {{destinataire_titre_libelle}}, les autoriser à comparaître volontairement à l'audience la plus proche pour entendre :
+
+• Homologuer en sa forme et teneur le protocole d'accord transactionnel signé par les parties le {{protocole_date}}, avec toutes les conséquences de droit ;
+{{#si force_executoire}}
+• Lui conférer la force exécutoire et en autoriser la mise en exécution ;
+{{/si}}
+{{#si donner_acte}}
+• Leur en donner acte ;
+{{/si}}
+{{#si depens}}
+• Mettre les dépens à la charge des parties.
+{{/si}}
+
+SOUS TOUTES RESERVES
+
+Bamako, le {{date}}
+
+P/Les Requérants
+Les Conseils
+SCPA JFC AVOCATS MALI
+{{avocat_identification}}
+{{#si conseil_autre_partie}}
+{{conseil_autre_partie}}
+{{/si}}
+{{#si projet_ordonnance}}
+
+ORDONNANCE N° ______________
+
+Nous, {{#si president_nom}}{{president_nom}}{{#sinon}}[à compléter]{{/si}}, Président {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}} ;
+Vu la requête qui précède ;
+Vu les pièces produites et les arguments y développés ;
+Vu les textes de loi en la matière ;
+Autorisons les requérants à comparaître devant nous à notre audience du ____/____/________ pour venir statuer sur le mérite de la requête ci-dessus.
+Donnée en notre Cabinet, Bamako, le ____/____/________
+Le Président
+{{/si}}
+{{#si pieces_nombre!=0}}
+
+{{bordereau_pieces}}
+{{/si}}
+$mod$, $mod$Requêtes conjointes$mod$, $mod$transaction$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tc_bamako", "options": [{"valeur": "tc_bamako", "libelle": "Tribunal de Commerce de Bamako"}, {"valeur": "tgi_commune", "libelle": "Tribunal de Grande Instance d'une commune de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "commune", "libelle": "Commune du Tribunal de Grande Instance", "type": "choix", "requis": true, "si": "juridiction=tgi_commune", "options": [{"valeur": "I", "libelle": "I"}, {"valeur": "II", "libelle": "II"}, {"valeur": "III", "libelle": "III"}, {"valeur": "IV", "libelle": "IV"}, {"valeur": "V", "libelle": "V"}, {"valeur": "VI", "libelle": "VI"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "conseil_autre_partie", "libelle": "Conseil de l'autre partie (nom, titre ; laisser vide s'il n'en a pas)", "type": "texte"}, {"cle": "faits", "libelle": "Exposé (un paragraphe par ligne : contrat, différend, négociations ; citer le protocole dans les pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "protocole_date", "libelle": "Date du protocole d'accord transactionnel", "type": "date", "requis": true}, {"cle": "entree_en_vigueur", "libelle": "Le protocole subordonne son entrée en vigueur à son homologation", "type": "oui_non", "defaut": "non"}, {"cle": "article_homologation", "libelle": "N° de l'article du protocole prévoyant l'homologation", "type": "texte", "requis": true, "si": "entree_en_vigueur=oui"}, {"cle": "chose_jugee", "libelle": "Rappeler l'autorité de la chose jugée et le contrôle de l'ordre public par le juge", "type": "oui_non", "defaut": "oui"}, {"cle": "article_77", "libelle": "Citer l'article 77 du Régime Général des Obligations (le contrat est la loi des parties)", "type": "oui_non", "defaut": "oui"}, {"cle": "force_executoire", "libelle": "Demander la force exécutoire et la mise en exécution", "type": "oui_non", "defaut": "oui"}, {"cle": "donner_acte", "libelle": "Demander qu'il leur en soit donné acte", "type": "oui_non", "defaut": "oui"}, {"cle": "depens", "libelle": "Mettre les dépens à la charge des parties", "type": "oui_non", "defaut": "oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance autorisant la comparution", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Loi n° 87-31/AN-RM portant Régime Général des Obligations au Mali, art. 77", "verifie_le": null}]$mod$::jsonb, 'a_valider')
+ON CONFLICT (code) DO NOTHING;

@@ -4902,3 +4902,9 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement lot A (13/11/2026)
 - Aucune migration. Révisions : API `juria-00240-8gt`, frontend `juria-web-00314-k86`. Vérifications : `/health` = 200, `/` = 200. Embarque le lot A (4 gabarits de lettres à la juridiction, Audience/Nature, accord du genre, ampliation). Formulaire non vérifié à l'écran avec ces gabarits.
+
+### Atelier d'actes, lot B : requête conjointe d'homologation de protocole (13/11/2026, codé, à déployer)
+- Nouveau modèle `requete_homologation_protocole` (famille « Requêtes conjointes », créé **« à valider »**, à relire par un avocat), bâti sur les deux actes de référence du cabinet (homologation devant le TGI et devant le tribunal de commerce) : destinataire (Monsieur/Madame), juridiction (tribunal de commerce de Bamako, TGI d'une commune I à VI, autre), les deux parties (client + partie adverse du dossier) et le conseil de l'autre partie, exposé en paragraphes avec pièces, date du protocole, paragraphes **optionnels** (entrée en vigueur subordonnée à l'homologation avec n° d'article, autorité de la chose jugée, article 77 du Régime Général des Obligations), demandes (homologation toujours ; force exécutoire, « donner acte », dépens au choix), projet d'ordonnance autorisant la comparution, bordereau des pièces.
+- Aucune donnée d'acte réel conservée dans le modèle. Texte cité : loi n° 87-31/AN-RM, art. 77 (date de vérification à renseigner).
+- Migration `APP/db/migration-homologation-protocole.sql` (INSERT idempotent, non committée) à importer AVANT le déploiement du code (le modèle n'a pas d'effet sur le code, seulement sur la base) ; le schéma est aligné.
+- Tests : nouveau `modeleHomologation.test.js` (4). 97 suites / 1025.
