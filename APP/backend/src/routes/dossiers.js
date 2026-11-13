@@ -530,9 +530,13 @@ router.get("/:id", async (req, res) => {
     // ci-dessous — au plus une par instance (contrainte d'unicité en base).
     const instances = await pool.query(
       `SELECT i.id, i.degre, i.juridiction, i.numero_role, i.date_debut, i.decision, i.statut_partie, i.statut_partie_precision,
-              i.vignette_dispensee, v.numero_vignette
+              i.vignette_dispensee, v.numero_vignette,
+              i.nature, i.type_procedure, i.parent_instance_id, i.statut_procedure, i.date_fin, i.facturation, i.responsable_id,
+              ru.prenom || ' ' || ru.nom AS responsable_nom,
+              ROW_NUMBER() OVER (ORDER BY i.date_debut NULLS LAST, i.cree_le) AS rang
        FROM instances i
        LEFT JOIN vignettes_plaidoirie v ON v.instance_id = i.id AND v.mouvement = 'utilisation'
+       LEFT JOIN utilisateurs ru ON ru.id = i.responsable_id
        WHERE i.dossier_id = $1 ORDER BY i.date_debut NULLS LAST, i.cree_le`,
       [id]
     );
@@ -556,17 +560,27 @@ router.get("/:id", async (req, res) => {
     // pas seulement le constater après coup. Agrège les écritures touchant
     // le dossier lui-même ET ses sous-entités procédurales (instances,
     // parties, audiences, échéances) via details.dossier_id.
+    // Les désignations d'apporteurs (rétrocessions) n'apparaissent que pour les profils concernés (13/11/2026).
+    const voitRetro = await estAutorise(req.user.role, "retrocessions.consulter", req.user.sub);
     const derniereModif = await pool.query(
       `SELECT j.action, j.entite, j.horodatage, u.code AS utilisateur_code,
               u.prenom || ' ' || u.nom AS utilisateur_nom
        FROM journal_audit j
        LEFT JOIN utilisateurs u ON u.id = j.utilisateur_id
-       WHERE (j.entite = 'dossiers' AND j.entite_id = $1)
+       WHERE ((j.entite = 'dossiers' AND j.entite_id = $1)
           OR (j.entite IN ('dossier_instances', 'dossier_parties', 'audiences', 'evenements')
-              AND j.details->>'dossier_id' = $1::text)
+              AND j.details->>'dossier_id' = $1::text))
+         AND ($2::boolean OR j.action <> 'designer_apporteurs')
        ORDER BY j.horodatage DESC LIMIT 1`,
-      [id]
+      [id, voitRetro]
     );
+
+    // Juridiction « actuelle » (13/11/2026) : celle de la procédure principale en cours la plus récente (sinon la plus récente),
+    // pour que l'étiquette et l'en-tête ne restent pas figés sur la 1re instance après un appel.
+    const principales = instances.rows.filter((i) => i.nature === "principale" && i.juridiction);
+    const enCours = principales.filter((i) => i.statut_procedure === "en_cours");
+    const refJuridiction = (enCours.length ? enCours : principales).slice(-1)[0];
+    dossier.juridiction_actuelle = refJuridiction ? refJuridiction.juridiction : dossier.juridiction;
 
     res.json({
       ...dossier, parties: parties.rows, intervenants: intervenants.rows,
@@ -1254,15 +1268,59 @@ router.get("/:id/instances/verifier-doublon", requirePermission("dossiers.instan
   }
 });
 
+// Procédures d'un dossier (lot 1, 13/11/2026) : nature (principale / incidente), rattachement à la procédure visée, statut,
+// facturation à part, responsable propre. Valide et complète les champs ; `actuel` = ligne existante (modification).
+const COLONNES_PROCEDURE = ["nature", "type_procedure", "parent_instance_id", "statut_procedure", "date_fin", "facturation", "responsable_id"];
+async function validerProcedure(dossierId, b, actuel = null, instanceId = null) {
+  const v = {};
+  for (const c of COLONNES_PROCEDURE) v[c] = c in b ? (b[c] === "" ? null : b[c]) : (actuel ? actuel[c] : undefined);
+  v.nature = v.nature || "principale";
+  if (!["principale", "incidente"].includes(v.nature)) return { erreur: "Nature invalide (principale ou incidente)." };
+  v.statut_procedure = v.statut_procedure || "en_cours";
+  if (!["en_cours", "terminee"].includes(v.statut_procedure)) return { erreur: "Statut invalide (en cours ou terminée)." };
+  v.facturation = v.facturation || (v.nature === "incidente" ? "a_part" : "incluse");
+  if (!["incluse", "a_part"].includes(v.facturation)) return { erreur: "Facturation invalide (incluse ou à part)." };
+  v.type_procedure = v.type_procedure ? String(v.type_procedure).trim().slice(0, 120) : null;
+  if (v.statut_procedure !== "terminee") v.date_fin = null;
+  if (v.nature === "principale") { v.parent_instance_id = null; }
+  else {
+    if (!v.parent_instance_id) return { erreur: "Une procédure incidente doit viser une procédure du dossier." };
+    if (!v.type_procedure) return { erreur: "Précisez la nature de l'incident (ex. défense à exécution)." };
+    if (instanceId && v.parent_instance_id === instanceId) return { erreur: "Une procédure ne peut pas être incidente à elle-même." };
+    const { rows: [parent] } = await pool.query("SELECT id, parent_instance_id FROM instances WHERE id = $1 AND dossier_id = $2", [v.parent_instance_id, dossierId]);
+    if (!parent) return { erreur: "La procédure visée n'appartient pas à ce dossier." };
+    // pas de boucle : on remonte la chaîne des parents
+    let courant = parent.parent_instance_id, garde = 0;
+    while (instanceId && courant && garde++ < 20) {
+      if (courant === instanceId) return { erreur: "Rattachement circulaire entre procédures." };
+      const { rows: [p2] } = await pool.query("SELECT parent_instance_id FROM instances WHERE id = $1", [courant]);
+      courant = p2 ? p2.parent_instance_id : null;
+    }
+  }
+  if (v.responsable_id) {
+    const { rows: [u] } = await pool.query("SELECT 1 FROM utilisateurs WHERE id = $1 AND actif", [v.responsable_id]);
+    if (!u) return { erreur: "Responsable de la procédure introuvable." };
+  } else v.responsable_id = null;
+  return { valeurs: v };
+}
+const RETOUR_INSTANCE = `id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision,
+       nature, type_procedure, parent_instance_id, statut_procedure, date_fin, facturation, responsable_id`;
+
 router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), async (req, res) => {
   const b = req.body || {};
   try {
+    const proc = await validerProcedure(req.params.id, b);
+    if (proc.erreur) return res.status(400).json({ error: proc.erreur });
+    const pv = proc.valeurs;
     const { rows } = await pool.query(
-      `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut, statut_partie, statut_partie_precision)
-       VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5, $6::statut_partie_instance, $7)
-       RETURNING id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision`,
+      `INSERT INTO instances (dossier_id, degre, juridiction, numero_role, date_debut, statut_partie, statut_partie_precision,
+                              nature, type_procedure, parent_instance_id, statut_procedure, date_fin, facturation, responsable_id)
+       VALUES ($1, COALESCE($2::degre_instance,'premiere_instance'), $3, $4, $5, $6::statut_partie_instance, $7,
+               $8, $9, $10::uuid, $11, $12::date, $13, $14::uuid)
+       RETURNING ${RETOUR_INSTANCE}`,
       [req.params.id, b.degre || null, b.juridiction || null, b.numero_role || null, b.date_debut || null,
-       b.statut_partie || null, b.statut_partie_precision || null]
+       b.statut_partie || null, b.statut_partie_precision || null,
+       pv.nature, pv.type_procedure, pv.parent_instance_id, pv.statut_procedure, pv.date_fin, pv.facturation, pv.responsable_id]
     );
     await logAudit({
       utilisateurId: req.user.sub, action: "creer_instance", entite: "dossier_instances", entiteId: rows[0].id,
@@ -1285,6 +1343,7 @@ router.post("/:id/instances", requirePermission("dossiers.instances.gerer"), asy
 // fil du temps (n° de rôle obtenu après coup, décision rendue…).
 const CHAMPS_PROCEDURAUX_INSTANCE = [
   "juridiction", "numero_role", "date_debut", "decision", "statut_partie", "statut_partie_precision",
+  "nature", "type_procedure", "parent_instance_id", "statut_procedure", "date_fin", "facturation", "responsable_id",
 ];
 
 router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
@@ -1295,6 +1354,9 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
       [req.params.instanceId, req.params.id]
     );
     if (!avant) return res.status(404).json({ error: "Instance introuvable" });
+    const proc = await validerProcedure(req.params.id, b, avant, req.params.instanceId);
+    if (proc.erreur) return res.status(400).json({ error: proc.erreur });
+    const pv = proc.valeurs;
     const { rows } = await pool.query(
       `UPDATE instances SET
          juridiction = COALESCE($1, juridiction),
@@ -1302,12 +1364,15 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
          date_debut = COALESCE($3, date_debut),
          decision = COALESCE($4, decision),
          statut_partie = COALESCE($5::statut_partie_instance, statut_partie),
-         statut_partie_precision = COALESCE($6, statut_partie_precision)
+         statut_partie_precision = COALESCE($6, statut_partie_precision),
+         nature = $9, type_procedure = $10, parent_instance_id = $11::uuid, statut_procedure = $12,
+         date_fin = $13::date, facturation = $14, responsable_id = $15::uuid
        WHERE id = $7 AND dossier_id = $8
-       RETURNING id, degre, juridiction, numero_role, date_debut, decision, statut_partie, statut_partie_precision`,
+       RETURNING ${RETOUR_INSTANCE}`,
       [b.juridiction || null, b.numero_role || null, b.date_debut || null, b.decision || null,
        b.statut_partie || null, b.statut_partie_precision || null,
-       req.params.instanceId, req.params.id]
+       req.params.instanceId, req.params.id,
+       pv.nature, pv.type_procedure, pv.parent_instance_id, pv.statut_procedure, pv.date_fin, pv.facturation, pv.responsable_id]
     );
     const changements = diffChamps(avant, rows[0], CHAMPS_PROCEDURAUX_INSTANCE);
     if (Object.keys(changements).length) {
@@ -1329,6 +1394,8 @@ router.put("/:id/instances/:instanceId", requirePermission("dossiers.instances.g
 // instance à côté). Même patron que DELETE /:id/parties/:partieId.
 router.delete("/:id/instances/:instanceId", requirePermission("dossiers.instances.gerer"), async (req, res) => {
   try {
+    const { rows: [enfant] } = await pool.query("SELECT 1 FROM instances WHERE parent_instance_id = $1 LIMIT 1", [req.params.instanceId]);
+    if (enfant) return res.status(409).json({ error: "Des procédures incidentes sont rattachées à cette procédure : retirez-les d'abord." });
     const { rows } = await pool.query(
       "DELETE FROM instances WHERE id = $1 AND dossier_id = $2 RETURNING *",
       [req.params.instanceId, req.params.id]

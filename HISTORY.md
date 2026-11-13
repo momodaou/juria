@@ -4937,3 +4937,22 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement rétrocessions apporteurs (13/11/2026)
 - API `juria-00241-l5l`, web `juria-web-00315-kx8` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. Fonctionnalité à essayer à l'écran (panneau « Avocats apporteurs », action « Exclure de la rétrocession ») ; aucun effet avant le 01/01/2027 puisque aucun dossier n'est éligible.
+
+### Masquage des rétrocessions aux profils non concernés (13/11/2026, codé avec le lot 1)
+- L'indicateur « exclue de la rétrocession » n'est plus renvoyé par la liste des factures aux profils sans `retrocessions.consulter` ; il n'apparaît jamais sur le PDF de la facture ni dans un document client (vérifié : `facturePdf.js` ne le lit pas).
+- La désignation d'apporteurs (`designer_apporteurs`) est exclue de la « dernière modification » de la fiche dossier pour ces profils. Panneau apporteurs, lien « Rétrocessions », action « Exclure » et notifications étaient déjà réservés (consulter / créer / décaisser).
+- Point restant signalé à l'utilisateur : l'indicateur de marge par dossier (tableau de bord, `factures.consulter`) déduit les rétrocessions du coût ; un profil qui voit les marges sans voir les rétrocessions (ex. comptable) peut donc en déduire l'ordre de grandeur. Décision attendue.
+
+### Procédures d'un dossier — lot 1 (13/11/2026, codé, NON déployé)
+- Principe validé : un dossier = une affaire ; chaque procédure est une instance ; un incident (défense à exécution, sursis, opposition…) est une instance incidente rattachée à la procédure visée, avec sa propre juridiction, son n° de rôle et sa facturation. Cas ITO : appel (CA) + défense à exécution (référé devant la CA, degré « référé », rattachée à l'appel) dans le même dossier.
+- Migration `migration-procedures-lot1.sql` (idempotente, alignée dans `schema.sql`, non committée) : `instances.nature` (principale/incidente), `type_procedure`, `parent_instance_id`, `statut_procedure` (en_cours/terminee), `date_fin`, `facturation` (incluse/a_part, défaut « à part » pour un incident), `responsable_id` ; suggestions `listes_valeurs('type_procedure_incidente')` (10 types, la saisie reste libre).
+- API (`dossiers.js`) : POST/PUT instances validés (incident = procédure visée du même dossier + nature précisée ; pas de boucle ; date de fin effacée si la procédure redevient en cours) ; refus de retirer une procédure qui a des incidents ; `GET /:id` renvoie le n° d'ordre (`rang`), les nouveaux champs et `juridiction_actuelle` (procédure principale en cours la plus récente) ; `instanceActuelle.js` : un incident ne remplace jamais la procédure principale pour le statut de la partie et le degré affichés dans les listes.
+- Écran : section « Procédures du dossier » en arbre (n° d'ordre, incident « de la n° X », statut, « Facturée à part »), formulaire d'ajout avec nature principale/incidente, procédure visée et nature de l'incident, édition du statut/date de fin/facturation/responsable ; en ajoutant une procédure principale, JURIA demande si la précédente est terminée (jamais clôturée d'office) ; l'en-tête et l'étiquette utilisent la juridiction actuelle (plus de « Tribunal du travail » figé après un appel).
+- Tests : `procedures.test.js` (8). 100 suites / 1050. Build Angular OK. Non vu à l'écran.
+- Suite : lot 2 (audiences et étiquettes par procédure), lot 3 (ouverture guidée, procédure sur factures/temps, case « exclue » préremplie pour un incident), lot 4 (liens entre dossiers jumeaux).
+
+### Migration procédures lot 1 importée (13/11/2026)
+- `migration-procedures-lot1.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Code (API + frontend) à déployer : `./scripts/deploy.sh both`. D'ici là, les nouvelles colonnes sont inertes (valeurs par défaut : procédure principale, en cours, facturation incluse).
+
+### Déploiement procédures lot 1 + masquage des rétrocessions (13/11/2026)
+- API `juria-00242-z2q`, web `juria-web-00316-vtd` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : section « Procédures du dossier » (ajout d'un appel puis d'une défense à exécution incidente), juridiction de l'étiquette après un appel.

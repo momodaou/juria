@@ -227,6 +227,8 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
        ORDER BY f.cree_le DESC LIMIT 200`,
       params
     );
+    // Rétrocessions (13/11/2026) : l'indicateur « exclue de la rétrocession » n'est communiqué qu'aux profils concernés.
+    if (!(await estAutorise(req.user.role, "retrocessions.consulter", req.user.sub))) rows.forEach((r) => { delete r.retro_exclue; });
     res.json(rows);
   } catch (e) {
     console.error(e);

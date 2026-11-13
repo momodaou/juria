@@ -27,7 +27,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
             @if (d.objet) { <p class="nature">{{ d.objet }}</p> }
             <div class="sub">
               @if (d.couleur_chemise) { <span class="pastille" [style.background]="couleurCss(d.couleur_chemise)" [title]="'Chemise ' + d.couleur_chemise"></span> }
-              <b class="ref">{{ d.numero }}</b> · {{ d.matiere || d.pole }} · {{ d.juridiction }}
+              <b class="ref">{{ d.numero }}</b> · {{ d.matiere || d.pole }} · {{ d.juridiction_actuelle || d.juridiction }}
             </div>
             @if (d.code_matiere === 'IND') {
               <p class="hint-ind">Référencé provisoirement (matière indéterminée) — choisissez la matière définitive dans « Modifier la fiche » dès qu'elle est connue ; la référence sera alors reconstruite automatiquement.</p>
@@ -181,7 +181,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                 <div class="etiquette-num">{{ d.numero }}</div>
                 <div class="etiquette-intitule">{{ d.intitule }}</div>
                 <div class="etiquette-client"><span class="etiquette-lbl">Client :</span> <b>{{ d.client_nom }}</b></div>
-                @if (d.juridiction) { <div class="etiquette-sub"><span class="etiquette-lbl">Juridiction :</span> {{ abregeJuridiction(d.juridiction) }}</div> }
+                @if (d.juridiction_actuelle || d.juridiction) { <div class="etiquette-sub"><span class="etiquette-lbl">Juridiction :</span> {{ abregeJuridiction(d.juridiction_actuelle || d.juridiction) }}</div> }
                 <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ libelleCouleur(d.couleur_chemise) }}</b></div>
               </div>
             </div>
@@ -491,13 +491,19 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
 
       @if (d.pole === 'contentieux') {
         <section class="panel">
-          <h3>Instances</h3>
-          <p class="muted">1re instance, appel, cassation… chaque degré garde sa propre juridiction et son n° de rôle.</p>
+          <h3>Procédures du dossier</h3>
+          <p class="muted">Un seul dossier pour toute l'affaire : 1re instance, appel, cassation, et les procédures incidentes (défense à exécution, sursis, opposition…) rattachées à la procédure qu'elles visent. Chaque procédure garde sa juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
             <table>
-              <tr><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th>Vignette</th><th></th></tr>
-              @for (i of d.instances; track i.id) {
+              <tr><th>Procédure</th><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th>Vignette</th><th></th></tr>
+              @for (i of arbreProcedures(d.instances); track i.id) {
                 <tr>
+                  <td [style.padding-left.px]="8 + i._niveau * 20">
+                    <b>N° {{ i.rang }}</b>
+                    @if (i.nature === 'incidente') { <span class="tag">Incident{{ i.type_procedure ? ' · ' + i.type_procedure : '' }}</span> <span class="muted">de la n° {{ rangDe(i.parent_instance_id) }}</span> }
+                    <span class="tag" [class.ok]="i.statut_procedure === 'terminee'">{{ i.statut_procedure === 'terminee' ? 'Terminée' : 'En cours' }}</span>
+                    @if (i.facturation === 'a_part') { <span class="tag">Facturée à part</span> }
+                  </td>
                   <td>{{ libelleDegre(i.degre) }}</td>
                   <td>{{ i.juridiction || '—' }}</td>
                   <td>{{ i.numero_role || '—' }}</td>
@@ -518,7 +524,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                 </tr>
                 @if (instanceVignetteEnEdition() === i.id) {
                   <tr class="edition">
-                    <td colspan="7">
+                    <td colspan="8">
                       <div class="upload">
                         <input class="in" style="width:160px;margin:0" type="number" [(ngModel)]="vignetteNumeroSaisi" [name]="'vNum' + i.id" placeholder="N° de vignette" list="numerosVignettesDispo" />
                         <button class="lien" (click)="enregistrerVignetteInstance(i)">Enregistrer</button>
@@ -536,7 +542,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                 }
                 @if (instanceEnEdition() === i.id) {
                   <tr class="edition">
-                    <td colspan="7">
+                    <td colspan="8">
                       <div class="grid2">
                         <div>
                           <label>Juridiction</label>
@@ -565,6 +571,33 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                         @if (editInstance.statut_partie === 'autre') {
                           <div><label>Préciser le statut</label><input class="in" [(ngModel)]="editInstance.statut_partie_precision" name="eiStatutPartiePrecision" /></div>
                         }
+                        <div>
+                          <label>Statut de la procédure</label>
+                          <select class="in" [(ngModel)]="editInstance.statut_procedure" name="eiStatutProcedure">
+                            <option value="en_cours">En cours</option>
+                            <option value="terminee">Terminée</option>
+                          </select>
+                        </div>
+                        @if (editInstance.statut_procedure === 'terminee') {
+                          <div><label>Date de fin</label><input class="in" type="date" [(ngModel)]="editInstance.date_fin" name="eiDateFin" /></div>
+                        }
+                        @if (i.nature === 'incidente') {
+                          <div><label>Nature de l'incident</label><input class="in" list="typesIncident" [(ngModel)]="editInstance.type_procedure" name="eiTypeProcedure" /></div>
+                        }
+                        <div>
+                          <label>Facturation</label>
+                          <select class="in" [(ngModel)]="editInstance.facturation" name="eiFacturation">
+                            <option value="incluse">Incluse dans les honoraires du dossier</option>
+                            <option value="a_part">Facturée à part</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>Responsable de cette procédure</label>
+                          <select class="in" [(ngModel)]="editInstance.responsable_id" name="eiResponsable">
+                            <option value="">— celui du dossier —</option>
+                            @for (u of avocatsProcedure(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
+                          </select>
+                        </div>
                         <div class="col2"><label>Décision</label><textarea class="in" rows="2" [(ngModel)]="editInstance.decision" name="eiDecision"></textarea></div>
                       </div>
                       <button class="lien" (click)="enregistrerEditionInstance()">Enregistrer</button>
@@ -575,6 +608,9 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                 }
               }
             </table>
+            <datalist id="typesIncident">
+              @for (t of typesIncident(); track t.code) { <option [value]="t.libelle"></option> }
+            </datalist>
             <datalist id="numerosVignettesDispo">
               @for (n of numerosVignettesDisponibles(); track n) { <option [value]="n"></option> }
             </datalist>
@@ -582,6 +618,23 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
 
           @if (auth.peut('dossiers.instances.gerer')) {
             <div class="grid2" style="margin-top:12px">
+              <div>
+                <label>Nature de la procédure</label>
+                <select class="in" [(ngModel)]="nouvelleInstance.nature" name="niNature">
+                  <option value="principale">Principale (1re instance, appel, cassation…)</option>
+                  <option value="incidente">Incidente (défense à exécution, sursis, opposition…)</option>
+                </select>
+              </div>
+              @if (nouvelleInstance.nature === 'incidente') {
+                <div>
+                  <label>Procédure visée par l'incident</label>
+                  <select class="in" [(ngModel)]="nouvelleInstance.parent_instance_id" name="niParent">
+                    <option value="">— choisir —</option>
+                    @for (p of d.instances; track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ libelleDegre(p.degre) }} — {{ p.juridiction || '—' }}</option> }
+                  </select>
+                </div>
+                <div><label>Nature de l'incident</label><input class="in" list="typesIncident" [(ngModel)]="nouvelleInstance.type_procedure" name="niTypeProcedure" placeholder="Ex. défense à exécution" /></div>
+              }
               <div>
                 <label>Degré</label>
                 <select class="in" [(ngModel)]="nouvelleInstance.degre" name="niDegre">
@@ -1558,7 +1611,8 @@ export class DossierDetailComponent implements OnInit {
     // 20/10/2026 — le client a sa propre ligne « Client : nom » (le nom peut passer
     // sur deux lignes au lieu d'être tronqué), la juridiction (abrégée) la sienne.
     const client = this.echapperHtml(d.client_nom ?? '—');
-    const juridiction = this.abregeJuridiction(d.juridiction) !== '—' ? this.echapperHtml(this.abregeJuridiction(d.juridiction)) : '';
+    const jurActuelle = d.juridiction_actuelle || d.juridiction;
+    const juridiction = this.abregeJuridiction(jurActuelle) !== '—' ? this.echapperHtml(this.abregeJuridiction(jurActuelle)) : '';
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
       /* 29/09/2026 — @page en taille personnalisée (108x59mm) abandonné :
          constaté en réel que la plupart des imprimantes de bureau chargées
@@ -1636,7 +1690,7 @@ export class DossierDetailComponent implements OnInit {
   // 26/09/2026 — audit doublons, même patron que verifierDoublonClient.
   readonly doublonsInstance = signal<any[]>([]);
   readonly erreurInstance = signal('');
-  nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '' };
+  nouvelleInstance: any = { degre: 'premiere_instance', juridiction: '', nature: 'principale' };
   // Modifier une instance déjà créée (19/09/2026, gap comblé — la route PUT
   // existait déjà côté API mais rien ne l'exposait à l'écran). Le degré
   // n'est volontairement pas modifiable ici : le backend ne l'accepte pas
@@ -1746,6 +1800,28 @@ export class DossierDetailComponent implements OnInit {
     opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
   };
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
+
+  // Procédures du dossier (lot 1, 13/11/2026) : arbre à plat (chaque incident sous la procédure visée), n° d'ordre, suggestions.
+  readonly typesIncident = signal<{ code: string; libelle: string }[]>([]);
+  avocatsProcedure(): any[] { return this.utilisateurs().filter((u) => this.rolesAvocat.includes(u.role)); }
+  rangDe(instanceId: string | null): string {
+    const p = (this.dossier()?.instances ?? []).find((x: any) => x.id === instanceId);
+    return p ? String(p.rang) : '?';
+  }
+  arbreProcedures(instances: any[] | undefined): any[] {
+    const liste = instances ?? [];
+    const sortie: any[] = [];
+    const vus = new Set<string>();
+    const ajouter = (i: any, niveau: number) => {
+      if (vus.has(i.id)) return;
+      vus.add(i.id);
+      sortie.push({ ...i, _niveau: niveau });
+      liste.filter((x) => x.parent_instance_id === i.id).forEach((x) => ajouter(x, niveau + 1));
+    };
+    liste.filter((i) => !i.parent_instance_id).forEach((i) => ajouter(i, 0));
+    liste.forEach((i) => ajouter(i, 0));   // incident orphelin (rattachement perdu) : affiché quand même
+    return sortie;
+  }
 
   // 28/09/2026 — documents.confidentialite enfin câblée pour de vrai (voir
   // backend/src/confidentialiteDocuments.js) ; 'dossier' (défaut) n'affiche
@@ -1925,12 +2001,20 @@ export class DossierDetailComponent implements OnInit {
 
   private ajouterInstanceReellement(): void {
     this.ajoutInstanceEnCours.set(true);
-    this.api.ajouterInstance(this.id, this.nouvelleInstance).subscribe({
+    const nouvelle = this.nouvelleInstance;
+    // La procédure principale précédente encore « en cours » : on demande si elle est terminée (jamais clôturée d'office).
+    const precedente = nouvelle.nature !== 'incidente'
+      ? [...(this.dossier()?.instances ?? [])].filter((x: any) => x.nature === 'principale' && x.statut_procedure === 'en_cours').slice(-1)[0]
+      : null;
+    this.api.ajouterInstance(this.id, nouvelle).subscribe({
       next: () => {
         this.ajoutInstanceEnCours.set(false);
-        this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '' };
+        this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '', nature: 'principale' };
         this.doublonsInstance.set([]);
-        this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+        const rafraichir = () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
+        if (precedente && window.confirm(`La procédure n° ${precedente.rang} (${this.libelleDegre(precedente.degre)}${precedente.juridiction ? ' — ' + precedente.juridiction : ''}) est-elle terminée ?`)) {
+          this.api.majInstance(this.id, precedente.id, { statut_procedure: 'terminee' }).subscribe({ next: rafraichir, error: rafraichir });
+        } else rafraichir();
       },
       error: (e) => { this.ajoutInstanceEnCours.set(false); this.erreurInstance.set(e?.error?.error ?? 'Ajout impossible.'); },
     });
@@ -2157,6 +2241,8 @@ export class DossierDetailComponent implements OnInit {
     this.editInstance = {
       juridiction: i.juridiction || '', numero_role: i.numero_role || '', decision: i.decision || '',
       statut_partie: i.statut_partie || '', statut_partie_precision: i.statut_partie_precision || '',
+      statut_procedure: i.statut_procedure || 'en_cours', date_fin: i.date_fin ? String(i.date_fin).slice(0, 10) : '',
+      type_procedure: i.type_procedure || '', facturation: i.facturation || 'incluse', responsable_id: i.responsable_id || '',
     };
     this.instanceEnEdition.set(i.id);
   }
@@ -2425,6 +2511,7 @@ export class DossierDetailComponent implements OnInit {
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });
+    this.api.listesValeurs('type_procedure_incidente').subscribe({ next: (l) => this.typesIncident.set(l), error: () => {} });
     this.rafraichirDelais();
     this.api.dossierAudiences(id).subscribe({ next: (a) => this.audiences.set(a), error: () => {} });
     if (this.auth.peut('audiences.consulter')) {

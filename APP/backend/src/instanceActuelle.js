@@ -4,12 +4,13 @@
 // dupliquer la logique de sélection — toujours "la plus récente par
 // date_debut", même tri que celui déjà utilisé pour l'historique complet
 // des instances sur la fiche dossier (dossiers.js, GET /:id).
+// Depuis le 13/11/2026 : une procédure INCIDENTE (défense à exécution…) ne remplace jamais la procédure principale.
 // Suppose un alias `d` sur la table `dossiers` dans la requête hôte.
 const JOIN_INSTANCE_ACTUELLE = `LEFT JOIN LATERAL (
   SELECT degre, statut_partie, statut_partie_precision
   FROM instances
   WHERE instances.dossier_id = d.id
-  ORDER BY date_debut DESC NULLS LAST, cree_le DESC
+  ORDER BY (instances.nature = 'principale') DESC, date_debut DESC NULLS LAST, cree_le DESC
   LIMIT 1
 ) ia ON true`;
 

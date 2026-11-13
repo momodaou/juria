@@ -6255,3 +6255,30 @@ ALTER TABLE factures ADD COLUMN IF NOT EXISTS retro_exclue_motif TEXT;
 ALTER TABLE retrocessions ADD COLUMN IF NOT EXISTS origine VARCHAR(10) NOT NULL DEFAULT 'manuelle';
 ALTER TABLE retrocessions ADD COLUMN IF NOT EXISTS part_pct NUMERIC(5,2);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_retro_apport_facture ON retrocessions(facture_id, beneficiaire_id) WHERE origine = 'apport';
+
+-- =====================================================================
+--  PROCÉDURES D'UN DOSSIER — lot 1 (13/11/2026)
+--  Un dossier = une affaire ; chaque procédure est une instance. Une procédure incidente (défense à exécution, sursis,
+--  opposition…) est une instance rattachée à la procédure qu'elle vise, avec sa propre juridiction et son propre n° de rôle.
+-- =====================================================================
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS nature VARCHAR(10) NOT NULL DEFAULT 'principale';       -- principale | incidente
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS type_procedure VARCHAR(120);                              -- libellé libre (suggestions : listes_valeurs)
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS parent_instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS statut_procedure VARCHAR(10) NOT NULL DEFAULT 'en_cours'; -- en_cours | terminee
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS date_fin DATE;
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS facturation VARCHAR(10) NOT NULL DEFAULT 'incluse';      -- incluse | a_part
+ALTER TABLE instances ADD COLUMN IF NOT EXISTS responsable_id UUID REFERENCES utilisateurs(id);          -- facultatif (défaut : celui du dossier)
+CREATE INDEX IF NOT EXISTS idx_instances_parent ON instances(parent_instance_id);
+
+INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
+ ('type_procedure_incidente','defense_execution','Défense à exécution',1,FALSE),
+ ('type_procedure_incidente','sursis_execution','Sursis à exécution',2,FALSE),
+ ('type_procedure_incidente','refere','Référé',3,FALSE),
+ ('type_procedure_incidente','opposition','Opposition',4,FALSE),
+ ('type_procedure_incidente','tierce_opposition','Tierce opposition',5,FALSE),
+ ('type_procedure_incidente','rectification','Rectification d''erreur matérielle',6,FALSE),
+ ('type_procedure_incidente','interpretation','Interprétation',7,FALSE),
+ ('type_procedure_incidente','recusation','Récusation / renvoi pour cause de suspicion',8,FALSE),
+ ('type_procedure_incidente','inscription_faux','Inscription de faux',9,FALSE),
+ ('type_procedure_incidente','mise_en_etat','Incident de mise en état',10,FALSE)
+ON CONFLICT (domaine, code) DO NOTHING;
