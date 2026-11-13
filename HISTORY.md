@@ -4911,3 +4911,12 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Migration lot B importée (13/11/2026)
 - `migration-homologation-protocole.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Aucun déploiement de code nécessaire. Présence du modèle dans l'Atelier d'actes à confirmer par lecture applicative (règle des imports transactionnels).
+
+### Atelier d'actes, lot C : requêtes unilatérales au président (13/11/2026, codé, migration à importer)
+- 3 nouveaux modèles, famille « Requêtes unilatérales au président », créés **« à valider »** (relecture par un avocat), bâtis sur les actes de référence du cabinet, aucune donnée d'acte réel conservée :
+  - `requete_saisie_conservatoire` (actes BPIFRANCE et TOKA GROUP) : saisie conservatoire de créances ou sur biens mobiliers, tiers saisi facultatif, créance (montant en chiffres et en lettres), exposé avec pièces, mise en demeure facultative, circonstances menaçant le recouvrement, article 57 de l'Acte uniforme cité au choix, projet d'ordonnance (articles 54 et suivants ; caducité à 3 mois ; titre exécutoire sous 1 mois ; huissier), bordereau.
+  - `requete_designation_sequestre` (acte BDM, article 166 AUPSRVE) : séquestre (CARPA proposée par défaut), montant, durée ou condition, suspension de l'exécution au choix, projet d'ordonnance. Constat : l'acte BDM, intitulé « assignation » dans le dossier, est bien une requête unilatérale.
+  - `requete_mise_liberte_provisoire` (acte NIANGADOU) : identité du requérant, autres conseils, dossier d'instruction, infractions, mandat de dépôt, exposé, garanties de représentation, absence d'antécédent et utilité de la détention au choix, articles 148 et suivants du Code de procédure pénale.
+- Juridictions au choix : tribunal de commerce de Bamako, TGI d'une commune (I à VI), autre. Textes cités à faire vérifier (`verifie_le` vide) : AUPSRVE art. 54 et suivants, 57, 166 ; Code de procédure pénale art. 148 et suivants.
+- Migration `APP/db/migration-requetes-unilaterales.sql` (INSERT idempotent, non committée) ; schéma aligné. Aucun déploiement de code nécessaire.
+- Tests : `modelesRequetesUnilaterales.test.js` (6). 98 suites / 1031. Questionnaires non vérifiés à l'écran.

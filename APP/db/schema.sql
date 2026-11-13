@@ -6041,3 +6041,185 @@ Le Président
 {{/si}}
 $mod$, $mod$Requêtes conjointes$mod$, $mod$transaction$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tc_bamako", "options": [{"valeur": "tc_bamako", "libelle": "Tribunal de Commerce de Bamako"}, {"valeur": "tgi_commune", "libelle": "Tribunal de Grande Instance d'une commune de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "commune", "libelle": "Commune du Tribunal de Grande Instance", "type": "choix", "requis": true, "si": "juridiction=tgi_commune", "options": [{"valeur": "I", "libelle": "I"}, {"valeur": "II", "libelle": "II"}, {"valeur": "III", "libelle": "III"}, {"valeur": "IV", "libelle": "IV"}, {"valeur": "V", "libelle": "V"}, {"valeur": "VI", "libelle": "VI"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "conseil_autre_partie", "libelle": "Conseil de l'autre partie (nom, titre ; laisser vide s'il n'en a pas)", "type": "texte"}, {"cle": "faits", "libelle": "Exposé (un paragraphe par ligne : contrat, différend, négociations ; citer le protocole dans les pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "protocole_date", "libelle": "Date du protocole d'accord transactionnel", "type": "date", "requis": true}, {"cle": "entree_en_vigueur", "libelle": "Le protocole subordonne son entrée en vigueur à son homologation", "type": "oui_non", "defaut": "non"}, {"cle": "article_homologation", "libelle": "N° de l'article du protocole prévoyant l'homologation", "type": "texte", "requis": true, "si": "entree_en_vigueur=oui"}, {"cle": "chose_jugee", "libelle": "Rappeler l'autorité de la chose jugée et le contrôle de l'ordre public par le juge", "type": "oui_non", "defaut": "oui"}, {"cle": "article_77", "libelle": "Citer l'article 77 du Régime Général des Obligations (le contrat est la loi des parties)", "type": "oui_non", "defaut": "oui"}, {"cle": "force_executoire", "libelle": "Demander la force exécutoire et la mise en exécution", "type": "oui_non", "defaut": "oui"}, {"cle": "donner_acte", "libelle": "Demander qu'il leur en soit donné acte", "type": "oui_non", "defaut": "oui"}, {"cle": "depens", "libelle": "Mettre les dépens à la charge des parties", "type": "oui_non", "defaut": "oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance autorisant la comparution", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Loi n° 87-31/AN-RM portant Régime Général des Obligations au Mali, art. 77", "verifie_le": null}]$mod$::jsonb, 'a_valider')
 ON CONFLICT (code) DO NOTHING;
+
+-- Requêtes unilatérales au président, lot C (13/11/2026), créées « à valider » : à relire et valider par un avocat.
+INSERT INTO modeles_actes (code, nom, categorie, corps, famille, matiere, champs, courrier_depart, textes_cites, statut_validation) VALUES
+($mod$requete_saisie_conservatoire$mod$, $mod$Requête aux fins de saisie conservatoire$mod$, 'conclusions', $mod$REQUETE AUX FINS DE SAISIE CONSERVATOIRE{{#si mesure=creances}} DE CREANCES{{/si}}
+(Articles 54 et suivants de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution)
+
+À {{destinataire_titre_libelle}} {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}}.
+
+{{clients_identification}}
+
+{{#si clients_nombre!=1}}Tous ayant{{#sinon}}Ayant{{/si}} pour Conseil la SCPA JFC AVOCATS, plaidant par {{avocats_dossier}}, Avocats inscrits au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}}, en l'étude desquels domicile est élu pour les besoins de la présente et de ses suites éventuelles ;
+
+A L'HONNEUR DE VOUS EXPOSER CE QUI SUIT :
+
+{{#chaque faits}}
+{{texte}}
+{{#si pieces_texte}}
+{{pieces_texte}}
+{{/si}}
+
+{{/chaque}}{{#si mise_en_demeure}}Que, malgré la mise en demeure adressée au débiteur en date du {{mise_en_demeure_date}}, la créance demeure impayée ;
+
+{{/si}}Attendu que la créance du requérant est fondée en son principe et que son recouvrement se trouve menacé : {{menace}} ;
+{{#si citer_article_57}}
+
+Qu'aux termes de l'article 57 de l'Acte uniforme portant organisation des procédures simplifiées de recouvrement et des voies d'exécution : « Toute personne dont la créance paraît fondée en son principe peut, par requête, solliciter de la juridiction compétente du domicile ou du lieu où demeure le débiteur, l'autorisation de pratiquer une mesure conservatoire sur les biens mobiliers corporels ou incorporels de son débiteur, sans commandement préalable, si elle justifie de circonstances de nature à en menacer le recouvrement » ;
+{{/si}}
+
+C'est pourquoi le requérant sollicite qu'il vous plaise, {{destinataire_titre_libelle}}, l'autoriser à pratiquer une saisie conservatoire {{#si mesure=creances}}de créances{{#sinon}}sur les biens mobiliers corporels et incorporels{{/si}} à l'encontre de :
+{{parties_adverses_identification}}
+{{#si tiers_saisi}}
+entre les mains de {{tiers_saisi}},
+{{/si}}
+pour avoir sûreté et paiement de sa créance évaluée à la somme de {{montant_phrase}} en principal, outre les frais de poursuite ;
+
+CE SERA JUSTICE
+
+SOUS TOUTES RESERVES
+
+Bamako, le {{date}}
+Le Conseil
+SCPA JFC AVOCATS MALI
+{{avocat_identification}}
+{{#si projet_ordonnance}}
+
+ORDONNANCE N° ______________
+
+Nous, {{#si president_nom}}{{president_nom}}{{#sinon}}[à compléter]{{/si}}, Président {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}} ;
+Vu la requête qui précède, les arguments y développés, les pièces à l'appui et les dispositions de la loi, notamment les articles 54 et suivants de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution ;
+Autorisons :
+{{clients_identification}}
+à faire pratiquer une saisie conservatoire {{#si mesure=creances}}de créances{{#sinon}}sur les biens mobiliers corporels et incorporels{{/si}} à l'encontre de :
+{{parties_adverses_identification}}
+{{#si tiers_saisi}}
+entre les mains de {{tiers_saisi}},
+{{/si}}
+en garantie du paiement de la somme de {{montant_phrase}} en principal, outre les frais de poursuite ;
+Disons la présente ordonnance caduque si la mesure n'a pas été pratiquée dans un délai de trois mois ;
+Disons que le créancier devra nous saisir de sa demande de titre exécutoire dans le délai d'un mois à compter de la date de la saisie, à peine de caducité de ladite saisie ;
+Désignons Maître __________________________________, Huissier-Commissaire de Justice à Bamako, aux fins de formaliser la présente ordonnance et ses suites éventuelles ;
+Disons qu'il nous en sera référé en cas de difficultés.
+Fait en notre Cabinet, Bamako, le ____/____/________
+Le Président
+{{/si}}{{#si pieces_nombre!=0}}
+
+{{bordereau_pieces}}
+{{/si}}
+$mod$, $mod$Requêtes unilatérales au président$mod$, $mod$recouvrement$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tc_bamako", "options": [{"valeur": "tc_bamako", "libelle": "Tribunal de Commerce de Bamako"}, {"valeur": "tgi_commune", "libelle": "Tribunal de Grande Instance d'une commune de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "commune", "libelle": "Commune du Tribunal de Grande Instance", "type": "choix", "requis": true, "si": "juridiction=tgi_commune", "options": [{"valeur": "I", "libelle": "I"}, {"valeur": "II", "libelle": "II"}, {"valeur": "III", "libelle": "III"}, {"valeur": "IV", "libelle": "IV"}, {"valeur": "V", "libelle": "V"}, {"valeur": "VI", "libelle": "VI"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "mesure", "libelle": "Nature de la mesure", "type": "choix", "requis": true, "defaut": "creances", "options": [{"valeur": "creances", "libelle": "Saisie conservatoire de créances"}, {"valeur": "biens", "libelle": "Saisie conservatoire sur les biens mobiliers corporels et incorporels"}]}, {"cle": "tiers_saisi", "libelle": "Tiers saisi, entre les mains de qui la saisie est pratiquée (laisser vide s'il n'y en a pas)", "type": "texte"}, {"cle": "montant", "libelle": "Créance évaluée (principal)", "type": "montant", "requis": true}, {"cle": "faits", "libelle": "Exposé des faits (un paragraphe par ligne, avec ses pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "mise_en_demeure", "libelle": "Une mise en demeure préalable a été adressée", "type": "oui_non", "defaut": "non"}, {"cle": "mise_en_demeure_date", "libelle": "Date de la mise en demeure", "type": "date", "requis": true, "si": "mise_en_demeure=oui"}, {"cle": "menace", "libelle": "Circonstances de nature à menacer le recouvrement", "type": "texte", "requis": true}, {"cle": "citer_article_57", "libelle": "Citer l'article 57 de l'Acte uniforme (mesure conservatoire sans commandement préalable)", "type": "oui_non", "defaut": "oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, art. 54 et suivants, art. 57", "verifie_le": null}]$mod$::jsonb, 'a_valider'),
+($mod$requete_designation_sequestre$mod$, $mod$Requête aux fins de désignation de séquestre$mod$, 'conclusions', $mod$REQUETE AUX FINS DE DESIGNATION DE SEQUESTRE
+(Article 166 de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution)
+
+À {{destinataire_titre_libelle}} {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}}.
+
+À la requête de :
+{{clients_identification}}
+
+{{#si clients_nombre!=1}}Tous ayant{{#sinon}}Ayant{{/si}} pour Conseil la SCPA JFC AVOCATS, plaidant par {{avocats_dossier}}, Avocats inscrits au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}}, en l'étude desquels domicile est élu pour les besoins de la présente et de ses suites éventuelles ;
+
+A L'HONNEUR DE VOUS EXPOSER CE QUI SUIT :
+
+{{#chaque faits}}
+{{texte}}
+{{#si pieces_texte}}
+{{pieces_texte}}
+{{/si}}
+
+{{/chaque}}Attendu que les sommes en cause font l'objet d'une contestation entre les parties ;
+{{#si citer_article_166}}
+
+Qu'aux termes de l'article 166 de l'Acte uniforme portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, en cas de contestation, toute partie peut demander à la juridiction compétente, sur requête, la désignation d'un séquestre pour préserver les intérêts des parties afin de leur assurer la représentation éventuelle des sommes en cause ;
+{{/si}}
+
+Qu'il y a lieu, au regard de ces circonstances, de faire droit à la demande et d'ordonner la séquestration ;
+
+C'est pourquoi le requérant sollicite qu'il vous plaise, {{destinataire_titre_libelle}}, l'autoriser à séquestrer la somme de {{montant_phrase}} entre les mains de {{sequestre}}, désigné en qualité de séquestre, {{duree_sequestre}} ;
+
+CE SERA JUSTICE
+
+SOUS TOUTES RESERVES
+
+Bamako, le {{date}}
+Le Conseil
+SCPA JFC AVOCATS MALI
+{{avocat_identification}}
+{{#si projet_ordonnance}}
+
+ORDONNANCE N° ______________
+
+Nous, {{#si president_nom}}{{president_nom}}{{#sinon}}[à compléter]{{/si}}, Président {{#si juridiction=tc_bamako}}du Tribunal de Commerce de Bamako{{/si}}{{#si juridiction=tgi_commune}}du Tribunal de Grande Instance de la Commune {{commune}} du District de Bamako{{/si}}{{#si juridiction=autre}}{{juridiction_autre}}{{/si}} ;
+Vu la requête qui précède, les arguments y développés et les pièces à l'appui ;
+Vu les textes de loi en la matière, notamment l'article 166 de l'Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution ;
+Autorisons le requérant à séquestrer la somme de {{montant_phrase}} entre les mains de {{sequestre}}, qui est désigné en qualité de séquestre pour la recevoir ;
+Disons que le montant sera séquestré {{duree_sequestre}} ;
+{{#si suspension}}
+Disons que la consignation suspend toute procédure d'exécution à l'encontre du requérant ;
+{{/si}}
+Disons que la présente ordonnance sera signifiée à compter de sa signature ;
+Désignons Maître __________________________________, Huissier-Commissaire de Justice à Bamako, pour formalisation.
+Disons qu'il nous en sera référé en cas de difficultés.
+Fait en notre Cabinet, Bamako, le ____/____/________
+Le Président
+{{/si}}{{#si pieces_nombre!=0}}
+
+{{bordereau_pieces}}
+{{/si}}
+$mod$, $mod$Requêtes unilatérales au président$mod$, $mod$recouvrement$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction", "libelle": "Juridiction", "type": "choix", "requis": true, "defaut": "tgi_commune", "options": [{"valeur": "tc_bamako", "libelle": "Tribunal de Commerce de Bamako"}, {"valeur": "tgi_commune", "libelle": "Tribunal de Grande Instance d'une commune de Bamako"}, {"valeur": "autre", "libelle": "Autre juridiction (à préciser)"}]}, {"cle": "commune", "libelle": "Commune du Tribunal de Grande Instance", "type": "choix", "requis": true, "si": "juridiction=tgi_commune", "options": [{"valeur": "I", "libelle": "I"}, {"valeur": "II", "libelle": "II"}, {"valeur": "III", "libelle": "III"}, {"valeur": "IV", "libelle": "IV"}, {"valeur": "V", "libelle": "V"}, {"valeur": "VI", "libelle": "VI"}]}, {"cle": "juridiction_autre", "libelle": "Juridiction (désignation complète, ex. « du Tribunal … »)", "type": "texte", "requis": true, "si": "juridiction=autre"}, {"cle": "faits", "libelle": "Exposé des faits (un paragraphe par ligne, avec ses pièces)", "type": "liste", "requis": true, "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "montant", "libelle": "Somme à séquestrer (principal, intérêts et frais)", "type": "montant", "requis": true}, {"cle": "sequestre", "libelle": "Séquestre désigné", "type": "texte", "requis": true, "defaut": "la Caisse Autonome de Recouvrement de Paiement des Avocats (CARPA)"}, {"cle": "duree_sequestre", "libelle": "Durée ou condition du séquestre (ex. « jusqu'à décision définitive de … »)", "type": "texte", "requis": true}, {"cle": "suspension", "libelle": "Demander que la consignation suspende toute procédure d'exécution", "type": "oui_non", "defaut": "non"}, {"cle": "citer_article_166", "libelle": "Citer l'article 166 de l'Acte uniforme (séquestre en cas de contestation)", "type": "oui_non", "defaut": "oui"}, {"cle": "projet_ordonnance", "libelle": "Joindre le projet d'ordonnance", "type": "oui_non", "defaut": "oui"}, {"cle": "president_nom", "libelle": "Nom du Président (projet d'ordonnance)", "type": "texte"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Acte uniforme OHADA portant organisation des procédures simplifiées de recouvrement et des voies d'exécution, art. 166", "verifie_le": null}]$mod$::jsonb, 'a_valider'),
+($mod$requete_mise_liberte_provisoire$mod$, $mod$Requête aux fins de mise en liberté provisoire$mod$, 'conclusions', $mod$REQUÊTE AUX FINS DE MISE EN LIBERTÉ PROVISOIRE
+
+À {{destinataire_titre_libelle}} {{juridiction_texte}}.
+
+{{destinataire_titre_libelle}},
+
+{{clients_identification}}
+
+{{#si clients_nombre!=1}}Tous ayant{{#sinon}}Ayant{{/si}} pour Conseil{{#si autres_conseils}}s{{/si}} : la SCPA JFC AVOCATS, plaidant par {{avocats_dossier}}, Avocats inscrits au Barreau du Mali, sis à {{cabinet_adresse}}, Tél. {{cabinet_telephone}} ;
+{{#si autres_conseils}}
+{{autres_conseils}} ;
+{{/si}}
+
+À L'HONNEUR DE VOUS EXPOSER :
+
+Que, dans le cadre du dossier{{#si dossier_nom}} dit {{dossier_nom}}{{/si}}, le requérant a été inculpé de {{infractions}} ;
+
+Que, dans le cadre de cette procédure, il a été placé sous mandat de dépôt en date du {{mandat_date}} par {{mandat_organe}} ;
+
+{{#chaque faits}}
+{{texte}}
+{{#si pieces_texte}}
+{{pieces_texte}}
+{{/si}}
+
+{{/chaque}}
+{{#chaque garanties}}
+Que {{texte}} ;
+
+{{/chaque}}
+{{#si sans_antecedent}}
+Qu'il n'a aucun antécédent judiciaire ;
+
+{{/si}}
+{{#si utilite_verite}}
+Que son maintien sous mandat de dépôt n'est plus utile à la manifestation de la vérité, et que sa mise en liberté provisoire ne nuirait ni à l'ordre public, ni à la poursuite sereine de l'instruction ;
+
+{{/si}}
+Que le requérant fait élection de domicile au cabinet de ses Conseils ;
+
+C'est pour toutes ces raisons qu'il sollicite très humblement sa mise en liberté provisoire, conformément aux dispositions des articles 148 et suivants du Code de procédure pénale ;
+
+ET CE SERA JUSTICE
+
+SOUS TOUTES RÉSERVES
+
+Bamako, le {{date}}
+Le Conseil
+SCPA JFC AVOCATS MALI
+{{avocat_identification}}
+{{#si pieces_nombre!=0}}
+
+{{bordereau_pieces}}
+{{/si}}
+$mod$, $mod$Requêtes unilatérales au président$mod$, $mod$pénal$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction_texte", "libelle": "Juridiction saisie (ex. « de la Chambre d'Instruction Criminelle de la Cour Suprême du Mali »)", "type": "texte", "requis": true, "defaut": "de la Chambre d'Instruction Criminelle de la Cour Suprême du Mali"}, {"cle": "autres_conseils", "libelle": "Autres conseils du requérant (cabinet, avocat ; laisser vide s'il n'y en a pas)", "type": "texte"}, {"cle": "dossier_nom", "libelle": "Nom du dossier d'instruction (ex. « EDM-SA » ; facultatif)", "type": "texte"}, {"cle": "infractions", "libelle": "Infractions reprochées", "type": "texte", "requis": true}, {"cle": "mandat_date", "libelle": "Date du mandat de dépôt", "type": "date", "requis": true}, {"cle": "mandat_organe", "libelle": "Autorité qui a décerné le mandat de dépôt", "type": "texte", "requis": true}, {"cle": "faits", "libelle": "Exposé (explications données, déroulement de l'instruction ; un paragraphe par ligne, avec ses pièces)", "type": "liste", "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "garanties", "libelle": "Garanties de représentation (ex. « le requérant demeure à … et offre des garanties suffisantes à se présenter à toute réquisition de la justice »)", "type": "liste", "sous_champs": [{"cle": "texte", "libelle": "Garantie (complète la phrase « Que … »)", "type": "texte"}]}, {"cle": "sans_antecedent", "libelle": "Le requérant n'a aucun antécédent judiciaire", "type": "oui_non", "defaut": "non"}, {"cle": "utilite_verite", "libelle": "Soutenir que le maintien en détention n'est plus utile à la manifestation de la vérité et ne nuit pas à l'ordre public", "type": "oui_non", "defaut": "oui"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Code de procédure pénale, art. 148 et suivants", "verifie_le": null}]$mod$::jsonb, 'a_valider')
+ON CONFLICT (code) DO NOTHING;
