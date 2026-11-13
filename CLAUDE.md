@@ -22,7 +22,7 @@ Permissions : table `permissions_role` + catalogue statique `backend/src/permiss
 - FCFA devise pivot, EUR à 655,957 fixe, autres devises au taux du jour verrouillé à l'émission
 - Échéances fiscales/sociales maliennes pré-paramétrées (TVA, INPS, ITS, IS, patente, Ordre, RC pro)
 - Référence dossier : `[CS|CX]-[MATIÈRE]-[ANNÉE]-[N°]` (ex. `CX-CIV-2026-0048`), code `IND` si matière non qualifiée
-- Rétrocessions réservées aux avocats : associé 30 % / collaborateur-stagiaire-Of Counsel 25 % ; règle « tout ou rien » (rien tant que la facture n'est pas intégralement encaissée) ; aucune rétrocession sur les dossiers d'un client sous convention-cadre (abonnement)
+- Rétrocessions réservées aux avocats **apporteurs** (1..n, parts en %, partage) : associé 30 % / collaborateur-stagiaire-Of Counsel 25 % ; effet pour les dossiers ouverts dès le 01/01/2027 ; créées automatiquement à l'encaissement intégral de chaque facture éligible (hors honoraires de résultat et factures exclues) ; convention-cadre (abonnement) : une seule fois, si la convention le prévoit (détail `HISTORY.md` 13/11/2026)
 - Pro bono : quota mensuel par responsable (2 par défaut), responsable obligatoirement associé
 
 ## Structure du dépôt
@@ -81,7 +81,7 @@ Permissions : table `permissions_role` + catalogue statique `backend/src/permiss
 
 - **Dépenses & caisses (déployé 11/11/2026, lots A à F)** : les associés **ordonnent** le paiement (moyen + compte, à la validation ou via « ordre de paiement ») et l'administration générale/le comptable **exécutent** (références seulement, moyen/compte masqués avant l'ordre, « Signaler un blocage ») ; petite caisse encadrée (natures autorisées réglables, bénéficiaire obligatoire, plafond au **cumul sur 7 jours**) ; 2e caisse « frais de justice & débours » (plafond 25 000, dossier obligatoire, refacturable) ; onglets Cabinet / Petite caisse / Frais de justice / Tout ; pièces à toute étape ; vignettes : proposition automatique à la création d'une instance contentieuse, affectation manuelle en un clic (jamais de décompte automatique). Catalogue de natures propre à chaque caisse (plafond 25 000 pour les deux), frais de greffe précisés, vignette = dépense à l'affectation (jamais à l'achat du lot), « refacturable » décoché par défaut. Détail : `HISTORY.md` (11/11/2026).
 
-- **Dernières révisions (déployé le 13/11/2026 : API juria-00240-8gt, web juria-web-00314-k86)** : réglages personnels de notification (e-mail seulement), filtres des liens de notification, 11 natures « Travaux, équipements et installations », aide « Application du Dock », **lot A de l'Atelier d'actes : 4 gabarits de lettres à la juridiction dans le générateur de courriers** (constitution en appel, constitution + renvoi, déclaration d'appel, réponse à sommation ; « à valider par un avocat »). Détail : `HISTORY.md` (12-13/11/2026).
+- **Dernières révisions (déployé le 13/11/2026 : API juria-00241-l5l, web juria-web-00315-kx8)** : réglages personnels de notification (e-mail seulement), filtres des liens de notification, 11 natures « Travaux, équipements et installations », aide « Application du Dock », **lot A de l'Atelier d'actes : 4 gabarits de lettres à la juridiction dans le générateur de courriers** (constitution en appel, constitution + renvoi, déclaration d'appel, réponse à sommation ; « à valider par un avocat »), **rétrocessions des avocats apporteurs** (calcul automatique, effet 01/01/2027). Détail : `HISTORY.md` (12-13/11/2026).
 
 ## Notes pour les futures sessions Claude
 - Avant toute action structurante, consigner l'entrée dans `HISTORY.md`.

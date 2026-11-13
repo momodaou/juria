@@ -858,6 +858,10 @@ export class FacturationComponent implements OnInit {
     // que silencieusement absentes du menu. Avant ce correctif, l'absence
     // de bouton ne distinguait pas "pas le droit" de "facture déjà payée"
     // de "déjà annulée" — remonté comme confus par l'utilisateur.
+    // Rétrocessions des avocats apporteurs (13/11/2026) : une facture d'incident postérieur à une procédure préalable s'exclut ici.
+    if (f.statut !== 'annulee' && this.auth.peut('retrocessions.creer')) {
+      items.push({ label: f.retro_exclue ? 'Réintégrer dans la rétrocession' : 'Exclure de la rétrocession', action: () => this.basculerExclusionRetro(f) });
+    }
     if (this.auth.peut('factures.annuler')) {
       if (f.statut === 'annulee') {
         items.push({ label: 'Modifier', action: () => {}, disabled: true, title: 'Facture annulée — plus aucune modification possible.' });
@@ -887,6 +891,20 @@ export class FacturationComponent implements OnInit {
       });
     }
     return items;
+  }
+
+  basculerExclusionRetro(f: any): void {
+    const exclure = !f.retro_exclue;
+    let motif: string | undefined;
+    if (exclure) {
+      const saisi = prompt(`Exclure la facture ${f.numero} de la rétrocession ? Motif (ex. incident postérieur à une procédure préalable) :`);
+      if (saisi === null) return;
+      motif = saisi;
+    }
+    this.api.exclureFactureRetro(f.id, exclure, motif).subscribe({
+      next: () => this.rafraichir(),
+      error: (e) => this.erreur.set(e?.error?.error ?? 'Opération impossible.'),
+    });
   }
 
   annuler(f: any): void {

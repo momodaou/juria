@@ -6,6 +6,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
+const { dateEffet } = require("../retrocessionsAuto");
 const router = express.Router();
 
 const TAUX_DEFAUT = { associe: 30, collaborateur: 25, non_avocat: 10 };
@@ -64,7 +65,7 @@ router.get("/", async (req, res) => {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   try {
     const { rows } = await pool.query(
-      `SELECT r.id, r.qualite, r.taux, r.base_ht, r.montant, r.statut, r.decaisse_le,
+      `SELECT r.id, r.qualite, r.taux, r.base_ht, r.montant, r.statut, r.decaisse_le, r.origine, r.part_pct,
               u.prenom || ' ' || u.nom AS beneficiaire, r.dossier_id,
               d.numero AS dossier_numero, f.numero AS facture_numero,
               f.montant_ttc, COALESCE(pv.encaisse, 0) AS encaisse,
@@ -137,15 +138,15 @@ router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
     // renseigné, même sans dossier lié — voir factures.js).
     if (b.dossier_id || b.facture_id) {
       const { rows: [cible] } = await pool.query(
-        `SELECT cl.abonnement_periodicite FROM clients cl
+        `SELECT cl.abonnement_periodicite, cl.retro_abonnement FROM clients cl
          WHERE cl.id = COALESCE(
            (SELECT client_id FROM dossiers WHERE id = $1),
            (SELECT client_id FROM factures WHERE id = $2)
          )`,
         [b.dossier_id || null, b.facture_id || null]
       );
-      if (cible && cible.abonnement_periodicite) {
-        return res.status(400).json({ error: "Les dossiers de clients sous convention-cadre (abonnement) ne font pas l'objet de rétrocession." });
+      if (cible && cible.abonnement_periodicite && cible.retro_abonnement !== "une_fois") {
+        return res.status(400).json({ error: "Cette convention-cadre (abonnement) ne prévoit aucune rétrocession (à modifier dans la fiche du client)." });
       }
     }
     const { rows } = await pool.query(
@@ -154,7 +155,13 @@ router.post("/", requirePermission("retrocessions.creer"), async (req, res) => {
        RETURNING id, qualite, taux, base_ht, montant, statut`,
       [b.beneficiaire_id, b.qualite, taux, b.base_ht, montant, b.dossier_id || null, b.facture_id || null, req.user.sub]
     );
-    res.status(201).json(rows[0]);
+    let avertissement;
+    if (b.dossier_id) {
+      const { rows: [dd] } = await pool.query("SELECT date_ouverture::text AS d FROM dossiers WHERE id = $1", [b.dossier_id]);
+      const effet = await dateEffet();
+      if (dd && dd.d < effet) avertissement = `Ce dossier a été ouvert avant le ${effet} (date d'effet des rétrocessions) : saisie manuelle exceptionnelle.`;
+    }
+    res.status(201).json({ ...rows[0], avertissement });
   } catch (e) {
     console.error(e);
     res.status(400).json({ error: e.message });
@@ -178,26 +185,26 @@ router.put("/:id", requirePermission("retrocessions.creer"), async (req, res) =>
   }
   try {
     const { rows: [actuelle] } = await pool.query(
-      "SELECT qualite, taux, base_ht, statut FROM retrocessions WHERE id = $1",
+      "SELECT qualite, taux, base_ht, statut, part_pct FROM retrocessions WHERE id = $1",
       [req.params.id]
     );
     if (!actuelle) return res.status(404).json({ error: "Rétrocession introuvable" });
-    if (actuelle.statut !== "attente") {
+    if (actuelle.statut === "decaissee") {
       return res.status(409).json({ error: "Rétrocession déjà décaissée — non modifiable." });
     }
     // Même garde qu'à la création (09/10/2026) — réappliquée ici si cette
     // correction rattache la rétrocession à un nouveau dossier/facture.
     if (b.dossier_id || b.facture_id) {
       const { rows: [cible] } = await pool.query(
-        `SELECT cl.abonnement_periodicite FROM clients cl
+        `SELECT cl.abonnement_periodicite, cl.retro_abonnement FROM clients cl
          WHERE cl.id = COALESCE(
            (SELECT client_id FROM dossiers WHERE id = $1),
            (SELECT client_id FROM factures WHERE id = $2)
          )`,
         [b.dossier_id || null, b.facture_id || null]
       );
-      if (cible && cible.abonnement_periodicite) {
-        return res.status(400).json({ error: "Les dossiers de clients sous convention-cadre (abonnement) ne font pas l'objet de rétrocession." });
+      if (cible && cible.abonnement_periodicite && cible.retro_abonnement !== "une_fois") {
+        return res.status(400).json({ error: "Cette convention-cadre (abonnement) ne prévoit aucune rétrocession (à modifier dans la fiche du client)." });
       }
     }
     const qualite = b.qualite || actuelle.qualite;
@@ -208,7 +215,7 @@ router.put("/:id", requirePermission("retrocessions.creer"), async (req, res) =>
       `UPDATE retrocessions SET
          qualite = $1::qualite_retro, taux = $2, base_ht = $3, montant = $4,
          dossier_id = COALESCE($5, dossier_id), facture_id = COALESCE($6, facture_id)
-       WHERE id = $7 AND statut = 'attente'
+       WHERE id = $7 AND statut <> 'decaissee'
        RETURNING id, qualite, taux, base_ht, montant, statut`,
       [qualite, taux, baseHt, montant, b.dossier_id || null, b.facture_id || null, req.params.id]
     );
@@ -226,6 +233,8 @@ router.put("/:id", requirePermission("retrocessions.creer"), async (req, res) =>
 // n'engage quoi que ce soit).
 router.delete("/:id", requirePermission("retrocessions.creer"), async (req, res) => {
   try {
+    const { rows: [auto] } = await pool.query("SELECT 1 FROM retrocessions WHERE id = $1 AND origine = 'apport'", [req.params.id]);
+    if (auto) return res.status(409).json({ error: "Rétrocession calculée automatiquement : pour la retirer, excluez la facture de la rétrocession (fiche de la facture) ou modifiez les apporteurs." });
     const { rowCount } = await pool.query(
       "DELETE FROM retrocessions WHERE id = $1 AND statut = 'attente'",
       [req.params.id]

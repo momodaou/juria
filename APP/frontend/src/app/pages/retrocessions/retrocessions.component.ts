@@ -116,6 +116,7 @@ import { libelleRole } from '../../core/roles';
               <td>
                 <span class="tag" [class.ok]="r.statut==='decaissee'">{{ libelleStatut(r.statut) }}</span>
                 @if (r.facture_numero && !r.honoraires_encaisses) { <span class="tag haute">non encaissée</span> }
+                @if (r.origine === 'apport') { <span class="tag" title="Calculée automatiquement à l'encaissement de la facture">auto · part {{ r.part_pct | number:'1.0-2' }} %</span> }
               </td>
               <td>{{ r.decaisse_le ? (r.decaisse_le | date:'dd/MM/yyyy') : '—' }}</td>
               <td><app-menu-actions [actions]="actionsPour(r)" /></td>
@@ -257,7 +258,7 @@ export class RetrocessionsComponent implements OnInit {
   libelleQualite(code: string): string {
     return this.qualites().find((q) => q.code === code)?.libelle ?? code;
   }
-  private readonly libellesStatut: Record<string, string> = { attente: 'En attente', decaissee: 'Décaissée' };
+  private readonly libellesStatut: Record<string, string> = { attente: 'En attente', a_decaisser: 'À décaisser', decaissee: 'Décaissée' };
   libelleStatut(code: string): string { return this.libellesStatut[code] ?? code; }
 
   creer(): void {

@@ -6223,3 +6223,35 @@ SCPA JFC AVOCATS MALI
 {{/si}}
 $mod$, $mod$Requêtes unilatérales au président$mod$, $mod$pénal$mod$, $mod$[{"cle": "destinataire_titre", "libelle": "Destinataire", "type": "choix", "requis": true, "options": [{"valeur": "m_president", "libelle": "Monsieur le Président"}, {"valeur": "mme_presidente", "libelle": "Madame la Présidente"}]}, {"cle": "juridiction_texte", "libelle": "Juridiction saisie (ex. « de la Chambre d'Instruction Criminelle de la Cour Suprême du Mali »)", "type": "texte", "requis": true, "defaut": "de la Chambre d'Instruction Criminelle de la Cour Suprême du Mali"}, {"cle": "autres_conseils", "libelle": "Autres conseils du requérant (cabinet, avocat ; laisser vide s'il n'y en a pas)", "type": "texte"}, {"cle": "dossier_nom", "libelle": "Nom du dossier d'instruction (ex. « EDM-SA » ; facultatif)", "type": "texte"}, {"cle": "infractions", "libelle": "Infractions reprochées", "type": "texte", "requis": true}, {"cle": "mandat_date", "libelle": "Date du mandat de dépôt", "type": "date", "requis": true}, {"cle": "mandat_organe", "libelle": "Autorité qui a décerné le mandat de dépôt", "type": "texte", "requis": true}, {"cle": "faits", "libelle": "Exposé (explications données, déroulement de l'instruction ; un paragraphe par ligne, avec ses pièces)", "type": "liste", "sous_champs": [{"cle": "texte", "libelle": "Paragraphe", "type": "texte"}, {"cle": "pieces", "libelle": "Pièces citées (une par ligne)", "type": "pieces"}]}, {"cle": "garanties", "libelle": "Garanties de représentation (ex. « le requérant demeure à … et offre des garanties suffisantes à se présenter à toute réquisition de la justice »)", "type": "liste", "sous_champs": [{"cle": "texte", "libelle": "Garantie (complète la phrase « Que … »)", "type": "texte"}]}, {"cle": "sans_antecedent", "libelle": "Le requérant n'a aucun antécédent judiciaire", "type": "oui_non", "defaut": "non"}, {"cle": "utilite_verite", "libelle": "Soutenir que le maintien en détention n'est plus utile à la manifestation de la vérité et ne nuit pas à l'ordre public", "type": "oui_non", "defaut": "oui"}]$mod$::jsonb, FALSE, $mod$[{"texte": "Code de procédure pénale, art. 148 et suivants", "verifie_le": null}]$mod$::jsonb, 'a_valider')
 ON CONFLICT (code) DO NOTHING;
+
+-- =====================================================================
+--  RÉTROCESSIONS DES AVOCATS APPORTEURS (13/11/2026)
+--  Règles : date d'effet 01/01/2027 (dossiers ouverts à compter de cette date), 1..n avocats apporteurs avec
+--  part en % (total 100), rétrocession créée automatiquement à l'encaissement intégral de chaque facture
+--  éligible (hors honoraires de résultat et factures exclues), abonnements : une seule fois, sur le montant
+--  convenu, si la convention le prévoit.
+-- =====================================================================
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS retro_date_effet DATE NOT NULL DEFAULT DATE '2027-01-01';
+
+CREATE TABLE IF NOT EXISTS apporteurs (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dossier_id     UUID REFERENCES dossiers(id) ON DELETE CASCADE,
+    client_id      UUID REFERENCES clients(id) ON DELETE CASCADE,       -- convention-cadre (abonnement) : portée par le client
+    utilisateur_id UUID NOT NULL REFERENCES utilisateurs(id),
+    part_pct       NUMERIC(5,2) NOT NULL CHECK (part_pct > 0 AND part_pct <= 100),
+    cree_par       UUID REFERENCES utilisateurs(id),
+    cree_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((dossier_id IS NULL) <> (client_id IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_apporteurs_dossier ON apporteurs(dossier_id, utilisateur_id) WHERE dossier_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_apporteurs_client ON apporteurs(client_id, utilisateur_id) WHERE client_id IS NOT NULL;
+
+-- Convention-cadre : 'aucune' (pas de rétrocession) ou 'une_fois' (une seule fois, à la première exécution)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS retro_abonnement VARCHAR(10) NOT NULL DEFAULT 'aucune';
+-- Facture exclue de la rétrocession (incident postérieur à une procédure préalable, etc.)
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS retro_exclue BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS retro_exclue_motif TEXT;
+-- Origine d'une rétrocession : 'manuelle' (saisie existante) ou 'apport' (créée automatiquement)
+ALTER TABLE retrocessions ADD COLUMN IF NOT EXISTS origine VARCHAR(10) NOT NULL DEFAULT 'manuelle';
+ALTER TABLE retrocessions ADD COLUMN IF NOT EXISTS part_pct NUMERIC(5,2);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_retro_apport_facture ON retrocessions(facture_id, beneficiaire_id) WHERE origine = 'apport';

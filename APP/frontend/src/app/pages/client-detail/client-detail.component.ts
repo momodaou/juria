@@ -7,11 +7,12 @@ import { AuthService } from '../../core/auth.service';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { LibellePipe } from '../../core/libelles';
+import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [LibellePipe, DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, FormsModule, RouterLink, MenuActionsComponent, ApporteursPanelComponent],
   template: `
     <a routerLink="/clients" class="back">← Retour aux clients</a>
 
@@ -220,6 +221,8 @@ import { LibellePipe } from '../../core/libelles';
           }
         }
       </section>
+
+      <app-apporteurs-panel [clientId]="clientId" />
 
       <section class="panel">
         <h3>Pièces KYC / LBC-FT</h3>

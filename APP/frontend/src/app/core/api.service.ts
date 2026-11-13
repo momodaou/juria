@@ -1116,6 +1116,24 @@ export class ApiService {
   retirerRetrocession(id: string): Observable<any> {
     return this.http.delete(`${this.base}/api/retrocessions/${id}`);
   }
+  // Avocats apporteurs (13/11/2026)
+  apporteurs(f: { dossier_id?: string; client_id?: string }): Observable<any> {
+    const params = new URLSearchParams();
+    Object.entries(f).forEach(([k, v]) => { if (v) params.set(k, v); });
+    return this.http.get<any>(`${this.base}/api/apporteurs?${params.toString()}`);
+  }
+  definirApporteursDossier(dossierId: string, apporteurs: { utilisateur_id: string; part_pct: number | null }[]): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/apporteurs/dossier/${dossierId}`, { apporteurs });
+  }
+  definirApporteursClient(clientId: string, apporteurs: { utilisateur_id: string; part_pct: number | null }[]): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/apporteurs/client/${clientId}`, { apporteurs });
+  }
+  definirConventionRetro(clientId: string, retro_abonnement: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/apporteurs/client/${clientId}/convention`, { retro_abonnement });
+  }
+  exclureFactureRetro(factureId: string, exclue: boolean, motif?: string): Observable<any> {
+    return this.http.put<any>(`${this.base}/api/apporteurs/facture/${factureId}/exclusion`, { exclue, motif });
+  }
   proBono(mois?: string): Observable<any[]> {
     const q = mois ? `?mois=${mois}` : '';
     return this.http.get<any[]>(`${this.base}/api/retrocessions/pro-bono${q}`);

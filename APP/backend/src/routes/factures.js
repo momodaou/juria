@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
 const { logAudit, diffChamps } = require("../audit");
+const { declencherSansEchec } = require("../retrocessionsAuto");
 const { MOYENS, comptesEligibles, preparerReglement, referenceCourte, PAR_CODE } = require("../moyensPaiement");
 const router = express.Router();
 
@@ -32,6 +33,8 @@ async function majStatut(factureId) {
   else if (regle < ttc) statut = "partielle";
   else statut = "payee";
   await pool.query("UPDATE factures SET statut = $1 WHERE id = $2", [statut, factureId]);
+  // Rétrocessions des avocats apporteurs : nées à l'encaissement intégral (13/11/2026), sans jamais faire échouer le paiement.
+  if (statut === "payee") await declencherSansEchec(factureId);
   return statut;
 }
 
@@ -211,7 +214,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.taux_tva, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut, f.mention, f.mode_reglement, f.compte_reglement_id,
-              f.date_emission, f.numero_origine, f.date_echeance, f.dossier_id, f.client_id,
+              f.date_emission, f.numero_origine, f.date_echeance, f.dossier_id, f.client_id, f.retro_exclue,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero,
               COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS encaisse,

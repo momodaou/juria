@@ -10,11 +10,12 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
 import { viserElement } from '../../core/cible-notification';
 import { libelleRole } from '../../core/roles';
 import { LibellePipe } from '../../core/libelles';
+import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component';
 
 @Component({
   selector: 'app-dossier-detail',
   standalone: true,
-  imports: [LibellePipe, DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent, ApporteursPanelComponent],
   template: `
     <a routerLink="/dossiers" class="back">← Retour aux dossiers</a>
 
@@ -131,6 +132,8 @@ import { LibellePipe } from '../../core/libelles';
       </div>
 
       @if (erreur()) { <p class="err" style="margin:12px 0 0">{{ erreur() }}</p> }
+
+      <app-apporteurs-panel [dossierId]="d.id" />
 
       <div class="liens-rapides">
         @if (compteursLiens().factures !== null) {

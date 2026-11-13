@@ -31,7 +31,7 @@ router.get("/honoraires", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories,
-              caisse_procedure_plafond_depense, caisse_procedure_categories
+              caisse_procedure_plafond_depense, caisse_procedure_categories, retro_date_effet::text AS retro_date_effet
        FROM parametres_cabinet WHERE id = 1`
     );
     res.json(rows[0]);
@@ -88,11 +88,12 @@ router.put("/honoraires", requirePermission("parametres.honoraires.modifier"), a
          seuil_justificatif_decaissement = COALESCE($5, seuil_justificatif_decaissement),
          petite_caisse_categories = COALESCE($6::text[], petite_caisse_categories),
          caisse_procedure_plafond_depense = COALESCE($7::numeric, caisse_procedure_plafond_depense),
-         caisse_procedure_categories = COALESCE($8::text[], caisse_procedure_categories)
+         caisse_procedure_categories = COALESCE($8::text[], caisse_procedure_categories),
+         retro_date_effet = COALESCE($9::date, retro_date_effet)
        WHERE id = 1
        RETURNING frais_procedure_pro_bono_min_xof, quota_pro_bono_mensuel, seuil_alerte_vignettes, petite_caisse_plafond_depense, seuil_justificatif_decaissement, petite_caisse_categories,
-                 caisse_procedure_plafond_depense, caisse_procedure_categories`,
-      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null, b.seuil_justificatif_decaissement ?? null, categories, plafondProc, proc.valeur]
+                 caisse_procedure_plafond_depense, caisse_procedure_categories, retro_date_effet::text AS retro_date_effet`,
+      [b.frais_procedure_pro_bono_min_xof ?? null, b.quota_pro_bono_mensuel ?? null, b.seuil_alerte_vignettes ?? null, b.petite_caisse_plafond_depense ?? null, b.seuil_justificatif_decaissement ?? null, categories, plafondProc, proc.valeur, b.retro_date_effet || null]
     );
     res.json(rows[0]);
   } catch (e) {
