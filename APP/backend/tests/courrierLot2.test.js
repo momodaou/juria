@@ -11,9 +11,9 @@ const { pool } = require("./setup");
 const VALEURS_MIN = { destinataire: "Monsieur le Directeur\nde la BDM SA", objet: "Constitution", paragraphes: "Premier paragraphe.\n\nDeuxième paragraphe." };
 
 describe("Gabarits : cases de saisie et validation", () => {
-  test("deux gabarits : standard et constitution, avec leur bloc de signature par défaut", () => {
+  test("gabarits d'origine : standard et constitution, avec leur bloc de signature par défaut (les autres : voir courrierLotA)", () => {
     const l = G.listerGabarits();
-    expect(l.map((g) => g.code).sort()).toEqual(["constitution", "standard"]);
+    expect(l.map((g) => g.code)).toEqual(expect.arrayContaining(["constitution", "standard"]));
     expect(l.find((g) => g.code === "standard").bloc_signature).toBe("psc");
     expect(l.find((g) => g.code === "constitution").bloc_signature).toBe("con");
   });

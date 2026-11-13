@@ -33,7 +33,7 @@ describe("Création : référence, registre, version 1", () => {
   test("gabarits disponibles", async () => {
     const r = await auth(request(app).get("/api/courriers/gabarits"));
     expect(r.status).toBe(200);
-    expect(r.body.map((g) => g.code).sort()).toEqual(["constitution", "standard"]);
+    expect(r.body.map((g) => g.code)).toEqual(expect.arrayContaining(["constitution", "standard", "constitution_appel", "constitution_renvoi", "declaration_appel", "reponse_sommation"]));
   });
 
   test("courrier général sans dossier : référence DEP, inscrit au registre en brouillon, version 1", async () => {

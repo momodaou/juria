@@ -187,6 +187,8 @@ async function genererPdf(lettre, opts = {}) {
   bloc([libelle("N/R"), { t: " :", b: true }, { t: ` ${lettre.nref}`, b: true }]);
   vide();
   if (lettre.affaire) { bloc([libelle("Affaire"), { t: " :", b: true }, { t: ` ${lettre.affaire}` }]); vide(); }
+  if (lettre.audience) { bloc([libelle("Audience"), { t: " :", b: true }, { t: ` ${lettre.audience}` }]); vide(); }
+  if (lettre.nature) { bloc([libelle("Nature"), { t: " :", b: true }, { t: ` ${lettre.nature}` }]); vide(); }
   bloc([libelle("Objet"), { t: " :", b: true }, { t: ` ${lettre.objet}` }]);
   if (lettre.precision) bloc([{ t: lettre.precision, i: true }], { retrait: 1.5 });
   vide();

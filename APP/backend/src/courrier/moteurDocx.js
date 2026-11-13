@@ -85,6 +85,8 @@ async function genererDocx(lettre, opts = {}) {
   if (lettre.ville) blocs.push(p([{ t: lettre.ville, b: true, ul: true }], { indent: retraitDroite, apres: apres(1) }));
   blocs.push(p([libelle("N/R"), { t: " :", b: true }, { t: ` ${lettre.nref}`, b: true }], { apres: apres(1) }));
   if (lettre.affaire) blocs.push(p([libelle("Affaire"), { t: " :", b: true }, { t: ` ${lettre.affaire}` }], { apres: apres(1) }));
+  if (lettre.audience) blocs.push(p([libelle("Audience"), { t: " :", b: true }, { t: ` ${lettre.audience}` }], { apres: apres(1) }));
+  if (lettre.nature) blocs.push(p([libelle("Nature"), { t: " :", b: true }, { t: ` ${lettre.nature}` }], { apres: apres(1) }));
   blocs.push(p([libelle("Objet"), { t: " :", b: true }, { t: ` ${lettre.objet}` }], { apres: lettre.precision ? 0 : apres(1) }));
   if (lettre.precision) blocs.push(p([{ t: lettre.precision, i: true }], { indent: twips(1.5), apres: apres(1) }));
   if (lettre.motif) blocs.push(p([libelle("Motif"), { t: " :", b: true }, { t: ` ${lettre.motif}` }], { apres: apres(1) }));

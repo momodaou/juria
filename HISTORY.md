@@ -4891,3 +4891,10 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement natures travaux + aide Dock (12/11/2026)
 - Migration `migration-categories-travaux.sql` importée (11 valeurs d ENUM). Révisions : API `juria-00239-hpb`, frontend `juria-web-00313-g9j`. Vérifications : `/health` = 200, `/` = 200. Embarque aussi la ligne d aide « Application du Dock ». À confirmer en usage réel : groupe « Travaux, équipements et installations » dans Nouvelle dépense, filtre et état mensuel.
+
+### Atelier d'actes, lot A : lettres à la juridiction (13/11/2026, codé, à déployer)
+- Décision : les lettres à la juridiction sont ajoutées comme **gabarits du générateur de courriers** (en-tête, signature, cachet, N/R DEP-AAAA-NNNNNN, entrée au registre), pas comme modèles de l'Atelier. Les actes de procédure longs (familles B à H) restent dans l'Atelier (remplissage depuis le dossier + questionnaire).
+- 4 gabarits (cases de saisie + texte par défaut avec « … », **à valider par un avocat**, aucune donnée d'acte réel conservée) : `constitution_appel` (aux côtés d'un confrère, en appel), `constitution_renvoi` (constitution + renvoi pour citation régulière), `declaration_appel` (au greffier en chef, avec l'article 172 AUPSRVE cité dans l'acte de référence), `reponse_sommation`.
+- Moteurs PDF et Word : lignes facultatives « Audience » et « Nature » (champs `audience`, `nature`). Aucun écran modifié : le formulaire se construit depuis la liste des gabarits.
+- Tests : nouveau `courrierLotA.test.js` (6) ; `courrierLot2` et `courrierLot3` adaptés (liste de gabarits). 96 suites / 1018 tests. Aperçu PDF vérifié visuellement (sortie B).
+- Non fait : la déclaration d'appel d'origine est un scan à 2 pages dont seule la page 1 a été retranscrite ; préremplissage depuis le dossier (affaire, juridiction) non codé ; pas d'« ampliation » (réponse à sommation).
