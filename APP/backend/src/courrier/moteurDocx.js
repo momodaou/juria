@@ -111,6 +111,10 @@ async function genererDocx(lettre, opts = {}) {
     blocs.push(p([{ t: sig.qualite || "", i: true }], { indent: ind, apres: apres(1) }));
   }
   if (lettre.pj) blocs.push(p([libelle("P.J."), { t: " :", b: true }, { t: ` ${lettre.pj}` }]));
+  if ((lettre.ampliation || []).length) {
+    blocs.push(p([libelle("Ampliation"), { t: " :", b: true }], { keepNext: true }));
+    lettre.ampliation.forEach((l) => blocs.push(p([{ t: l }])));
+  }
 
   const pied = nbPages > 1
     ? new Footer({ children: [new Paragraph({

@@ -10,6 +10,8 @@ const CHAMP_TEXTE = { type: "texte" };
 // Champs communs aux gabarits du lot A.
 const CHAMP_DATE = { cle: "date", libelle: "Date", ...CHAMP_TEXTE, max: 80, aide: "Laisser vide pour la date du jour (« Bamako, le … »)." };
 const CHAMP_PJ = { cle: "pj", libelle: "Pièces jointes (facultatif)", ...CHAMP_TEXTE, max: 300 };
+const CHAMP_AMPLIATION = { cle: "ampliation", libelle: "Ampliation (facultatif)", type: "lignes", min: 0, max: 6, maxLigne: 120,
+  aide: "Une ligne par destinataire de la copie (ex. : étude d'huissier, confrère)." };
 const CHAMP_POLITESSE = (_appel, defaut) => ({ cle: "politesse", libelle: "Formule de politesse", ...CHAMP_TEXTE, max: 500, obligatoire: true, defaut });
 
 const GABARITS = {
@@ -108,24 +110,28 @@ const GABARITS = {
   declaration_appel: {
     code: "declaration_appel",
     nom: "Déclaration d'appel au greffier en chef",
-    blocSignature: "psc",
+    blocSignature: "con",
     champs: [
       CHAMP_DATE,
       { cle: "destinataire", libelle: "À l'attention de", type: "lignes", min: 1, max: 6, maxLigne: 120, obligatoire: true,
-        defaut: ["Monsieur le Greffier en Chef", "du Tribunal de Grande Instance", "de la Commune … du District de Bamako"] },
-      { cle: "affaire", libelle: "Affaire (appelant c/ intimé)", ...CHAMP_TEXTE, max: 300, obligatoire: true,
-        aide: "Désigner l'appelant et, le cas échéant, son représentant (« représentée par … »)." },
+        defaut: ["Madame la Greffière en Cheffe", "du Tribunal de Grande Instance de la Commune … du District de Bamako"],
+        aide: "Écrire « Madame … » ou « Monsieur … » : la formule d'appel et de politesse s'accorde au destinataire." },
+      { cle: "affaire", libelle: "Affaire (appelant c/ intimé)", ...CHAMP_TEXTE, max: 300, obligatoire: true },
       { cle: "nature", libelle: "Nature de l'affaire", ...CHAMP_TEXTE, max: 300 },
-      { cle: "objet", libelle: "Objet", ...CHAMP_TEXTE, max: 300, obligatoire: true, defaut: "Déclaration d'appel." },
-      { cle: "appel", libelle: "Formule d'appel", ...CHAMP_TEXTE, max: 120, obligatoire: true, defaut: "Monsieur le Greffier en Chef," },
+      { cle: "objet", libelle: "Objet", ...CHAMP_TEXTE, max: 300, obligatoire: true, defaut: "Déclaration d'appel" },
+      { cle: "appel", libelle: "Formule d'appel", ...CHAMP_TEXTE, max: 120, appelAuto: true,
+        aide: "Laisser vide : « Chère Maître, » / « Cher Maître, » selon le destinataire." },
       { cle: "paragraphes", libelle: "Corps de la lettre", type: "paragraphes", min: 1, max: 40, maxParagraphe: 5000, obligatoire: true,
         defaut: [
-          "Nous formons par la présente appel contre l'ordonnance n° … en date du …, rendue par le … dans l'affaire sus-référencée, en notre qualité de conseil de … (identité complète de l'appelant : forme, RCCM, siège, représentant), contre toutes les dispositions de l'ordonnance sus visée.",
-          "En effet, cet appel est dirigé contre toutes les dispositions dans la procédure qui l'oppose à … (identité de l'intimé et de ses conseils, domicile élu).",
-          "Sous réserve de développer amplement les moyens d'appel, qui seront portés par Me … devant la Chambre des Référés de la Cour d'Appel de Bamako.",
-          "Nous vous précisons qu'au regard de l'article 172 de l'Acte Uniforme portant Organisation des Procédures Simplifiées de Recouvrement et des Voies d'Exécution (AUPSRVE) : « Le délai pour faire appel ainsi que la déclaration d'appel sont suspensifs d'exécution sauf décision contraire spécialement motivée par la juridiction compétente ».",
+          "Nous venons par la présente interjeter appel contre l'ordonnance n° … rendue par votre juridiction en son audience du … dans l'affaire citée en objet, au nom et pour le compte de … (appelant : forme, capital, siège, représentant), ayant pour conseil la SCPA JFC AVOCATS, plaidant par l'organe de Maître …, opposé à … (intimé : identité complète, domicile, conseils et domicile élu).",
+          "Ladite ordonnance a fait l'objet d'une signification-commandement de payer en date du … par l'Étude de Maître …, Huissier-Commissaire de Justice. (supprimer ce paragraphe s'il n'y a pas eu de signification)",
+          "Laquelle affaire doit être portée devant la Cour d'Appel de Bamako pour l'examen de ladite ordonnance.",
+          "Nous vous précisons qu'au regard de l'article 172 de l'Acte Uniforme portant Organisation des Procédures Simplifiées de Recouvrement et des Voies d'Exécution (AUPSRVE) : « Le délai pour faire appel ainsi que la déclaration d'appel sont suspensifs d'exécution sauf décision contraire spécialement motivée par la juridiction compétente ». (supprimer ce paragraphe s'il ne s'applique pas)",
+          "L'appelant se réserve le droit de produire les moyens à l'appui de son appel par devant qui de droit.",
         ] },
-      CHAMP_POLITESSE("Monsieur le Greffier en Chef", "Nous vous prions d'agréer, Monsieur le Greffier en Chef, l'expression de notre considération distinguée."),
+      { cle: "politesse", libelle: "Formule de politesse", ...CHAMP_TEXTE, max: 500, obligatoire: true,
+        defaut: "En espérant que vous en prendrez acte, recevez {{appel}}, l'expression de nos salutations distinguées.",
+        aide: "{{appel}} est remplacé par la formule d'appel (sans la virgule)." },
       CHAMP_PJ,
     ],
   },
@@ -153,6 +159,7 @@ const GABARITS = {
       { cle: "politesse", libelle: "Formule de politesse", ...CHAMP_TEXTE, max: 500, obligatoire: true,
         defaut: "Nous vous prions d'agréer, Madame, Monsieur, l'expression de notre considération distinguée." },
       CHAMP_PJ,
+      CHAMP_AMPLIATION,
     ],
   },
 };
@@ -214,6 +221,14 @@ function validerContenu(code, valeurs) {
       contenu[c.cle] = t;
     }
   });
+  // Formule d'appel accordée au destinataire (gabarits « appelAuto ») : « Chère Maître, » pour Madame, « Cher Maître, » sinon.
+  const champAppel = g.champs.find((c) => c.appelAuto);
+  if (champAppel && !contenu[champAppel.cle]) {
+    const premiere = (contenu.destinataire || [])[0] || "";
+    contenu[champAppel.cle] = /^\s*madame\b/i.test(premiere) ? "Chère Maître," : "Cher Maître,";
+  }
+  if (contenu.appel && typeof contenu.politesse === "string" && contenu.politesse.includes("{{appel}}"))
+    contenu.politesse = contenu.politesse.replace(/\{\{appel\}\}/g, contenu.appel.replace(/[,\s]+$/, ""));
   return { contenu, erreurs };
 }
 
@@ -244,6 +259,7 @@ function composerLettre(code, contenu, { nref, signataire, blocSignature, dateJo
     politesse: contenu.politesse,
     signature: { bloc: blocSignature || g.blocSignature, nom: signataire.nom, qualite: signataire.qualite },
     pj: contenu.pj || "",
+    ampliation: contenu.ampliation || [],
   };
 }
 

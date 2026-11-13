@@ -200,6 +200,7 @@ async function genererPdf(lettre, opts = {}) {
   vide(2);
   blocSignature(lettre.signature);
   if (lettre.pj) { vide(); bloc([libelle("P.J."), { t: " :", b: true }, { t: ` ${lettre.pj}` }]); }
+  if ((lettre.ampliation || []).length) { vide(); bloc([libelle("Ampliation"), { t: " :", b: true }]); lettre.ampliation.forEach((l) => bloc([{ t: l }])); }
 
   // --- numérotation « n/N » (au moins deux pages) --------------------------------------------------------------
   const total = doc.bufferedPageRange().count;

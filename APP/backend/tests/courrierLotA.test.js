@@ -59,6 +59,39 @@ describe("Lot A : gabarits des lettres à la juridiction", () => {
     }
   });
 
+  test("déclaration d'appel : formule d'appel et de politesse accordées au genre du destinataire", () => {
+    const f = G.validerContenu("declaration_appel", { affaire: "A c/ B", destinataire: "Madame la Greffière en Cheffe\ndu Tribunal" }).contenu;
+    expect(f.appel).toBe("Chère Maître,");
+    expect(f.politesse).toContain("recevez Chère Maître, l'expression");
+    const m = G.validerContenu("declaration_appel", { affaire: "A c/ B", destinataire: "Monsieur le Greffier en Chef\ndu Tribunal" }).contenu;
+    expect(m.appel).toBe("Cher Maître,");
+    expect(m.politesse).toContain("recevez Cher Maître, l'expression");
+    // une formule saisie à la main est respectée
+    const libre = G.validerContenu("declaration_appel", { affaire: "A c/ B", destinataire: "Madame la Greffière", appel: "Maître," }).contenu;
+    expect(libre.appel).toBe("Maître,");
+    expect(libre.politesse).toContain("recevez Maître, l'expression");
+  });
+
+  test("déclaration d'appel : article 172 proposé par défaut, bloc de signature « Le Conseil »", () => {
+    const g = G.listerGabarits().find((x) => x.code === "declaration_appel");
+    expect(g.bloc_signature).toBe("con");
+    expect(G.valeursParDefaut("declaration_appel").paragraphes.join(" ")).toMatch(/article 172/);
+  });
+
+  test("ampliation : facultative, transmise à la lettre et imprimée en Word et PDF", async () => {
+    const sans = G.validerContenu("reponse_sommation", { destinataire: "Monsieur le DG" });
+    expect(sans.erreurs).toEqual([]);
+    expect(sans.contenu.ampliation).toEqual([]);
+    const { contenu } = G.validerContenu("reponse_sommation", { destinataire: "Monsieur le DG", ampliation: "Étude Untel, Huissiers\nBamako" });
+    expect(G.composerLettre("reponse_sommation", contenu, { nref: "x", signataire: { nom: "Me X", qualite: "" } }).ampliation).toEqual(["Étude Untel, Huissiers", "Bamako"]);
+    const r = await genererCourrier({ gabarit: "reponse_sommation", valeurs: { destinataire: "Monsieur le DG", ampliation: "Étude Untel, Huissiers" }, signataireId, nref: "DEP-2026-000778" });
+    expect(r.pdf.slice(0, 5).toString()).toBe("%PDF-");
+    const JSZip = require("jszip");
+    const xml = await (await JSZip.loadAsync(r.docx)).file("word/document.xml").async("string");
+    expect(xml).toContain("Ampliation");
+    expect(xml).toContain("Étude Untel");
+  });
+
   test("gabarit inconnu toujours refusé", async () => {
     await expect(genererCourrier({ gabarit: "inconnu", valeurs: {}, signataireId })).rejects.toBeInstanceOf(ErreurContenu);
   });
