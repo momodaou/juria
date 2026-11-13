@@ -5,7 +5,7 @@ const multer = require("multer");
 const { pool } = require("../db");
 const { requirePermission } = require("../permissions");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
-const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
+const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE, SELECT_PROCEDURE_AUDIENCE, JOIN_PROCEDURE_AUDIENCE } = require("../instanceActuelle");
 const { envoyerRolePdf, genererRolePdfBuffer, chargerDonnees, formaterDate } = require("../rolePdf");
 const { envoyerEmail } = require("../mailer");
 const { saveObject } = require("../storage");
@@ -99,7 +99,8 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
               suite.juridiction AS suite_juridiction, suite.type AS suite_type,
               suite.instructions AS suite_instructions, sa.code AS suite_avocat_code,
               ${SELECT_STATUT_FACTURATION},
-              ${SELECT_INSTANCE_ACTUELLE}
+              ${SELECT_INSTANCE_ACTUELLE},
+              ${SELECT_PROCEDURE_AUDIENCE}
        FROM role_audience_lignes l
        JOIN dossiers d ON d.id = l.dossier_id
        LEFT JOIN utilisateurs u ON u.id = l.avocat_id
@@ -116,6 +117,7 @@ router.get("/", requirePermission("audiences.consulter"), async (req, res) => {
        LEFT JOIN utilisateurs sa ON sa.id = suite.avocat_id
        ${JOIN_STATUT_FACTURATION}
        ${JOIN_INSTANCE_ACTUELLE}
+       ${JOIN_PROCEDURE_AUDIENCE}
        WHERE l.role_id = $1
        ORDER BY l.date_prevue, l.juridiction`,
       [role.rows[0].id]
@@ -154,11 +156,26 @@ router.get("/verifier-doublon", requirePermission("audiences.ligne.creer"), asyn
 // POST /api/roles-audience/lignes
 // { dossier_id, date_prevue, juridiction, type, avocat_id?, heure?, instructions?, urgente?,
 //   nature_procedure?, nature_precision?, type_precision? }
+async function verifierInstanceDuDossier(db, dossierId, instanceId) {
+  if (!instanceId) return null;
+  const { rows: [i] } = await db.query("SELECT 1 FROM instances WHERE id = $1 AND dossier_id = $2", [instanceId, dossierId]);
+  return i ? null : "La procédure choisie n'appartient pas à ce dossier.";
+}
+
 router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, res) => {
   const b = req.body || {};
   if (!b.dossier_id || !b.date_prevue) return res.status(400).json({ error: "dossier_id et date_prevue requis" });
   const erreurAudiencier = await verifierAudiencierAutorise(pool, b.avocat_id);
   if (erreurAudiencier) return res.status(400).json({ error: erreurAudiencier });
+  // Procédure concernée (lot 2, 13/11/2026) : celle qui est choisie ; à défaut, la seule du dossier s'il n'en a qu'une.
+  let instanceId = b.instance_id || null;
+  if (instanceId) {
+    const erreurInstance = await verifierInstanceDuDossier(pool, b.dossier_id, instanceId);
+    if (erreurInstance) return res.status(400).json({ error: erreurInstance });
+  } else {
+    const { rows: inst } = await pool.query("SELECT id FROM instances WHERE dossier_id = $1 LIMIT 2", [b.dossier_id]);
+    if (inst.length === 1) instanceId = inst[0].id;
+  }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -166,11 +183,11 @@ router.post("/lignes", requirePermission("audiences.ligne.creer"), async (req, r
     const audience = await client.query(
       `INSERT INTO audiences
          (dossier_id, avocat_id, juridiction, date_audience, type, heure, instructions, urgente,
-          nature_procedure, nature_precision, type_precision, cree_par)
-       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9,$10,$11,$12) RETURNING id`,
+          nature_procedure, nature_precision, type_precision, cree_par, instance_id)
+       VALUES ($1,$2,$3,$4,COALESCE($5::type_audience,'mise_en_etat'),$6,$7,COALESCE($8,FALSE),$9,$10,$11,$12,$13::uuid) RETURNING id`,
       [b.dossier_id, b.avocat_id || null, b.juridiction || null, b.date_prevue, b.type,
        b.heure || null, b.instructions || null, b.urgente,
-       b.nature_procedure || null, b.nature_precision || null, b.type_precision || null, req.user.sub]
+       b.nature_procedure || null, b.nature_precision || null, b.type_precision || null, req.user.sub, instanceId]
     );
     const ligne = await client.query(
       `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)
@@ -352,7 +369,7 @@ router.get("/motifs-renvoi", async (req, res) => {
 // (qui doit pouvoir être EFFACÉ, pas seulement complété).
 const CHAMPS_PROCEDURAUX_AUDIENCE = [
   "date_audience", "heure", "juridiction", "type", "avocat_id", "instructions", "urgente",
-  "nature_procedure", "nature_precision", "type_precision", "dernier_motif_id", "dernier_motif_precision",
+  "nature_procedure", "nature_precision", "type_precision", "dernier_motif_id", "dernier_motif_precision", "instance_id",
 ];
 
 router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (req, res) => {
@@ -360,9 +377,15 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
   const erreurAudiencier = await verifierAudiencierAutorise(pool, b.avocat_id);
   if (erreurAudiencier) return res.status(400).json({ error: erreurAudiencier });
   const toucheMotif = Object.prototype.hasOwnProperty.call(b, "dernier_motif_id");
+  const toucheInstance = Object.prototype.hasOwnProperty.call(b, "instance_id");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (toucheInstance && b.instance_id) {
+      const { rows: [aud] } = await client.query("SELECT dossier_id FROM audiences WHERE id = $1", [req.params.id]);
+      const erreurInstance = aud ? await verifierInstanceDuDossier(client, aud.dossier_id, b.instance_id) : null;
+      if (erreurInstance) { await client.query("ROLLBACK"); return res.status(400).json({ error: erreurInstance }); }
+    }
     const { rows: [avant] } = await client.query(
       `SELECT ${CHAMPS_PROCEDURAUX_AUDIENCE.join(", ")} FROM audiences WHERE id = $1`,
       [req.params.id]
@@ -381,13 +404,14 @@ router.put("/audiences/:id", requirePermission("audiences.ligne.creer"), async (
          nature_precision = COALESCE($9, nature_precision),
          type_precision = COALESCE($14, type_precision),
          dernier_motif_id = CASE WHEN $10::boolean THEN $11::uuid ELSE dernier_motif_id END,
-         dernier_motif_precision = CASE WHEN $10::boolean THEN $13 ELSE dernier_motif_precision END
+         dernier_motif_precision = CASE WHEN $10::boolean THEN $13 ELSE dernier_motif_precision END,
+         instance_id = CASE WHEN $15::boolean THEN $16::uuid ELSE instance_id END
        WHERE id = $12 RETURNING *`,
       [b.date_audience || null, b.heure || null, b.juridiction || null, b.type || null,
        b.avocat_id || null, b.instructions || null, b.urgente ?? null,
        b.nature_procedure || null, b.nature_precision || null,
        toucheMotif, b.dernier_motif_id || null, req.params.id, b.dernier_motif_precision || null,
-       b.type_precision || null]
+       b.type_precision || null, toucheInstance, b.instance_id || null]
     );
     if (!maj.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Audience introuvable" }); }
     const a = maj.rows[0];
@@ -480,11 +504,11 @@ async function synchroniserProchaineAudience(client, audienceOriginale, prochain
     `INSERT INTO audiences
        (dossier_id, avocat_id, juridiction, date_audience, heure, type, type_precision,
         nature_procedure, nature_precision, audience_prec_id, dernier_motif_id,
-        dernier_motif_precision, cree_par)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+        dernier_motif_precision, cree_par, instance_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
     [audienceOriginale.dossier_id, audienceOriginale.avocat_id, audienceOriginale.juridiction, prochaineDate, prochaineHeure || null, typeSuite, typePrecisionSuite,
      audienceOriginale.nature_procedure, audienceOriginale.nature_precision, audienceOriginale.id, audienceOriginale.motif_renvoi_id,
-     audienceOriginale.motif_renvoi_precision, creePar]
+     audienceOriginale.motif_renvoi_precision, creePar, audienceOriginale.instance_id || null]
   );
   const ligne = await client.query(
     `INSERT INTO role_audience_lignes (role_id, audience_id, dossier_id, date_prevue, juridiction, type, avocat_id)

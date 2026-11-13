@@ -25,6 +25,7 @@
 // qui se comportent comme un seul paragraphe (retour à la ligne normal,
 // pas de rupture forcée entre les segments).
 const PDFDocument = require("pdfkit");
+const { SELECT_PROCEDURE_AUDIENCE, JOIN_PROCEDURE_AUDIENCE } = require("./instanceActuelle");
 
 const STYLE = {
   texte: "#1F2A44",
@@ -135,13 +136,15 @@ async function chargerDonnees(pool, roleId) {
               d.numero AS dossier_numero, d.intitule AS dossier_intitule,
               u.code AS avocat_code, ur.code AS responsable_dossier_code,
               a.heure, a.instructions, a.nature_procedure, a.nature_precision,
-              mrd.libelle AS motif_dernier_renvoi, a.dernier_motif_precision
+              mrd.libelle AS motif_dernier_renvoi, a.dernier_motif_precision,
+              ${SELECT_PROCEDURE_AUDIENCE}
        FROM role_audience_lignes l
        JOIN dossiers d ON d.id = l.dossier_id
        LEFT JOIN utilisateurs u ON u.id = l.avocat_id
        LEFT JOIN utilisateurs ur ON ur.id = d.responsable_id
        LEFT JOIN audiences a ON a.id = l.audience_id
        LEFT JOIN motifs_renvoi mrd ON mrd.id = a.dernier_motif_id
+       ${JOIN_PROCEDURE_AUDIENCE}
        WHERE l.role_id = $1
        ORDER BY l.date_prevue, l.juridiction`,
       [roleId]
@@ -268,12 +271,21 @@ function dessinerEnTeteColonnes(doc, colonnes, y) {
   return y + HAUTEUR_ENTETE;
 }
 
+// Procédure concernée (lot 2, 13/11/2026) : ajoutée à la référence du dossier, seulement quand la procédure n'est pas la
+// première ou qu'elle est incidente (un dossier à une seule procédure s'imprime comme avant).
+function mentionProcedure(l) {
+  const ref = l.dossier_numero || "—";
+  if (!l.procedure_rang || !(l.procedure_nature === "incidente" || Number(l.procedure_rang) > 1)) return ref;
+  const incident = l.procedure_nature === "incidente" ? ` (incident${l.procedure_type ? " : " + l.procedure_type : ""})` : "";
+  return `${ref} · procédure n° ${l.procedure_rang}${incident}`;
+}
+
 // Contenu de chaque colonne pour une ligne — texte simple, ou tableau de
 // paragraphes (Parties : nom + référence ; Notes : motif/instructions).
 function contenuColonnes(l, natures) {
   return {
     heure: formaterHeure(l.heure),
-    parties: [texteParties(l), l.dossier_numero || "—"],
+    parties: [texteParties(l), mentionProcedure(l)],
     juridiction: abregeJuridiction(l.juridiction),
     procedure: libelleNatureProcedure(l.nature_procedure, l.nature_precision, natures),
     type: libelleTypeAudience(l.type),

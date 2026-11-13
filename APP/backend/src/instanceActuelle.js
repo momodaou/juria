@@ -16,4 +16,14 @@ const JOIN_INSTANCE_ACTUELLE = `LEFT JOIN LATERAL (
 
 const SELECT_INSTANCE_ACTUELLE = `ia.degre AS instance_degre, ia.statut_partie AS instance_statut_partie, ia.statut_partie_precision AS instance_statut_partie_precision`;
 
-module.exports = { JOIN_INSTANCE_ACTUELLE, SELECT_INSTANCE_ACTUELLE };
+// Procédure (instance) à laquelle une audience est rattachée (lot 2, 13/11/2026) : n° d'ordre dans le dossier, nature, type.
+// Suppose un alias `a` sur la table `audiences`.
+const JOIN_PROCEDURE_AUDIENCE = `LEFT JOIN LATERAL (
+  SELECT r.rang, r.nature, r.type_procedure, r.degre FROM (
+    SELECT id, nature, type_procedure, degre, ROW_NUMBER() OVER (ORDER BY date_debut NULLS LAST, cree_le) AS rang
+    FROM instances WHERE dossier_id = a.dossier_id
+  ) r WHERE r.id = a.instance_id
+) pa ON true`;
+const SELECT_PROCEDURE_AUDIENCE = `a.instance_id, pa.rang AS procedure_rang, pa.nature AS procedure_nature, pa.type_procedure AS procedure_type, pa.degre AS procedure_degre`;
+
+module.exports = { JOIN_INSTANCE_ACTUELLE, SELECT_INSTANCE_ACTUELLE, JOIN_PROCEDURE_AUDIENCE, SELECT_PROCEDURE_AUDIENCE };

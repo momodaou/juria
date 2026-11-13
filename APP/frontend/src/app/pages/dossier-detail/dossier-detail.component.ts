@@ -172,6 +172,15 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
           <div class="etq-ref">Référence JURIA : <b class="ref">{{ d.numero }}</b></div>
           <button class="btn ghost" (click)="genererEtiquette(d)">Générer l'étiquette</button>
         </div>
+        @if ((d.instances?.length ?? 0) > 1) {
+          <div class="etq-row">
+            <label for="etqProcedure" style="margin:0">Étiquette pour :</label>
+            <select id="etqProcedure" class="in" style="margin:0;max-width:420px" [ngModel]="etiquetteProcedureId()" (ngModelChange)="etiquetteProcedureId.set($event)" name="etqProcedure">
+              <option value="">Le dossier (juridiction actuelle)</option>
+              @for (p of arbreProcedures(d.instances); track p.id) { <option [value]="p.id">{{ ligneProcedureEtiquette(p) }}</option> }
+            </select>
+          </div>
+        }
         @if (etiquette(); as etq) {
           <div class="etiquette-apercu">
             <div class="etiquette-bande" [style.background]="etq.couleurHex"></div>
@@ -181,13 +190,17 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                 <div class="etiquette-num">{{ d.numero }}</div>
                 <div class="etiquette-intitule">{{ d.intitule }}</div>
                 <div class="etiquette-client"><span class="etiquette-lbl">Client :</span> <b>{{ d.client_nom }}</b></div>
-                @if (d.juridiction_actuelle || d.juridiction) { <div class="etiquette-sub"><span class="etiquette-lbl">Juridiction :</span> {{ abregeJuridiction(d.juridiction_actuelle || d.juridiction) }}</div> }
+                @if (procedureEtiquette(d); as pe) { <div class="etiquette-sub"><b>{{ ligneProcedureEtiquette(pe) }}</b></div> }
+                @if (juridictionEtiquette(d, procedureEtiquette(d))) { <div class="etiquette-sub"><span class="etiquette-lbl">Juridiction :</span> {{ abregeJuridiction(juridictionEtiquette(d, procedureEtiquette(d))) }}</div> }
                 <div class="etiquette-chemise">Chemise : <b [style.color]="etq.couleurHex">{{ libelleCouleur(d.couleur_chemise) }}</b></div>
               </div>
             </div>
           </div>
           <div class="etq-row">
-            <button class="btn ghost" (click)="imprimerEtiquette(d, etq)">🖶 Imprimer l'étiquette</button>
+            <button class="btn ghost" (click)="imprimerEtiquette(d, etq, [procedureEtiquette(d)])">🖶 Imprimer l'étiquette</button>
+            @if ((d.instances?.length ?? 0) > 1) {
+              <button class="btn ghost" (click)="imprimerEtiquette(d, etq, arbreProcedures(d.instances))">🖶 Une étiquette par procédure</button>
+            }
             <p class="hint" style="margin:0">Bandeau de la couleur de la matière + QR scannable vers la fiche du dossier.</p>
           </div>
         }
@@ -909,7 +922,12 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                     } @else { {{ a.date_audience | date:'dd/MM/yyyy' }}@if (a.heure) { {{ ' ' + a.heure }} } }
                   </td>
                   <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
-                  <td>{{ a.juridiction || '—' }}</td>
+                  <td>
+                    {{ a.juridiction || '—' }}
+                    @if (a.procedure_rang && (d.instances?.length ?? 0) > 1) {
+                      <div class="muted" style="font-size:var(--fs-xs)">Procédure n° {{ a.procedure_rang }}{{ a.procedure_nature === 'incidente' ? ' (incident' + (a.procedure_type ? ' : ' + a.procedure_type : '') + ')' : '' }}</div>
+                    }
+                  </td>
                   <td>{{ a.avocat_nom || '—' }}</td>
                   <td>
                     @if (a.resultat) {
@@ -947,6 +965,15 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                             @for (u of utilisateursAudiencier(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
                           </select>
                         </div>
+                        @if ((d.instances?.length ?? 0) > 1) {
+                          <div class="col2">
+                            <label>Procédure concernée</label>
+                            <select class="in" [(ngModel)]="editAudience.instance_id" name="eaInstance">
+                              <option value="">— le dossier en général —</option>
+                              @for (p of d.instances; track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : libelleDegre(p.degre) }} — {{ p.juridiction || '—' }}</option> }
+                            </select>
+                          </div>
+                        }
                         <div class="col2"><label>Instructions</label><input class="in" [(ngModel)]="editAudience.instructions" name="eaInstructions" /></div>
                       </div>
                       <div class="actions">
@@ -1582,6 +1609,21 @@ export class DossierDetailComponent implements OnInit {
     return j;
   }
 
+  // Étiquettes par procédure (lot 2, 13/11/2026) : même numéro JURIA, même couleur, même QR ; une ligne indique la procédure.
+  readonly etiquetteProcedureId = signal<string>('');
+  procedureEtiquette(d: any): any | null {
+    const id = this.etiquetteProcedureId();
+    return id ? (this.arbreProcedures(d.instances).find((x: any) => x.id === id) ?? null) : null;
+  }
+  ligneProcedureEtiquette(p: any): string {
+    return p.nature === 'incidente'
+      ? `Incident n° ${p.rang} de la n° ${this.rangDe(p.parent_instance_id)}${p.type_procedure ? ' · ' + p.type_procedure : ''}`
+      : `Procédure n° ${p.rang} · ${this.libelleDegre(p.degre)}`;
+  }
+  juridictionEtiquette(d: any, p: any | null): string {
+    return (p && p.juridiction) || d.juridiction_actuelle || d.juridiction || '';
+  }
+
   private urlDossier(d: any): string {
     return `${window.location.origin}/dossiers/${d.id}`;
   }
@@ -1605,14 +1647,29 @@ export class DossierDetailComponent implements OnInit {
     return (texte ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
   }
 
-  imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }): void {
+  imprimerEtiquette(d: any, etq: { qr: string; couleurHex: string }, procedures: (any | null)[] = [null]): void {
     const w = window.open('', '_print_etiquette', 'width=420,height=260');
     if (!w) { alert("Impression bloquée par le navigateur (pop-up) — autorisez les fenêtres pop-up pour JURIA."); return; }
     // 20/10/2026 — le client a sa propre ligne « Client : nom » (le nom peut passer
     // sur deux lignes au lieu d'être tronqué), la juridiction (abrégée) la sienne.
     const client = this.echapperHtml(d.client_nom ?? '—');
-    const jurActuelle = d.juridiction_actuelle || d.juridiction;
-    const juridiction = this.abregeJuridiction(jurActuelle) !== '—' ? this.echapperHtml(this.abregeJuridiction(jurActuelle)) : '';
+    // Une étiquette par entrée de `procedures` (null = étiquette du dossier). En mode procédure, la ligne « Procédure n° … » est
+    // ajoutée et l'intitulé ramené à 2 lignes pour que l'étiquette de 100 x 60 mm ne déborde pas.
+    const blocs = (procedures.length ? procedures : [null]).map((pr) => {
+      const jur = this.juridictionEtiquette(d, pr);
+      const juridiction = this.abregeJuridiction(jur) !== '—' ? this.echapperHtml(this.abregeJuridiction(jur)) : '';
+      return `<div class="etq"><div class="bande"></div><div class="corps">
+        <img class="qr" src="${etq.qr}" alt="QR" />
+        <div class="texte">
+          <div class="num">${this.echapperHtml(d.numero)}</div>
+          <div class="intitule${pr ? ' court' : ''}">${this.echapperHtml(d.intitule)}</div>
+          ${pr ? `<div class="proc">${this.echapperHtml(this.ligneProcedureEtiquette(pr))}</div>` : ''}
+          <div class="client"><span class="lbl">Client :</span> <b>${client}</b></div>
+          ${juridiction ? `<div class="sub"><span class="lbl">Juridiction :</span> ${juridiction}</div>` : ''}
+          <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(this.libelleCouleur(d.couleur_chemise))}</b></div>
+        </div>
+      </div></div>`;
+    }).join('');
     w.document.write(`<html><head><title>Étiquette — ${this.echapperHtml(d.numero)}</title><style>
       /* 29/09/2026 — @page en taille personnalisée (108x59mm) abandonné :
          constaté en réel que la plupart des imprimantes de bureau chargées
@@ -1638,7 +1695,9 @@ export class DossierDetailComponent implements OnInit {
          162 px sur ~199 utiles ; 3 lignes d'intitulé tiennent encore (~183 px). */
       @page { size: A4; margin: 15mm; }
       body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(297mm - 30mm)}
-      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none}
+      .etq{display:flex;border:2px dashed #B08D57;border-radius:8px;overflow:hidden;box-sizing:border-box;width:100mm;height:60mm;flex:none;margin-bottom:8mm;break-inside:avoid}
+      .intitule.court{-webkit-line-clamp:2}
+      .proc{font-size:13px;font-weight:700;color:#1F2A44;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .bande{width:9px;flex:none;background:${etq.couleurHex}}
       .corps{display:flex;gap:14px;align-items:center;padding:12px 16px;min-width:0;flex:1}
       .qr{width:86px;height:86px;flex:none}
@@ -1652,16 +1711,7 @@ export class DossierDetailComponent implements OnInit {
       .note{margin-top:10px;font-size:11px;color:#6B7280}
       @media print{ .note{ display:none } }
     </style></head><body>
-      <div class="etq"><div class="bande"></div><div class="corps">
-        <img class="qr" src="${etq.qr}" alt="QR" />
-        <div class="texte">
-          <div class="num">${this.echapperHtml(d.numero)}</div>
-          <div class="intitule">${this.echapperHtml(d.intitule)}</div>
-          <div class="client"><span class="lbl">Client :</span> <b>${client}</b></div>
-          ${juridiction ? `<div class="sub"><span class="lbl">Juridiction :</span> ${juridiction}</div>` : ''}
-          <div class="chemise">Chemise : <b style="color:${etq.couleurHex}">${this.echapperHtml(this.libelleCouleur(d.couleur_chemise))}</b></div>
-        </div>
-      </div></div>
+      ${blocs}
       <div class="note">Découper le long du pointillé (100 x 60mm) et coller dans la zone réservée de la chemise.</div>
     </body></html>`);
     w.document.close();
@@ -2370,13 +2420,14 @@ export class DossierDetailComponent implements OnInit {
       type: a.type || 'mise_en_etat',
       avocat_id: a.avocat_id || '',
       instructions: a.instructions || '',
+      instance_id: a.instance_id || '',
     };
     this.editionAudienceId.set(a.id);
   }
 
   enregistrerEditionAudience(a: any): void {
     this.erreurEditionAudience.set('');
-    const payload = { ...this.editAudience, avocat_id: this.editAudience.avocat_id || null };
+    const payload = { ...this.editAudience, avocat_id: this.editAudience.avocat_id || null, instance_id: this.editAudience.instance_id || null };
     this.api.majAudience(a.id, payload).subscribe({
       next: () => {
         this.editionAudienceId.set(null);

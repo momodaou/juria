@@ -51,7 +51,9 @@ const ORDRE_URGENCE_TACHES = `
 // decaissee) : toute rétrocession créée est un engagement de coût, comptée
 // sans filtre de statut ; les dépenses ne comptent qu'une fois `decaissee`
 // (une dépense simplement soumise n'est pas encore un coût réel).
-const COUTS_DOSSIER_CTE = `
+// avecRetro=false (13/11/2026) : les profils qui ne consultent pas les rétrocessions voient la marge SANS la déduction des
+// rétrocessions (sinon ils pourraient en déduire le montant à partir de la marge).
+const coutsCte = (avecRetro) => `
   WITH couts AS (
     SELECT d.id AS dossier_id, d.numero, d.intitule, d.mode_honoraires::text AS mode_honoraires,
            u.prenom || ' ' || u.nom AS responsable,
@@ -59,7 +61,7 @@ const COUTS_DOSSIER_CTE = `
                      WHERE f.dossier_id = d.id AND f.statut NOT IN ('brouillon','annulee')), 0) AS facture_ht,
            COALESCE((SELECT SUM(dep.montant) FROM depenses dep
                      WHERE dep.dossier_id = d.id AND dep.statut = 'decaissee'), 0) AS depenses,
-           COALESCE((SELECT SUM(r.montant) FROM retrocessions r WHERE r.dossier_id = d.id), 0) AS retro
+           ${avecRetro ? "COALESCE((SELECT SUM(r.montant) FROM retrocessions r WHERE r.dossier_id = d.id), 0)" : "0"} AS retro
     FROM dossiers d
     JOIN utilisateurs u ON u.id = d.responsable_id
   )
@@ -642,14 +644,15 @@ router.get("/", async (req, res) => {
     // marges (dossiers facturés à perte), pas la liste complète (voir le
     // détail au clic pour la vue d'ensemble triable, meilleure comme pire).
     let dossiersNonRentablesN = null, nonRentablesApercu = [];
+    const voitRetro = voitFactures && (await estAutorise(req.user.role, "retrocessions.consulter", req.user.sub));
     if (voitFactures) {
       const nr = await one(
-        `${COUTS_DOSSIER_CTE}
+        `${coutsCte(voitRetro)}
          SELECT count(*) AS n FROM couts WHERE facture_ht > 0 AND (facture_ht - depenses - retro) < 0`
       );
       dossiersNonRentablesN = Number(nr.n);
       const nra = await pool.query(
-        `${COUTS_DOSSIER_CTE}
+        `${coutsCte(voitRetro)}
          SELECT ${MARGE_DOSSIER_SELECT} FROM couts
          WHERE facture_ht > 0 AND (facture_ht - depenses - retro) < 0
          ORDER BY marge_ht ASC LIMIT 2`
@@ -1154,8 +1157,9 @@ router.get("/detail/:type", async (req, res) => {
         // pas seulement les non rentables — l'aperçu de la tuile se limite
         // aux pires, mais "voir le détail" doit permettre le classement
         // inverse (`Marge (décroissante)`) sans changer de tuile.
+        const voitRetro = await estAutorise(req.user.role, "retrocessions.consulter", req.user.sub);
         const { rows } = await pool.query(
-          `${COUTS_DOSSIER_CTE}
+          `${coutsCte(voitRetro)}
            SELECT ${MARGE_DOSSIER_SELECT} FROM couts WHERE facture_ht > 0
            ORDER BY marge_ht ASC LIMIT 200`
         );

@@ -4956,3 +4956,20 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement procédures lot 1 + masquage des rétrocessions (13/11/2026)
 - API `juria-00242-z2q`, web `juria-web-00316-vtd` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : section « Procédures du dossier » (ajout d'un appel puis d'une défense à exécution incidente), juridiction de l'étiquette après un appel.
+
+### Marge par dossier : rétrocessions masquées aux profils non concernés (13/11/2026, codé)
+- `coutsCte(avecRetro)` (dashboard.js) : les profils sans `retrocessions.consulter` voient la marge, les dossiers non rentables et leur détail SANS déduction des rétrocessions (sinon le montant s'en déduisait). Un associé voit la marge nette. Test dans `procedures.test.js`.
+
+### Procédures d'un dossier — lot 2 (13/11/2026, codé, NON déployé)
+- Migration `migration-procedures-lot2.sql` (idempotente, alignée dans `schema.sql`, non committée) : `audiences.instance_id` (facultatif, `ON DELETE SET NULL`).
+- API : une audience se rattache à la procédure concernée (POST `/roles-audience/lignes` : procédure choisie, sinon la seule du dossier s'il n'en a qu'une ; PUT `/audiences/:id` : affecter ou retirer, contrôle d'appartenance au dossier) ; le renvoi garde la même procédure sur l'audience suivante ; le rôle de la semaine et la fiche dossier renvoient n° d'ordre, nature et type de la procédure (`instanceActuelle.js`, `SELECT/JOIN_PROCEDURE_AUDIENCE`).
+- Écrans : Rôle d'audience (choix de la procédure à la programmation, proposée dès que le dossier en a plusieurs, par défaut la principale en cours ; mention « Dossier · procédure n° N (incident : …) » sous la juridiction) ; fiche dossier (même mention, sélecteur dans la correction d'une audience pour affecter les audiences déjà saisies) ; étiquettes par procédure (sélecteur « Étiquette pour », ligne « Procédure n° N · Appel » ou « Incident n° N de la n° M · type », juridiction propre à la procédure, intitulé ramené à 2 lignes pour tenir dans 100 x 60 mm, bouton « Une étiquette par procédure »). Même numéro JURIA, même couleur, même QR.
+- Non traité : PDF du rôle d'audience diffusé (inchangé), correction d'une audience depuis l'écran Rôle d'audience (l'affectation se fait depuis la fiche dossier).
+- Tests : `audiencesProcedures.test.js` (5). 101 suites / 1056. Build Angular OK. Non vu à l'écran ; impression des étiquettes à contrôler sur papier.
+- Lot 2 (complément, 13/11/2026) : le PDF du rôle d'audience indique la procédure (« AUP-… · procédure n° 2 (incident : défense à exécution) », ajouté à la référence du dossier, seulement pour une procédure autre que la première ou incidente ; un dossier à une seule procédure s'imprime comme avant). Test ajouté. 101 suites / 1057.
+
+### Migration procédures lot 2 importée (13/11/2026)
+- `migration-procedures-lot2.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Code (API + frontend) à déployer : `./scripts/deploy.sh both`. D'ici là, `audiences.instance_id` est inerte (NULL).
+
+### Déploiement procédures lot 2 + marge masquée (13/11/2026)
+- API `juria-00243-j2d`, web `juria-web-00317-92c` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : choix de la procédure en programmant une audience sur un dossier à plusieurs procédures, mention sous la juridiction, étiquette par procédure (impression à contrôler sur papier), mention dans le PDF du rôle.

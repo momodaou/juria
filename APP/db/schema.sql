@@ -6282,3 +6282,10 @@ INSERT INTO listes_valeurs (domaine, code, libelle, ordre, systeme) VALUES
  ('type_procedure_incidente','inscription_faux','Inscription de faux',9,FALSE),
  ('type_procedure_incidente','mise_en_etat','Incident de mise en état',10,FALSE)
 ON CONFLICT (domaine, code) DO NOTHING;
+
+-- =====================================================================
+--  PROCÉDURES D'UN DOSSIER — lot 2 (13/11/2026) : une audience peut être rattachée à la procédure (instance) concernée.
+--  Facultatif : une audience sans procédure reste rattachée au dossier (audiences déjà saisies).
+-- =====================================================================
+ALTER TABLE audiences ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_audiences_instance ON audiences(instance_id);

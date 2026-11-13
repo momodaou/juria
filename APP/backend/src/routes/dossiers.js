@@ -9,7 +9,7 @@ const { saveObject } = require("../storage");
 // actes.js ne requiert pas dossiers.js.
 const { construireContexte, applatirContexte, fusionner } = require("./actes");
 const { SELECT_STATUT_FACTURATION, JOIN_STATUT_FACTURATION } = require("../facturationDiscipline");
-const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE } = require("../instanceActuelle");
+const { SELECT_INSTANCE_ACTUELLE, JOIN_INSTANCE_ACTUELLE, SELECT_PROCEDURE_AUDIENCE, JOIN_PROCEDURE_AUDIENCE } = require("../instanceActuelle");
 const { estDocumentVisible, chargerContexteDossier } = require("../confidentialiteDocuments");
 const { logAudit, diffChamps } = require("../audit");
 const { envoyerEmail } = require("../mailer");
@@ -696,11 +696,13 @@ router.get("/:id/audiences", async (req, res) => {
       `SELECT a.id, a.date_audience, a.type, a.type_precision, a.juridiction, a.heure, a.avocat_id, a.instructions,
               a.resultat, a.resultat_precision, a.urgente, a.prochaine_date, a.prochaine_heure, a.observations,
               a.decision_document_id, dd.nom AS decision_document_nom, dd.type_mime AS decision_document_mime,
-              mr.libelle AS motif_renvoi, u.prenom || ' ' || u.nom AS avocat_nom
+              mr.libelle AS motif_renvoi, u.prenom || ' ' || u.nom AS avocat_nom,
+              ${SELECT_PROCEDURE_AUDIENCE}
        FROM audiences a
        LEFT JOIN motifs_renvoi mr ON mr.id = a.motif_renvoi_id
        LEFT JOIN utilisateurs u ON u.id = a.avocat_id
        LEFT JOIN documents dd ON dd.id = a.decision_document_id
+       ${JOIN_PROCEDURE_AUDIENCE}
        WHERE a.dossier_id = $1
        ORDER BY a.date_audience DESC`,
       [req.params.id]

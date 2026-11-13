@@ -130,6 +130,16 @@ describe("Rétrocessions : informations masquées aux profils non concernés", (
     expect(associe.body.find((x) => x.id === f.body.id).retro_exclue).toBe(false);
   });
 
+  test("marge par dossier : la déduction des rétrocessions n'est visible que des profils concernés", async () => {
+    const { dossierId, clientId } = await creerDossier();
+    await request(app).post("/api/factures").set(auth()).send({ client_id: clientId, dossier_id: dossierId, mode: "forfait", montant_ht: 100000 });
+    const retro = await request(app).post("/api/retrocessions").set(auth()).send({ beneficiaire_id: associeId, qualite: "associe", base_ht: 100000, dossier_id: dossierId });
+    expect(retro.status).toBe(201);
+    const marge = async (t) => (await request(app).get("/api/dashboard/detail/non_rentables").set(auth(t))).body.find((x) => x.dossier_id === dossierId);
+    expect(Number((await marge(token)).marge_ht)).toBe(70000);              // 100 000 − 30 % de rétrocession
+    expect(Number((await marge(tokenComptable)).marge_ht)).toBe(100000);    // sans la rétrocession
+  });
+
   test("la désignation d'apporteurs n'apparaît pas dans « dernière modification » du dossier pour un profil non concerné", async () => {
     const { dossierId } = await creerDossier();
     await pool.query("UPDATE dossiers SET date_ouverture = '2027-02-01' WHERE id = $1", [dossierId]);

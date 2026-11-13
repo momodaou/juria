@@ -85,7 +85,12 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                     </div>
                   }
                 </td>
-                <td>{{ abregeJuridiction(l.juridiction) }}</td>
+                <td>
+                  {{ abregeJuridiction(l.juridiction) }}
+                  @if (l.procedure_rang && (l.procedure_nature === 'incidente' || l.procedure_rang > 1)) {
+                    <div class="muted" style="font-size:var(--fs-xs)">Dossier · procédure n° {{ l.procedure_rang }}{{ l.procedure_nature === 'incidente' ? ' (incident' + (l.procedure_type ? ' : ' + l.procedure_type : '') + ')' : '' }}</div>
+                  }
+                </td>
                 <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
                 <td>{{ libelleTypeAudience(l.type, l.type_precision) }}</td>
                 <td>{{ libelleMotif(l.motif_dernier_renvoi, l.dernier_motif_precision) }}</td>
@@ -398,8 +403,17 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
       <div class="grid2">
         <div class="col2">
           <label>Dossier</label>
-          <app-dossier-picker [valeur]="nouvelleLigne.dossier_id" (valeurChange)="nouvelleLigne.dossier_id = $event"></app-dossier-picker>
+          <app-dossier-picker [valeur]="nouvelleLigne.dossier_id" (valeurChange)="choisirDossierLigne($event)"></app-dossier-picker>
         </div>
+        @if (proceduresLigne().length > 1) {
+          <div class="col2">
+            <label>Procédure concernée</label>
+            <select class="in" [(ngModel)]="nouvelleLigne.instance_id" name="instanceLigne">
+              <option value="">— le dossier en général —</option>
+              @for (p of proceduresLigne(); track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : 'Principale' }} — {{ p.juridiction || '—' }}{{ p.statut_procedure === 'terminee' ? ' (terminée)' : '' }}</option> }
+            </select>
+          </div>
+        }
         <div><label>Date</label><input class="in" type="date" [(ngModel)]="nouvelleLigne.date_prevue" name="date" /></div>
         <div><label>Heure</label><input class="in" type="time" [(ngModel)]="nouvelleLigne.heure" name="heure" /></div>
         <div><label>Juridiction</label><input class="in" [(ngModel)]="nouvelleLigne.juridiction" name="juridiction" /></div>
@@ -943,6 +957,25 @@ export class RoleAudienceComponent implements OnInit {
     this.charger();
   }
 
+  // Procédure concernée (lot 2, 13/11/2026) : proposée dès que le dossier choisi en compte plusieurs ; par défaut, la
+  // procédure principale en cours la plus récente (jamais imposée : « le dossier en général » reste possible).
+  readonly proceduresLigne = signal<any[]>([]);
+  choisirDossierLigne(dossierId: string | null): void {
+    this.nouvelleLigne.dossier_id = dossierId ?? '';
+    this.nouvelleLigne.instance_id = '';
+    this.proceduresLigne.set([]);
+    if (!dossierId) return;
+    this.api.dossier(dossierId).subscribe({
+      next: (d) => {
+        const liste = d.instances ?? [];
+        this.proceduresLigne.set(liste);
+        const defaut = liste.filter((x: any) => x.nature === 'principale' && x.statut_procedure === 'en_cours').slice(-1)[0];
+        if (liste.length > 1 && defaut) this.nouvelleLigne.instance_id = defaut.id;
+      },
+      error: () => {},
+    });
+  }
+
   ajouter(): void {
     this.erreur.set('');
     this.doublonsAudience.set([]);
@@ -963,6 +996,7 @@ export class RoleAudienceComponent implements OnInit {
       next: () => {
         this.ajoutLigneEnCours.set(false);
         this.nouvelleLigne = { type: 'mise_en_etat', urgente: false };
+        this.proceduresLigne.set([]);
         this.charger();
       },
       error: (e) => { this.ajoutLigneEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Ajout impossible.'); },
