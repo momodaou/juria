@@ -2,6 +2,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requirePermission, estAutorise } = require("../permissions");
+const { procedureDe } = require("../instanceActuelle");
 const router = express.Router();
 
 // GET /api/temps?dossier_id=...&non_factures=true   (sinon : mes saisies)
@@ -22,10 +23,11 @@ router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.id, t.utilisateur_id, t.date_saisie, t.duree_minutes, t.taux_horaire, t.facturable, t.description,
-              t.facture_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS auteur
+              t.facture_id, d.numero AS dossier_numero, u.prenom || ' ' || u.nom AS auteur, ${procedureDe("t").select}
        FROM temps t
        JOIN dossiers d ON d.id = t.dossier_id
        JOIN utilisateurs u ON u.id = t.utilisateur_id
+       ${procedureDe("t").join}
        ${where}
        ORDER BY t.date_saisie DESC LIMIT 200`,
       params
@@ -68,11 +70,16 @@ router.post("/", requirePermission("temps.creer"), async (req, res) => {
       const u = await pool.query("SELECT taux_horaire FROM utilisateurs WHERE id = $1", [req.user.sub]);
       taux = u.rows[0] ? u.rows[0].taux_horaire : 0;
     }
+    // Procédure concernée (lot 3, facultatif) : doit appartenir au dossier.
+    if (b.instance_id) {
+      const { rows: [inst] } = await pool.query("SELECT 1 FROM instances WHERE id = $1 AND dossier_id = $2", [b.instance_id, b.dossier_id]);
+      if (!inst) return res.status(400).json({ error: "La procédure choisie n'appartient pas à ce dossier." });
+    }
     const { rows } = await pool.query(
-      `INSERT INTO temps (dossier_id, utilisateur_id, date_saisie, duree_minutes, taux_horaire, facturable, description)
-       VALUES ($1,$2,COALESCE($3, current_date),$4,$5,COALESCE($6,true),$7)
-       RETURNING id, date_saisie, duree_minutes, taux_horaire, facturable`,
-      [b.dossier_id, req.user.sub, b.date_saisie || null, b.duree_minutes, taux, b.facturable, b.description]
+      `INSERT INTO temps (dossier_id, utilisateur_id, date_saisie, duree_minutes, taux_horaire, facturable, description, instance_id)
+       VALUES ($1,$2,COALESCE($3, current_date),$4,$5,COALESCE($6,true),$7,$8::uuid)
+       RETURNING id, date_saisie, duree_minutes, taux_horaire, facturable, instance_id`,
+      [b.dossier_id, req.user.sub, b.date_saisie || null, b.duree_minutes, taux, b.facturable, b.description, b.instance_id || null]
     );
     res.status(201).json(rows[0]);
   } catch (e) {

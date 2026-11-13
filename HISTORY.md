@@ -4973,3 +4973,19 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement procédures lot 2 + marge masquée (13/11/2026)
 - API `juria-00243-j2d`, web `juria-web-00317-92c` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : choix de la procédure en programmant une audience sur un dossier à plusieurs procédures, mention sous la juridiction, étiquette par procédure (impression à contrôler sur papier), mention dans le PDF du rôle.
+
+### Procédures d'un dossier — lot 3 (13/11/2026, codé, NON déployé)
+- Décisions de l'utilisateur (toutes recommandées) : ouverture guidée par un LIEN (aucune création automatique) ; repère « pas encore facturée » = étiquette seule, sans notification ; exclusion automatique d'une facture d'incident à l'émission, sans confirmation.
+- Migration `migration-procedures-lot3.sql` (idempotente, alignée dans `schema.sql`, non committée) : `factures.instance_id`, `temps.instance_id` (facultatifs, `ON DELETE SET NULL`).
+- Ouverture : `GET /dossiers/verifier-doublon` accepte `adverses` et renvoie `meme_adverse` ; un dossier du même client contre la même partie adverse est signalé même dans une autre matière ; chaque dossier signalé (contentieux) propose « Ajouter une procédure à ce dossier » → fiche du dossier avec le formulaire d'ajout prérempli (juridiction, degré) et défilement jusqu'à la section.
+- Factures et temps : procédure concernée facultative (contrôlée : même dossier), reprise automatiquement par une facture créée depuis des temps d'une même procédure ; modifiable après coup sur une facture tant qu'aucune rétrocession n'existe (API ; pas d'écran de modification) ; mention dans la liste des factures et des temps.
+- Rétrocession : facture d'une procédure incidente déclarée après une procédure préalable du dossier (date de début, puis ordre de création) → `retro_exclue` = vrai, motif « Incident postérieur à une procédure préalable (automatique) » ; jamais réintégrée automatiquement (action « Réintégrer » du menu). Un dossier reçu d'abord sous forme d'incident se saisit comme sa première procédure (un incident doit viser une procédure du dossier) : jamais exclu, conformément à la règle du cabinet.
+- Repère « Pas encore facturée » : procédure facturée à part, en cours, sans facture depuis 30 jours (date de début, sinon création), mêmes exemptions que la discipline de facturation (pro bono, success fee, abonnement, dossier non ouvert).
+- Tests : `proceduresLot3.test.js` (7). 102 suites / 1064. Build Angular OK. Non vu à l'écran.
+- Reste : lot 4 (liens entre dossiers jumeaux existants ; fusion seulement sur demande).
+
+### Migration procédures lot 3 importée (13/11/2026)
+- `migration-procedures-lot3.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Code (API + frontend) à déployer : `./scripts/deploy.sh both`. D'ici là, `factures.instance_id` et `temps.instance_id` sont inertes (NULL).
+
+### Déploiement procédures lot 3 (13/11/2026)
+- API `juria-00244-fcm`, web `juria-web-00318-7p5` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : ouverture d'un dossier pour un client ayant déjà un dossier contre la même partie (bouton « Ajouter une procédure à ce dossier »), sélecteur de procédure sur une facture et une saisie de temps, facture d'un incident (exclusion de la rétrocession invisible côté client), étiquette « Pas encore facturée ».

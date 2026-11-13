@@ -5,6 +5,7 @@ const { requirePermission, estAutorise } = require("../permissions");
 const { envoyerFacturePdf } = require("../facturePdf");
 const { logAudit, diffChamps } = require("../audit");
 const { declencherSansEchec } = require("../retrocessionsAuto");
+const { procedureDe } = require("../instanceActuelle");
 const { MOYENS, comptesEligibles, preparerReglement, referenceCourte, PAR_CODE } = require("../moyensPaiement");
 const router = express.Router();
 
@@ -214,7 +215,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
     const { rows } = await pool.query(
       `SELECT f.id, f.numero, f.objet, f.mode, f.montant_ht, f.taux_tva, f.montant_frais, f.montant_debours, f.montant_ttc, f.devise,
               f.taux_applique, f.montant_ttc_xof, f.statut, f.mention, f.mode_reglement, f.compte_reglement_id,
-              f.date_emission, f.numero_origine, f.date_echeance, f.dossier_id, f.client_id, f.retro_exclue,
+              f.date_emission, f.numero_origine, f.date_echeance, f.dossier_id, f.client_id, f.retro_exclue, ${procedureDe("f").select},
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               d.numero AS dossier_numero,
               COALESCE((SELECT SUM(p.montant) FROM paiements p WHERE p.facture_id = f.id),0) AS encaisse,
@@ -223,6 +224,7 @@ router.get("/", requirePermission("factures.consulter"), async (req, res) => {
        FROM factures f
        JOIN clients c ON c.id = f.client_id
        LEFT JOIN dossiers d ON d.id = f.dossier_id
+       ${procedureDe("f").join}
        ${where}
        ORDER BY f.cree_le DESC LIMIT 200`,
       params
@@ -291,6 +293,19 @@ function lireNumeroOrigine(valeur) {
 // affiché en repli sur le PDF si absent) — permet de préciser/écraser sur
 // UNE facture donnée sans toucher à la fiche dossier (diagnostic
 // Facturation, 05/09/2026).
+// Procédures (lot 3, 13/11/2026). Une facture d'une procédure INCIDENTE déclarée après une procédure préalable du dossier est
+// exclue de la rétrocession (règle du cabinet) ; un incident qui est la première procédure du dossier n'est pas exclu.
+async function incidentPosterieur(db, instanceId) {
+  const { rows: [r] } = await db.query(
+    `SELECT i.nature,
+            EXISTS (SELECT 1 FROM instances j WHERE j.dossier_id = i.dossier_id AND j.id <> i.id AND (
+              COALESCE(j.date_debut, j.cree_le::date) < COALESCE(i.date_debut, i.cree_le::date)
+              OR (COALESCE(j.date_debut, j.cree_le::date) = COALESCE(i.date_debut, i.cree_le::date) AND j.cree_le < i.cree_le))) AS anterieure
+     FROM instances i WHERE i.id = $1`, [instanceId]);
+  return !!r && r.nature === "incidente" && r.anterieure;
+}
+const MOTIF_INCIDENT_AUTO = "Incident postérieur à une procédure préalable (automatique)";
+
 router.post("/", requirePermission("factures.creer"), async (req, res) => {
   const b = req.body || {};
   const tempsIds = Array.isArray(b.temps_ids) ? b.temps_ids.filter(Boolean) : [];
@@ -321,13 +336,14 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
 
     let ht;
     let tempsFactures = [];
+    let tempsInstances = [];
     if (tempsIds.length) {
       // Verrouille les lignes sélectionnées pour éviter qu'un même temps
       // soit facturé deux fois en cas de double clic/appel concurrent
       // (même famille de garde que les corrections de concurrence du
       // 17/08/2026, cf. CLAUDE.md).
       const t = await client.query(
-        `SELECT id, dossier_id, duree_minutes, taux_horaire FROM temps
+        `SELECT id, dossier_id, duree_minutes, taux_horaire, instance_id FROM temps
          WHERE id = ANY($1::uuid[]) AND facturable = TRUE AND facture_id IS NULL
          FOR UPDATE`,
         [tempsIds]
@@ -344,6 +360,7 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       dossierId = verif.dossierId;
       ht = t.rows.reduce((somme, r) => somme + Math.round((Number(r.duree_minutes) / 60) * Number(r.taux_horaire)), 0);
       tempsFactures = t.rows.map((r) => r.id);
+      tempsInstances = [...new Set(t.rows.map((r) => r.instance_id))];
     } else if (!depenseIds.length) {
       const htRaw = Number(b.montant_ht);
       if (!Number.isFinite(htRaw) || htRaw <= 0) {
@@ -407,6 +424,19 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
       return res.status(400).json({ error: "mode d'honoraires requis" });
     }
 
+    // Procédure concernée (facultative) : choisie, sinon celle de toutes les lignes de temps si elles sont d'une même procédure.
+    let instanceId = b.instance_id || null;
+    if (!instanceId && tempsInstances.length === 1 && tempsInstances[0]) instanceId = tempsInstances[0];
+    let retroExclue = false;
+    if (instanceId) {
+      const { rows: [inst] } = dossierId ? await client.query("SELECT 1 FROM instances WHERE id = $1 AND dossier_id = $2", [instanceId, dossierId]) : { rows: [] };
+      if (!inst) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "La procédure choisie n'appartient pas au dossier de cette facture." });
+      }
+      retroExclue = await incidentPosterieur(client, instanceId);
+    }
+
     const { taux, erreur } = await resoudreTauxChange(devise, b.taux_applique, req.user.sub);
     if (erreur) {
       await client.query("ROLLBACK");
@@ -454,15 +484,15 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
          (numero, client_id, dossier_id, mode, montant_ht, taux_tva, montant_tva, montant_ttc,
           provision, devise, taux_applique, date_taux, taux_verrouille, montant_ttc_xof,
           libelle_principal, montant_frais, montant_debours, statut, date_emission, date_echeance,
-          mode_reglement, compte_reglement_id, mention, objet, numero_origine)
+          mode_reglement, compte_reglement_id, mention, objet, numero_origine, instance_id, retro_exclue, retro_exclue_motif)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,0),$10,$11,COALESCE($21::date, current_date),TRUE,$12,
-               $13,$14,$15,'emise',COALESCE($21::date, current_date),$16,$17,$18,$19,$20,$22)
+               $13,$14,$15,'emise',COALESCE($21::date, current_date),$16,$17,$18,$19,$20,$22,$23::uuid,$24,$25)
        RETURNING id, numero, numero_origine, date_emission::text AS date_emission, objet, montant_ht, montant_ttc, devise, taux_applique, montant_ttc_xof,
                  montant_frais, montant_debours, statut`,
       [numero, clientId, dossierId, b.mode, ht, tauxTva, tva, ttc, b.provision,
        devise, taux, ttcXof, libellePrincipal, frais, debours, b.date_echeance || null,
        b.mode_reglement || null, b.compte_reglement_id || null, b.mention || null, b.objet || null,
-       emission.date, origine.numero]
+       emission.date, origine.numero, instanceId, retroExclue, retroExclue ? MOTIF_INCIDENT_AUTO : null]
     );
 
     // Acompte / provision reçu à l'émission (16/10/2026) : un premier
@@ -652,6 +682,24 @@ router.put("/:id", requirePermission("factures.annuler"), async (req, res) => {
        b.date_echeance || null, b.mode_reglement || null, b.compte_reglement_id || null, b.mention ?? null,
        req.params.id, b.mode || null, emission.date, b.numero_origine !== undefined, origine.numero]
     );
+    // Procédure concernée (lot 3) : modifiable tant qu'aucune rétrocession n'existe sur la facture ; une facture d'incident
+    // postérieur est alors exclue de la rétrocession (jamais réintégrée automatiquement : action « Réintégrer » du menu).
+    if (Object.prototype.hasOwnProperty.call(b, "instance_id")) {
+      const nouvelle = b.instance_id || null;
+      const { rows: [f2] } = await pool.query("SELECT dossier_id FROM factures WHERE id = $1", [req.params.id]);
+      const { rows: [retro] } = await pool.query("SELECT 1 FROM retrocessions WHERE facture_id = $1 LIMIT 1", [req.params.id]);
+      if (retro) return res.status(409).json({ error: "Des rétrocessions existent déjà sur cette facture : la procédure ne peut plus être modifiée." });
+      if (nouvelle) {
+        const { rows: [inst] } = f2.dossier_id ? await pool.query("SELECT 1 FROM instances WHERE id = $1 AND dossier_id = $2", [nouvelle, f2.dossier_id]) : { rows: [] };
+        if (!inst) return res.status(400).json({ error: "La procédure choisie n'appartient pas au dossier de cette facture." });
+      }
+      const exclue = nouvelle ? await incidentPosterieur(pool, nouvelle) : false;
+      await pool.query(
+        `UPDATE factures SET instance_id = $1::uuid,
+                retro_exclue = retro_exclue OR $2::boolean,
+                retro_exclue_motif = CASE WHEN $2::boolean AND NOT retro_exclue THEN $3 ELSE retro_exclue_motif END
+         WHERE id = $4`, [nouvelle, exclue, MOTIF_INCIDENT_AUTO, req.params.id]);
+    }
     // Trace (avant / après) d'une correction de facture émise ou payée (29/10/2026).
     const changements = diffChamps(cur.rows[0], rows[0], ["objet", "mode", "montant_ht", "taux_tva", "montant_frais", "montant_ttc", "date_emission", "numero_origine", "date_echeance", "mode_reglement", "compte_reglement_id", "mention"]);
     if (Object.keys(changements).length) {

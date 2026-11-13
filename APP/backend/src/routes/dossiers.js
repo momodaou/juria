@@ -429,15 +429,22 @@ router.get("/", async (req, res) => {
 // pas seulement par `client_id` strict. `meme_client` distingue les deux
 // cas pour que l'écran adapte son message (même client exact vs. nom très
 // proche sur une fiche différente — à vérifier côté Clients & KYC).
+// Ouverture guidée (lot 3, 13/11/2026) : `adverses` (noms séparés par des virgules, facultatif) ajoute le signal « même partie
+// adverse » (meme_adverse) et élargit le contrôle : un dossier du même client contre la même partie est signalé même dans une
+// autre matière — c'est typiquement une procédure de plus de la même affaire.
 router.get("/verifier-doublon", async (req, res) => {
   const { client_id, code_matiere } = req.query;
   if (!client_id) return res.json([]);
   try {
     const params = [client_id];
+    const adverses = String(req.query.adverses || "").split(",").map((x) => x.trim().toLowerCase().replace(/[\s\-.,]/g, "")).filter(Boolean);
+    params.push(adverses);
+    const memeAdverse = "EXISTS (SELECT 1 FROM dossier_parties dp WHERE dp.dossier_id = d.id AND dp.denomination IS NOT NULL "
+      + "AND regexp_replace(lower(dp.denomination), '[\\s\\-.,]', '', 'g') = ANY($2::text[]))";
     let matiereClause = "";
     if (code_matiere) {
       params.push(code_matiere);
-      matiereClause = ` AND d.code_matiere = $${params.length}`;
+      matiereClause = ` AND (d.code_matiere = $${params.length} OR ${memeAdverse})`;
     }
     const { rows } = await pool.query(
       `WITH cible AS (
@@ -446,6 +453,7 @@ router.get("/verifier-doublon", async (req, res) => {
        )
        SELECT d.id, d.numero, d.intitule, d.objet, d.statut, d.date_ouverture,
               (d.client_id = $1) AS meme_client,
+              (cardinality($2::text[]) > 0 AND ${memeAdverse}) AS meme_adverse,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
        FROM dossiers d
        JOIN clients c ON c.id = d.client_id
@@ -533,7 +541,9 @@ router.get("/:id", async (req, res) => {
               i.vignette_dispensee, v.numero_vignette,
               i.nature, i.type_procedure, i.parent_instance_id, i.statut_procedure, i.date_fin, i.facturation, i.responsable_id,
               ru.prenom || ' ' || ru.nom AS responsable_nom,
-              ROW_NUMBER() OVER (ORDER BY i.date_debut NULLS LAST, i.cree_le) AS rang
+              ROW_NUMBER() OVER (ORDER BY i.date_debut NULLS LAST, i.cree_le) AS rang,
+              (SELECT count(*) FROM factures f WHERE f.instance_id = i.id AND f.statut <> 'annulee') AS nb_factures,
+              (current_date - COALESCE(i.date_debut, i.cree_le::date)) AS jours_depuis_debut
        FROM instances i
        LEFT JOIN vignettes_plaidoirie v ON v.instance_id = i.id AND v.mouvement = 'utilisation'
        LEFT JOIN utilisateurs ru ON ru.id = i.responsable_id
@@ -574,6 +584,13 @@ router.get("/:id", async (req, res) => {
        ORDER BY j.horodatage DESC LIMIT 1`,
       [id, voitRetro]
     );
+
+    // Repère « pas encore facturée » (lot 3) : procédure facturée à part, en cours, sans facture depuis 30 jours ou plus.
+    // Mêmes exemptions que la discipline de facturation du dossier (pro bono, success fee, abonnement, dossier non ouvert).
+    const exempt = dossier.pro_bono || ["success_fee", "abonnement"].includes(dossier.mode_honoraires) || !["ouvert", "en_cours"].includes(dossier.statut);
+    instances.rows.forEach((i) => {
+      i.pas_facturee = !exempt && i.facturation === "a_part" && i.statut_procedure === "en_cours" && Number(i.nb_factures) === 0 && Number(i.jours_depuis_debut) >= 30;
+    });
 
     // Juridiction « actuelle » (13/11/2026) : celle de la procédure principale en cours la plus récente (sinon la plus récente),
     // pour que l'étiquette et l'en-tête ne restent pas figés sur la 1re instance après un appel.

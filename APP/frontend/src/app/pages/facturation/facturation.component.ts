@@ -27,6 +27,15 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
         @if (dossierId !== '__autre__') {
           <label class="large">Dossier
             <app-dossier-picker [valeur]="dossierId || null" (valeurChange)="dossierId = $event ?? ''" (dossierChoisi)="onDossierChoisi($event)"></app-dossier-picker>
+            @if (proceduresDossier().length > 1) {
+              <span class="hint" style="display:block;margin-top:6px">
+                Procédure concernée (facultatif)
+                <select class="in" style="margin:4px 0 0" [(ngModel)]="procedureFacture" name="procedureFacture">
+                  <option value="">— le dossier en général —</option>
+                  @for (p of proceduresDossier(); track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : 'Principale' }} — {{ p.juridiction || '—' }}</option> }
+                </select>
+              </span>
+            }
             <span class="hint"><button type="button" class="lien" (click)="facturerSansDossier()">Facturer un client sans dossier</button>
               @if (abonnements().length) { · <button type="button" class="lien" (click)="choixAbonnementOuvert.set(!choixAbonnementOuvert())">Facturer un abonnement</button> }</span>
           </label>
@@ -358,7 +367,11 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td class="nowrap">{{ f.numero }}@if (f.numero_origine) { <br /><span class="muted" title="Numéro d'origine (avant JURIA)">Réf. d'origine : {{ f.numero_origine }}</span> }</td>
               <td class="nowrap">{{ f.date_emission ? (f.date_emission | date:'dd/MM/yyyy') : '—' }}</td>
               <td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
-              <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }</td>
+              <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }
+                @if (f.procedure_rang && (f.procedure_nature === 'incidente' || f.procedure_rang > 1)) {
+                  <div class="muted" style="font-size:var(--fs-xs)">procédure n° {{ f.procedure_rang }}{{ f.procedure_nature === 'incidente' ? ' (' + (f.procedure_type || 'incident') + ')' : '' }}</div>
+                }
+              </td>
               <td class="nowrap-n">{{ libelleMode(f.mode) }}</td>
               <td class="nowrap-n">{{ f.montant_ht | number }} {{ dev(f.devise) }}</td>
               <td class="nowrap-n">{{ f.montant_ttc | number }} {{ dev(f.devise) }}</td>
@@ -924,7 +937,13 @@ export class FacturationComponent implements OnInit {
   // ancien devenait introuvable pour facturer.
   onDossierChoisi(d: Dossier | null): void {
     this.objet = d?.objet || '';
+    // Procédure concernée (lot 3, 13/11/2026) : proposée seulement si le dossier choisi compte plusieurs procédures.
+    this.procedureFacture = '';
+    this.proceduresDossier.set([]);
+    if (d?.id) this.api.dossier(d.id).subscribe({ next: (x) => this.proceduresDossier.set(x.instances ?? []), error: () => {} });
   }
+  procedureFacture = '';
+  readonly proceduresDossier = signal<any[]>([]);
   facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; this.choixAbonnementOuvert.set(false); }
 
   // 03/11/2026 — client choisi dans une facture sans dossier : s'il est sous
@@ -1126,6 +1145,7 @@ export class FacturationComponent implements OnInit {
     };
     if (this.dossierId === '__autre__') payload.client_id = this.factureClientId;
     else payload.dossier_id = this.dossierId;
+    if (this.procedureFacture && this.dossierId !== '__autre__') payload.instance_id = this.procedureFacture;
     if (this.objet) payload.objet = this.objet;
     if (this.tva !== null) payload.taux_tva = this.tva;
     if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
@@ -1136,6 +1156,7 @@ export class FacturationComponent implements OnInit {
         this.creationFactureEnCours.set(false);
         this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise})${f.acompte ? ' — acompte de ' + f.acompte + ' enregistré, statut : ' + f.statut : ''}.`);
         this.montantHt = null; this.tauxApplique = null; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; this.reinitialiserAcompte();
+        this.procedureFacture = '';
         this.rafraichir();
       },
       error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },

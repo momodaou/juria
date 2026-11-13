@@ -503,7 +503,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
       </section>
 
       @if (d.pole === 'contentieux') {
-        <section class="panel">
+        <section class="panel" id="procedures-dossier">
           <h3>Procédures du dossier</h3>
           <p class="muted">Un seul dossier pour toute l'affaire : 1re instance, appel, cassation, et les procédures incidentes (défense à exécution, sursis, opposition…) rattachées à la procédure qu'elles visent. Chaque procédure garde sa juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
@@ -516,6 +516,7 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
                     @if (i.nature === 'incidente') { <span class="tag">Incident{{ i.type_procedure ? ' · ' + i.type_procedure : '' }}</span> <span class="muted">de la n° {{ rangDe(i.parent_instance_id) }}</span> }
                     <span class="tag" [class.ok]="i.statut_procedure === 'terminee'">{{ i.statut_procedure === 'terminee' ? 'Terminée' : 'En cours' }}</span>
                     @if (i.facturation === 'a_part') { <span class="tag">Facturée à part</span> }
+                    @if (i.pas_facturee) { <span class="tag haute" title="Procédure facturée à part, en cours, sans facture depuis plus de 30 jours">Pas encore facturée</span> }
                   </td>
                   <td>{{ libelleDegre(i.degre) }}</td>
                   <td>{{ i.juridiction || '—' }}</td>
@@ -1239,18 +1240,25 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
           <div class="upload">
             <input type="number" placeholder="Durée (min)" [(ngModel)]="dureeMin" name="duree" style="width:130px" />
             <input type="text" placeholder="Description" [(ngModel)]="descTemps" name="desc" style="flex:1;min-width:180px" />
+            @if ((d.instances?.length ?? 0) > 1) {
+              <select class="in" style="margin:0;max-width:260px" [(ngModel)]="procedureTemps" name="procTemps">
+                <option value="">Procédure : le dossier</option>
+                @for (p of arbreProcedures(d.instances); track p.id) { <option [value]="p.id">{{ ligneProcedureEtiquette(p) }}</option> }
+              </select>
+            }
             <button class="btn" (click)="ajouterTemps()" [disabled]="!dureeMin || ajoutTempsEnCours()">{{ ajoutTempsEnCours() ? 'Ajout…' : 'Ajouter' }}</button>
           </div>
         }
         @if (temps().length) {
           <table>
-            <tr><th>Date</th><th>Durée</th><th>Facturable</th><th>Description</th></tr>
+            <tr><th>Date</th><th>Durée</th><th>Facturable</th><th>Description</th><th>Procédure</th></tr>
             @for (t of temps(); track t.id) {
               <tr>
                 <td>{{ t.date_saisie | date:'dd/MM/yyyy' }}</td>
                 <td>{{ (t.duree_minutes / 60) | number:'1.1-1' }} h</td>
                 <td>{{ t.facturable ? 'Oui' : 'Non' }}</td>
                 <td>{{ t.description || '—' }}</td>
+                <td>@if (t.procedure_rang) { n° {{ t.procedure_rang }}{{ t.procedure_nature === 'incidente' ? ' (' + (t.procedure_type || 'incident') + ')' : '' }} } @else { — }</td>
               </tr>
             }
           </table>
@@ -1498,6 +1506,7 @@ export class DossierDetailComponent implements OnInit {
 
   readonly temps = signal<any[]>([]);
   dureeMin: number | null = null;
+  procedureTemps = '';
   descTemps = '';
 
   readonly communications = signal<any[]>([]);
@@ -2554,7 +2563,10 @@ export class DossierDetailComponent implements OnInit {
     this.id = id;
     this.etiquette.set(null);
     this.api.dossier(id).subscribe({
-      next: (d) => this.dossier.set(d),
+      next: (d) => {
+        this.dossier.set(d);
+        this.preparerNouvelleProcedure();
+      },
       error: () => this.erreur.set('Dossier introuvable.'),
     });
     this.chargerLiensRapides(id);
@@ -2577,6 +2589,19 @@ export class DossierDetailComponent implements OnInit {
     // suggestion à la saisie d'une vignette ; vide si personne n'en a
     // jamais pré-enregistré, repli silencieux (saisie libre).
     this.api.numerosVignettesDisponibles().subscribe({ next: (n) => this.numerosVignettesDisponibles.set(n), error: () => {} });
+  }
+
+  // Ouverture guidée (lot 3) : ?procedure=nouvelle[&juridiction=…&degre=…] préremplit le formulaire d'ajout de procédure et y mène.
+  private preparerNouvelleProcedure(): void {
+    const q = this.route.snapshot.queryParamMap;
+    if (q.get('procedure') !== 'nouvelle') return;
+    const degre = q.get('degre');
+    this.nouvelleInstance = {
+      ...this.nouvelleInstance,
+      ...(degre ? { degre } : {}),
+      ...(q.get('juridiction') ? { juridiction: q.get('juridiction') } : {}),
+    };
+    setTimeout(() => document.getElementById('procedures-dossier')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
   }
 
   // 25/10/2026 — le mode « Abonnement » est dérivé du CLIENT (convention-cadre) : on se fie à
@@ -2745,7 +2770,7 @@ export class DossierDetailComponent implements OnInit {
     if (!this.dureeMin) return;
     this.erreur.set('');
     this.ajoutTempsEnCours.set(true);
-    this.api.creerTemps({ dossier_id: this.id, duree_minutes: this.dureeMin, description: this.descTemps }).subscribe({
+    this.api.creerTemps({ dossier_id: this.id, duree_minutes: this.dureeMin, description: this.descTemps, ...(this.procedureTemps ? { instance_id: this.procedureTemps } : {}) }).subscribe({
       next: () => { this.ajoutTempsEnCours.set(false); this.dureeMin = null; this.descTemps = ''; this.rafraichirTemps(); },
       error: (e) => { this.ajoutTempsEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Saisie impossible'); },
     });

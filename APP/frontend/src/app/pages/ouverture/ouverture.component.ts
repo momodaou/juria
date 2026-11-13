@@ -378,6 +378,10 @@ import { LibellePipe } from '../../core/libelles';
                 @if (!d.meme_client) {
                   <span class="hint"> — pour « {{ d.client_nom }} », une fiche client au nom quasi identique : vérifiez qu'il ne s'agit pas de deux fiches pour le même client (Clients & KYC).</span>
                 }
+                @if (d.meme_adverse) { <span class="tag haute">même partie adverse</span> }
+                @if (dossier.pole === 'contentieux') {
+                  <a class="btn ghost" style="margin-left:8px;padding:4px 10px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
+                }
               </p>
             }
             <div class="upload">
@@ -901,6 +905,14 @@ export class OuvertureComponent implements OnInit {
   // dossier lui-même. Même principe que creerClientInline : on prévient,
   // sans jamais bloquer, l'utilisateur décide.
   readonly doublonsDossier = signal<any[]>([]);
+  // Ouverture guidée (lot 3, 13/11/2026) : au lieu d'ouvrir un second dossier pour la même affaire, on ouvre la fiche du dossier
+  // existant avec le formulaire d'ajout de procédure prérempli (juridiction et degré saisis ici). Rien n'est créé automatiquement.
+  paramsNouvelleProcedure(): Record<string, string> {
+    const p: Record<string, string> = { procedure: 'nouvelle' };
+    if (this.dossier.juridiction) p['juridiction'] = this.dossier.juridiction;
+    if (this.dossier.instance_degre) p['degre'] = this.dossier.instance_degre;
+    return p;
+  }
 
   creerDossier(ignorerDoublon = false): void {
     this.erreurCreation.set('');
@@ -915,7 +927,7 @@ export class OuvertureComponent implements OnInit {
       return;
     }
     if (!ignorerDoublon) {
-      this.api.verifierDoublonDossier(this.dossier.client_id, this.dossier.code_matiere).subscribe({
+      this.api.verifierDoublonDossier(this.dossier.client_id, this.dossier.code_matiere, this.partiesAdversesEdit).subscribe({
         next: (d) => { if (d.length) this.doublonsDossier.set(d); else this.creerDossierReellement(); },
         error: () => this.creerDossierReellement(),
       });

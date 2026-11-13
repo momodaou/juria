@@ -6289,3 +6289,12 @@ ON CONFLICT (domaine, code) DO NOTHING;
 -- =====================================================================
 ALTER TABLE audiences ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_audiences_instance ON audiences(instance_id);
+
+-- =====================================================================
+--  PROCÉDURES D'UN DOSSIER — lot 3 (13/11/2026) : procédure concernée par une facture ou une ligne de temps (facultatif).
+--  Une facture d'incident postérieur à une procédure préalable est marquée « exclue de la rétrocession » à l'émission.
+-- =====================================================================
+ALTER TABLE factures ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
+ALTER TABLE temps    ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_factures_instance ON factures(instance_id);
+CREATE INDEX IF NOT EXISTS idx_temps_instance ON temps(instance_id);

@@ -26,4 +26,15 @@ const JOIN_PROCEDURE_AUDIENCE = `LEFT JOIN LATERAL (
 ) pa ON true`;
 const SELECT_PROCEDURE_AUDIENCE = `a.instance_id, pa.rang AS procedure_rang, pa.nature AS procedure_nature, pa.type_procedure AS procedure_type, pa.degre AS procedure_degre`;
 
-module.exports = { JOIN_INSTANCE_ACTUELLE, SELECT_INSTANCE_ACTUELLE, JOIN_PROCEDURE_AUDIENCE, SELECT_PROCEDURE_AUDIENCE };
+// Même chose pour une table portant dossier_id et instance_id (factures, temps) : alias de la table en paramètre.
+function procedureDe(alias) {
+  const p = "p" + alias;
+  return {
+    select: alias + ".instance_id, " + p + ".rang AS procedure_rang, " + p + ".nature AS procedure_nature, " + p + ".type_procedure AS procedure_type",
+    join: "LEFT JOIN LATERAL (SELECT r.rang, r.nature, r.type_procedure FROM (SELECT id, nature, type_procedure, "
+      + "ROW_NUMBER() OVER (ORDER BY date_debut NULLS LAST, cree_le) AS rang FROM instances WHERE dossier_id = " + alias + ".dossier_id) r "
+      + "WHERE r.id = " + alias + ".instance_id) " + p + " ON true",
+  };
+}
+
+module.exports = { JOIN_INSTANCE_ACTUELLE, SELECT_INSTANCE_ACTUELLE, JOIN_PROCEDURE_AUDIENCE, SELECT_PROCEDURE_AUDIENCE, procedureDe };
