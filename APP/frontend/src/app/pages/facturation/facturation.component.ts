@@ -9,6 +9,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
 import { ClientPickerComponent } from '../../core/client-picker.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
+import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../core/procedures';
 
 @Component({
   selector: 'app-facturation',
@@ -32,7 +33,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
                 Procédure concernée (facultatif)
                 <select class="in" style="margin:4px 0 0" [(ngModel)]="procedureFacture" name="procedureFacture">
                   <option value="">— le dossier en général —</option>
-                  @for (p of proceduresDossier(); track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : 'Principale' }} — {{ p.juridiction || '—' }}</option> }
+                  @for (p of proceduresDossier(); track p.id) { <option [value]="p.id">{{ optionProcedure(p) }}</option> }
                 </select>
               </span>
             }
@@ -368,8 +369,8 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
               <td class="nowrap">{{ f.date_emission ? (f.date_emission | date:'dd/MM/yyyy') : '—' }}</td>
               <td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }
-                @if (f.procedure_rang && (f.procedure_nature === 'incidente' || f.procedure_rang > 1)) {
-                  <div class="muted" style="font-size:var(--fs-xs)">procédure n° {{ f.procedure_rang }}{{ f.procedure_nature === 'incidente' ? ' (' + (f.procedure_type || 'incident') + ')' : '' }}</div>
+                @if (mentionProcedureUtile(f.procedure_rang, f.procedure_nature)) {
+                  <div class="muted" style="font-size:var(--fs-xs)">{{ mentionProcedure(f.procedure_rang, f.procedure_nature, f.procedure_type) }}</div>
                 }
               </td>
               <td class="nowrap-n">{{ libelleMode(f.mode) }}</td>
@@ -942,6 +943,9 @@ export class FacturationComponent implements OnInit {
     this.proceduresDossier.set([]);
     if (d?.id) this.api.dossier(d.id).subscribe({ next: (x) => this.proceduresDossier.set(x.instances ?? []), error: () => {} });
   }
+  readonly mentionProcedure = mentionProcedure;
+  readonly mentionProcedureUtile = mentionProcedureUtile;
+  readonly optionProcedure = optionProcedure;
   procedureFacture = '';
   readonly proceduresDossier = signal<any[]>([]);
   facturerSansDossier(): void { this.dossierId = '__autre__'; this.objet = ''; this.factureClientId = null; this.factureClientNom = null; this.choixAbonnementOuvert.set(false); }

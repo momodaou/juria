@@ -478,7 +478,7 @@ export class AccesComponent implements OnInit {
   readonly ENTITES_AUDIT = [
     { code: 'dossiers', libelle: 'Dossier' },
     { code: 'clients', libelle: 'Client' },
-    { code: 'dossier_instances', libelle: 'Instance' },
+    { code: 'dossier_instances', libelle: 'Procédure' },
     { code: 'dossier_parties', libelle: 'Partie au dossier' },
     { code: 'audiences', libelle: 'Audience' },
     { code: 'evenements', libelle: 'Échéance' },

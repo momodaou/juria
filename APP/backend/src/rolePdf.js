@@ -184,7 +184,7 @@ const COLONNES = [
   { cle: "heure", label: "Heure", pct: 6 },
   { cle: "parties", label: "Parties", pct: 23 },
   { cle: "juridiction", label: "Juridiction", pct: 12 },
-  { cle: "procedure", label: "Procédure", pct: 9 },
+  { cle: "procedure", label: "Nature du litige", pct: 9 },
   { cle: "type", label: "Type audience", pct: 8 },
   { cle: "notes", label: "Notes (audience du jour)", pct: 16 },
   { cle: "resp", label: "Resp dossier", pct: 7 },
@@ -276,8 +276,8 @@ function dessinerEnTeteColonnes(doc, colonnes, y) {
 function mentionProcedure(l) {
   const ref = l.dossier_numero || "—";
   if (!l.procedure_rang || !(l.procedure_nature === "incidente" || Number(l.procedure_rang) > 1)) return ref;
-  const incident = l.procedure_nature === "incidente" ? ` (incident${l.procedure_type ? " : " + l.procedure_type : ""})` : "";
-  return `${ref} · procédure n° ${l.procedure_rang}${incident}`;
+  const incident = l.procedure_nature === "incidente" ? ` · incident${l.procedure_type ? " : " + l.procedure_type : ""}` : "";
+  return `${ref} · Procédure N°${l.procedure_rang}${incident}`;
 }
 
 // Contenu de chaque colonne pour une ligne — texte simple, ou tableau de

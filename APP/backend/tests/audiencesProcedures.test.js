@@ -118,8 +118,8 @@ describe("Audiences rattachées à une procédure", () => {
     const rep = await pdf(role.body.id);
     expect(rep.status).toBe(200);
     const t = texte(rep.body);
-    expect(t).toContain("procédure n° 2 (incident : Defense a execution)");
+    expect(t).toContain("Procédure N°2 · incident : Defense a execution");
     expect(t).toContain("Defense a execution");
-    expect(t.match(/procédure n°/g)).toHaveLength(1);   // seule la ligne de l'incident porte la mention
+    expect(t.match(/Procédure N°/g)).toHaveLength(1);   // seule la ligne de l'incident porte la mention
   });
 });

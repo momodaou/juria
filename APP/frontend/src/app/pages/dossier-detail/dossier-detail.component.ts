@@ -12,6 +12,7 @@ import { libelleRole } from '../../core/roles';
 import { LibellePipe } from '../../core/libelles';
 import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../core/procedures';
 
 @Component({
   selector: 'app-dossier-detail',
@@ -546,38 +547,55 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
           <h3>Procédures du dossier</h3>
           <p class="muted">Un seul dossier pour toute l'affaire : 1re instance, appel, cassation, et les procédures incidentes (défense à exécution, sursis, opposition…) rattachées à la procédure qu'elles visent. Chaque procédure garde sa juridiction et son n° de rôle.</p>
           @if (d.instances?.length) {
-            <table>
-              <tr><th>Procédure</th><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut de {{ d.client_nom }}</th><th>Décision</th><th>Vignette</th><th></th></tr>
+            <div class="defile">
+            <table class="procedures">
+              <tr><th>Procédure</th><th>Degré</th><th>Juridiction</th><th>N° de rôle</th><th>Statut</th><th>Facturation</th><th>Décision</th><th>Vignette</th><th></th></tr>
               @for (i of arbreProcedures(d.instances); track i.id) {
                 <tr>
-                  <td [style.padding-left.px]="8 + i._niveau * 20">
-                    <b>N° {{ i.rang }}</b>
-                    @if (i.nature === 'incidente') { <span class="tag">Incident{{ i.type_procedure ? ' · ' + i.type_procedure : '' }}</span> <span class="muted">de la n° {{ rangDe(i.parent_instance_id) }}</span> }
-                    <span class="tag" [class.ok]="i.statut_procedure === 'terminee'">{{ i.statut_procedure === 'terminee' ? 'Terminée' : 'En cours' }}</span>
-                    @if (i.facturation === 'a_part') { <span class="tag">Facturée à part</span> }
-                    @if (i.pas_facturee) { <span class="tag haute" title="Procédure facturée à part, en cours, sans facture depuis plus de 30 jours">Pas encore facturée</span> }
+                  <td class="c-proc" [style.padding-left.px]="10 + i._niveau * 22">
+                    <div class="proc-num">@if (i._niveau > 0) { <span class="proc-fleche" aria-hidden="true">↳</span> }{{ numProcedure(i.rang) }}</div>
+                    @if (i.nature === 'incidente') {
+                      @if (i.type_procedure) { <div class="proc-type">{{ i.type_procedure }}</div> }
+                      <div class="proc-sous">Incident de la {{ numProcedure(rangDe(i.parent_instance_id)) }}</div>
+                    }
                   </td>
-                  <td>{{ libelleDegre(i.degre) }}</td>
+                  <td>
+                    {{ libelleDegre(i.degre) }}
+                    @if (libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision); as sp) { <div class="proc-sous">{{ d.client_nom }} : {{ sp }}</div> }
+                  </td>
                   <td>{{ i.juridiction || '—' }}</td>
-                  <td>{{ i.numero_role || '—' }}</td>
-                  <td>{{ libelleStatutPartie(i.statut_partie, i.degre, i.statut_partie_precision) || '—' }}</td>
+                  <td class="sans-coupure">{{ i.numero_role || '—' }}</td>
+                  <td>
+                    <div class="pile">
+                      <span class="tag" [class.ok]="i.statut_procedure === 'terminee'">{{ i.statut_procedure === 'terminee' ? 'Terminée' : 'En cours' }}</span>
+                      @if (i.statut_procedure === 'terminee' && i.date_fin) { <span class="proc-sous">le {{ i.date_fin | date:'dd/MM/yyyy' }}</span> }
+                    </div>
+                  </td>
+                  <td>
+                    <div class="pile">
+                      @if (i.facturation === 'a_part') { <span class="tag">À part</span> } @else { <span class="proc-sous">Incluse</span> }
+                      @if (i.pas_facturee) { <span class="tag haute" title="Procédure facturée à part, en cours, sans facture depuis plus de 30 jours">Pas encore facturée</span> }
+                    </div>
+                  </td>
                   <td>{{ i.decision || '—' }}</td>
                   <td>
-                    @if (i.numero_vignette) { N° {{ pad7(i.numero_vignette) }} }
+                    @if (i.numero_vignette) { <span class="sans-coupure">N°{{ pad7(i.numero_vignette) }}</span> }
                     @else if (i.vignette_dispensee) { <span class="muted">Sans vignette</span> }
                     @else if (d.pole === 'contentieux') {
-                      <span class="tag attente">À affecter</span>
-                      @if (auth.peut('depenses.vignettes.mouvement')) {
-                        @if (prochainNumeroVignette() !== null) { <button class="lien" (click)="affecterProchaineVignette(i)">Affecter la n° {{ pad7(prochainNumeroVignette() ?? 0) }}</button> }
-                        @else { <button class="lien" (click)="commencerVignetteInstance(i)">Saisir le n°</button> }
-                      }
+                      <div class="pile">
+                        <span class="tag attente">À affecter</span>
+                        @if (auth.peut('depenses.vignettes.mouvement')) {
+                          @if (prochainNumeroVignette() !== null) { <button class="lien" (click)="affecterProchaineVignette(i)">Affecter la N°{{ pad7(prochainNumeroVignette() ?? 0) }}</button> }
+                          @else { <button class="lien" (click)="commencerVignetteInstance(i)">Saisir le N°</button> }
+                        }
+                      </div>
                     } @else { — }
                   </td>
                   <td><app-menu-actions [actions]="actionsPourInstance(i)" /></td>
                 </tr>
                 @if (instanceVignetteEnEdition() === i.id) {
                   <tr class="edition">
-                    <td colspan="8">
+                    <td colspan="9">
                       <div class="upload">
                         <input class="in" style="width:160px;margin:0" type="number" [(ngModel)]="vignetteNumeroSaisi" [name]="'vNum' + i.id" placeholder="N° de vignette" list="numerosVignettesDispo" />
                         <button class="lien" (click)="enregistrerVignetteInstance(i)">Enregistrer</button>
@@ -595,7 +613,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                 }
                 @if (instanceEnEdition() === i.id) {
                   <tr class="edition">
-                    <td colspan="8">
+                    <td colspan="9">
                       <div class="grid2">
                         <div>
                           <label>Juridiction</label>
@@ -661,13 +679,14 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                 }
               }
             </table>
+            </div>
             <datalist id="typesIncident">
               @for (t of typesIncident(); track t.code) { <option [value]="t.libelle"></option> }
             </datalist>
             <datalist id="numerosVignettesDispo">
               @for (n of numerosVignettesDisponibles(); track n) { <option [value]="n"></option> }
             </datalist>
-          } @else { <p class="muted">Aucune instance enregistrée.</p> }
+          } @else { <p class="muted">Aucune procédure enregistrée.</p> }
 
           @if (auth.peut('dossiers.instances.gerer')) {
             <div class="grid2" style="margin-top:12px">
@@ -683,7 +702,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                   <label>Procédure visée par l'incident</label>
                   <select class="in" [(ngModel)]="nouvelleInstance.parent_instance_id" name="niParent">
                     <option value="">— choisir —</option>
-                    @for (p of d.instances; track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ libelleDegre(p.degre) }} — {{ p.juridiction || '—' }}</option> }
+                    @for (p of d.instances; track p.id) { <option [value]="p.id">{{ optionProcedure(p) }}</option> }
                   </select>
                 </div>
                 <div><label>Nature de l'incident</label><input class="in" list="typesIncident" [(ngModel)]="nouvelleInstance.type_procedure" name="niTypeProcedure" placeholder="Ex. défense à exécution" /></div>
@@ -729,11 +748,11 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
               }
             </div>
             <button class="btn" (click)="ajouterInstance()" [disabled]="ajoutInstanceEnCours()">
-              {{ ajoutInstanceEnCours() ? 'Ajout…' : '+ Ajouter cette instance' }}
+              {{ ajoutInstanceEnCours() ? 'Ajout…' : '+ Ajouter cette procédure' }}
             </button>
             @if (doublonsInstance().length) {
               <div class="doublon">
-                <b>⚠ Une instance existe déjà à ce degré pour ce dossier :</b>
+                <b>⚠ Une procédure existe déjà à ce degré pour ce dossier :</b>
                 @for (d of doublonsInstance(); track d.id) { <p>{{ libelleDegre(d.degre) }} — {{ d.juridiction || '—' }}</p> }
                 <div class="upload">
                   <button class="btn ghost" (click)="doublonsInstance.set([])">Annuler, je vérifie</button>
@@ -964,8 +983,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                   <td>{{ libelleTypeAudience(a.type, a.type_precision) }}</td>
                   <td>
                     {{ a.juridiction || '—' }}
-                    @if (a.procedure_rang && (d.instances?.length ?? 0) > 1) {
-                      <div class="muted" style="font-size:var(--fs-xs)">Procédure n° {{ a.procedure_rang }}{{ a.procedure_nature === 'incidente' ? ' (incident' + (a.procedure_type ? ' : ' + a.procedure_type : '') + ')' : '' }}</div>
+                    @if (mentionProcedureUtile(a.procedure_rang, a.procedure_nature) && (d.instances?.length ?? 0) > 1) {
+                      <div class="proc-sous">{{ mentionProcedure(a.procedure_rang, a.procedure_nature, a.procedure_type) }}</div>
                     }
                   </td>
                   <td>{{ a.avocat_nom || '—' }}</td>
@@ -1010,7 +1029,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                             <label>Procédure concernée</label>
                             <select class="in" [(ngModel)]="editAudience.instance_id" name="eaInstance">
                               <option value="">— le dossier en général —</option>
-                              @for (p of d.instances; track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : libelleDegre(p.degre) }} — {{ p.juridiction || '—' }}</option> }
+                              @for (p of d.instances; track p.id) { <option [value]="p.id">{{ optionProcedure(p) }}</option> }
                             </select>
                           </div>
                         }
@@ -1297,7 +1316,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                 <td>{{ (t.duree_minutes / 60) | number:'1.1-1' }} h</td>
                 <td>{{ t.facturable ? 'Oui' : 'Non' }}</td>
                 <td>{{ t.description || '—' }}</td>
-                <td>@if (t.procedure_rang) { n° {{ t.procedure_rang }}{{ t.procedure_nature === 'incidente' ? ' (' + (t.procedure_type || 'incident') + ')' : '' }} } @else { — }</td>
+                <td>@if (t.procedure_rang) { {{ mentionProcedure(t.procedure_rang, t.procedure_nature, t.procedure_type) }} } @else { — }</td>
               </tr>
             }
           </table>
@@ -1413,7 +1432,18 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     .etiquette-num{font-size:var(--fs-xl);font-weight:700;color:#1F2A44;letter-spacing:1px;font-family:ui-monospace,monospace}
     .etiquette-intitule{font-size:var(--fs-base);font-weight:600;margin-top:2px}
     .etiquette-client{font-size:var(--fs-base);margin-top:3px;line-height:1.25}
-    .etiquette-lbl{color:var(--slate);font-weight:400}
+    .etiquette-lbl{color:var(--slate);font-weight:400;margin-right:4px}
+    .defile{overflow-x:auto}
+    .procedures td{vertical-align:top}
+    .procedures .tag{white-space:nowrap}
+    .proc-num{font-weight:700;font-size:var(--fs-md);white-space:nowrap}
+    .procedures .lien{white-space:nowrap}
+    .pile .proc-sous{white-space:nowrap}
+    .proc-fleche{color:var(--gold);margin-right:5px;font-weight:400}
+    .proc-type{font-weight:600;margin-top:2px}
+    .proc-sous{font-size:var(--fs-xs);color:var(--grey);margin-top:2px}
+    .pile{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+    .sans-coupure{white-space:nowrap}
     .etiquette-sub{font-size:var(--fs-sm);color:var(--slate);margin-top:1px}
     .etiquette-chemise{font-size:var(--fs-xs);margin-top:4px}
     tr.urgent td{background:#fff5f4}
@@ -1696,8 +1726,8 @@ export class DossierDetailComponent implements OnInit {
   }
   ligneProcedureEtiquette(p: any): string {
     return p.nature === 'incidente'
-      ? `Incident n° ${p.rang} de la n° ${this.rangDe(p.parent_instance_id)}${p.type_procedure ? ' · ' + p.type_procedure : ''}`
-      : `Procédure n° ${p.rang} · ${this.libelleDegre(p.degre)}`;
+      ? `Incident ${numProcedure(p.rang)} de la ${numProcedure(this.rangDe(p.parent_instance_id))}${p.type_procedure ? ' · ' + p.type_procedure : ''}`
+      : `Procédure ${numProcedure(p.rang)} · ${this.libelleDegre(p.degre)}`;
   }
   juridictionEtiquette(d: any, p: any | null): string {
     return (p && p.juridiction) || d.juridiction_actuelle || d.juridiction || '';
@@ -1924,10 +1954,11 @@ export class DossierDetailComponent implements OnInit {
     });
   }
 
-  private readonly libellesDegre: Record<string, string> = {
-    premiere_instance: 'Première instance', appel: 'Appel', cassation: 'Cassation (dont CCJA)',
-    opposition: 'Opposition', refere: 'Référé', execution: 'Exécution', autre: 'Autre',
-  };
+  private readonly libellesDegre: Record<string, string> = LIBELLES_DEGRE;
+  readonly numProcedure = numProcedure;
+  readonly mentionProcedure = mentionProcedure;
+  readonly mentionProcedureUtile = mentionProcedureUtile;
+  readonly optionProcedure = optionProcedure;
   libelleDegre(degre: string): string { return this.libellesDegre[degre] ?? degre; }
 
   // Procédures du dossier (lot 1, 13/11/2026) : arbre à plat (chaque incident sous la procédure visée), n° d'ordre, suggestions.
@@ -2093,11 +2124,11 @@ export class DossierDetailComponent implements OnInit {
     modifier_dossier: 'fiche du dossier modifiée',
     modifier_identite_actes: 'identité détaillée d\'une partie modifiée',
     basculer_pro_bono: 'statut pro bono modifié',
-    creer_instance: 'instance ajoutée',
+    creer_instance: 'procédure ajoutée',
     lier_dossier: 'dossier lié',
     delier_dossier: 'lien avec un dossier retiré',
-    modifier_instance: 'instance modifiée',
-    supprimer_instance: 'instance retirée',
+    modifier_instance: 'procédure modifiée',
+    supprimer_instance: 'procédure retirée',
     creer_partie: 'partie ajoutée',
     modifier_partie: 'partie modifiée',
     supprimer_partie: 'partie retirée',
@@ -2143,7 +2174,7 @@ export class DossierDetailComponent implements OnInit {
         this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '', nature: 'principale' };
         this.doublonsInstance.set([]);
         const rafraichir = () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) });
-        if (precedente && window.confirm(`La procédure n° ${precedente.rang} (${this.libelleDegre(precedente.degre)}${precedente.juridiction ? ' — ' + precedente.juridiction : ''}) est-elle terminée ?`)) {
+        if (precedente && window.confirm(`La procédure ${numProcedure(precedente.rang)} (${this.libelleDegre(precedente.degre)}${precedente.juridiction ? ' — ' + precedente.juridiction : ''}) est-elle terminée ?`)) {
           this.api.majInstance(this.id, precedente.id, { statut_procedure: 'terminee' }).subscribe({ next: rafraichir, error: rafraichir });
         } else rafraichir();
       },
@@ -2360,7 +2391,7 @@ export class DossierDetailComponent implements OnInit {
   }
 
   retirerInstance(instanceId: string): void {
-    if (!window.confirm('Retirer cette instance (ajoutée par erreur) ?')) return;
+    if (!window.confirm('Retirer cette procédure (ajoutée par erreur) ?')) return;
     this.api.retirerInstanceDossier(this.id, instanceId).subscribe({
       next: () => this.api.dossier(this.id).subscribe({ next: (d) => this.dossier.set(d) }),
       error: (e) => this.erreurInstance.set(e?.error?.error ?? 'Retrait impossible.'),

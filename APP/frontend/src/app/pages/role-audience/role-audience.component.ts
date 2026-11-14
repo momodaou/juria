@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../core/procedures';
 import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
@@ -59,7 +60,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                  2e passe, qui la collait à Juridiction — nouvelle demande
                  explicite de l'utilisateur). 4 colonnes figées désormais
                  (Date/Heure/Référence/Parties, voir "styles" plus bas). -->
-            <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Procédure</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th>Suite programmée</th><th></th></tr>
+            <tr><th class="col-date">Date</th><th class="col-heure">Heure</th><th class="col-ref">Référence</th><th class="col-parties">Parties</th><th>Juridiction</th><th>Nature du litige</th><th>Type audience</th><th>Motif dernier renvoi</th><th>Instructions</th><th>Resp dossier</th><th>Audiencier</th><th>Résultat</th><th>Suite programmée</th><th></th></tr>
             @for (l of r.lignes; track l.id) {
               <tr [id]="'audience-' + l.id" [class.cible]="estCibleAudience(l)" [class.urgent]="l.urgente" [class.facturation-alerte]="!!l.statut_facturation" [class.retour-en-retard]="estEnRetardSansRetour(l)">
                 <td class="col-date">{{ l.date_prevue | date:'dd/MM/yyyy' }}</td>
@@ -87,8 +88,8 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                 </td>
                 <td>
                   {{ abregeJuridiction(l.juridiction) }}
-                  @if (l.procedure_rang && (l.procedure_nature === 'incidente' || l.procedure_rang > 1)) {
-                    <div class="muted" style="font-size:var(--fs-xs)">Dossier · procédure n° {{ l.procedure_rang }}{{ l.procedure_nature === 'incidente' ? ' (incident' + (l.procedure_type ? ' : ' + l.procedure_type : '') + ')' : '' }}</div>
+                  @if (mentionProcedureUtile(l.procedure_rang, l.procedure_nature)) {
+                    <div class="muted" style="font-size:var(--fs-xs)">{{ mentionProcedure(l.procedure_rang, l.procedure_nature, l.procedure_type) }}</div>
                   }
                 </td>
                 <td>{{ libelleNatureProcedure(l.nature_procedure, l.nature_precision) }}</td>
@@ -163,7 +164,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
                       <div><label>Heure</label><input class="in" type="time" [(ngModel)]="editAudience.heure" name="eaHeure" /></div>
                       <div><label>Juridiction</label><input class="in" [(ngModel)]="editAudience.juridiction" name="eaJuridiction" /></div>
                       <div>
-                        <label>Procédure</label>
+                        <label>Nature du litige</label>
                         <select class="in" [(ngModel)]="editAudience.nature_procedure" name="eaNature">
                           <option value="">—</option>
                           @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
@@ -410,7 +411,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
             <label>Procédure concernée</label>
             <select class="in" [(ngModel)]="nouvelleLigne.instance_id" name="instanceLigne">
               <option value="">— le dossier en général —</option>
-              @for (p of proceduresLigne(); track p.id) { <option [value]="p.id">N° {{ p.rang }} · {{ p.nature === 'incidente' ? 'Incident' + (p.type_procedure ? ' (' + p.type_procedure + ')' : '') : 'Principale' }} — {{ p.juridiction || '—' }}{{ p.statut_procedure === 'terminee' ? ' (terminée)' : '' }}</option> }
+              @for (p of proceduresLigne(); track p.id) { <option [value]="p.id">{{ optionProcedure(p) }}</option> }
             </select>
           </div>
         }
@@ -442,7 +443,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
           <span class="hint">Qui se rend effectivement à cette audience — peut différer du responsable du dossier, et changer d'une semaine à l'autre (dispatching). Modifiable ensuite via « Modifier ».</span>
         </div>
         <div>
-          <label>Procédure (facultatif)</label>
+          <label>Nature du litige (facultatif)</label>
           <select class="in" [(ngModel)]="nouvelleLigne.nature_procedure" name="nature">
             <option value="">—</option>
             @for (n of naturesProcedure(); track n.code) { <option [value]="n.code">{{ n.libelle }}</option> }
@@ -959,6 +960,9 @@ export class RoleAudienceComponent implements OnInit {
 
   // Procédure concernée (lot 2, 13/11/2026) : proposée dès que le dossier choisi en compte plusieurs ; par défaut, la
   // procédure principale en cours la plus récente (jamais imposée : « le dossier en général » reste possible).
+  readonly mentionProcedure = mentionProcedure;
+  readonly mentionProcedureUtile = mentionProcedureUtile;
+  readonly optionProcedure = optionProcedure;
   readonly proceduresLigne = signal<any[]>([]);
   choisirDossierLigne(dossierId: string | null): void {
     this.nouvelleLigne.dossier_id = dossierId ?? '';

@@ -577,8 +577,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>{{ v.cree_le | date:'dd/MM/yyyy' }}</td>
               <td>
                 @if (!v.mode_honoraires_renseigne) { <span class="muted">Renseignez d'abord le mode d'honoraires du dossier</span> }
-                @else if (vignettesAAffecter()?.prochain_numero != null) { <button class="lien" (click)="affecterVignette(v)">Affecter la n° {{ pad7(vignettesAAffecter()?.prochain_numero) }}</button> }
-                @else { <a class="lien" [routerLink]="['/dossiers', v.dossier_id]">Saisir le n° depuis le dossier</a> }
+                @else if (vignettesAAffecter()?.prochain_numero != null) { <button class="lien" (click)="affecterVignette(v)">Affecter la N°{{ pad7(vignettesAAffecter()?.prochain_numero) }}</button> }
+                @else { <a class="lien" [routerLink]="['/dossiers', v.dossier_id]">Saisir le N° depuis le dossier</a> }
               </td>
             </tr>
           }
@@ -825,7 +825,7 @@ export class DepensesComponent implements OnInit {
   affecterVignette(v: any): void {
     const n = this.vignettesAAffecter()?.prochain_numero;
     if (n == null) return;
-    if (!window.confirm('Affecter la vignette n° ' + this.pad7(n) + ' au dossier ' + v.dossier_numero + ' ?\n(Vérifiez que c\'est bien le numéro de la vignette que vous collez.)')) return;
+    if (!window.confirm('Affecter la vignette N°' + this.pad7(n) + ' au dossier ' + v.dossier_numero + ' ?\n(Vérifiez que c\'est bien le numéro de la vignette que vous collez.)')) return;
     this.erreur.set('');
     this.api.enregistrerVignetteInstance(v.dossier_id, v.instance_id, n).subscribe({
       next: () => { this.chargerVignettesAAffecter(); this.chargerStockVignettes(); this.chargerAchatsVignettes(); this.chargerUtilisationsVignettes(); this.charger(); },
@@ -1061,7 +1061,7 @@ export class DepensesComponent implements OnInit {
   }
   pad7(n: number | null | undefined): string { return String(n ?? 0).padStart(7, '0'); }
   annulerUtilisation(u: any): void {
-    const num = u.numero_vignette ? ' n°' + this.pad7(u.numero_vignette) : '';
+    const num = u.numero_vignette ? ' N°' + this.pad7(u.numero_vignette) : '';
     if (!confirm(`Annuler l’utilisation de la vignette${num} ? Elle sera remise en stock et la dépense correspondante supprimée.`)) return;
     this.erreur.set('');
     this.api.annulerUtilisationVignette(u.id).subscribe({
