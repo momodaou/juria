@@ -45,7 +45,7 @@ Permissions : table `permissions_role` + catalogue statique `backend/src/permiss
 - Code backend/DB en français fonctionnel (`dossiers`, `utilisateurs`, `mot_de_passe`…), cohérent avec le kit d'origine.
 - Toute décision structurante est consignée dans `HISTORY.md` **au fil de l'eau**, pas après coup ; garder ce fichier court (résumé + règles), le détail va dans `HISTORY.md`.
 - Répondre à l'utilisateur **en français**.
-- Boutons, champs et libellés sont définis **une seule fois** dans `frontend/src/styles.css` (`.btn` + `.ghost`/`.sm`/`.danger`, `.in`, `.sel`, `label`) : ne pas les redéfinir dans un composant (le 14/11/2026, 26 écrans en avaient chacun une copie qui divergeait). Numéros de procédure écrits « N°3 » (`frontend/src/app/core/procedures.ts`).
+- Boutons, champs et libellés sont définis **une seule fois** dans `frontend/src/styles.css` (`.btn` + `.ghost`/`.sm`/`.danger`, `.in`, `.sel`, `label`) : ne pas les redéfinir dans un composant (le 14/11/2026, 26 écrans en avaient chacun une copie qui divergeait). Numéros de procédure écrits « N°3 » (`frontend/src/app/core/procedures.ts`). Les boutons « Exporter (Excel) » et « Imprimer / PDF » (`core/export-print.component.ts`) sont **volontairement plus discrets** (12 px, compacts, blancs à contour gris) que les boutons standard : usage rare, décision de l'utilisateur du 14/11/2026 — ne pas les aligner.
 
 ## Pièges techniques récurrents (à vérifier systématiquement)
 1. **Pas de zone.js** : après un `.subscribe`, ne jamais muter une propriété d'un objet issu d'un signal — réécrire le signal (`.set()`/`.update()`). Un `computed()` ne se réévalue que si un **signal** change (pas une propriété modifiée par `[(ngModel)]`).
