@@ -74,9 +74,6 @@ import { AuthService } from './auth.service';
     .apporteurs .ligne select.in{flex:1 1 240px;width:auto}
     .apporteurs .ligne .part{flex:0 0 110px;width:110px}
     .apporteurs .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-    .apporteurs .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-    .apporteurs .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    .apporteurs .btn:disabled{opacity:.6}
     .apporteurs .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     .apporteurs label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .apporteurs .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:8px}

@@ -1398,13 +1398,7 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
     .grille-identite{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;margin:10px 0}
     .grille-identite label{display:block;font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .upload select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
     .actions-tuile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
-    .actions-tuile .btn{border:1px solid transparent}
-    .actions-tuile .btn.ghost{border-color:var(--line)}
-    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    .btn.ghost.danger{color:var(--red);border-color:#f0c8c5}
-    .btn:disabled{opacity:.6}
     .ia-tag{background:#eef;border:1px solid #d5d9f5;color:#43489a;border-radius:12px;padding:2px 9px;font-size:var(--fs-xs);font-weight:600;margin-left:8px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.attente{background:#fbf1dc;color:#9a6c12}

@@ -261,8 +261,6 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     .ta-modele{min-height:220px;resize:vertical;font-family:'Courier New',monospace;font-size:var(--fs-sm);max-width:100%}
     .edition{min-height:360px;resize:vertical;font-family:'Segoe UI',system-ui,sans-serif;font-size:var(--fs-base);max-width:100%;background:#f7f9fc}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .mode-switch{display:flex;gap:8px;margin-bottom:14px}
     .mode-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:var(--fs-base);cursor:pointer;color:var(--slate)}
     .mode-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}

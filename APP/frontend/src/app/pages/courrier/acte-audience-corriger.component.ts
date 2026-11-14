@@ -79,10 +79,6 @@ import { ApiService } from '../../core/api.service';
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:900px}
     .col2{grid-column:1 / -1}
-    .btn{display:inline-block;background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.ghost{background:transparent;border:1px solid var(--line);color:inherit}
-    .btn.danger{border-color:#c0392b;color:#c0392b}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
     .ok-msg{color:var(--green);font-size:var(--fs-base)}
     .muted-sm{font-size:var(--fs-xs);color:var(--grey)}
     .req{color:#c0392b}

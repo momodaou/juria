@@ -123,8 +123,6 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
   styles: [`
     .add{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
     .add select,.add input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .tag.moy{background:#fbf1dc;color:#9a6c12}
     .tag.done{background:#e3f5ec;color:#157a4f}
     .filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}

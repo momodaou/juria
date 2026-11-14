@@ -112,8 +112,6 @@ import { MenuActionsComponent, ActionMenuItem } from './menu-actions.component';
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:600px}
     .col2{grid-column:1 / -1}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .famille{display:flex;gap:8px;margin:6px 0 12px}
     .mode-btn{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:var(--fs-base);cursor:pointer;color:var(--slate)}
     .mode-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}

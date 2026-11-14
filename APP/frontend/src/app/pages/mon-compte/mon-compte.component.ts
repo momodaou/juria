@@ -60,8 +60,6 @@ import { libelleRole } from '../../core/roles';
   styles: [`
     .in{display:block;width:100%;max-width:360px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .meta{display:flex;gap:28px;flex-wrap:wrap}
     .meta span{display:block;font-size:var(--fs-xs);color:var(--grey)}
     .meta b{font-size:var(--fs-md)}

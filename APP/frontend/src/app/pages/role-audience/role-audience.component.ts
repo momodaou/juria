@@ -495,10 +495,6 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
        champ de formulaire pleine largeur avec marge basse, inadaptée dans
        une barre d'actions flex). */
     .in-semaine{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:var(--fs-sm)}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    .btn.sm{padding:6px 11px;font-size:var(--fs-sm)}
-    .btn:disabled{opacity:.6}
     .statut-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     tr.urgent td{background:#fff5f4}

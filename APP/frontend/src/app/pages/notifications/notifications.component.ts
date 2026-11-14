@@ -93,8 +93,6 @@ import { ApiService } from '../../core/api.service';
     }
   `,
   styles: [`
-    .btn { background: var(--gold); color: #1b2436; border: none; border-radius: 8px; padding: 9px 14px; font-weight: 600; cursor: pointer; font-size: var(--fs-base); }
-    .btn:disabled { opacity: .5; cursor: default; }
     .nt-barre { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
     .nt-chip { background: var(--light); border: none; border-radius: 999px; padding: 6px 14px; font-size: var(--fs-base); color: var(--slate); cursor: pointer; }
     .nt-chip.nt-on { background: var(--navy); color: #fff; }

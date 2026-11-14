@@ -197,7 +197,6 @@ const COLONNES = [
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
     .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
     @media(max-width:1180px){.kanban{grid-template-columns:1fr 1fr}}
     .colonne{background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:12px;min-height:140px}

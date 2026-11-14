@@ -87,8 +87,6 @@ import { AuthService } from '../../core/auth.service';
   styles: [`
     .in{display:block;width:100%;max-width:520px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
     .result.warn{background:#fffaf0;border:1px solid #f0dcae}
     .result.surligne{border:2px solid var(--navy);box-shadow:0 0 0 3px rgba(27,36,54,.12)}
     .match{margin-top:8px;font-size:var(--fs-base)}

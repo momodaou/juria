@@ -415,14 +415,8 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
     tr.groupe-titre td{background:var(--light);color:var(--navy);padding:7px 10px;font-size:var(--fs-base)}
     .groupe{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:#fffdf5}
     .sel,.in{font-family:inherit;border:1px solid var(--line);border-radius:8px;background:#fff;color:#22303f}
-    .sel{padding:8px 10px;font-size:var(--fs-base)}
     .in{display:block;width:100%;box-sizing:border-box;padding:9px 12px;margin:4px 0 0;font-size:var(--fs-base)}
     label{display:block;font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{font-family:inherit;background:var(--gold);color:#1b2436;border:1px solid var(--gold);border-radius:8px;padding:9px 16px;font-size:var(--fs-base);font-weight:600;cursor:pointer;text-decoration:none}
-    .btn.sm{padding:7px 13px}
-    .btn.ghost{background:#fff;border-color:var(--line);color:var(--slate)}
-    .btn.danger{color:var(--red);border-color:var(--red)}
-    .btn:disabled{opacity:.55;cursor:not-allowed}
     .barre{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0 20px}
     .btns{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:16px}
     .kpis{margin-bottom:0}

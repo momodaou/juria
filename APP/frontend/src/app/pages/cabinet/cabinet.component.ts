@@ -334,10 +334,7 @@ import { Router } from '@angular/router';
     .doublon{background:#fffaf0;border:1px solid #f0dcae;border-radius:10px;padding:14px 16px;margin-bottom:14px}
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
     .doublon .btns{display:flex;gap:8px;margin-top:10px}
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base)}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-    .btn.sm{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:var(--fs-base)}
-    .btn.sm:disabled{opacity:.6}
     .tag.ok{background:#e3f5ec;color:#157a4f}
     .tag.haute{background:#fbe6e5;color:#b13a36}
     .panel.alerte{border-left:4px solid var(--amber)}

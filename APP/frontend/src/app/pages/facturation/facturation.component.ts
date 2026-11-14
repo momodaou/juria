@@ -523,8 +523,6 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
     .nowrap-n{white-space:nowrap}
     .btns-ligne{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .recap{font-size:var(--fs-base);margin:10px 0}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .paiements{margin:8px 0;width:auto}
     .paiements td{padding:4px 18px 4px 0;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}

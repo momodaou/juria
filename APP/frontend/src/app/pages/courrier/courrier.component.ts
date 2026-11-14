@@ -21,10 +21,10 @@ import { LibellePipe } from '../../core/libelles';
       </div>
       <div class="entete-actions">
         @if (auth.peut('courriers.acte_audience.deposer')) {
-          <a class="btn btn-entete" routerLink="/courrier/acte-audience">Acte reçu avec audience</a>
+          <a class="btn sm" routerLink="/courrier/acte-audience">Acte reçu avec audience</a>
         }
         @if (auth.peut('courriers.creer')) {
-          <a class="btn btn-entete" routerLink="/courrier/rediger">Rédiger un courrier</a>
+          <a class="btn sm" routerLink="/courrier/rediger">Rédiger un courrier</a>
         }
       </div>
     </header>
@@ -397,10 +397,7 @@ import { LibellePipe } from '../../core/libelles';
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .entete-actions{display:flex;gap:8px;flex-wrap:wrap}
-    .btn-entete{display:inline-block;padding:6px 14px;font-size:var(--fs-sm);line-height:1.4;text-decoration:none;white-space:nowrap}
     .ok-msg{color:var(--green);font-size:var(--fs-base);margin-top:10px}
     .filtres{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
     .filtre{width:auto;margin:0;max-width:180px}

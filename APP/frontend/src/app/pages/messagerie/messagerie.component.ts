@@ -213,10 +213,6 @@ import { MessagerieService, Conversation, Message } from '../../core/messagerie.
     .liste-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
     .liste-head h3{margin:0}
     .nouvelle{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
-    .sel{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);width:100%}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.sm{padding:8px 12px;font-size:var(--fs-base)}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
 
     /* 12/10/2026 — constat de l'utilisateur : sans trait de séparation,
        l'espace entre 2 conversations (juste le "gap" de .liste) se

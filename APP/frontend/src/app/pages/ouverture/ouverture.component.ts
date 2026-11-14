@@ -178,7 +178,7 @@ import { LibellePipe } from '../../core/libelles';
                 ({{ d.statut | libelle:'statutDossier' }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
                 <span class="tag haute">même partie adverse</span>
                 @if (d.pole === 'contentieux') {
-                  <a class="btn ghost" style="margin-left:8px;padding:4px 10px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
+                  <a class="btn ghost sm" style="margin-left:8px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
                 }
               </p>
             }
@@ -398,7 +398,7 @@ import { LibellePipe } from '../../core/libelles';
                 }
                 @if (d.meme_adverse) { <span class="tag haute">même partie adverse</span> }
                 @if (d.pole === 'contentieux') {
-                  <a class="btn ghost" style="margin-left:8px;padding:4px 10px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
+                  <a class="btn ghost sm" style="margin-left:8px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
                 }
               </p>
             }
@@ -420,9 +420,6 @@ import { LibellePipe } from '../../core/libelles';
     .bandeau-courrier{background:var(--light);border-left:3px solid var(--gold);border-radius:8px;padding:10px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
     .in{display:block;width:100%;max-width:520px;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
-    .btn:disabled{opacity:.6}
     .result{margin-top:16px;border-radius:10px;padding:14px 16px}
     .result.ok{background:#e3f5ec;border:1px solid #9ed9bd}
     .result.warn{background:#fffaf0;border:1px solid #f0dcae}

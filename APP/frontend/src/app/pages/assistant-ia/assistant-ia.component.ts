@@ -93,8 +93,6 @@ const CAPACITES: CapaciteInfo[] = [
     .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md);font-family:inherit}
     .ta{min-height:130px;resize:vertical}
     label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
-    .btn{background:var(--gold);color:#1b2436;border:none;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer}
-    .btn:disabled{opacity:.6}
     .result{margin-top:16px;border-radius:10px;padding:14px 16px;background:#fffaf0;border:1px solid #f0dcae}
     .result pre{white-space:pre-wrap;font-family:inherit;font-size:var(--fs-base);margin-top:8px}
   `],
