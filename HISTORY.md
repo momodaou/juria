@@ -4989,3 +4989,16 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement procédures lot 3 (13/11/2026)
 - API `juria-00244-fcm`, web `juria-web-00318-7p5` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : ouverture d'un dossier pour un client ayant déjà un dossier contre la même partie (bouton « Ajouter une procédure à ce dossier »), sélecteur de procédure sur une facture et une saisie de temps, facture d'un incident (exclusion de la rétrocession invisible côté client), étiquette « Pas encore facturée ».
+
+### Procédures d'un dossier — alerte précoce d'ouverture et dossiers liés (14/11/2026, codé, NON déployé)
+- Décision de l'utilisateur : appliquer les recommandations (alerte précoce, puis lien réversible entre dossiers jumeaux ; pas de fusion, pas d'écran de correction de la procédure d'une facture, pas de changement de procédure d'audience depuis le Rôle). Les deux points se déploient ensemble.
+- Alerte précoce (écran seul, `ouverture.component.ts`) : dès que le client est choisi et qu'une partie adverse est saisie (attente de 450 ms), les dossiers du même client contre la même partie sont signalés en haut de l'étape 2, avec le bouton « Ajouter une procédure à ce dossier » (seulement si le dossier existant est contentieux : `pole` désormais renvoyé par `GET /dossiers/verifier-doublon`). Le contrôle au clic sur « Créer le dossier » reste un second filet.
+- Dossiers liés : migration `migration-dossiers-lies.sql` (idempotente, alignée dans `schema.sql`, non committée) : table `dossier_liens` (un lien par paire, quel que soit le sens ; nature incident / suite / lié). API `GET|POST /dossiers/:id/liens`, `DELETE /dossiers/:id/liens/:lienId` (modification : permission `dossiers.modifier`) ; relation lue du point de vue de chaque dossier (« est l'incident de » / « a pour incident », « est la suite de » / « a pour suite », « est lié à ») ; refus : lui-même, doublon, relation inconnue, dossier inconnu ; journal d'audit (`lier_dossier`, `delier_dossier`) ; un dossier déjà lié n'apparaît plus dans les « dossiers connexes » automatiques. Rien n'est déplacé (factures, audiences, numéro, étiquette restent dans chaque dossier). Panneau « Dossiers liés » dans la fiche.
+- Tests : `dossiersLies.test.js` (7). 103 suites / 1071. Build Angular OK. Non vu à l'écran.
+- Reste en réserve : fusion de dossiers jumeaux (seulement sur demande, copie de test et contrôle avant déplacement), écran de correction de la procédure d'une facture, changement de procédure d'une audience depuis le Rôle d'audience.
+
+### Migration dossiers liés importée (14/11/2026)
+- `migration-dossiers-lies.sql` importée dans Cloud SQL (utilisateur postgres, sans erreur, fichier temporaire supprimé). Code (API + frontend) à déployer : `./scripts/deploy.sh both`. D'ici là, la table `dossier_liens` est vide et inutilisée.
+
+### Déploiement alerte précoce d'ouverture + dossiers liés (14/11/2026)
+- API `juria-00245-2j8`, web `juria-web-00319-tbw` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : encadré d'alerte en haut de l'étape 2 de « Nouveau dossier » dès que client et partie adverse sont saisis ; panneau « Dossiers liés » dans une fiche dossier (lier, lire des deux côtés, retirer).

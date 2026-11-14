@@ -236,6 +236,16 @@ export class ApiService {
   }
   // Dossiers connexes (10/10/2026, même client ou même partie adverse,
   // calculé à la volée — voir CLAUDE.md/HISTORY.md).
+  // Dossiers liés (14/11/2026)
+  dossierLiens(id: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/liens`);
+  }
+  lierDossier(id: string, payload: { dossier_id: string; relation: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/api/dossiers/${id}/liens`, payload);
+  }
+  delierDossier(id: string, lienId: string): Observable<any> {
+    return this.http.delete(`${this.base}/api/dossiers/${id}/liens/${lienId}`);
+  }
   dossierConnexes(id: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/api/dossiers/${id}/connexes`);
   }

@@ -451,7 +451,7 @@ router.get("/verifier-doublon", async (req, res) => {
          SELECT regexp_replace(lower(COALESCE(NULLIF(denomination, ''), TRIM(COALESCE(prenom,'') || ' ' || COALESCE(nom,'')))), '[\\s\\-.,]', '', 'g') AS nom_norm
          FROM clients WHERE id = $1
        )
-       SELECT d.id, d.numero, d.intitule, d.objet, d.statut, d.date_ouverture,
+       SELECT d.id, d.numero, d.intitule, d.objet, d.statut, d.date_ouverture, d.pole,
               (d.client_id = $1) AS meme_client,
               (cardinality($2::text[]) > 0 AND ${memeAdverse}) AS meme_adverse,
               COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client_nom
@@ -684,6 +684,7 @@ router.get("/:id/connexes", async (req, res) => {
        SELECT d.id, d.numero, d.intitule, d.statut
        FROM dossiers d
        WHERE d.id <> $1
+         AND NOT EXISTS (SELECT 1 FROM dossier_liens l WHERE (l.dossier_a = $1 AND l.dossier_b = d.id) OR (l.dossier_b = $1 AND l.dossier_a = d.id))
          AND EXISTS (
            SELECT 1 FROM dossier_parties dp
            WHERE dp.dossier_id = d.id AND dp.denomination IS NOT NULL
@@ -694,6 +695,83 @@ router.get("/:id/connexes", async (req, res) => {
       [req.params.id]
     );
     res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+
+// Dossiers liés (14/11/2026) : relier deux dossiers de la même affaire sans rien déplacer. Le lien est enregistré une fois
+// (A est l'incident / la suite de B, ou simple lien) et se lit des deux côtés. Réversible.
+const RELATIONS_LIEN = {
+  incident_de: { nature: "incident", sens: "ab", libelle: "est l'incident de" },
+  a_pour_incident: { nature: "incident", sens: "ba", libelle: "a pour incident" },
+  suite_de: { nature: "suite", sens: "ab", libelle: "est la suite de" },
+  a_pour_suite: { nature: "suite", sens: "ba", libelle: "a pour suite" },
+  lie_a: { nature: "lie", sens: "ab", libelle: "est lié à" },
+};
+function relationVue(nature, estA) {
+  if (nature === "incident") return estA ? "incident_de" : "a_pour_incident";
+  if (nature === "suite") return estA ? "suite_de" : "a_pour_suite";
+  return "lie_a";
+}
+
+// GET /api/dossiers/:id/liens
+router.get("/:id/liens", async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT l.id, l.nature, (l.dossier_a = $1) AS est_a, d.id AS autre_id, d.numero, d.intitule, d.statut
+       FROM dossier_liens l
+       JOIN dossiers d ON d.id = CASE WHEN l.dossier_a = $1 THEN l.dossier_b ELSE l.dossier_a END
+       WHERE l.dossier_a = $1 OR l.dossier_b = $1
+       ORDER BY l.cree_le`, [req.params.id]);
+    res.json(rows.map((r) => {
+      const relation = relationVue(r.nature, r.est_a);
+      return { id: r.id, relation, libelle: RELATIONS_LIEN[relation].libelle, autre_id: r.autre_id, numero: r.numero, intitule: r.intitule, statut: r.statut };
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// POST /api/dossiers/:id/liens  { dossier_id, relation }  — relation : incident_de | a_pour_incident | suite_de | a_pour_suite | lie_a
+router.post("/:id/liens", requirePermission("dossiers.modifier"), async (req, res) => {
+  const b = req.body || {};
+  const rel = RELATIONS_LIEN[b.relation || "lie_a"];
+  if (!rel) return res.status(400).json({ error: "Relation invalide." });
+  if (!b.dossier_id) return res.status(400).json({ error: "Choisissez le dossier à lier." });
+  if (b.dossier_id === req.params.id) return res.status(400).json({ error: "Un dossier ne peut pas être lié à lui-même." });
+  try {
+    const { rows: dossiers } = await pool.query("SELECT id, numero FROM dossiers WHERE id = ANY($1::uuid[])", [[req.params.id, b.dossier_id]]);
+    if (dossiers.length !== 2) return res.status(404).json({ error: "Dossier introuvable." });
+    const [a, c] = rel.sens === "ab" ? [req.params.id, b.dossier_id] : [b.dossier_id, req.params.id];
+    const { rows: [deja] } = await pool.query(
+      "SELECT 1 FROM dossier_liens WHERE (dossier_a = $1 AND dossier_b = $2) OR (dossier_a = $2 AND dossier_b = $1)", [req.params.id, b.dossier_id]);
+    if (deja) return res.status(409).json({ error: "Ces deux dossiers sont déjà liés." });
+    const { rows: [lien] } = await pool.query(
+      "INSERT INTO dossier_liens (dossier_a, dossier_b, nature, cree_par) VALUES ($1,$2,$3,$4) RETURNING id", [a, c, rel.nature, req.user.sub]);
+    const autre = dossiers.find((d) => d.id === b.dossier_id);
+    await logAudit({ utilisateurId: req.user.sub, action: "lier_dossier", entite: "dossiers", entiteId: req.params.id,
+      details: { dossier_lie: autre ? autre.numero : null, relation: b.relation || "lie_a" }, ip: req.ip });
+    res.status(201).json({ id: lien.id });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// DELETE /api/dossiers/:id/liens/:lienId — retire le lien (les deux dossiers restent inchangés)
+router.delete("/:id/liens/:lienId", requirePermission("dossiers.modifier"), async (req, res) => {
+  try {
+    const { rows: [l] } = await pool.query(
+      `DELETE FROM dossier_liens WHERE id = $1 AND (dossier_a = $2 OR dossier_b = $2)
+       RETURNING (SELECT numero FROM dossiers WHERE id = CASE WHEN dossier_a = $2 THEN dossier_b ELSE dossier_a END) AS numero`,
+      [req.params.lienId, req.params.id]);
+    if (!l) return res.status(404).json({ error: "Lien introuvable." });
+    await logAudit({ utilisateurId: req.user.sub, action: "delier_dossier", entite: "dossiers", entiteId: req.params.id, details: { dossier_lie: l.numero }, ip: req.ip });
+    res.status(204).send();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Erreur serveur" });

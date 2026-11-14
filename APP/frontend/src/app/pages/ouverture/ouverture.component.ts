@@ -110,7 +110,7 @@ import { LibellePipe } from '../../core/libelles';
 
         <label>Client</label>
         <app-client-picker [valeur]="dossier.client_id" [nomInitial]="nomClientPreselectionne"
-                            (valeurChange)="dossier.client_id = $event"
+                            (valeurChange)="dossier.client_id = $event; chercherDossiersExistants()"
                             (clientChoisi)="onClientPrincipalChoisi($event)"
                             placeholder="Rechercher le client (nom, RCCM, NIF, email…)"></app-client-picker>
         @if (!dossier.client_id && clientNom && creationClientCible() !== 'principal') {
@@ -169,6 +169,23 @@ import { LibellePipe } from '../../core/libelles';
           </div>
         }
 
+        @if (dossiersExistants().length) {
+          <div class="doublon" id="bandeau-dossiers-existants" style="margin-bottom:14px">
+            <b>⚠ Ce client a déjà un dossier contre cette partie adverse :</b>
+            @for (d of dossiersExistants(); track d.id) {
+              <p>
+                <a class="lien" [routerLink]="['/dossiers', d.id]" target="_blank">{{ d.numero }} — {{ d.intitule }}</a>
+                ({{ d.statut | libelle:'statutDossier' }}, ouvert le {{ d.date_ouverture | date:'dd/MM/yyyy' }})
+                <span class="tag haute">même partie adverse</span>
+                @if (d.pole === 'contentieux') {
+                  <a class="btn ghost" style="margin-left:8px;padding:4px 10px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
+                }
+              </p>
+            }
+            <p class="hint">S'il s'agit de la même affaire (appel, défense à exécution, opposition…), ajoutez une procédure au dossier existant plutôt que d'ouvrir un nouveau dossier. Vous pouvez aussi continuer ici si c'est une affaire distincte.</p>
+          </div>
+        }
+
         <label>Autres clients sur ce dossier (facultatif — personnes physiques ou morales additionnelles)</label>
         <app-client-picker [exclureIds]="exclureAdditionnels()" [reinitialiserApresChoix]="true"
                             placeholder="Rechercher un client à ajouter…"
@@ -186,7 +203,8 @@ import { LibellePipe } from '../../core/libelles';
 
         <label>Parties adverses (séparées par des virgules, facultatif)</label>
         <input class="in" [(ngModel)]="partiesAdversesEdit" name="partiesAdversesEdit"
-               (ngModelChange)="suggererIntitule()" placeholder="Ex. SODIMA Sarl, M. Traoré" />
+               (ngModelChange)="suggererIntitule(); planifierRechercheExistants()" placeholder="Ex. SODIMA Sarl, M. Traoré" />
+        <p class="muted" style="margin:-8px 0 12px">Dès que vous saisissez une partie adverse, JURIA vérifie si ce client a déjà un dossier contre elle.</p>
 
         <label>Intitulé du dossier</label>
         <input class="in" [(ngModel)]="intituleDossier" name="intituleDossier"
@@ -379,7 +397,7 @@ import { LibellePipe } from '../../core/libelles';
                   <span class="hint"> — pour « {{ d.client_nom }} », une fiche client au nom quasi identique : vérifiez qu'il ne s'agit pas de deux fiches pour le même client (Clients & KYC).</span>
                 }
                 @if (d.meme_adverse) { <span class="tag haute">même partie adverse</span> }
-                @if (dossier.pole === 'contentieux') {
+                @if (d.pole === 'contentieux') {
                   <a class="btn ghost" style="margin-left:8px;padding:4px 10px" [routerLink]="['/dossiers', d.id]" [queryParams]="paramsNouvelleProcedure()">Ajouter une procédure à ce dossier</a>
                 }
               </p>
@@ -727,6 +745,7 @@ export class OuvertureComponent implements OnInit {
         const nom = this.nouveauClient.denomination || `${this.nouveauClient.prenom ?? ''} ${this.nouveauClient.nom ?? ''}`.trim();
         if (cible === 'principal') {
           this.dossier.client_id = r.id;
+          this.chercherDossiersExistants();
           this.nomClientPreselectionne = nom;
           this.nomClientPrincipal = nom;
         } else {
@@ -889,6 +908,7 @@ export class OuvertureComponent implements OnInit {
         });
         if (trouve) {
           this.dossier.client_id = trouve.id;
+          this.chercherDossiersExistants();
           this.nomClientPreselectionne = trouve.denomination || `${trouve.prenom} ${trouve.nom}`;
           this.nomClientPrincipal = this.nomClientPreselectionne;
           this.suggererIntitule();
@@ -905,6 +925,27 @@ export class OuvertureComponent implements OnInit {
   // dossier lui-même. Même principe que creerClientInline : on prévient,
   // sans jamais bloquer, l'utilisateur décide.
   readonly doublonsDossier = signal<any[]>([]);
+  // Alerte précoce (13-14/11/2026) : dès que le client est choisi et qu'une partie adverse est saisie, les dossiers du même
+  // client contre la même partie sont signalés en haut de l'étape 2, sans attendre le clic sur « Créer le dossier ».
+  readonly dossiersExistants = signal<any[]>([]);
+  private minuteurExistants: ReturnType<typeof setTimeout> | null = null;
+  planifierRechercheExistants(): void {
+    if (this.minuteurExistants) clearTimeout(this.minuteurExistants);
+    this.minuteurExistants = setTimeout(() => this.chercherDossiersExistants(), 450);
+  }
+  chercherDossiersExistants(): void {
+    const clientId = this.dossier.client_id;
+    const adverses = (this.partiesAdversesEdit || '').split(',').map((x: string) => x.trim()).filter(Boolean).join(',');
+    if (!clientId || !adverses) { this.dossiersExistants.set([]); return; }
+    this.api.verifierDoublonDossier(clientId, undefined, adverses).subscribe({
+      next: (liste) => {
+        // le client ou les parties ont pu changer pendant l'appel
+        if (this.dossier.client_id !== clientId) return;
+        this.dossiersExistants.set(liste.filter((d: any) => d.meme_adverse));
+      },
+      error: () => this.dossiersExistants.set([]),
+    });
+  }
   // Ouverture guidée (lot 3, 13/11/2026) : au lieu d'ouvrir un second dossier pour la même affaire, on ouvre la fiche du dossier
   // existant avec le formulaire d'ajout de procédure prérempli (juridiction et degré saisis ici). Rien n'est créé automatiquement.
   paramsNouvelleProcedure(): Record<string, string> {

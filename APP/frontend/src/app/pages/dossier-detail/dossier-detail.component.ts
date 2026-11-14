@@ -11,11 +11,12 @@ import { viserElement } from '../../core/cible-notification';
 import { libelleRole } from '../../core/roles';
 import { LibellePipe } from '../../core/libelles';
 import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component';
+import { DossierPickerComponent } from '../../core/dossier-picker.component';
 
 @Component({
   selector: 'app-dossier-detail',
   standalone: true,
-  imports: [LibellePipe, DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent, ApporteursPanelComponent],
+  imports: [LibellePipe, DatePipe, DecimalPipe, RouterLink, FormsModule, ClientPickerComponent, MenuActionsComponent, ApporteursPanelComponent, DossierPickerComponent],
   template: `
     <a routerLink="/dossiers" class="back">← Retour aux dossiers</a>
 
@@ -165,6 +166,44 @@ import { ApporteursPanelComponent } from '../../core/apporteurs-panel.component'
           }
         </div>
       }
+
+      <section class="panel" id="dossiers-lies">
+        <h3>Dossiers liés</h3>
+        <p class="muted">Reliez ce dossier à un autre dossier de la même affaire (par exemple un appel et une défense à exécution ouverts séparément). Rien n'est déplacé : chaque dossier garde son numéro, son étiquette, ses audiences et ses factures. Le lien se retire à tout moment.</p>
+        @if (liens().length) {
+          <table>
+            <tr><th>Ce dossier…</th><th>Dossier</th><th>Statut</th><th></th></tr>
+            @for (l of liens(); track l.id) {
+              <tr>
+                <td>{{ l.libelle }}</td>
+                <td><a class="lien" [routerLink]="['/dossiers', l.autre_id]">{{ l.numero }}</a> — {{ l.intitule }}</td>
+                <td>{{ l.statut | libelle:'statutDossier' }}</td>
+                <td>@if (auth.peut('dossiers.modifier')) { <button class="lien" (click)="delierDossier(l)">Retirer le lien</button> }</td>
+              </tr>
+            }
+          </table>
+        } @else { <p class="muted">Aucun dossier lié.</p> }
+        @if (auth.peut('dossiers.modifier')) {
+          <div class="grid2" style="margin-top:12px">
+            <div>
+              <label>Ce dossier…</label>
+              <select class="in" [(ngModel)]="nouveauLien.relation" name="lienRelation">
+                <option value="lie_a">est lié à</option>
+                <option value="incident_de">est l'incident de</option>
+                <option value="a_pour_incident">a pour incident</option>
+                <option value="suite_de">est la suite de</option>
+                <option value="a_pour_suite">a pour suite</option>
+              </select>
+            </div>
+            <div>
+              <label>Dossier</label>
+              <app-dossier-picker [valeur]="nouveauLien.dossier_id || null" (valeurChange)="nouveauLien.dossier_id = $event ?? ''"></app-dossier-picker>
+            </div>
+          </div>
+          <button class="btn" (click)="lierDossier()" [disabled]="!nouveauLien.dossier_id || lienEnCours()">{{ lienEnCours() ? 'Enregistrement…' : 'Lier les deux dossiers' }}</button>
+          @if (erreurLien()) { <p class="err">{{ erreurLien() }}</p> }
+        }
+      </section>
 
       <section class="panel">
         <h3>Référencement & étiquette</h3>
@@ -1497,6 +1536,37 @@ export class DossierDetailComponent implements OnInit {
     this.api.dossierConnexes(dossierId).subscribe({ next: (c) => this.connexes.set(c), error: () => {} });
   }
 
+  // Dossiers liés (14/11/2026) : lien enregistré une fois, lu des deux côtés, réversible, sans rien déplacer.
+  readonly liens = signal<any[]>([]);
+  readonly lienEnCours = signal(false);
+  readonly erreurLien = signal('');
+  nouveauLien: { relation: string; dossier_id: string } = { relation: 'lie_a', dossier_id: '' };
+  private chargerLiens(dossierId: string): void {
+    this.api.dossierLiens(dossierId).subscribe({ next: (l) => this.liens.set(l), error: () => {} });
+  }
+  lierDossier(): void {
+    if (!this.nouveauLien.dossier_id) return;
+    this.erreurLien.set('');
+    this.lienEnCours.set(true);
+    this.api.lierDossier(this.id, this.nouveauLien).subscribe({
+      next: () => {
+        this.lienEnCours.set(false);
+        this.nouveauLien = { relation: 'lie_a', dossier_id: '' };
+        this.chargerLiens(this.id);
+        this.chargerConnexes(this.id);
+      },
+      error: (e) => { this.lienEnCours.set(false); this.erreurLien.set(e?.error?.error ?? 'Lien impossible.'); },
+    });
+  }
+  delierDossier(l: any): void {
+    if (!window.confirm(`Retirer le lien avec ${l.numero} ? Les deux dossiers restent inchangés.`)) return;
+    this.erreurLien.set('');
+    this.api.delierDossier(this.id, l.id).subscribe({
+      next: () => { this.chargerLiens(this.id); this.chargerConnexes(this.id); },
+      error: (e) => this.erreurLien.set(e?.error?.error ?? 'Retrait impossible.'),
+    });
+  }
+
   readonly fichier = signal<File | null>(null);
   readonly envoi = signal(false);
   readonly erreurDepot = signal('');
@@ -2024,6 +2094,8 @@ export class DossierDetailComponent implements OnInit {
     modifier_identite_actes: 'identité détaillée d\'une partie modifiée',
     basculer_pro_bono: 'statut pro bono modifié',
     creer_instance: 'instance ajoutée',
+    lier_dossier: 'dossier lié',
+    delier_dossier: 'lien avec un dossier retiré',
     modifier_instance: 'instance modifiée',
     supprimer_instance: 'instance retirée',
     creer_partie: 'partie ajoutée',
@@ -2571,6 +2643,7 @@ export class DossierDetailComponent implements OnInit {
     });
     this.chargerLiensRapides(id);
     this.chargerConnexes(id);
+    this.chargerLiens(id);
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     this.api.listesValeurs('statut_procedure').subscribe({ next: (l) => this.statutsProcedure.set(l) });
     this.api.listesValeurs('juridiction').subscribe({ next: (l) => this.juridictions.set(l) });

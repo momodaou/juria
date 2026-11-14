@@ -6298,3 +6298,21 @@ ALTER TABLE factures ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instan
 ALTER TABLE temps    ADD COLUMN IF NOT EXISTS instance_id UUID REFERENCES instances(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_factures_instance ON factures(instance_id);
 CREATE INDEX IF NOT EXISTS idx_temps_instance ON temps(instance_id);
+
+-- =====================================================================
+--  DOSSIERS LIÉS (14/11/2026) : relier deux dossiers de la même affaire (ex. appel et défense à exécution ouverts séparément).
+--  Un lien ne déplace rien : chaque dossier garde ses factures, audiences, numéro et étiquette. Réversible.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS dossier_liens (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dossier_a  UUID NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
+    dossier_b  UUID NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
+    nature     VARCHAR(12) NOT NULL DEFAULT 'lie',     -- incident : A est l'incident de B ; suite : A est la suite de B ; lie : lien simple
+    cree_par   UUID REFERENCES utilisateurs(id),
+    cree_le    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (dossier_a <> dossier_b)
+);
+-- un seul lien par paire de dossiers, quel que soit le sens
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dossier_liens_paire ON dossier_liens (LEAST(dossier_a, dossier_b), GREATEST(dossier_a, dossier_b));
+CREATE INDEX IF NOT EXISTS idx_dossier_liens_a ON dossier_liens(dossier_a);
+CREATE INDEX IF NOT EXISTS idx_dossier_liens_b ON dossier_liens(dossier_b);
