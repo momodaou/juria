@@ -1436,7 +1436,8 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
     .defile{overflow-x:auto}
     .procedures td{vertical-align:top}
     .procedures .tag{white-space:nowrap}
-    .proc-num{font-weight:700;font-size:var(--fs-md);white-space:nowrap}
+    .proc-num{font-weight:700;white-space:nowrap}
+    .procedures .proc-sous{font-size:var(--fs-base)}
     .procedures .lien{white-space:nowrap}
     .pile .proc-sous{white-space:nowrap}
     .proc-fleche{color:var(--gold);margin-right:5px;font-weight:400}
