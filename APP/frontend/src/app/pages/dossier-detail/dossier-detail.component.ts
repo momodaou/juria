@@ -2630,9 +2630,43 @@ export class DossierDetailComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    const id = this.route.snapshot.paramMap.get('id');
-    if (!id) return;
-    this.id = id;
+    // La fiche d'un dossier est la même route pour tous les dossiers : cliquer sur un dossier connexe ou lié depuis la fiche d'un
+    // autre dossier réutilise ce composant, seul le paramètre change (l'adresse change mais rien ne se rechargeait). On suit donc
+    // le paramètre au lieu de ne le lire qu'une fois (14/11/2026).
+    this.route.paramMap.subscribe((p) => {
+      const id = p.get('id');
+      if (!id || id === this.id) return;
+      const changement = !!this.id;
+      this.id = id;
+      if (changement) this.reinitialiserVue();
+      this.chargerDossier(id);
+    });
+  }
+
+  // Remet à zéro tout ce qui appartenait au dossier précédent (données et états d'édition) avant de charger le suivant.
+  private reinitialiserVue(): void {
+    this.dossier.set(null);
+    this.audiences.set([]);
+    this.diligences.set([]);
+    this.documents.set([]);
+    this.temps.set([]);
+    this.connexes.set([]);
+    this.liens.set([]);
+    this.erreur.set('');
+    this.modeEdition.set(false);
+    this.editionAudienceId.set(null);
+    this.instanceEnEdition.set(null);
+    this.instanceVignetteEnEdition.set(null);
+    this.etiquetteProcedureId.set('');
+    this.nouvelleInstance = { degre: 'premiere_instance', juridiction: '', nature: 'principale' };
+    this.procedureTemps = '';
+    this.nouveauLien = { relation: 'lie_a', dossier_id: '' };
+    this.erreurLien.set('');
+    this.erreurInstance.set('');
+    window.scrollTo({ top: 0 });
+  }
+
+  private chargerDossier(id: string): void {
     this.etiquette.set(null);
     this.api.dossier(id).subscribe({
       next: (d) => {

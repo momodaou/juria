@@ -5002,3 +5002,8 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 
 ### Déploiement alerte précoce d'ouverture + dossiers liés (14/11/2026)
 - API `juria-00245-2j8`, web `juria-web-00319-tbw` (100 % du trafic). Vérifications : `/health` 200, `/` 200. Migration importée juste avant. À essayer à l'écran : encadré d'alerte en haut de l'étape 2 de « Nouveau dossier » dès que client et partie adverse sont saisis ; panneau « Dossiers liés » dans une fiche dossier (lier, lire des deux côtés, retirer).
+
+### Correctif : cliquer sur un dossier connexe ou lié depuis une fiche dossier (14/11/2026, codé, NON déployé)
+- Constat de l'utilisateur : les « dossiers connexes » d'une fiche ne se comportaient pas comme cliquables. Cause : la fiche d'un dossier est la même route pour tous les dossiers ; passer d'un dossier à un autre réutilise le composant et seul le paramètre d'adresse change, or `ngOnInit` ne lisait ce paramètre qu'une fois (`snapshot`) : l'adresse changeait, le contenu non. Défaut ancien (connexes du 10/10/2026), qui touchait aussi le panneau « Dossiers liés » ajouté le même jour.
+- Correctif (écran seul, `dossier-detail.component.ts`) : le composant suit `route.paramMap` ; au changement de dossier il remet à zéro les données et états d'édition du précédent, remonte en haut de page et recharge le nouveau. Aucun changement d'API ni de base. Déploiement : `./scripts/deploy.sh web`.
+- Déployé le 14/11/2026 : web `juria-web-00320-ksk` (API inchangée : `juria-00245-2j8`). Vérifications : `/` 200, `/health` 200.
