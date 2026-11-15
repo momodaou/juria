@@ -138,7 +138,7 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
           </select>
         </label>
         <label>Compte à créditer
-          <select [(ngModel)]="compteReglementId" name="compteTemps">
+          <select [(ngModel)]="compteReglementIdTemps" name="compteTemps">
             <option value="">— non précisé —</option>
             @for (c of comptes(); track c.id) {
               <option [value]="c.id">{{ c.intitule }}{{ c.banque ? ' — ' + c.banque : '' }}</option>
@@ -146,24 +146,24 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
           </select>
         </label>
         <label>Date d'émission
-          <input type="date" [(ngModel)]="dateEmission" name="dateEmissionTemps" [max]="aujourdhui" />
+          <input type="date" [(ngModel)]="dateEmissionTemps" name="dateEmissionTemps" [max]="aujourdhui" />
           <span class="hint">Par défaut : aujourd'hui. À modifier pour une facture émise avant JURIA.</span>
         </label>
         <label>N° d'origine (facultatif)
-          <input [(ngModel)]="numeroOrigine" name="numeroOrigineTemps" maxlength="60" placeholder="Ancien numéro, si facture émise avant JURIA" />
+          <input [(ngModel)]="numeroOrigineTemps" name="numeroOrigineTemps" maxlength="60" placeholder="Ancien numéro, si facture émise avant JURIA" />
         </label>
         <label class="large">Mention (facultatif)
-          <input [(ngModel)]="mention" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" />
+          <input [(ngModel)]="mentionTemps" name="mentionTemps" placeholder="ex. Frais de virement à la charge du client" />
         </label>
         @if (auth.peut('factures.paiement.ajouter')) {
           <label class="case-integrale"><input type="checkbox" [ngModel]="acompteIntegralTemps" (ngModelChange)="choisirIntegralTemps($event)" name="acIntT" /> Payée intégralement à l'émission <span class="muted">(le total TTC est repris automatiquement)</span></label>
           @if (!acompteIntegralTemps) {
             <label>Ou acompte reçu à l'émission (facultatif)
-              <input type="number" [(ngModel)]="acompteMontant" name="acMntT" placeholder="Montant déjà payé" style="max-width:170px" />
+              <input type="number" [(ngModel)]="acompteMontantTemps" name="acMntT" placeholder="Montant déjà payé" style="max-width:170px" />
             </label>
           }
-          @if (acompteIntegralTemps || acompteMontant) {
-            <app-reglement-form [modele]="acompte" [catalogue]="catalogue()" [compteParDefaut]="compteReglementId || null" [fraisParDefaut]="fraisParDefaut(mention)" (validite)="acompteValide.set($event)"></app-reglement-form>
+          @if (acompteIntegralTemps || acompteMontantTemps) {
+            <app-reglement-form [modele]="acompteTemps" [catalogue]="catalogue()" [compteParDefaut]="compteReglementIdTemps || null" [fraisParDefaut]="fraisParDefaut(mentionTemps)" (validite)="acompteValideTemps.set($event)"></app-reglement-form>
           }
         }
       </div>
@@ -204,7 +204,7 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
           @if (deboursARefacturer().length) { <strong> — Débours sélectionnés : {{ totalDeboursSelectionnes() | number }} FCFA</strong> }
         </p>
         @if (auth.peut('factures.creer')) {
-          <button class="btn" (click)="facturerTemps()" [disabled]="(!tempsSelectionnes().size && !deboursSelectionnes().size) || creationFactureEnCours() || ((acompteIntegralTemps || acompteMontant) && !acompteValide())">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre la facture' }}</button>
+          <button class="btn" (click)="facturerTemps()" [disabled]="(!tempsSelectionnes().size && !deboursSelectionnes().size) || creationFactureEnCours() || ((acompteIntegralTemps || acompteMontantTemps) && !acompteValideTemps())">{{ creationFactureEnCours() ? 'Émission…' : 'Émettre la facture' }}</button>
         }
       } @else if (dossierTempsId) {
         <p class="muted">Rien en attente de facturation pour ce dossier (ni temps facturable, ni débours décaissé refacturable).</p>
@@ -606,7 +606,7 @@ export class FacturationComponent implements OnInit {
   // Réglage/informations de paiement (28/08/2026, facture PDF enrichie) —
   // mode_reglement/compte_reglement_id/mention existaient déjà au schéma
   // depuis le 17/08/2026 mais n'étaient acceptés par aucune route avant ce
-  // jour ; partagés entre les deux formulaires d'émission ci-dessous.
+  // jour ; chaque formulaire d'émission a son propre état (voir *Temps ci-dessous).
   compteReglementId = '';
   // Acompte / provision reçu à l'émission (16/10/2026) — premier paiement partiel
   // enregistré avec la facture ; les suivants via le panneau « Paiements ».
@@ -614,9 +614,19 @@ export class FacturationComponent implements OnInit {
   acompteIntegral = false;           // formulaire « Nouvelle facture »
   acompteIntegralTemps = false;      // formulaire « Facturer un dossier (temps + débours) » : état propre, pour ne jamais cocher l'un en cochant l'autre
   choisirIntegral(v: boolean): void { this.acompteIntegral = v; if (v) this.acompteMontant = null; }
-  choisirIntegralTemps(v: boolean): void { this.acompteIntegralTemps = v; if (v) this.acompteMontant = null; }
+  choisirIntegralTemps(v: boolean): void { this.acompteIntegralTemps = v; if (v) this.acompteMontantTemps = null; }
   acompte: any = this.modeleReglement();
   readonly acompteValide = signal(true);
+  // Formulaire « Facturer un dossier (temps + débours) » : état ENTIÈREMENT propre (15/11/2026). Jusqu'ici les deux formulaires
+  // partageaient compte, date, n° d'origine, mention et acompte : ce qui était saisi dans l'un apparaissait dans l'autre et partait
+  // avec lui à l'émission.
+  compteReglementIdTemps = '';
+  mentionTemps = '';
+  dateEmissionTemps = '';
+  numeroOrigineTemps = '';
+  acompteMontantTemps: number | null = null;
+  acompteTemps: any = this.modeleReglement();
+  readonly acompteValideTemps = signal(true);
   // Catalogue des moyens d'encaissement (20/10/2026) : une seule liste, servie par le serveur.
   readonly catalogue = signal<MoyenPaiement[]>([]);
   // Frais retenus : à la charge du client par défaut si la facture le mentionne.
@@ -764,30 +774,39 @@ export class FacturationComponent implements OnInit {
       .reduce((somme, d) => somme + Number(d.montant), 0);
   }
 
-  // Injecte compte à créditer / mode de règlement / mention dans un payload
-  // de création de facture — partagé par les deux formulaires d'émission.
-  private ajouterInfosReglement(payload: any, integral: boolean): void {
-    if (this.compteReglementId) { payload.compte_reglement_id = this.compteReglementId; payload.mode_reglement = 'virement'; }
-    if (this.mention) payload.mention = this.mention;
-    if (this.dateEmission) payload.date_emission = this.dateEmission;
-    if (this.numeroOrigine.trim()) payload.numero_origine = this.numeroOrigine.trim();
-    if (integral) {
-      payload.acompte = { integral: true, ...this.reglementPourEnvoi(this.acompte) };
-    } else if (this.acompteMontant && this.acompteMontant > 0) {
-      payload.acompte = { montant: this.acompteMontant, ...this.reglementPourEnvoi(this.acompte) };
+  // Valeurs saisies dans l'un ou l'autre formulaire d'émission (chacun a son propre état).
+  private etatNouvelle() {
+    return { compte: this.compteReglementId, mention: this.mention, date: this.dateEmission, numero: this.numeroOrigine,
+      integral: this.acompteIntegral, montant: this.acompteMontant, acompte: this.acompte };
+  }
+  private etatTemps() {
+    return { compte: this.compteReglementIdTemps, mention: this.mentionTemps, date: this.dateEmissionTemps, numero: this.numeroOrigineTemps,
+      integral: this.acompteIntegralTemps, montant: this.acompteMontantTemps, acompte: this.acompteTemps };
+  }
+  // Injecte compte à créditer / mode de règlement / mention / paiement à l'émission dans un payload de création de facture.
+  private ajouterInfosReglement(payload: any, e: { compte: string; mention: string; date: string; numero: string; integral: boolean; montant: number | null; acompte: any }): void {
+    if (e.compte) { payload.compte_reglement_id = e.compte; payload.mode_reglement = 'virement'; }
+    if (e.mention) payload.mention = e.mention;
+    if (e.date) payload.date_emission = e.date;
+    if (e.numero.trim()) payload.numero_origine = e.numero.trim();
+    if (e.integral) {
+      payload.acompte = { integral: true, ...this.reglementPourEnvoi(e.acompte) };
+    } else if (e.montant && e.montant > 0) {
+      payload.acompte = { montant: e.montant, ...this.reglementPourEnvoi(e.acompte) };
     }
   }
-  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompteIntegral = false; this.acompteIntegralTemps = false; this.acompte = this.modeleReglement(); this.dateEmission = ''; this.numeroOrigine = ''; }
+  private reinitialiserAcompte(): void { this.acompteMontant = null; this.acompteIntegral = false; this.acompte = this.modeleReglement(); this.dateEmission = ''; this.numeroOrigine = ''; }
+  private reinitialiserAcompteTemps(): void { this.acompteMontantTemps = null; this.acompteIntegralTemps = false; this.acompteTemps = this.modeleReglement(); this.dateEmissionTemps = ''; this.numeroOrigineTemps = ''; }
 
   facturerTemps(): void {
     this.message.set(''); this.erreur.set('');
     const payload: any = { dossier_id: this.dossierTempsId, mode: this.modeTemps };
     if (this.tempsSelectionnes().size) payload.temps_ids = Array.from(this.tempsSelectionnes());
     if (this.deboursSelectionnes().size) payload.depense_ids = Array.from(this.deboursSelectionnes());
-    this.ajouterInfosReglement(payload, this.acompteIntegralTemps);
+    this.ajouterInfosReglement(payload, this.etatTemps());
     this.creationFactureEnCours.set(true);
     this.api.creerFacture(payload).subscribe({
-      next: (f) => { this.creationFactureEnCours.set(false); this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.reinitialiserAcompte(); this.rafraichir(); },
+      next: (f) => { this.creationFactureEnCours.set(false); this.message.set(`Facture ${f.numero} émise (TTC ${f.montant_ttc} ${f.devise}).`); this.reinitialiserAcompteTemps(); this.rafraichir(); },
       error: (e) => { this.creationFactureEnCours.set(false); this.erreur.set(e?.error?.error ?? 'Émission impossible'); },
     });
   }
@@ -1165,7 +1184,7 @@ export class FacturationComponent implements OnInit {
     if (this.objet) payload.objet = this.objet;
     if (this.tva !== null) payload.taux_tva = this.tva;
     if ((this.devise === 'USD' || this.devise === 'GBP') && this.tauxApplique) payload.taux_applique = this.tauxApplique;
-    this.ajouterInfosReglement(payload, this.acompteIntegral);
+    this.ajouterInfosReglement(payload, this.etatNouvelle());
     this.creationFactureEnCours.set(true);
     this.api.creerFacture(payload).subscribe({
       next: (f) => {
