@@ -327,8 +327,8 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
       </div>
       @if (encaissements(); as e) {
         @if (e.lignes.length) {
-          <p><strong>Total encaissé : {{ e.total_xof | number }} FCFA</strong>
-            @for (t of e.totaux; track t.mode) { · {{ libelleMoyen(t.mode) }} : {{ t.montant_xof | number }} ({{ t.nb }}) }
+          <p class="total-encaisse"><strong>Total encaissé : {{ e.total_xof | number }} FCFA</strong>
+            @for (t of e.totaux; track t.mode) { <span class="moyen-total">{{ libelleMoyen(t.mode) }} : {{ t.montant_xof | number }} ({{ t.nb }})</span> }
           </p>
           <div class="table-scroll">
           <table>
@@ -372,7 +372,7 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
           <tr><th class="nowrap">N°</th><th class="nowrap">Émise le</th><th>Client</th><th class="nowrap">Dossier</th><th>Mode</th><th>HT</th><th>TTC</th><th>Encaissé</th><th>Reliquat</th>@if (afficherContreValeur()) { <th>Contre-valeur FCFA</th> }<th>Statut</th><th></th></tr>
           @for (f of factures(); track f.id) {
             <tr>
-              <td class="nowrap">{{ f.numero }}@if (f.numero_origine) { <br /><span class="muted" title="Numéro d'origine (avant JURIA)">Réf. d'origine : {{ f.numero_origine }}</span> }</td>
+              <td class="nowrap">{{ f.numero }}@if (f.numero_origine) { <div class="origine" [title]="titreOrigine(f.numero_origine)">Orig. {{ f.numero_origine }}</div> }</td>
               <td class="nowrap">{{ f.date_emission ? (f.date_emission | date:'dd/MM/yyyy') : '—' }}</td>
               <td><a class="lien" [routerLink]="['/clients', f.client_id]">{{ f.client }}</a></td>
               <td class="nowrap">@if (f.dossier_id) { <a class="lien" [routerLink]="['/dossiers', f.dossier_id]">{{ f.dossier_numero }}</a> } @else { — }
@@ -530,6 +530,9 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
     .form label{display:flex;flex-direction:column;font-size:var(--fs-sm);color:var(--slate);font-weight:600;gap:4px}
     .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:0 10px;height:36px;box-sizing:border-box;width:100%;min-width:0;font-size:var(--fs-base);font-family:inherit}
     .nowrap-n{white-space:nowrap}
+    .origine{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs);color:var(--grey);margin-top:2px}
+    .total-encaisse{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px;font-size:var(--fs-base);margin:12px 0}
+    .moyen-total{color:var(--slate)}
     .btns-ligne{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
     .recap{font-size:var(--fs-base);margin:10px 0}
     .paiements{margin:8px 0;width:auto}
@@ -822,6 +825,7 @@ export class FacturationComponent implements OnInit {
 
   // Menu "⋮" (19/09/2026).
   dev(code: string): string { return code === 'XOF' ? 'FCFA' : code; }
+  titreOrigine(numero: string): string { return `Numéro d'origine (avant JURIA) : ${numero}`; }
   libelleMode(m: string): string {
     return ({ temps_passe: 'Temps passé', forfait: 'Forfait', success_fee: 'Success fee', abonnement: 'Abonnement', consultation: 'Consultation', autre: 'Autre' } as any)[m] ?? m;
   }
