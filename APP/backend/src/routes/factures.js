@@ -498,8 +498,10 @@ router.post("/", requirePermission("factures.creer"), async (req, res) => {
     // Acompte / provision reçu à l'émission (16/10/2026) : un premier
     // paiement partiel enregistré dans la même transaction que la facture.
     let acompteEnregistre = null;
-    if (b.acompte && Number(b.acompte.montant) > 0) {
-      const mnt = Math.round(Number(b.acompte.montant));
+    // « Payée intégralement à l'émission » (15/11/2026) : acompte.integral = true reprend le total TTC calculé ici, sans que l'utilisateur
+    // ait à le connaître ni à le saisir (TVA, frais et débours inclus).
+    if (b.acompte && (b.acompte.integral === true || Number(b.acompte.montant) > 0)) {
+      const mnt = b.acompte.integral === true ? Math.round(Number(rows[0].montant_ttc)) : Math.round(Number(b.acompte.montant));
       if (!b.acompte.mode) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Acompte : moyen de paiement requis." }); }
       if (mnt > Math.round(Number(rows[0].montant_ttc))) {
         await client.query("ROLLBACK");
