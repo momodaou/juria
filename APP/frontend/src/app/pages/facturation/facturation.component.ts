@@ -1,4 +1,5 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { skip } from 'rxjs';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -676,6 +677,14 @@ export class FacturationComponent implements OnInit {
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.filtreRetard.set(params.get('statut') === 'impayees');
     this.rafraichir();
+    // Les liens « voir tout… » mènent à la même page sans filtre : la page est réutilisée et seule l'adresse change. On suit donc
+    // l'adresse (hors première émission, déjà lue ci-dessus) au lieu de ne la lire qu'une fois (15/11/2026).
+    this.route.queryParamMap.pipe(skip(1)).subscribe((p) => {
+      this.filtreDossierId.set(p.get('dossier'));
+      this.filtreDossierNumero.set(p.get('dossierLabel'));
+      this.filtreRetard.set(p.get('statut') === 'impayees');
+      this.rafraichir();
+    });
   }
 
   // Vue Encaissements (16/10/2026) : une ligne par paiement + total par moyen.

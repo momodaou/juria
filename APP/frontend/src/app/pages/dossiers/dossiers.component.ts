@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal, OnInit } from '@angular/core';
+import { skip } from 'rxjs';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -135,6 +136,20 @@ export class DossiersComponent implements OnInit {
     const h = params.get('honoraires');
     if (h && ['a_relancer', 'en_attente', 'toujours_pas', 'a_facturer'].includes(h)) this.filtreHonoraires.set(h);
     this.charger();
+    // Les liens « voir tout… » mènent à la même page sans filtre : la page est réutilisée et seule l'adresse change. On suit donc
+    // l'adresse (hors première émission, déjà lue ci-dessus) au lieu de ne la lire qu'une fois (15/11/2026).
+    let dernierHonoraires = h;
+    this.route.queryParamMap.pipe(skip(1)).subscribe((p) => {
+      this.filtreClientId.set(p.get('client'));
+      this.filtreClientNom.set(p.get('clientLabel'));
+      // le filtre « honoraires » n'est touché que si le paramètre change (il peut aussi se choisir à la main)
+      const nouveau = p.get('honoraires');
+      if (nouveau !== dernierHonoraires) {
+        dernierHonoraires = nouveau;
+        this.filtreHonoraires.set(nouveau && ['a_relancer', 'en_attente', 'toujours_pas', 'a_facturer'].includes(nouveau) ? nouveau : '');
+      }
+      this.charger();
+    });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 

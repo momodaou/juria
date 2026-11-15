@@ -1,4 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
+import { skip } from 'rxjs';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -194,6 +195,13 @@ export class RetrocessionsComponent implements OnInit {
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
     this.charger();
+    // Les liens « voir tout… » mènent à la même page sans filtre : la page est réutilisée et seule l'adresse change. On suit donc
+    // l'adresse (hors première émission, déjà lue ci-dessus) au lieu de ne la lire qu'une fois (15/11/2026).
+    this.route.queryParamMap.pipe(skip(1)).subscribe((p) => {
+      this.filtreDossierId.set(p.get('dossier'));
+      this.filtreDossierNumero.set(p.get('dossierLabel'));
+      this.charger();
+    });
     this.api.qualitesRetro().subscribe({ next: (q) => this.qualites.set(q) });
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
     if (this.auth.peut('retrocessions.consulter')) {

@@ -1,4 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
+import { skip } from 'rxjs';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -782,6 +783,13 @@ export class DepensesComponent implements OnInit {
     const params = this.route.snapshot.queryParamMap;
     this.filtreDossierId.set(params.get('dossier'));
     this.filtreDossierNumero.set(params.get('dossierLabel'));
+    // Les liens « voir tout… » mènent à la même page sans filtre : la page est réutilisée et seule l'adresse change. On suit donc
+    // l'adresse (hors première émission, déjà lue ci-dessus) au lieu de ne la lire qu'une fois (15/11/2026).
+    this.route.queryParamMap.pipe(skip(1)).subscribe((p) => {
+      this.filtreDossierId.set(p.get('dossier'));
+      this.filtreDossierNumero.set(p.get('dossierLabel'));
+      this.charger();
+    });
     // 24/10/2026 — lien « À décaisser » de l'état mensuel des charges.
     this.filtreStatut = params.get('statut') ?? '';
     this.depenseCible = params.get('depense');
