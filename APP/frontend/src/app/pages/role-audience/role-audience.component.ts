@@ -8,6 +8,7 @@ import { AuthService } from '../../core/auth.service';
 import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.component';
 import { DocumentPreviewService } from '../../core/document-preview.service';
 import { DossierPickerComponent } from '../../core/dossier-picker.component';
+import { semaineParDefaut } from './semaine-par-defaut';
 
 @Component({
   selector: 'app-role-audience',
@@ -642,7 +643,8 @@ export class RoleAudienceComponent implements OnInit {
   erreurDecision = '';
   nouvelleDiligence: any = { type_diligence: 'diligence' };
 
-  semaine = new Date().toISOString().slice(0, 10);
+  // Samedi et dimanche : on ouvre la semaine suivante (voir semaine-par-defaut.ts).
+  semaine = semaineParDefaut();
   nouvelleLigne: any = { type: 'mise_en_etat', urgente: false };
   retourForm: any = { resultat: 'renvoi', resultat_precision: '', motif_renvoi_id: '', motif_renvoi_precision: '', prochaine_date: '', prochaine_heure: '', observations: '' };
 
