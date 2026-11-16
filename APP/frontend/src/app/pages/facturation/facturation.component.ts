@@ -478,13 +478,15 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
                         @if (paiementEditId() === p.id) {
                           <tr>
                             <td colspan="6">
+                              <h4 class="titre-paiement">Corriger ce paiement</h4>
                               <div class="form">
                                 <label>Date du paiement <input type="date" [(ngModel)]="pEdit.date_paiement" [name]="'pEdDate' + p.id" /></label>
                                 <app-reglement-form [modele]="pEdit" [catalogue]="catalogue()" (validite)="pEditValide.set($event)"></app-reglement-form>
                               </div>
                               <p class="hint">Corrige le moyen, le compte, les références et la date. Le montant et les frais retenus ne se modifient pas ici : supprimez le paiement et ressaisissez-le si besoin. Action tracée dans le journal d'audit.</p>
                               <button class="btn" (click)="enregistrerEditionPaiement(f, p)" [disabled]="!pEditValide()">Enregistrer la correction</button>
-                              <button class="lien" (click)="paiementEditId.set(null)">Annuler</button>
+                              <button class="lien" (click)="paiementEditId.set(null); erreurCorrection.set('')">Annuler</button>
+                              @if (erreurCorrection()) { <p class="err">{{ erreurCorrection() }}</p> }
                             </td>
                           </tr>
                         }
@@ -494,6 +496,7 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
                   } @else { <p class="muted">Aucun paiement.</p> }
                   <p class="recap"><b>Reste à payer : {{ f.reliquat | number }} {{ dev(f.devise) }}</b> sur {{ f.montant_ttc | number }} {{ dev(f.devise) }}</p>
                   @if (auth.peut('factures.paiement.ajouter') && f.statut !== 'annulee' && f.reliquat > 0) {
+                    <h4 class="titre-paiement">Nouveau paiement</h4>
                     <div class="form">
                       <label>Montant reçu <input type="number" [(ngModel)]="pMontant" [name]="'pMnt' + f.id" style="max-width:150px" /></label>
                       <label>Date <input type="date" [(ngModel)]="pDate" [name]="'pDate' + f.id" /></label>
@@ -530,6 +533,7 @@ import { mentionProcedure, mentionProcedureUtile, optionProcedure } from '../../
     .form label{display:flex;flex-direction:column;font-size:var(--fs-sm);color:var(--slate);font-weight:600;gap:4px}
     .form input,.form select{border:1px solid var(--line);border-radius:8px;padding:0 10px;height:36px;box-sizing:border-box;width:100%;min-width:0;font-size:var(--fs-base);font-family:inherit}
     .nowrap-n{white-space:nowrap}
+    .titre-paiement{margin:14px 0 6px;font-size:var(--fs-md);color:var(--navy)}
     .origine{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs);color:var(--grey);margin-top:2px}
     .total-encaisse{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px;font-size:var(--fs-base);margin:12px 0}
     .moyen-total{color:var(--slate)}
@@ -875,20 +879,22 @@ export class FacturationComponent implements OnInit {
   readonly paiementEditId = signal<string | null>(null);
   pEdit: any = {};
   readonly pEditValide = signal(true);
+  // Message de la correction d'un paiement : affiché sous le bouton « Enregistrer la correction » (et non en bas du panneau).
+  readonly erreurCorrection = signal('');
   commencerEditionPaiement(p: any): void {
-    this.erreur.set('');
+    this.erreur.set(''); this.erreurCorrection.set('');
     this.pEdit = { mode: p.mode, references: { ...(p.references_paiement ?? {}) }, compte_id: p.compte_id ?? '', frais_retenus: null,
       date_paiement: String(p.date_paiement).slice(0, 10) };
     this.paiementEditId.set(p.id);
   }
   enregistrerEditionPaiement(f: any, p: any): void {
-    this.erreur.set('');
+    this.erreur.set(''); this.erreurCorrection.set('');
     this.api.modifierPaiement(f.id, p.id, {
       mode: this.pEdit.mode, references: this.pEdit.references, compte_id: this.pEdit.compte_id || null,
       date_paiement: this.pEdit.date_paiement || undefined,
     }).subscribe({
       next: () => { this.paiementEditId.set(null); this.ouvrirPaiements(f); this.rafraichir(); },
-      error: (e) => this.erreur.set(e?.error?.error ?? 'Correction impossible'),
+      error: (e) => this.erreurCorrection.set(e?.error?.error ?? 'Correction impossible'),
     });
   }
 
