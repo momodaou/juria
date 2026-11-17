@@ -5083,3 +5083,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Colonne Statut : une étiquette par ligne, alignées à gauche (« Décaissée » / « À valider après coup »…). Libellé : étiquettes « petite caisse », « frais de justice », « État » sur leur propre ligne (elles se collaient). Vérifié au navigateur à 1360 et 1100 px : aucun débordement. Web seulement ; en attente de déploiement.
 - Complément : tuiles de synthèse — le montant (ou le nombre de dépenses) passe sur sa propre ligne sous le libellé (plus de « — » orphelin en fin de ligne) ; étiquettes de la colonne Statut sans retour à la ligne.
 - Correction : étiquettes de la colonne Statut autorisées à passer sur deux lignes (une seule ligne forcée élargissait la colonne) ; elles partent toutes du même bord gauche, texte aligné.
+- Déployé le 17/11/2026 : web juria-web-00332-wc4 (API inchangée juria-00248-4f2) ; / et /health = 200.
