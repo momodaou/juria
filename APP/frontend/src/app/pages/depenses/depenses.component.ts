@@ -103,37 +103,37 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         @if (auth.peut('depenses.decision')) {
           <div class="kpi amber cliquable" (click)="voir({ apres_coup: 'a_valider' })" title="Afficher les dépenses engagées à valider après coup">
             <div class="n">{{ sy(groupeCaisse(), 'apres_coup').nb }}</div>
-            <div class="l">À valider après coup — {{ sy(groupeCaisse(), 'apres_coup').total | number }} FCFA</div>
+            <div class="l">À valider après coup<span class="kpi-montant">{{ sy(groupeCaisse(), 'apres_coup').total | number }} FCFA</span></div>
           </div>
         }
         <div class="kpi cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées à décaisser">
           <div class="n">{{ sy(groupeCaisse(), 'decaisser').nb }}</div>
-          <div class="l">À décaisser (circuit normal) — {{ sy(groupeCaisse(), 'decaisser').total | number }} FCFA</div>
+          <div class="l">À décaisser (circuit normal)<span class="kpi-montant">{{ sy(groupeCaisse(), 'decaisser').total | number }} FCFA</span></div>
         </div>
         @if (onglet() === 'procedure') {
           <div class="kpi" [class.red]="stockVignettes() <= seuilVignettes()" [class.amber]="stockVignettes() > seuilVignettes() && nbAAffecter() > 0" [class.blue]="stockVignettes() > seuilVignettes() && nbAAffecter() === 0">
             <div class="n">{{ nbAAffecter() }}</div>
-            <div class="l">Vignettes à affecter — stock : {{ stockVignettes() }} {{ stockVignettes() <= seuilVignettes() ? '(stock bas, seuil ' + seuilVignettes() + ')' : '' }}</div>
+            <div class="l">Vignettes à affecter<span class="kpi-montant">stock : {{ stockVignettes() }} {{ stockVignettes() <= seuilVignettes() ? '(stock bas, seuil ' + seuilVignettes() + ')' : '' }}</span></div>
           </div>
         }
       } @else {
         @if (auth.peut('depenses.decision')) {
           <div class="kpi amber cliquable" (click)="voir({ statut: 'soumise' })" title="Afficher les dépenses soumises, à décider">
             <div class="n">{{ somme('decider').nb }}</div>
-            <div class="l">À décider — {{ somme('decider').total | number }} FCFA</div>
+            <div class="l">À décider<span class="kpi-montant">{{ somme('decider').total | number }} FCFA</span></div>
           </div>
           <div class="kpi amber cliquable" (click)="voir({ statut: 'validee', ordre: 'sans_ordre' })" title="Afficher les dépenses validées sans ordre de paiement">
             <div class="n">{{ somme('ordonner').nb }}</div>
-            <div class="l">Ordre de paiement à donner — {{ somme('ordonner').total | number }} FCFA</div>
+            <div class="l">Ordre de paiement à donner<span class="kpi-montant">{{ somme('ordonner').total | number }} FCFA</span></div>
           </div>
         }
         <div class="kpi amber cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées en attente de décaissement">
           <div class="n">{{ somme('decaisser').total | number }}</div>
-          <div class="l">À décaisser — {{ somme('decaisser').nb }} dépense(s)</div>
+          <div class="l">À décaisser<span class="kpi-montant">{{ somme('decaisser').nb }} dépense(s)</span></div>
         </div>
         <div class="kpi green cliquable" (click)="voir({ statut: 'decaissee' })" title="Afficher les dépenses décaissées">
           <div class="n">{{ somme('decaisse_mois').total | number }}</div>
-          <div class="l">Décaissé ce mois — {{ somme('decaisse_mois').nb }} dépense(s)</div>
+          <div class="l">Décaissé ce mois<span class="kpi-montant">{{ somme('decaisse_mois').nb }} dépense(s)</span></div>
         </div>
         @if (onglet() === 'tout') {
           <div class="kpi" [class.red]="(caisse()?.solde ?? 0) < 0">
@@ -677,6 +677,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .etiquettes{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:4px}
     .statuts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
     .statuts .tag{white-space:nowrap}
+    .kpi-montant{display:block;margin-top:2px;font-weight:600;color:var(--slate)}
     .tag-devis{margin-left:6px}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}

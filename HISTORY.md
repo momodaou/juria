@@ -5081,3 +5081,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 ## 17/11/2026 — Dépenses & caisse : filtres et colonne Statut remis en ordre
 - Filtres en tête de liste : la barre ne passait pas à la ligne (cases débordant de la tuile) → `flex-wrap`, alignement et marges uniformes, champs de date et de recherche à largeur propre. Copies locales de `.in`, `label`, `.tag.ok/.haute` supprimées (styles globaux).
 - Colonne Statut : une étiquette par ligne, alignées à gauche (« Décaissée » / « À valider après coup »…). Libellé : étiquettes « petite caisse », « frais de justice », « État » sur leur propre ligne (elles se collaient). Vérifié au navigateur à 1360 et 1100 px : aucun débordement. Web seulement ; en attente de déploiement.
+- Complément : tuiles de synthèse — le montant (ou le nombre de dépenses) passe sur sa propre ligne sous le libellé (plus de « — » orphelin en fin de ligne) ; étiquettes de la colonne Statut sans retour à la ligne.
