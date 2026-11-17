@@ -286,10 +286,10 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag tag-devis" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
               <td><div class="statuts">@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatutDepense(d) }}</span> }
-                @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { <span class="tag haute" [title]="d.blocage_motif || ''">Bloquée</span> }
-                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { <span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de contrôle par un associé">À contrôler</span> }
-                @if (d.apres_coup_statut === 'validee') { <span class="tag ok">Contrôlée</span> }
-                @if (d.apres_coup_statut === 'contestee') { <span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
+                @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { <span class="tag court haute" [title]="d.blocage_motif || ''">Bloquée</span> }
+                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { <span class="tag court attente" title="Dépense engagée sur la petite caisse, en attente de contrôle par un associé">À contrôler</span> }
+                @if (d.apres_coup_statut === 'validee') { <span class="tag court ok">Contrôlée</span> }
+                @if (d.apres_coup_statut === 'contestee') { <span class="tag court haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
               </div></td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
@@ -676,6 +676,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .filtre-recherche{width:230px;max-width:100%}
     .etiquettes{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:4px}
     .statuts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+    .statuts .tag.court{white-space:nowrap}
     .statuts .tag{max-width:100%;line-height:1.3;border-radius:10px;text-align:left}
     .kpi-montant{display:block;margin-top:2px;font-weight:600;color:var(--slate)}
     .tag-devis{margin-left:6px}
