@@ -5090,3 +5090,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Tests : dépenses, notifications, dashboard, permissions OK (test `notificationsLot2` mis à jour). Un test préexistant échoue aussi sans ces changements (`notificationsRevue`, « dépenses à décaisser… 3 jours ouvrés » : dépend du jour de la semaine) — à regarder séparément. API + web à déployer.
 - Déployé le 17/11/2026 : API juria-00249-mbh, web juria-web-00333-wh9 ; /health et / = 200.
 - Étiquettes courtes du Statut (« À contrôler », « Contrôlée », « Contestée », « Bloquée ») : une seule ligne garantie (`.court`) ; les statuts longs (« Validée — ordre de paiement à donner ») peuvent passer sur 2 lignes. Mesuré : « À contrôler » = 1 ligne à 1360 et 1100 px. A déployer (web).
+- Déployé le 17/11/2026 : web juria-web-00334-v6t (API inchangée juria-00249-mbh) ; / et /health = 200.
