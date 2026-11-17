@@ -5077,3 +5077,7 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Demande : la référence d'un compte Orange Money (paiement par un client) est un code à 6 chiffres, pas un numéro à 8 chiffres.
 - `comptesCabinet.js` : la référence accepte 6 à 8 chiffres (espaces, +223 tolérés), stockée par paires (« 12 34 56 » / « 70 00 00 00 »). Pas de règle par opérateur (seul Orange confirmé). Champ renommé « Référence de paiement (code marchand ou numéro) » avec aide. Test `comptesCabinet` complété (6/6). Pas de migration. En attente de déploiement API + web.
 - Déployé le 17/11/2026 : API juria-00248-4f2, web juria-web-00331-v4b ; /health et / = 200.
+
+## 17/11/2026 — Dépenses & caisse : filtres et colonne Statut remis en ordre
+- Filtres en tête de liste : la barre ne passait pas à la ligne (cases débordant de la tuile) → `flex-wrap`, alignement et marges uniformes, champs de date et de recherche à largeur propre. Copies locales de `.in`, `label`, `.tag.ok/.haute` supprimées (styles globaux).
+- Colonne Statut : une étiquette par ligne, alignées à gauche (« Décaissée » / « À valider après coup »…). Libellé : étiquettes « petite caisse », « frais de justice », « État » sur leur propre ligne (elles se collaient). Vérifié au navigateur à 1360 et 1100 px : aucun débordement. Web seulement ; en attente de déploiement.

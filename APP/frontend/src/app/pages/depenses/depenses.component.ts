@@ -255,7 +255,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
         }
         <label class="filtre-date">Du <input class="in" type="date" [(ngModel)]="filtreDu" (ngModelChange)="charger()" /></label>
         <label class="filtre-date">au <input class="in" type="date" [(ngModel)]="filtreAu" (ngModelChange)="charger()" /></label>
-        <input class="in filtre" style="min-width:210px" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" (keydown.enter)="rechercherMaintenant()" />
+        <input class="in filtre-recherche" placeholder="Rechercher (libellé, bénéficiaire)…" [(ngModel)]="filtreRecherche" (ngModelChange)="chargerRecherche()" (keydown.enter)="rechercherMaintenant()" />
         <label class="filtre-cases"><input type="checkbox" [(ngModel)]="masquerAnnulees" (ngModelChange)="charger()" /> Masquer les annulées</label>
         @if (filtresActifs()) { <button class="lien" (click)="reinitialiserFiltres()">Effacer les filtres</button> }
       </div>
@@ -270,21 +270,27 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           @for (d of depenses(); track d.id) {
             <tr [id]="'depense-' + d.id" [class.annulee]="!!d.annulee_le">
               <td>{{ d.date_depense | date:'dd/MM/yyyy' }}</td>
-              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse) { <span class="tag">petite caisse</span> }@if (d.caisse_procedure) { <span class="tag">frais de justice</span> }@if (d.mode_paiement) { <br /><span class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</span> }
-                @if (d.etat_mois) { <span class="tag">État {{ d.etat_mois | date:'MM/yyyy' }}</span> }
+              <td>{{ d.libelle }}@if (d.beneficiaire) { <span class="muted"> — {{ d.beneficiaire }}</span> } @if (d.petite_caisse || d.caisse_procedure || d.etat_mois) {
+                  <div class="etiquettes">
+                    @if (d.petite_caisse) { <span class="tag">petite caisse</span> }
+                    @if (d.caisse_procedure) { <span class="tag">frais de justice</span> }
+                    @if (d.etat_mois) { <span class="tag">État {{ d.etat_mois | date:'MM/yyyy' }}</span> }
+                  </div>
+                }
+                @if (d.mode_paiement) { <div class="muted">{{ libelleMoyen(d.mode_paiement) }}@if (d.compte) { · {{ d.compte }} }</div> }
                 @if (d.annulee_le) { <div class="obs">Annulée le {{ d.annulee_le | date:'dd/MM/yyyy' }}@if (d.annulee_par_nom) { par {{ d.annulee_par_nom }} }@if (d.annulation_motif) { — {{ d.annulation_motif }} }</div> }
                 @else if (d.statut === 'rejetee' && d.motif_rejet) { <div class="obs">Rejetée : {{ d.motif_rejet }}</div> }
               </td>
               <td>{{ libelleCategorie(d.categorie) }}@if (d.precision_nature) { <span class="muted"> — {{ libellePrecision(d.precision_nature) }}</span> }</td>
               <td>{{ d.montant | number }} FCFA</td>
               <td>@if (d.dossier_id) { <a class="lien" [routerLink]="['/dossiers', d.dossier_id]">{{ d.dossier_numero }}</a> } @else { <span class="tag">Cabinet</span> }</td>
-              <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
-              <td>@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatutDepense(d) }}</span> }
-                @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { {{ ' ' }}<span class="tag haute" [title]="d.blocage_motif || ''">Bloquée</span> }
-                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { {{ ' ' }}<span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
-                @if (d.apres_coup_statut === 'validee') { {{ ' ' }}<span class="tag ok">Validée après coup</span> }
-                @if (d.apres_coup_statut === 'contestee') { {{ ' ' }}<span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
-              </td>
+              <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag tag-devis" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
+              <td><div class="statuts">@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatutDepense(d) }}</span> }
+                @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { <span class="tag haute" [title]="d.blocage_motif || ''">Bloquée</span> }
+                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { <span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
+                @if (d.apres_coup_statut === 'validee') { <span class="tag ok">Validée après coup</span> }
+                @if (d.apres_coup_statut === 'contestee') { <span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
+              </div></td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
             </tr>
             @if (panneauId() === d.id) {
@@ -659,16 +665,19 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .doublon p{margin:4px 0;font-size:var(--fs-base)}
     .doublon .btns{display:flex;gap:8px;margin-top:10px}
     .edition td{background:var(--light);padding:12px 14px}
-    .in{display:block;width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;margin:4px 0 12px;font-size:var(--fs-md)}
-    label{font-size:var(--fs-sm);color:var(--slate);font-weight:600}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;max-width:680px}
     .col2{grid-column:1 / -1}
     .checks{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
     .checks label{font-weight:400}
-    .filtres{display:flex;gap:10px;margin-bottom:14px}
-    .filtre{width:auto;margin:0;max-width:180px}
-    .tag.ok{background:#e3f5ec;color:#157a4f}
-    .tag.haute{background:#fbe6e5;color:#b13a36}
+    .filtres{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin-bottom:14px}
+    .filtres .in{margin:0}
+    .filtre{width:auto;max-width:180px}
+    .filtre-date .in{width:auto}
+    .filtre-recherche{width:230px;max-width:100%}
+    .etiquettes{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:4px}
+    .statuts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+    .statuts .tag{white-space:nowrap}
+    .tag-devis{margin-left:6px}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
   `],
