@@ -5076,3 +5076,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 ## 17/11/2026 — Comptes mobile money : référence de paiement à 6 chiffres acceptée
 - Demande : la référence d'un compte Orange Money (paiement par un client) est un code à 6 chiffres, pas un numéro à 8 chiffres.
 - `comptesCabinet.js` : la référence accepte 6 à 8 chiffres (espaces, +223 tolérés), stockée par paires (« 12 34 56 » / « 70 00 00 00 »). Pas de règle par opérateur (seul Orange confirmé). Champ renommé « Référence de paiement (code marchand ou numéro) » avec aide. Test `comptesCabinet` complété (6/6). Pas de migration. En attente de déploiement API + web.
+- Déployé le 17/11/2026 : API juria-00248-4f2, web juria-web-00331-v4b ; /health et / = 200.
