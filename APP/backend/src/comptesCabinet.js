@@ -10,10 +10,11 @@ const OPERATEURS = ["orange_money", "moov_money", "wave", "sama_money", "autre"]
 
 const texte = (v) => (v == null ? null : String(v).trim() || null);
 
-// Numéro de portefeuille : 8 chiffres au Mali, +223 / 00223 acceptés. Stocké « 70 00 00 00 ».
+// Référence de paiement d'un compte mobile money : numéro à 8 chiffres (+223 / 00223 acceptés) ou code marchand à 6 chiffres
+// (ex. Orange Money). Stockée par paires : « 70 00 00 00 » ou « 12 34 56 ».
 function normaliserTelephone(v) {
   const brut = String(v || "").replace(/[\s.\-]/g, "").replace(/^\+?223/, "").replace(/^00223/, "");
-  if (!/^\d{8}$/.test(brut)) return null;
+  if (!/^\d{6,8}$/.test(brut)) return null;
   return brut.replace(/(\d{2})(?=\d)/g, "$1 ");
 }
 
@@ -31,7 +32,7 @@ function validerCompte(b) {
   if (type === "mobile_money") {
     if (!OPERATEURS.includes(b.operateur)) return { erreur: "L'opérateur est requis pour un compte mobile money." };
     const tel = normaliserTelephone(b.telephone);
-    if (!tel) return { erreur: "Numéro de portefeuille invalide : 8 chiffres attendus (ex. 70 00 00 00)." };
+    if (!tel) return { erreur: "Référence de paiement invalide : 6 à 8 chiffres attendus (code marchand ex. 12 34 56, ou numéro ex. 70 00 00 00)." };
     return { valeurs: {
       intitule, type, operateur: b.operateur, telephone: tel, afficher_sur_factures: afficher,
       banque: null, numero: null, code_banque: null, code_guichet: null, cle_rib: null, iban: null, bic: null,

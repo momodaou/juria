@@ -68,7 +68,7 @@ import { MenuActionsComponent, ActionMenuItem } from './menu-actions.component';
               <option value="autre">Autre</option>
             </select>
           </div>
-          <div><label>Numéro du portefeuille</label><input class="in" [(ngModel)]="form.telephone" name="ctTel" placeholder="Ex. 70 00 00 00" /></div>
+          <div><label>Référence de paiement (code marchand ou numéro)</label><input class="in" [(ngModel)]="form.telephone" name="ctTel" placeholder="Ex. 12 34 56 ou 70 00 00 00" /><small class="muted">Ce que le client saisit pour payer (ex. code Orange Money à 6 chiffres).</small></div>
         } @else {
           <div>
             <label>Usage</label>

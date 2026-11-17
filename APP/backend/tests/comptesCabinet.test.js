@@ -32,13 +32,17 @@ describe("Comptes du cabinet", () => {
     expect((await creer({ ...base, iban: "ml03 d008 0101 2402 0019 0100 0252" })).status).toBe(201);
   });
 
-  test("mobile money : opérateur et numéro (8 chiffres) obligatoires, numéro normalisé", async () => {
+  test("mobile money : opérateur et référence (6 à 8 chiffres) obligatoires, numéro normalisé", async () => {
     expect((await creer({ intitule: "Sans opérateur", type: "mobile_money", telephone: "70000000" })).status).toBe(400);
     expect((await creer({ intitule: "Numéro faux", type: "mobile_money", operateur: "orange_money", telephone: "123" })).status).toBe(400);
     const ok = await creer({ intitule: "Orange Money cabinet", type: "mobile_money", operateur: "orange_money", telephone: "+223 70 00 00 01" });
     expect(ok.status).toBe(201);
     const c = (await liste()).find((x) => x.id === ok.body.id);
     expect(c.telephone).toBe("70 00 00 01");
+    const code = await creer({ intitule: "Orange Money code marchand", type: "mobile_money", operateur: "orange_money", telephone: "123456" });
+    expect(code.status).toBe(201);
+    expect((await liste()).find((x) => x.id === code.body.id).telephone).toBe("12 34 56");
+    expect((await creer({ intitule: "Trop court", type: "mobile_money", operateur: "orange_money", telephone: "12345" })).status).toBe(400);
     expect(c.afficher_sur_factures).toBe(true);
     expect(c.banque).toBeNull();
     expect(c.numero).toBeNull();

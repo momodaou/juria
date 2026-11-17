@@ -5072,3 +5072,7 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Rappel utile : un paiement passé en espèces perd son compte bancaire et passe « à déposer » (liste « Espèces à déposer en banque »).
 - Vérifié dans un vrai navigateur : titres présents ; refus volontaire (date future) → message affiché dans la ligne de correction (une seule fois) ; correction ensuite réussie (moyen « especes », dépôt « en attente »). Déploiement : `./scripts/deploy.sh web`.
 - Déployé le 16/11/2026 : web `juria-web-00330-m7h` (API inchangée : `juria-00247-vjl`). Vérifications : `/` 200, `/health` 200. À contrôler (Cmd+Maj+R) : panneau « Paiements » d'une facture : titres « Corriger ce paiement » / « Nouveau paiement » ; message d'un refus sous le bouton « Enregistrer la correction ».
+
+## 17/11/2026 — Comptes mobile money : référence de paiement à 6 chiffres acceptée
+- Demande : la référence d'un compte Orange Money (paiement par un client) est un code à 6 chiffres, pas un numéro à 8 chiffres.
+- `comptesCabinet.js` : la référence accepte 6 à 8 chiffres (espaces, +223 tolérés), stockée par paires (« 12 34 56 » / « 70 00 00 00 »). Pas de règle par opérateur (seul Orange confirmé). Champ renommé « Référence de paiement (code marchand ou numéro) » avec aide. Test `comptesCabinet` complété (6/6). Pas de migration. En attente de déploiement API + web.
