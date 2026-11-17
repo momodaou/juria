@@ -195,7 +195,7 @@ import { NATURES_PETITE_CAISSE, NATURES_CAISSE_PROCEDURE, NATURES_PETITE_CAISSE_
           <div class="caisses-reglages">
             <div class="bloc-caisse">
               <h4>Petite caisse</h4>
-              <p class="muted">Dépenses courantes réglées tout de suite, validées après coup par un associé. Hors de la liste des natures, la dépense passe par le circuit normal de validation.
+              <p class="muted">Dépenses courantes réglées tout de suite, contrôlées ensuite par un associé. Hors de la liste des natures, la dépense passe par le circuit normal de validation.
                 Le plafond s'applique aussi au cumul sur 7 jours pour un même bénéficiaire, une même nature et un même dossier.
                 Les frais de justice (greffe, huissier, consignation…) relèvent de la caisse ci-dessous.</p>
               <div class="bloc-plafond">

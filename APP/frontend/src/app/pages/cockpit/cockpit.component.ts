@@ -234,7 +234,7 @@ const CONFIG: Record<string, TuileConfig> = {
   },
   // Dépenses engagées sur la petite caisse, à valider après coup (17/10/2026).
   depenses_apres_coup: {
-    titre: 'Dépenses à valider après coup',
+    titre: 'Dépenses à contrôler',
     cols: [
       { key: 'engagee_le', label: 'Engagée le', format: 'date' },
       { key: 'libelle', label: 'Libellé' },
@@ -854,7 +854,7 @@ const CONFIG: Record<string, TuileConfig> = {
           @if (d.depenses_apres_coup_n !== null) {
             <button type="button" class="kpi tier-vigilance apercu" [class.active]="ouvert() === 'depenses_apres_coup'" (click)="clic('depenses_apres_coup')">
               <span class="tico" [innerHTML]="icons['impayes']"></span>
-              <span class="n">{{ d.depenses_apres_coup_n }}</span><span class="l">Dépenses à valider après coup</span>
+              <span class="n">{{ d.depenses_apres_coup_n }}</span><span class="l">Dépenses à contrôler</span>
               @if (d.depenses_apres_coup_apercu.length) {
                 <div class="mini-liste">
                   @for (l of d.depenses_apres_coup_apercu; track l.id) {

@@ -5084,3 +5084,7 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Complément : tuiles de synthèse — le montant (ou le nombre de dépenses) passe sur sa propre ligne sous le libellé (plus de « — » orphelin en fin de ligne) ; étiquettes de la colonne Statut sans retour à la ligne.
 - Correction : étiquettes de la colonne Statut autorisées à passer sur deux lignes (une seule ligne forcée élargissait la colonne) ; elles partent toutes du même bord gauche, texte aligné.
 - Déployé le 17/11/2026 : web juria-web-00332-wc4 (API inchangée juria-00248-4f2) ; / et /health = 200.
+
+## 17/11/2026 — Vocabulaire : « après coup » devient « contrôle » (affichage seulement)
+- Décision : « À valider après coup / Valider après coup / Validée après coup » → **« À contrôler » / « Contrôler » / « Contrôlée »** (boutons du panneau : « Valider la dépense » et « Contester »). Appliqué : liste et tuile des dépenses, menu de la ligne, titre du panneau, texte d'aide, tuile du Tableau de bord (« Dépenses à contrôler »), notifications et rappels (« votre contrôle », « Déjà contrôlée par… »), récapitulatif e-mail, libellé de permission, aide de l'écran Accès & permissions, message d'erreur. Noms internes (`apres_coup`, routes, colonnes) inchangés : pas de migration.
+- Tests : dépenses, notifications, dashboard, permissions OK (test `notificationsLot2` mis à jour). Un test préexistant échoue aussi sans ces changements (`notificationsRevue`, « dépenses à décaisser… 3 jours ouvrés » : dépend du jour de la semaine) — à regarder séparément. API + web à déployer.

@@ -101,9 +101,9 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
           <div class="l">Solde {{ nomCaisseMin() }}</div>
         </div>
         @if (auth.peut('depenses.decision')) {
-          <div class="kpi amber cliquable" (click)="voir({ apres_coup: 'a_valider' })" title="Afficher les dépenses engagées à valider après coup">
+          <div class="kpi amber cliquable" (click)="voir({ apres_coup: 'a_valider' })" title="Afficher les dépenses engagées à contrôler">
             <div class="n">{{ sy(groupeCaisse(), 'apres_coup').nb }}</div>
-            <div class="l">À valider après coup<span class="kpi-montant">{{ sy(groupeCaisse(), 'apres_coup').total | number }} FCFA</span></div>
+            <div class="l">À contrôler<span class="kpi-montant">{{ sy(groupeCaisse(), 'apres_coup').total | number }} FCFA</span></div>
           </div>
         }
         <div class="kpi cliquable" (click)="voir({ statut: 'validee', ordre: 'donne' })" title="Afficher les dépenses validées à décaisser">
@@ -287,8 +287,8 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <td>@if (d.nb_pieces) { 📎 {{ d.nb_pieces }} @if (d.nb_devis) { <span class="tag tag-devis" [class.ok]="d.devis_retenu">{{ d.nb_devis }} devis{{ d.devis_retenu ? ' — 1 retenu' : '' }}</span> } } @else { <span class="muted">—</span> }</td>
               <td><div class="statuts">@if (d.annulee_le) { <span class="tag haute" [title]="'Annulée : ' + (d.annulation_motif || '')">Annulée</span> } @else { <span class="tag" [class.ok]="d.statut==='decaissee'" [class.haute]="d.statut==='rejetee'">{{ libelleStatutDepense(d) }}</span> }
                 @if (!d.annulee_le && d.statut === 'validee' && d.blocage_le) { <span class="tag haute" [title]="d.blocage_motif || ''">Bloquée</span> }
-                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { <span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de validation par un associé">À valider après coup</span> }
-                @if (d.apres_coup_statut === 'validee') { <span class="tag ok">Validée après coup</span> }
+                @if (!d.annulee_le && d.apres_coup_statut === 'a_valider') { <span class="tag attente" title="Dépense engagée sur la petite caisse, en attente de contrôle par un associé">À contrôler</span> }
+                @if (d.apres_coup_statut === 'validee') { <span class="tag ok">Contrôlée</span> }
                 @if (d.apres_coup_statut === 'contestee') { <span class="tag haute" [title]="d.apres_coup_motif || ''">Contestée</span> }
               </div></td>
               <td><app-menu-actions [actions]="actionsPour(d)" /></td>
@@ -297,7 +297,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
               <tr class="edition">
                 <td colspan="8">
                   @if (panneauMode() === 'apres_valider' || panneauMode() === 'apres_contester') {
-                    <b>{{ panneauMode() === 'apres_valider' ? 'Valider après coup' : 'Contester' }} — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
+                    <b>{{ panneauMode() === 'apres_valider' ? 'Contrôler cette dépense' : 'Contester' }} — {{ d.libelle }} ({{ d.montant | number }} FCFA)</b>
                     @if (voisines(); as v) {
                       @if (v.voisines.length) {
                         <p class="muted">Dépenses rapprochées sur la caisse (autour du {{ d.date_depense | date:'dd/MM/yyyy' }}, {{ v.fenetre_jours }} jours) : même bénéficiaire, même dossier, ou même engageur et même nature.</p>
@@ -496,7 +496,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     @if ((onglet() === 'caisse' || onglet() === 'procedure') && auth.peut('depenses.engager')) {
       <section class="panel">
         <h3>{{ nomCaisse() }} — engager une dépense</h3>
-        <p class="muted">Dépense réglée tout de suite, <b>validée après coup par un associé autre que vous</b>.
+        <p class="muted">Dépense réglée tout de suite, <b>contrôlée ensuite par un associé autre que vous</b>.
           Plafond par dépense : <b>{{ caisseActive()?.plafond_depense != null ? (caisseActive()?.plafond_depense | number) + ' FCFA' : 'non défini (engagement impossible)' }}</b> ·
           solde du mois : <b>{{ caisseActive()?.solde ?? 0 | number }} FCFA</b>. Au-delà du plafond : « + Nouvelle dépense » (validation avant paiement).
           Natures acceptées : {{ libellesPC() }}. Le plafond s'applique au cumul sur {{ caisseActive()?.fenetre_jours ?? 7 }} jours (même bénéficiaire, même nature, même dossier).</p>
@@ -990,7 +990,7 @@ export class DepensesComponent implements OnInit {
     const items: ActionMenuItem[] = [];
     items.push({ label: d.nb_pieces ? `Pièces (${d.nb_pieces})` : 'Pièces / devis', action: () => this.ouvrirPieces(d) });
     if (d.apres_coup_statut === 'a_valider' && this.auth.peut('depenses.decision') && d.engagee_par_id !== this.auth.utilisateur()?.id) {
-      items.push({ label: 'Valider après coup', action: () => this.ouvrirPanneau(d, 'apres_valider') });
+      items.push({ label: 'Contrôler', action: () => this.ouvrirPanneau(d, 'apres_valider') });
       items.push({ label: 'Contester', action: () => this.ouvrirPanneau(d, 'apres_contester'), danger: true });
     }
     const decideur = this.auth.peut('depenses.decision');
@@ -1230,7 +1230,7 @@ export class DepensesComponent implements OnInit {
     return this.panValide();
   }
   libelleBoutonPanneau(): string {
-    if (this.panneauMode() === 'apres_valider') return 'Valider après coup';
+    if (this.panneauMode() === 'apres_valider') return 'Valider la dépense';
     if (this.panneauMode() === 'apres_contester') return 'Contester la dépense';
     return this.panneauMode() === 'rejeter' ? 'Rejeter la dépense' : this.panneauMode() === 'ordre' ? "Donner l'ordre de paiement"
       : (this.panModele.mode_paiement ? "Valider et donner l'ordre de paiement" : "Valider sans ordre de paiement");

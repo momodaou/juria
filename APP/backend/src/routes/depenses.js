@@ -437,7 +437,7 @@ router.post("/:id/valider-apres-coup", requirePermission("depenses.decision"), a
   try {
     const { rows: [d] } = await pool.query("SELECT engagee_par, apres_coup_statut, montant, categorie FROM depenses WHERE id = $1", [req.params.id]);
     if (!d) return res.status(404).json({ error: "Dépense introuvable" });
-    if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Cette dépense n'est pas en attente de validation après coup." });
+    if (d.apres_coup_statut !== "a_valider") return res.status(409).json({ error: "Cette dépense n'est pas en attente de contrôle." });
     if (d.engagee_par === req.user.sub) {
       return res.status(403).json({ error: "Vous ne pouvez pas valider une dépense que vous avez vous-même engagée : un autre associé doit le faire." });
     }

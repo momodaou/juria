@@ -46,7 +46,7 @@ async function executerRecapMatin(pool, maintenant = new Date()) {
     if (!s.n && !nCoup) continue;
     const lignes = [];
     if (s.n) lignes.push(`<li>${pluriel(s.n, "dépense soumise attend", "dépenses soumises attendent")} votre décision</li>`);
-    if (nCoup) lignes.push(`<li>${pluriel(nCoup, "dépense engagée sur la petite caisse attend", "dépenses engagées sur la petite caisse attendent")} votre validation après coup</li>`);
+    if (nCoup) lignes.push(`<li>${pluriel(nCoup, "dépense engagée sur la petite caisse attend", "dépenses engagées sur la petite caisse attendent")} votre contrôle</li>`);
     if (await envoyer(u, "JURIA : des dépenses attendent votre décision", `<ul>${lignes.join("")}</ul>`, "Ouvrir Dépenses & caisse", `${base()}/depenses`)) envoyes++;
   }
   return { actif: true, envoyes };

@@ -140,7 +140,7 @@ describe("Petite caisse", () => {
     const c = await request(app).post(`/api/depenses/${e.body.id}/valider-apres-coup`).set(auth(assoc1)).send({ decision: "contestee", motif: "Pas de justificatif" });
     expect(c.status).toBe(200);
     expect((await de(assoc1, "depense_apres_coup"))[0].a_traiter).toBe(false);
-    expect((await de(assoc2, "depense_apres_coup"))[0].texte).toBe("Déjà validée par Me Test L2."); // la ligne des autres se transforme
+    expect((await de(assoc2, "depense_apres_coup"))[0].texte).toBe("Déjà contrôlée par Me Test L2."); // la ligne des autres se transforme
     // l'engageur : statut seul (jamais le nom de l'associé), motif lisible, pastille rouge ; plus de notification aux autres associés
     const contestee = (await de(adminG, "depense_apres_coup_traitee"))[0];
     expect(contestee.texte).toMatch(/^Votre dépense de 12[\s  ]000 FCFA \(.+\) est contestée : « Pas de justificatif »\.$/);
