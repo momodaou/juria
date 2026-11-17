@@ -676,7 +676,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     .filtre-recherche{width:230px;max-width:100%}
     .etiquettes{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:4px}
     .statuts{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
-    .statuts .tag{white-space:nowrap}
+    .statuts .tag{max-width:100%;line-height:1.3;border-radius:10px;text-align:left}
     .kpi-montant{display:block;margin-top:2px;font-weight:600;color:var(--slate)}
     .tag-devis{margin-left:6px}
     .upload{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
