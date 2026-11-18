@@ -49,6 +49,9 @@ import { LibellePipe } from '../../core/libelles';
           @if (auth.utilisateur(); as moi) { <option value="__moi__">Mes dossiers</option> }
           @for (u of utilisateurs(); track u.id) { <option [value]="u.id">{{ u.prenom }} {{ u.nom }}</option> }
         </select>
+        <select class="filtre" [ngModel]="valeurTri()" (ngModelChange)="choisirTri($event)" name="triDossiers" aria-label="Trier par">
+          @for (o of optionsTri(); track o.valeur) { <option [value]="o.valeur">{{ o.libelle }}</option> }
+        </select>
       </div>
 
       @if (affiches().length) {
@@ -122,7 +125,6 @@ import { LibellePipe } from '../../core/libelles';
     .th-tri{background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;text-align:left;white-space:nowrap}
     .th-tri:hover{text-decoration:underline}
     th[aria-sort] .th-tri{color:var(--gold)}
-    th:not([aria-sort]) .th-tri{opacity:.85}
     .infos-liste{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px;margin:0 0 8px;font-size:var(--fs-sm)}
     .plus{text-align:center;margin:14px 0 0}
     .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);max-width:220px}
@@ -162,7 +164,35 @@ export class DossiersComponent implements OnInit {
   }
   // « Indéterminée — à qualifier » → « Indéterminée » : la colonne reste étroite.
   matiereCourte(m?: string | null): string { return m ? m.split(' — ')[0] : '—'; }
-  fleche(cle: string): string { return this.tri() === cle ? (this.sens() === 'asc' ? ' ▲' : ' ▼') : ' ⇅'; }
+  fleche(cle: string): string { return this.tri() === cle ? (this.sens() === 'asc' ? ' ▲' : ' ▼') : ''; }
+  // Menu « Trier par » (18/11/2026) : même état que les en-têtes de colonnes (signaux tri/sens).
+  private static readonly OPTIONS_TRI: { valeur: string; libelle: string }[] = [
+    { valeur: 'activite:desc', libelle: 'Trier : dernière activité' },
+    { valeur: 'ouverture:desc', libelle: 'Trier : ouverture, plus récent d’abord' },
+    { valeur: 'ouverture:asc', libelle: 'Trier : ouverture, plus ancien d’abord' },
+    { valeur: 'numero:desc', libelle: 'Trier : N°, plus récent d’abord' },
+    { valeur: 'numero:asc', libelle: 'Trier : N°, plus ancien d’abord' },
+    { valeur: 'matiere:asc', libelle: 'Trier : matière A → Z' },
+    { valeur: 'client:asc', libelle: 'Trier : client A → Z' },
+    { valeur: 'intitule:asc', libelle: 'Trier : intitulé A → Z' },
+    { valeur: 'responsable:asc', libelle: 'Trier : responsable A → Z' },
+    { valeur: 'urgence:desc', libelle: 'Trier : urgence, plus urgent d’abord' },
+    { valeur: 'statut:asc', libelle: 'Trier : état (ouvert → archivé)' },
+    { valeur: 'phase:asc', libelle: 'Trier : phase (consultation → clôture)' },
+  ];
+  readonly valeurTri = computed(() => `${this.tri()}:${this.sens()}`);
+  // Un tri obtenu en cliquant un en-tête (ex. client Z → A) s'ajoute à la liste pour que le menu l'affiche.
+  readonly optionsTri = computed(() => {
+    const v = this.valeurTri();
+    const base = DossiersComponent.OPTIONS_TRI;
+    return base.some((o) => o.valeur === v) ? base : [...base, { valeur: v, libelle: `Trier : ${this.libelleTri()}` }];
+  });
+  choisirTri(valeur: string): void {
+    const [cle, sens] = valeur.split(':');
+    if (!DossiersComponent.TRIS[cle]) return;
+    const defaut = cle === 'activite' && sens === 'desc';
+    this.router.navigate([], { queryParams: defaut ? { tri: null, sens: null } : { tri: cle, sens }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
   ariaTri(cle: string): string | null { return this.tri() === cle ? (this.sens() === 'asc' ? 'ascending' : 'descending') : null; }
   libelleTri(): string {
     const t = DossiersComponent.TRIS[this.tri()];
