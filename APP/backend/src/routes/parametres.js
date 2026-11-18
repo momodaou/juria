@@ -165,6 +165,24 @@ router.put("/emails-dossiers", requirePermission("parametres.cabinet.modifier"),
   } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
 });
 
+// PUT /api/parametres/emails-conflits { heures } suspend pour N heures (1 à 168) les seuls e-mails de CONFLIT ; { reactiver: true } lève.
+router.put("/emails-conflits", requirePermission("parametres.cabinet.modifier"), async (req, res) => {
+  const b = req.body || {};
+  try {
+    if (b.reactiver) {
+      await pool.query("UPDATE parametres_cabinet SET emails_conflits_suspendus_jusqu_a = NULL WHERE id = 1");
+    } else {
+      const heures = Number(b.heures);
+      if (!(heures >= 1 && heures <= 168)) return res.status(400).json({ error: "Durée invalide : de 1 à 168 heures." });
+      await pool.query("UPDATE parametres_cabinet SET emails_conflits_suspendus_jusqu_a = now() + ($1::numeric * interval '1 hour') WHERE id = 1", [heures]);
+    }
+    const etat = await etatSuspension();
+    await logAudit({ utilisateurId: req.user.sub, action: b.reactiver ? "emails_conflits_reactives" : "emails_conflits_suspendus",
+      entite: "parametres", details: { jusqu_a: etat.conflits_jusqu_a }, ip: req.ip });
+    res.json(etat);
+  } catch (e) { console.error(e); res.status(500).json({ error: "Erreur serveur" }); }
+});
+
 // GET /api/parametres/comptes-bancaires — liste complète (actifs et
 // inactifs) pour la gestion, RIB inclus. À distinguer de
 // GET /api/depenses/comptes (liste allégée, actifs seulement, sans RIB —

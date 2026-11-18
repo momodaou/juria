@@ -166,6 +166,24 @@ import { NATURES_PETITE_CAISSE, NATURES_CAISSE_PROCEDURE, NATURES_PETITE_CAISSE_
               <button class="btn" (click)="changerEmails({ heures: 24 })">Suspendre pendant 24 h</button>
             }
           }
+          @if (emailsEtat(); as e) {
+            <h4 class="sous-titre-emails">E-mails de conflit seulement</h4>
+            <p class="muted">Suspend uniquement les e-mails de contrôle et de décision de conflit d'intérêts ; les e-mails de création de dossier continuent de partir.</p>
+            @if (e.conflits_suspendu) {
+              <p><span class="tag haute">Suspendus</span> jusqu'au <b>{{ e.conflits_jusqu_a | date:'dd/MM/yyyy à HH:mm' }}</b>.</p>
+              <button class="btn" (click)="changerEmailsConflits({ reactiver: true })">Réactiver les e-mails de conflit</button>
+            } @else {
+              <div class="ligne-suspension">
+                <label>Durée
+                  <select class="sel" [(ngModel)]="dureeConflits" name="dureeConflits">
+                    <option [ngValue]="1">1 heure</option><option [ngValue]="3">3 heures</option><option [ngValue]="6">6 heures</option>
+                    <option [ngValue]="12">12 heures</option><option [ngValue]="24">24 heures</option>
+                  </select>
+                </label>
+                <button class="btn" (click)="changerEmailsConflits({ heures: dureeConflits })">Suspendre les e-mails de conflit</button>
+              </div>
+            }
+          }
           @if (emailsMessage()) { <p class="muted" style="margin-top:8px">{{ emailsMessage() }}</p> }
         </section>
       }
@@ -320,6 +338,8 @@ import { NATURES_PETITE_CAISSE, NATURES_CAISSE_PROCEDURE, NATURES_PETITE_CAISSE_
     }
   `,
   styles: [`
+    .sous-titre-emails{margin:18px 0 4px;font-size:var(--fs-md);color:var(--navy)}
+    .ligne-suspension{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
     .caisses-reglages{display:grid;grid-template-columns:1fr;gap:16px;margin:18px 0 14px}
     .bloc-caisse{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fbfcfd}
     .bloc-caisse h4{margin:0 0 4px;font-size:var(--fs-lg);color:var(--navy)}
@@ -413,7 +433,8 @@ export class AccesComponent implements OnInit {
   readonly parametres = signal<ParametresHonoraires | null>(null);
   readonly parametresMessage = signal('');
   // Suspension des e-mails de conflit / création de dossier (21/10/2026).
-  readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null } | null>(null);
+  readonly emailsEtat = signal<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null } | null>(null);
+  dureeConflits = 3;
   readonly emailsMessage = signal('');
   parametresEdit: Partial<ParametresHonoraires> = {};
   readonly naturesPetiteCaisse = NATURES_PETITE_CAISSE;
@@ -546,6 +567,14 @@ export class AccesComponent implements OnInit {
     this.emailsMessage.set('');
     this.api.majEmailsDossiers(corps).subscribe({
       next: (e) => { this.emailsEtat.set(e); this.emailsMessage.set(e.suspendu ? 'Suspension enregistrée.' : 'E-mails réactivés.'); },
+      error: (er) => this.emailsMessage.set(er?.error?.error ?? 'Changement impossible.'),
+    });
+  }
+
+  changerEmailsConflits(corps: { heures?: number; reactiver?: boolean }): void {
+    this.emailsMessage.set('');
+    this.api.majEmailsConflits(corps).subscribe({
+      next: (e) => { this.emailsEtat.set(e); this.emailsMessage.set(e.conflits_suspendu ? 'Suspension des e-mails de conflit enregistrée.' : 'E-mails de conflit réactivés.'); },
       error: (er) => this.emailsMessage.set(er?.error?.error ?? 'Changement impossible.'),
     });
   }

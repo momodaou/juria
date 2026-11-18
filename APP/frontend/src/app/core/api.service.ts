@@ -585,11 +585,15 @@ export class ApiService {
     return this.http.get<{ id: string; intitule: string }[]>(`${this.base}/api/factures/moyens-paiement/${code}/comptes`);
   }
   // Suspension temporaire des e-mails de conflit et de création de dossier (21/10/2026).
-  emailsDossiers(): Observable<{ suspendu: boolean; jusqu_a: string | null }> {
-    return this.http.get<{ suspendu: boolean; jusqu_a: string | null }>(`${this.base}/api/parametres/emails-dossiers`);
+  emailsDossiers(): Observable<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }> {
+    return this.http.get<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }>(`${this.base}/api/parametres/emails-dossiers`);
   }
-  majEmailsDossiers(body: { heures?: number; reactiver?: boolean }): Observable<{ suspendu: boolean; jusqu_a: string | null }> {
-    return this.http.put<{ suspendu: boolean; jusqu_a: string | null }>(`${this.base}/api/parametres/emails-dossiers`, body);
+  majEmailsDossiers(body: { heures?: number; reactiver?: boolean }): Observable<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }> {
+    return this.http.put<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }>(`${this.base}/api/parametres/emails-dossiers`, body);
+  }
+  // Suspension des seuls e-mails de conflit (18/11/2026).
+  majEmailsConflits(body: { heures?: number; reactiver?: boolean }): Observable<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }> {
+    return this.http.put<{ suspendu: boolean; jusqu_a: string | null; conflits_suspendu?: boolean; conflits_jusqu_a?: string | null }>(`${this.base}/api/parametres/emails-conflits`, body);
   }
   // Fonds de tiers — compte CARPA (20/10/2026).
   fondsTiersSoldes(): Observable<any[]> { return this.http.get<any[]>(`${this.base}/api/fonds-tiers/soldes`); }

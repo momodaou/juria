@@ -6316,3 +6316,8 @@ CREATE TABLE IF NOT EXISTS dossier_liens (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dossier_liens_paire ON dossier_liens (LEAST(dossier_a, dossier_b), GREATEST(dossier_a, dossier_b));
 CREATE INDEX IF NOT EXISTS idx_dossier_liens_a ON dossier_liens(dossier_a);
 CREATE INDEX IF NOT EXISTS idx_dossier_liens_b ON dossier_liens(dossier_b);
+
+-- =====================================================================
+--  18/11/2026 — Suspension des e-mails de CONFLIT seuls (sans toucher aux e-mails de création de dossier). Idempotent.
+-- =====================================================================
+ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS emails_conflits_suspendus_jusqu_a TIMESTAMPTZ;

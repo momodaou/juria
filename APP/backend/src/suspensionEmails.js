@@ -11,15 +11,23 @@ const { logAudit } = require("./audit");
 
 async function etatSuspension(db = pool) {
   const { rows: [r] } = await db.query(
-    "SELECT emails_dossiers_suspendus_jusqu_a AS jusqu_a, (emails_dossiers_suspendus_jusqu_a > now()) AS suspendu FROM parametres_cabinet WHERE id = 1");
-  return { suspendu: !!(r && r.suspendu), jusqu_a: r && r.suspendu ? r.jusqu_a : null };
+    `SELECT emails_dossiers_suspendus_jusqu_a AS jusqu_a, (emails_dossiers_suspendus_jusqu_a > now()) AS suspendu,
+            emails_conflits_suspendus_jusqu_a AS conflits_jusqu_a, (emails_conflits_suspendus_jusqu_a > now()) AS conflits_suspendu
+       FROM parametres_cabinet WHERE id = 1`);
+  return {
+    suspendu: !!(r && r.suspendu), jusqu_a: r && r.suspendu ? r.jusqu_a : null,
+    // suspension propre aux e-mails de conflit (18/11/2026), sans effet sur les e-mails de création de dossier
+    conflits_suspendu: !!(r && r.conflits_suspendu), conflits_jusqu_a: r && r.conflits_suspendu ? r.conflits_jusqu_a : null,
+  };
 }
+
+const TYPES_CONFLIT = ["decision_conflit", "conflit_potentiel"];
 
 // À appeler en tête d'un envoi : renvoie true (et trace l'envoi ignoré) si la suspension est active.
 async function envoiSuspendu(type, details = {}) {
   try {
-    const { suspendu } = await etatSuspension();
-    if (!suspendu) return false;
+    const etat = await etatSuspension();
+    if (!(etat.suspendu || (TYPES_CONFLIT.includes(type) && etat.conflits_suspendu))) return false;
     console.log(`[mailer] e-mail « ${type} » non envoyé : suspension temporaire active`);
     await logAudit({ action: "email_suspendu", entite: "parametres", details: { type, ...details } });
     return true;
