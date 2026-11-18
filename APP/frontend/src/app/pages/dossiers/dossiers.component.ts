@@ -2,7 +2,7 @@ import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { skip } from 'rxjs';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiService, Dossier } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { LibellePipe } from '../../core/libelles';
@@ -52,9 +52,26 @@ import { LibellePipe } from '../../core/libelles';
       </div>
 
       @if (affiches().length) {
+        <p class="muted infos-liste">
+          <span>{{ dossiers().length }} sur {{ total() }} dossier(s)</span>
+          <span>Tri : {{ libelleTri() }}</span>
+          @if (tri() !== 'activite') { <button type="button" class="lien" (click)="revenirTriParDefaut()">Revenir au tri par dernière activité</button> }
+        </p>
         <div class="table-scroll">
         <table>
-          <tr><th class="nowrap">N°</th><th>Intitulé</th><th>Client</th><th>Position du client</th><th>Responsable</th><th>Ouvert le</th><th>État du dossier</th><th>Phase</th><th>Urgence</th><th class="col-honoraires">Honoraires</th></tr>
+          <tr>
+            <th class="nowrap" [attr.aria-sort]="ariaTri('numero')"><button type="button" class="th-tri" (click)="trier('numero')">N°{{ fleche('numero') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('intitule')"><button type="button" class="th-tri" (click)="trier('intitule')">Intitulé{{ fleche('intitule') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('client')"><button type="button" class="th-tri" (click)="trier('client')">Client{{ fleche('client') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('matiere')"><button type="button" class="th-tri" (click)="trier('matiere')">Matière{{ fleche('matiere') }}</button></th>
+            <th>Position du client</th>
+            <th [attr.aria-sort]="ariaTri('responsable')"><button type="button" class="th-tri" (click)="trier('responsable')">Responsable{{ fleche('responsable') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('ouverture')"><button type="button" class="th-tri" (click)="trier('ouverture')">Ouvert le{{ fleche('ouverture') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('statut')"><button type="button" class="th-tri" (click)="trier('statut')">État du dossier{{ fleche('statut') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('phase')"><button type="button" class="th-tri" (click)="trier('phase')">Phase{{ fleche('phase') }}</button></th>
+            <th [attr.aria-sort]="ariaTri('urgence')"><button type="button" class="th-tri" (click)="trier('urgence')">Urgence{{ fleche('urgence') }}</button></th>
+            <th class="col-honoraires">Honoraires</th>
+          </tr>
           @for (d of affiches(); track d.id) {
             <tr>
               <td class="clik nowrap" [routerLink]="['/dossiers', d.id]">
@@ -63,6 +80,7 @@ import { LibellePipe } from '../../core/libelles';
               </td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.intitule }}</td>
               <td><a class="lien" [routerLink]="['/clients', d.client_id]" (click)="$event.stopPropagation()">{{ d.client }}</a></td>
+              <td class="clik" [routerLink]="['/dossiers', d.id]">{{ matiereCourte(d.matiere) }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ libelleStatutPartie(d.instance_statut_partie, d.instance_degre, d.instance_statut_partie_precision) || '—' }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.responsable }}</td>
               <td class="clik" [routerLink]="['/dossiers', d.id]">{{ d.date_ouverture | date:'dd/MM/yyyy' }}</td>
@@ -78,6 +96,9 @@ import { LibellePipe } from '../../core/libelles';
           }
         </table>
         </div>
+        @if (dossiers().length < total()) {
+          <p class="plus"><button type="button" class="btn ghost" [disabled]="chargementPlus()" (click)="afficherPlus()">Afficher plus ({{ total() - dossiers().length }} restant(s))</button></p>
+        }
       } @else if (erreur()) {
         <p class="err">{{ erreur() }}</p>
       } @else {
@@ -97,7 +118,11 @@ import { LibellePipe } from '../../core/libelles';
     .tag.attente{background:#fbf1dc;color:#9a6c12}
     .lien:hover{text-decoration:underline}
     .pastille{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
-    .filtres{display:flex;gap:10px;margin-bottom:14px}
+    .filtres{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+    .th-tri{background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;text-align:left;white-space:nowrap}
+    .th-tri:hover{text-decoration:underline}
+    .infos-liste{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px;margin:0 0 8px;font-size:var(--fs-sm)}
+    .plus{text-align:center;margin:14px 0 0}
     .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);max-width:220px}
     .bandeau-filtre{background:var(--light);border-radius:8px;padding:9px 14px;font-size:var(--fs-base);color:var(--slate);margin-bottom:14px}
   `],
@@ -106,7 +131,45 @@ export class DossiersComponent implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly dossiers = signal<Dossier[]>([]);
+  readonly total = signal(0);
+  readonly chargementPlus = signal(false);
+  // Tri (18/11/2026) : côté serveur (la liste est limitée à 200). Mémorisé dans l'adresse (?tri=&sens=).
+  readonly tri = signal('activite');
+  readonly sens = signal<'asc' | 'desc'>('desc');
+  private static readonly TRIS: Record<string, { libelle: string; premier: 'asc' | 'desc' }> = {
+    activite: { libelle: 'dernière activité', premier: 'desc' }, numero: { libelle: 'N°', premier: 'asc' },
+    intitule: { libelle: 'intitulé', premier: 'asc' }, client: { libelle: 'client', premier: 'asc' }, matiere: { libelle: 'matière', premier: 'asc' },
+    responsable: { libelle: 'responsable', premier: 'asc' }, ouverture: { libelle: 'date d’ouverture', premier: 'desc' },
+    statut: { libelle: 'état du dossier', premier: 'asc' }, phase: { libelle: 'phase', premier: 'asc' }, urgence: { libelle: 'urgence', premier: 'desc' },
+  };
+  private lireTri(p: { get(k: string): string | null }): void {
+    const t = p.get('tri') ?? 'activite';
+    const cle = DossiersComponent.TRIS[t] ? t : 'activite';
+    this.tri.set(cle);
+    const s = p.get('sens');
+    this.sens.set(s === 'asc' || s === 'desc' ? s : DossiersComponent.TRIS[cle].premier);
+  }
+  trier(cle: string): void {
+    const sens = this.tri() === cle ? (this.sens() === 'asc' ? 'desc' : 'asc') : DossiersComponent.TRIS[cle].premier;
+    this.router.navigate([], { queryParams: { tri: cle, sens }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+  revenirTriParDefaut(): void {
+    this.router.navigate([], { queryParams: { tri: null, sens: null }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+  // « Indéterminée — à qualifier » → « Indéterminée » : la colonne reste étroite.
+  matiereCourte(m?: string | null): string { return m ? m.split(' — ')[0] : '—'; }
+  fleche(cle: string): string { return this.tri() === cle ? (this.sens() === 'asc' ? ' ▲' : ' ▼') : ''; }
+  ariaTri(cle: string): string | null { return this.tri() === cle ? (this.sens() === 'asc' ? 'ascending' : 'descending') : null; }
+  libelleTri(): string {
+    const t = DossiersComponent.TRIS[this.tri()];
+    const asc = this.sens() === 'asc';
+    const detail = this.tri() === 'ouverture' || this.tri() === 'activite' ? (asc ? 'plus ancien d’abord' : 'plus récent d’abord')
+      : this.tri() === 'urgence' ? (asc ? 'moins urgent d’abord' : 'plus urgent d’abord')
+      : this.tri() === 'numero' ? (asc ? 'plus ancien d’abord' : 'plus récent d’abord') : (asc ? 'A → Z' : 'Z → A');
+    return `${t.libelle} (${detail})`;
+  }
   // 24/10/2026 — filtre « Honoraires » (signal : un computed ne se réévalue pas sur une propriété ngModel).
   readonly filtreHonoraires = signal('');
   readonly affiches = computed(() => {
@@ -130,6 +193,7 @@ export class DossiersComponent implements OnInit {
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
+    this.lireTri(params);
     this.filtreClientId.set(params.get('client'));
     this.filtreClientNom.set(params.get('clientLabel'));
     // Lien de la notification « dossiers à facturer » : ?honoraires=a_relancer (en attente + toujours pas facturé).
@@ -140,6 +204,7 @@ export class DossiersComponent implements OnInit {
     // l'adresse (hors première émission, déjà lue ci-dessus) au lieu de ne la lire qu'une fois (15/11/2026).
     let dernierHonoraires = h;
     this.route.queryParamMap.pipe(skip(1)).subscribe((p) => {
+      this.lireTri(p);
       this.filtreClientId.set(p.get('client'));
       this.filtreClientNom.set(p.get('clientLabel'));
       // le filtre « honoraires » n'est touché que si le paramètre change (il peut aussi se choisir à la main)
@@ -153,7 +218,7 @@ export class DossiersComponent implements OnInit {
     this.api.utilisateurs().subscribe({ next: (u) => this.utilisateurs.set(u) });
   }
 
-  charger(): void {
+  private filtresServeur(): { statut?: string; responsable?: string; masquer_archives?: boolean; client_id?: string } {
     const filtres: { statut?: string; responsable?: string; masquer_archives?: boolean; client_id?: string } = {};
     if (this.filtreStatut === '__actifs__') filtres.masquer_archives = true;
     else if (this.filtreStatut) filtres.statut = this.filtreStatut;
@@ -161,10 +226,29 @@ export class DossiersComponent implements OnInit {
     else if (this.filtreResponsable) filtres.responsable = this.filtreResponsable;
     const clientId = this.filtreClientId();
     if (clientId) filtres.client_id = clientId;
+    return filtres;
+  }
 
-    this.api.dossiers(this.recherche, filtres).subscribe({
-      next: (d) => this.dossiers.set(d),
+  private numeroChargement = 0;
+  charger(): void {
+    const n = ++this.numeroChargement; // une réponse plus ancienne ne remplace jamais une plus récente
+    this.api.dossiersTries(this.recherche, this.filtresServeur(), this.tri(), this.sens()).subscribe({
+      next: (r) => { if (n === this.numeroChargement) { this.dossiers.set(r.lignes); this.total.set(r.total); this.erreur.set(''); } },
       error: () => this.erreur.set('Impossible de charger les dossiers.'),
+    });
+  }
+  afficherPlus(): void {
+    const n = ++this.numeroChargement;
+    this.chargementPlus.set(true);
+    this.api.dossiersTries(this.recherche, this.filtresServeur(), this.tri(), this.sens(), this.dossiers().length).subscribe({
+      next: (r) => {
+        this.chargementPlus.set(false);
+        if (n !== this.numeroChargement) return;
+        const deja = new Set(this.dossiers().map((d) => d.id));
+        this.dossiers.set([...this.dossiers(), ...r.lignes.filter((d) => !deja.has(d.id))]);
+        this.total.set(r.total);
+      },
+      error: () => { this.chargementPlus.set(false); this.erreur.set('Impossible de charger la suite des dossiers.'); },
     });
   }
 

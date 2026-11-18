@@ -115,6 +115,7 @@ export interface DashboardData {
 
 export interface Dossier {
   id: string;
+  matiere?: string | null;
   numero: string;
   intitule: string;
   // Ajouté à la liste le 05/09/2026 (diagnostic Facturation) — sert à
@@ -225,6 +226,20 @@ export class ApiService {
     if (filtres.client_id) params.set('client_id', filtres.client_id);
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.http.get<Dossier[]>(`${this.base}/api/dossiers${q}`);
+  }
+
+  // Liste des dossiers triée et paginée par 200 (18/11/2026) : { lignes, total }.
+  dossiersTries(recherche: string, filtres: { statut?: string; responsable?: string; masquer_archives?: boolean; client_id?: string },
+                tri: string, sens: 'asc' | 'desc', decalage = 0): Observable<{ lignes: Dossier[]; total: number }> {
+    const params = new URLSearchParams();
+    if (recherche) params.set('q', recherche);
+    if (filtres.statut) params.set('statut', filtres.statut);
+    if (filtres.responsable) params.set('responsable', filtres.responsable);
+    if (filtres.masquer_archives) params.set('masquer_archives', 'true');
+    if (filtres.client_id) params.set('client_id', filtres.client_id);
+    params.set('tri', tri); params.set('sens', sens); params.set('avec_total', '1');
+    if (decalage) params.set('decalage', String(decalage));
+    return this.http.get<{ lignes: Dossier[]; total: number }>(`${this.base}/api/dossiers?${params.toString()}`);
   }
 
   dossier(id: string): Observable<any> {

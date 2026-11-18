@@ -369,8 +369,22 @@ router.get("/meta/codes-matiere", async (req, res) => {
 // sont mutuellement exclusifs côté écran (l'un ou l'autre), tous deux
 // combinables avec `responsable` (dont "mes dossiers" n'est qu'un cas
 // particulier — le responsable connecté).
+// Tri (18/11/2026) : `tri` ∈ liste blanche ci-dessous, `sens` asc|desc, `decalage` (pagination par 200). Avec `avec_total=1` la réponse est
+// { lignes, total } (sinon un simple tableau, comme avant : sélecteurs et fiches client). Tri fait en SQL car la liste est limitée à 200.
+const TRIS_DOSSIERS = {
+  activite: "d.maj_le",
+  ouverture: "d.date_ouverture",
+  numero: "CAST(substring(d.numero from '-([0-9]{4})-[0-9]+$') AS integer), CAST(substring(d.numero from '-([0-9]+)$') AS integer)",
+  matiere: "lower(COALESCE(m.libelle, 'zzz')), d.numero",
+  intitule: "lower(d.intitule)",
+  client: "lower(COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom))",
+  responsable: "lower(u.prenom || ' ' || u.nom)",
+  statut: "d.statut",
+  urgence: "d.urgence",
+  phase: "d.phase",
+};
 router.get("/", async (req, res) => {
-  const { statut, responsable, q, masquer_archives, client_id } = req.query;
+  const { statut, responsable, q, masquer_archives, client_id, tri, sens, decalage, avec_total } = req.query;
   const cond = [];
   const params = [];
   if (statut) { params.push(statut); cond.push(`d.statut = $${params.length}`); }
@@ -384,10 +398,15 @@ router.get("/", async (req, res) => {
   // avec le principal usage (fiche client → ses dossiers).
   if (client_id) { params.push(client_id); cond.push(`d.client_id = $${params.length}`); }
   const where = cond.length ? `WHERE ${cond.join(" AND ")}` : "";
+  const cleTri = TRIS_DOSSIERS[tri] ? tri : "activite";
+  const dir = String(sens).toLowerCase() === "asc" ? "ASC" : "DESC";
+  // chaque terme du critère prend le même sens ; départage stable : dernière activité puis identifiant
+  const ordre = TRIS_DOSSIERS[cleTri].split(/,\s*(?![^()]*\))/).map((t) => `${t} ${dir} NULLS LAST`).join(", ") + ", d.maj_le DESC, d.id";
+  const decal = Math.max(0, Math.min(100000, parseInt(decalage, 10) || 0));
   try {
     const { rows } = await pool.query(
       `SELECT d.id, d.numero, d.intitule, d.objet, d.statut, d.phase, d.urgence, d.pro_bono, d.mode_honoraires,
-              d.code_matiere, d.couleur_chemise, d.date_ouverture,
+              d.code_matiere, m.libelle AS matiere, d.couleur_chemise, d.date_ouverture,
               d.client_id, COALESCE(NULLIF(c.denomination, ''), c.prenom || ' ' || c.nom) AS client,
               u.prenom || ' ' || u.nom AS responsable,
               ${SELECT_HONORAIRES},
@@ -399,11 +418,17 @@ router.get("/", async (req, res) => {
        ${JOIN_HONORAIRES}
        ${JOIN_STATUT_FACTURATION}
        ${JOIN_INSTANCE_ACTUELLE}
+       LEFT JOIN codes_matiere m ON m.code = d.code_matiere AND m.type = d.pole
        ${where}
-       ORDER BY d.maj_le DESC
-       LIMIT 200`,
+       ORDER BY ${ordre}
+       LIMIT 200 OFFSET ${decal}`,
       params
     );
+    if (avec_total === "1") {
+      const { rows: [t] } = await pool.query(
+        `SELECT count(*)::int AS n FROM dossiers d JOIN clients c ON c.id = d.client_id JOIN utilisateurs u ON u.id = d.responsable_id ${where}`, params);
+      return res.json({ lignes: rows, total: t.n });
+    }
     res.json(rows);
   } catch (e) {
     console.error(e);
