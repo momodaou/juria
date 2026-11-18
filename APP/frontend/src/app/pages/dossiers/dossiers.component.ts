@@ -121,6 +121,8 @@ import { LibellePipe } from '../../core/libelles';
     .filtres{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
     .th-tri{background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;text-align:left;white-space:nowrap}
     .th-tri:hover{text-decoration:underline}
+    th[aria-sort] .th-tri{color:var(--gold)}
+    th:not([aria-sort]) .th-tri{opacity:.85}
     .infos-liste{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 18px;margin:0 0 8px;font-size:var(--fs-sm)}
     .plus{text-align:center;margin:14px 0 0}
     .filtre{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:var(--fs-base);max-width:220px}
@@ -160,7 +162,7 @@ export class DossiersComponent implements OnInit {
   }
   // « Indéterminée — à qualifier » → « Indéterminée » : la colonne reste étroite.
   matiereCourte(m?: string | null): string { return m ? m.split(' — ')[0] : '—'; }
-  fleche(cle: string): string { return this.tri() === cle ? (this.sens() === 'asc' ? ' ▲' : ' ▼') : ''; }
+  fleche(cle: string): string { return this.tri() === cle ? (this.sens() === 'asc' ? ' ▲' : ' ▼') : ' ⇅'; }
   ariaTri(cle: string): string | null { return this.tri() === cle ? (this.sens() === 'asc' ? 'ascending' : 'descending') : null; }
   libelleTri(): string {
     const t = DossiersComponent.TRIS[this.tri()];
