@@ -5104,3 +5104,4 @@ Question de l'utilisateur : « y a-t-il un moyen pour qu'on atterrisse exactemen
 - Complément 18/11/2026 : les colonnes triables affichent « ⇅ » (colonne triée : ▲/▼ en doré) — avant, rien n'indiquait qu'on pouvait cliquer. A déployer (web).
 - Déployé le 18/11/2026 : web juria-web-00337-rt7 (API inchangée juria-00251-hjz) ; / et /health = 200.
 - 18/11/2026 : menu déroulant « Trier : … » (12 choix, sens inclus) dans la barre de filtres de la liste des dossiers, même état que les en-têtes cliquables (synchronisés) ; « ⇅ » retiré des en-têtes (seule la colonne triée garde ▲/▼). Un tri obtenu par clic d'en-tête (ex. client Z→A) s'ajoute au menu. Vérifié au navigateur. A déployer (web).
+- Déployé le 18/11/2026 : web juria-web-00338-98m (menu de tri des dossiers ; API inchangée juria-00251-hjz) ; / et /health = 200.
