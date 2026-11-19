@@ -29,9 +29,13 @@ export function activerDefilementAuto(): void {
     const cible = liste.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
     if (!cible) return;
     const r = cible.getBoundingClientRect();
-    if (r.top >= 0 && r.bottom <= window.innerHeight) return;
+    const conteneur = cible.closest('.table-scroll');
+    const decaleDroite = !!conteneur && conteneur.scrollLeft > 0;
+    if (r.top >= 0 && r.bottom <= window.innerHeight && !decaleDroite) return;
     cible.style.scrollMarginTop = '16px';
-    cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // inline: 'start' : un panneau commence toujours à gauche ; sans cela le tableau défilé à droite (Rôle d'audience) restait décalé
+    // et masquait le formulaire (annulait même son recentrage manuel).
+    cible.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'start' });
   };
   const observateur = new MutationObserver((mutations) => {
     if (Date.now() - derniereAction > 1000) return;
