@@ -231,7 +231,7 @@ import { Router } from '@angular/router';
             }
           </table>
           @if (chemisesMouvementForm(); as f) {
-            <div class="upload" style="margin-top:12px">
+            <div class="upload" style="margin-top:12px" data-defiler>
               <b>{{ f.type === 'entree' ? 'Entrée' : f.type === 'ajustement' ? 'Ajustement' : 'Seuil' }} — {{ libelleChemise(f.couleur) }}</b>
               <input class="sel" type="number" [(ngModel)]="chemisesValeur" name="chv" style="width:110px"
                      [placeholder]="f.type === 'ajustement' ? '+/− quantité' : f.type === 'seuil' ? 'Seuil' : 'Quantité'" />
@@ -249,7 +249,7 @@ import { Router } from '@angular/router';
             </div>
           }
           @if (regularisation(); as r) {
-            <div class="doublon" style="margin-top:12px">
+            <div class="doublon" style="margin-top:12px" data-defiler>
               <b>Dossiers existants dont la chemise n'est pas encore décomptée</b>
               <table>
                 <tr><th>Couleur</th><th>Stock actuel</th><th>Dossiers</th><th>Stock après</th></tr>

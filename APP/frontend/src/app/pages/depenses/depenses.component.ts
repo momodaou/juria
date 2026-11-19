@@ -145,7 +145,7 @@ import { DocumentPreviewService } from '../../core/document-preview.service';
     </div>
 
     @if (afficherForm()) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Nouvelle dépense</h3>
         <div class="grid2" appRaccourcis (entree)="creer()" (echap)="afficherForm.set(false)"
              [entreeActive]="!!form.libelle && !!form.montant && !(form.nature === 'dossier' && !form.dossier_id) && !creationEnCours()">
@@ -734,7 +734,6 @@ export class DepensesComponent implements OnInit {
       libelle: `${e.libelle} — échéance ${d}`, echeance_id: e.id,
     };
     this.afficherForm.set(true);
-    setTimeout(() => document.querySelector('.grid2')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
   }
   voirDepenseLiee(e: any): void {
     if (!e.depense_id) return;

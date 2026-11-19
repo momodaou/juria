@@ -39,7 +39,7 @@ import { ApiService } from '../../core/api.service';
     }
 
     @if (afficherForm()) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Nouveau client</h3>
         <div class="grid2">
           <div>

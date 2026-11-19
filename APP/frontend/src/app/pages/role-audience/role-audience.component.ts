@@ -225,7 +225,7 @@ import { semaineParDefaut } from './semaine-par-defaut';
       </section>
 
       @if (ligneRetour(); as l) {
-        <section class="panel" #panneauRetour>
+        <section class="panel" #panneauRetour data-defiler>
           <!-- 24/09/2026 — guillemets doubles pour "Retour d'audience" :
                une chaîne Angular entre apostrophes contenant elle-même une
                apostrophe ('Retour d\'audience') casse le parseur
@@ -1032,7 +1032,7 @@ export class RoleAudienceComponent implements OnInit {
     this.ligneRetour.set(l);
     // 21/09/2026 — la tuile s'insère juste après le tableau du rôle, potentiellement
     // hors écran si la ligne cliquée est loin dans le tableau : défilement auto.
-    setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    // le défilement vers le panneau est assuré par l'attribut data-defiler (core/defilement-auto.ts)
   }
 
   // 24/09/2026 — corrige un retour déjà saisi (date de renvoi erronée,
@@ -1053,7 +1053,7 @@ export class RoleAudienceComponent implements OnInit {
       observations: l.observations || '',
     };
     this.ligneRetour.set(l);
-    setTimeout(() => this.panneauRetour?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    // le défilement vers le panneau est assuré par l'attribut data-defiler (core/defilement-auto.ts)
   }
 
   enregistrerRetour(audienceId: string): void {

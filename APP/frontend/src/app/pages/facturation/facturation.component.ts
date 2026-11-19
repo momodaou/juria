@@ -1223,6 +1223,6 @@ export class FacturationComponent implements OnInit {
     const complete = this.factures().find((x) => x.id === f.id);
     if (!complete) { this.erreur.set('Facture introuvable dans la liste affichée — retirez les filtres.'); return; }
     this.ouvrirPaiements(complete);
-    setTimeout(() => document.querySelector('tr.edition')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+    // le défilement vers le panneau des paiements est assuré par core/defilement-auto.ts (tr.edition)
   }
 }

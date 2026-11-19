@@ -29,7 +29,7 @@ import { NATURES_PETITE_CAISSE, NATURES_CAISSE_PROCEDURE, NATURES_PETITE_CAISSE_
       <section class="panel"><p class="err">{{ erreurGlobale() }}</p></section>
     } @else {
       @if (afficherFormCompte()) {
-        <section class="panel">
+        <section class="panel" data-defiler>
           <h3>Nouveau compte</h3>
           <div class="grid2">
             <div><label>Code</label><input class="in" [(ngModel)]="nouveauCompte.code" name="code" placeholder="Ex. HNA" /></div>

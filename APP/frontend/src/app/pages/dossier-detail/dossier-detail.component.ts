@@ -247,7 +247,7 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
       </section>
 
       @if (modeEdition()) {
-        <section class="panel">
+        <section class="panel" data-defiler>
           <h3>Modifier la fiche</h3>
           <div class="grid2">
             <div><label>Intitulé</label><input class="in" [(ngModel)]="edit.intitule" name="editIntitule" /></div>
@@ -260,7 +260,7 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
                 <button class="btn ghost" type="button" (click)="ouvrirCreationClient('principal')">+ Nouveau client</button>
               }
               @if (creationClientCible() === 'principal') {
-                <div class="inline-client">
+                <div class="inline-client" data-defiler>
                   <label>Nouveau client — client principal</label>
                   <select class="in" [(ngModel)]="nouveauClient.type" name="ncType">
                     <option value="morale">Personne morale</option>
@@ -495,7 +495,7 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
             <button class="btn ghost" type="button" style="margin:-4px 0 12px" (click)="ouvrirCreationClient('additionnel')">+ Nouveau client</button>
           }
           @if (creationClientCible() === 'additionnel') {
-            <div class="inline-client">
+            <div class="inline-client" data-defiler>
               <label>Nouveau client — client additionnel</label>
               <select class="in" [(ngModel)]="nouveauClient.type" name="ncTypeAdd">
                 <option value="morale">Personne morale</option>
@@ -1172,7 +1172,7 @@ import { LIBELLES_DEGRE, numProcedure, mentionProcedure, mentionProcedureUtile, 
           } @else { <p class="muted">Aucune tâche liée à ce dossier.</p> }
           @if (auth.peut('taches.creer')) {
             @if (afficherFormTache()) {
-              <div class="grid2" style="margin:12px 0">
+              <div class="grid2" style="margin:12px 0" data-defiler>
                 <div class="col2"><label>Titre</label><input class="in" [(ngModel)]="formTache.titre" name="ftTitre" /></div>
                 <div>
                   <label>Type</label>

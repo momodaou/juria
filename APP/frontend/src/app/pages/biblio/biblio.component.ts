@@ -24,7 +24,7 @@ import { MenuActionsComponent, ActionMenuItem } from '../../core/menu-actions.co
     </header>
 
     @if (afficherForm()) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Nouvelle ressource</h3>
         <div class="grid2">
           <div>

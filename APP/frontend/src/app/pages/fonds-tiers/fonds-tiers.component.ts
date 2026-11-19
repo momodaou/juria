@@ -34,7 +34,7 @@ type TypeMouvement = 'reception' | 'reversement' | 'imputation';
     </div>
 
     @if (action(); as a) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>{{ a === 'reception' ? 'Enregistrer une réception' : a === 'reversement' ? 'Reverser au client' : 'Imputer des honoraires sur les fonds' }}</h3>
         @if (a === 'imputation') {
           <p class="muted">À faire avec l'accord du client : la somme quitte la CARPA pour le compte de fonctionnement et règle une facture.</p>

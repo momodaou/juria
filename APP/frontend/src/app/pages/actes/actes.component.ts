@@ -156,7 +156,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
     </section>
 
     @if (resultat(); as r) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Résultat — {{ r.nom }}
           <span class="tag" [class.ok]="r.statut === 'valide'">{{ r.statut === 'valide' ? 'Validé' : 'Brouillon' }}</span>
           <span class="version">v{{ r.version }}</span>

@@ -29,7 +29,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
       </section>
 
       @if (fini()) {
-        <section class="panel">
+        <section class="panel" data-defiler>
           <p class="ok-msg"><b>Audience programmée.</b> Elle est inscrite au rôle de la semaine, l'acte est rangé dans le dossier et une tâche de préparation est confiée à l'avocat.</p>
           <p style="margin-top:12px">
             <a class="btn" [routerLink]="['/dossiers', dossierId]">Ouvrir le dossier</a>
@@ -46,7 +46,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         </div>
 
         @if (etape() === 1) {
-          <section class="panel">
+          <section class="panel" data-defiler>
             <h3>Rattacher l'acte à un dossier</h3>
             @if (c.dossier_id) {
               <p class="ok-msg">L'acte est déjà rattaché à un dossier. Passez à l'audience.</p>
@@ -68,7 +68,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         }
 
         @if (etape() === 2) {
-          <section class="panel">
+          <section class="panel" data-defiler>
             <h3>Programmer l'audience</h3>
             <div class="grid2">
               <div><label>Date de l'audience <span class="req">*</span></label><input class="in" type="date" [(ngModel)]="f.date_prevue" name="datePrevue" /></div>
@@ -118,7 +118,7 @@ import { DossierPickerComponent } from '../../core/dossier-picker.component';
         }
 
         @if (etape() === 3) {
-          <section class="panel">
+          <section class="panel" data-defiler>
             <h3>Vérifier avant de créer</h3>
             <ul class="recap">
               <li>L'acte <b>{{ c.reference }}</b> est rattaché au dossier <b>{{ nomDossier() }}</b> et sa pièce est rangée dans le dossier.</li>

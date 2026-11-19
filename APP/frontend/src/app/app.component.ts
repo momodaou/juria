@@ -8,6 +8,7 @@ import { NotificationsService } from './core/notifications.service';
 import { NotificationsClocheComponent, NotificationsToastsComponent, NotificationsBanniereComponent } from './core/notifications-cloche.component';
 import { DocumentPreviewComponent } from './core/document-preview.component';
 import { ExportPrintComponent } from './core/export-print.component';
+import { activerDefilementAuto } from './core/defilement-auto';
 
 const SIDEBAR_KEY = 'juria.sidebar.dock';
 
@@ -132,6 +133,7 @@ export class AppComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    activerDefilementAuto(); // défilement vers les panneaux qui s'ouvrent (data-defiler, tr.edition)
     if (this.auth.estConnecte) {
       this.messagerie.demarrer();
       this.notifications.demarrer();

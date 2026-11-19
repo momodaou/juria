@@ -49,7 +49,7 @@ import { libelleRole } from '../../core/roles';
     }
 
     @if (afficherForm()) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Nouvelle rétrocession</h3>
         <div class="grid2">
           <div>

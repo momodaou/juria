@@ -59,7 +59,7 @@ const COLONNES = [
     }
 
     @if (afficherForm()) {
-      <section class="panel">
+      <section class="panel" data-defiler>
         <h3>Nouvelle tâche</h3>
         <div class="grid2">
           <div class="col2"><label>Titre</label><input class="in" [(ngModel)]="form.titre" name="titre" /></div>
@@ -131,7 +131,7 @@ const COLONNES = [
             <div class="carte" [id]="'tache-' + t.id" [class.urgente]="t.priorite === 'urgente'">
               @if (editionId() === t.id) {
                 <!-- Correction d'une tâche (25/09/2026) -->
-                <div class="carte-edition">
+                <div class="carte-edition" data-defiler>
                   <input class="in" [(ngModel)]="editForm.titre" name="edTitre" placeholder="Titre" />
                   <input class="in" type="date" [(ngModel)]="editForm.echeance" name="edEch" />
                   <select class="in" [(ngModel)]="editForm.priorite" name="edPrio">
