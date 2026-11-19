@@ -56,6 +56,7 @@ export const CATEGORIES_DEPENSE: CategorieDepense[] = [
   { code: 'extrait_plumitif', libelle: 'Extrait de plumitif', groupe: 'debours' },
   { code: 'frais_diligences', libelle: 'Frais de diligences', groupe: 'debours' },
   { code: 'frais_huissier', libelle: 'Frais d’huissier', groupe: 'debours' },
+  { code: 'frais_notaire', libelle: 'Frais de notaire', groupe: 'debours' },
   { code: 'frais_greffe', libelle: 'Frais de greffe', groupe: 'debours' },
   { code: 'timbres_enregistrement', libelle: 'Timbres fiscaux et droits d’enregistrement', groupe: 'debours' },
   { code: 'extraits_pieces', libelle: 'Extraits RCCM, casier judiciaire, état civil', groupe: 'debours' },
@@ -79,7 +80,7 @@ export const CATALOGUE_PETITE_CAISSE: string[] = [
   'papeterie', 'impressions', 'encres', 'petit_materiel', 'reparation', 'produits_entretien', 'desodorisants',
   'credit_telephonique', 'entretien_vehicule'];
 export const CATALOGUE_PROCEDURE: string[] = [
-  'frais_greffe', 'frais_grosse', 'frais_consignation', 'extrait_plumitif', 'frais_huissier', 'frais_diligences',
+  'frais_greffe', 'frais_grosse', 'frais_consignation', 'extrait_plumitif', 'frais_huissier', 'frais_notaire', 'frais_diligences',
   'frais_procedure', 'frais_expedition', 'timbres_enregistrement', 'extraits_pieces', 'traduction', 'annonces_legales'];
 const enCatalogue = (codes: string[]): CategorieDepense[] => codes.map((c) => CATEGORIES_DEPENSE.find((x) => x.code === c)!).filter(Boolean);
 export const NATURES_PETITE_CAISSE: CategorieDepense[] = enCatalogue(CATALOGUE_PETITE_CAISSE);

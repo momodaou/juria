@@ -6,7 +6,7 @@
 // n'appartient à aucune caisse : sa dépense naît à l'affectation à une instance (jamais saisie à l'achat du lot).
 const CATEGORIES_DEBOURS = [
   "vignette_plaidoirie", "frais_procedure", "frais_consignation", "frais_grosse", "frais_expedition",
-  "extrait_plumitif", "frais_diligences", "frais_huissier",
+  "extrait_plumitif", "frais_diligences", "frais_huissier", "frais_notaire",
   "frais_greffe", "timbres_enregistrement", "extraits_pieces", "traduction", "annonces_legales",
 ];
 const estDebours = (code) => CATEGORIES_DEBOURS.includes(code);
@@ -17,7 +17,7 @@ const CATALOGUE_PETITE_CAISSE = [
   "credit_telephonique", "entretien_vehicule",
 ];
 const CATALOGUE_PROCEDURE = [
-  "frais_greffe", "frais_grosse", "frais_consignation", "extrait_plumitif", "frais_huissier", "frais_diligences",
+  "frais_greffe", "frais_grosse", "frais_consignation", "extrait_plumitif", "frais_huissier", "frais_notaire", "frais_diligences",
   "frais_procedure", "frais_expedition", "timbres_enregistrement", "extraits_pieces", "traduction", "annonces_legales",
 ];
 
@@ -85,6 +85,7 @@ const LIBELLES_CATEGORIES = {
  "extrait_plumitif": "Extrait de plumitif",
  "frais_diligences": "Frais de diligences",
  "frais_huissier": "Frais d'huissier",
+ "frais_notaire": "Frais de notaire",
  "frais_greffe": "Frais de greffe",
  "timbres_enregistrement": "Timbres fiscaux et droits d'enregistrement",
  "extraits_pieces": "Extraits RCCM, casier judiciaire, état civil",

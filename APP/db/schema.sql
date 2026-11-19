@@ -6321,3 +6321,15 @@ CREATE INDEX IF NOT EXISTS idx_dossier_liens_b ON dossier_liens(dossier_b);
 --  18/11/2026 — Suspension des e-mails de CONFLIT seuls (sans toucher aux e-mails de création de dossier). Idempotent.
 -- =====================================================================
 ALTER TABLE parametres_cabinet ADD COLUMN IF NOT EXISTS emails_conflits_suspendus_jusqu_a TIMESTAMPTZ;
+
+-- =====================================================================
+-- 19/11/2026 — Nouvelle nature « Frais de notaire » (débours, caisse frais de justice). IMPORT 1/2 : valeur d'enum seule. Idempotent.
+ALTER TYPE categorie_depense ADD VALUE IF NOT EXISTS 'frais_notaire';
+-- ============ (import 2/2 : après le 1/2) ============
+-- 19/11/2026 — « Frais de notaire » : IMPORT 2/2 (après le 1/2) — catalogue de la caisse frais de justice. Idempotent.
+ALTER TABLE parametres_cabinet ALTER COLUMN caisse_procedure_categories SET DEFAULT ARRAY[
+  'frais_greffe','frais_grosse','frais_consignation','extrait_plumitif','frais_huissier','frais_notaire','frais_diligences',
+  'frais_procedure','frais_expedition','timbres_enregistrement','extraits_pieces','traduction','annonces_legales'];
+-- Liste déjà enregistrée : on ajoute la nouvelle nature sans toucher aux autres réglages.
+UPDATE parametres_cabinet SET caisse_procedure_categories = array_append(caisse_procedure_categories, 'frais_notaire')
+ WHERE id = 1 AND caisse_procedure_categories IS NOT NULL AND NOT ('frais_notaire' = ANY(caisse_procedure_categories));
